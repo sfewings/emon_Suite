@@ -107,7 +107,7 @@ void setup()
   //-----------------------------------------
   // RFM12B Initialize
   //------------------------------------------
-  rf12_initialize(myNodeID,freq,network);     //Initialize RFM12 with settings defined above 
+  rf12_initialize(myNodeID,freq,network,10);     //Initialize RFM12 with settings defined above, use pin 10 as SSelect
   //------------------------------------------
   
   delay(20);
@@ -135,7 +135,7 @@ void setup()
 
 void loop()
 {  
-    //digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
+    digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
    //--------------------------------------------------------------------------------------------------
     // 1. Read current supply voltage and get current CT energy monitoring reading 
     //--------------------------------------------------------------------------------------------------
@@ -166,7 +166,7 @@ void loop()
     }
    
     //pulseCount=0;       //reset pulse increments 
-    //digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
+    digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
 
     delay(1000);        //1s delay  
 }

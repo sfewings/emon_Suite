@@ -24,19 +24,11 @@
 //#include <DallasTemperature.h>      // http://download.milesburton.com/Arduino/MaximTemperature/ (3.7.2 Beta needed for Arduino 1.0)
 
 //JeeLab libraires		       http://github.com/jcw
-//#include <RF12.h>                      // don't want the ports part of the library
 #include <JeeLib.h>		    // ports and RFM12 - used for RFM12B wireless
-//#include <RTClib.h>                 // Real time clock (RTC) - used for software RTC to reset kWh counters at midnight
-//#include <Wire.h>                   // Part of Arduino libraries - needed for RTClib
 
-//#include <GLCD_ST7565.h>            // Graphical LCD library 
-//#include <avr/pgmspace.h>           // Part of Arduino libraries - needed for GLCD lib
-
-//GLCD_ST7565 glcd;
-//#include <LiquidCrystal.h>
 #include <PortsLCD.h>
 
-LiquidCrystal lcd(A2,9, 8,7,6,5);
+LiquidCrystal lcd(A2,4, 8,7,6,5);
 
 #include <Time.h>
 
@@ -88,6 +80,27 @@ unsigned int txReceived[MAX_TIMES];
 //DallasTemperature sensors(&oneWire);
 //double temp,maxtemp,mintemp;
 
+
+//--------------------------------------------------------------------------------------------
+// Ethercard support
+//-------------------------------------------------------------------------------------------- 
+#include <EtherCard.h>
+static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x31 };
+byte Ethernet::buffer[700];
+
+//-------------------------------------------------------------------------------------------- 
+//Pachube support
+//-------------------------------------------------------------------------------------------- 
+// change these settings to match your own setup
+#define FEED    "52772"
+#define APIKEY  "f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
+
+char website[] PROGMEM = "api.pachube.com";
+
+uint32_t timer;
+Stash stash;
+
+
 //--------------------------------------------------------------------------------------------
 // Software RTC setup
 //-------------------------------------------------------------------------------------------- 
@@ -114,20 +127,43 @@ static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') {
 // Setup
 //--------------------------------------------------------------------------------------------
 void setup () {
-    rf12_initialize(MYNODE, freq,group);
+    Serial.begin(9600);
     
-    //glcd.begin(0x18);    //begin glcd library and set contrast 0x20 is max, 0x18 seems to look best on emonGLCD
-    //glcd.backLight(200); //max 255
     lcd.begin(16, 2);
-    //lcd.setCursor(0, 0);
-    //lcd.print("Cur ");
+  
+  
+  
+     Serial.print("MAC: ");
+    for (byte i = 0; i < 6; ++i) {
+      Serial.print(mymac[i], HEX);
+      if (i < 5)
+        Serial.print(':');
+    }
+    Serial.println();
+    
+    if (ether.begin(sizeof Ethernet::buffer, mymac, 10) == 0) 
+      Serial.println( "Failed to access Ethernet controller");
+    
+    Serial.println("Setting up DHCP");
+    if (!ether.dhcpSetup())
+      Serial.println( "DHCP failed");
+    
+    ether.printIp("My IP: ", ether.myip);
+    ether.printIp("Netmask: ", ether.mymask);
+    ether.printIp("GW IP: ", ether.gwip);
+    ether.printIp("DNS IP: ", ether.dnsip);
+   
+    if (!ether.dnsLookup(website))
+      Serial.println("DNS failed");
+      
+    ether.printIp("Pachube SRV: ", ether.hisip);
    
    
-   
-    #ifdef DEBUG 
-      Serial.begin(9600);
-      print_glcd_setup();
-    #endif
+   Serial.println("rf12_initialize");
+   rf12_initialize(MYNODE, freq,group,9);
+   Serial.println("rf12_initialize finished");
+
+    print_glcd_setup();
     
     for(int i=0; i< MAX_TIMES;i++)
     {
@@ -141,9 +177,6 @@ void setup () {
     //sensors.requestTemperatures();
     //temp = (sensors.getTempCByIndex(0));     // get inital temperture reading
     //mintemp = temp; maxtemp = temp;          // reset min and max
-    
-    //RTC.begin(DateTime(__DATE__, __TIME__));	//load time and time from computer into sofware RTC
-    
 }
 //--------------------------------------------------------------------------------------------
 
@@ -220,6 +253,56 @@ void loop () {
     //   if (temp > maxtemp) maxtemp = temp;
     //   if (temp < mintemp) mintemp = temp;
     //}
+
+
+    //Do the ethernet stuff including pachube update
+    word pos = ether.packetLoop(ether.packetReceive());
+    if (pos) 
+    {
+      char* data = (char *) Ethernet::buffer + pos;
+      Serial.println(data);
+    }
+    
+    if (millis() > timer) 
+    {
+      timer = millis() + 10000;
+      
+      // generate two fake values as payload - by using a separate stash,
+      // we can determine the size of the generated message ahead of time
+      byte sd = stash.create();
+      stash.print("0,");
+      stash.println((word) consuming);
+      stash.print("1,");
+      stash.println((word) gen);
+      stash.print("2,");
+      stash.println((word) emontx.supplyV);
+      stash.save();
+      
+      // generate the header with payload - note that the stash size is used,
+      // and that a "stash descriptor" is passed in as argument using "$H"
+      Stash::prepare(PSTR("PUT http://$F/v2/feeds/$F.csv HTTP/1.0" "\r\n"
+                          "Host: $F" "\r\n"
+                          "X-PachubeApiKey: $F" "\r\n"
+                          "Content-Length: $D" "\r\n"
+                          "\r\n"
+                          "$H"),
+              website, PSTR(FEED), website, PSTR(APIKEY), stash.size(), sd);
+
+      for (;;) 
+      {
+        char c = stash.get();
+        if (c == 0)
+          break;
+        Serial.print(c);
+      }
+      Serial.println();
+
+      // send the packet - this also releases all stash buffers once done
+      ether.tcpSend();
+      
+      
+      //Serial.println((char*)Ethernet::buffer);
+    }
 
     //--------------------------------------------------------------------
     // Control toggling of screen pages
