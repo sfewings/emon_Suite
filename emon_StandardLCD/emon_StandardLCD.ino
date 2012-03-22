@@ -197,7 +197,7 @@ void loop () {
         if (node_id == 10)                        // === EMONTX ====
         {
           //monitor the reliability of receival
-          int index = (int) (((millis() - last_emontx)/1050.0)-1.0);
+          int index = (int) (((millis() - last_emontx)/5050.0)-1.0);  //expect these 5 seconds apart
           if(index<0)
             index = 0;
           if( index >= MAX_TIMES)
@@ -265,15 +265,15 @@ void loop () {
     
     if (millis() > timer) 
     {
-      timer = millis() + 10000;
+      timer = millis() + 60000;
       
       // generate two fake values as payload - by using a separate stash,
       // we can determine the size of the generated message ahead of time
       byte sd = stash.create();
       stash.print("0,");
-      stash.println((word) consuming);
+      stash.println((word) emontx.power);
       stash.print("1,");
-      stash.println((word) gen);
+      stash.println((word) emontx.ct1);
       stash.print("2,");
       stash.println((word) emontx.supplyV);
       stash.save();

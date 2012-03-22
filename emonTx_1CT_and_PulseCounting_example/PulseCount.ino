@@ -68,7 +68,7 @@ void SetupPulseCount()
 
 void interruptHandlerIR() // routine called when external interrupt is triggered
 {
-  digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
+  //digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
   
   g_wHrCount = g_wHrCount + 1;  //Update number of pulses, 1 pulse = 1 watt
   unsigned long tick = millis();
@@ -78,5 +78,5 @@ void interruptHandlerIR() // routine called when external interrupt is triggered
     g_period = tick - g_lastTick;
   g_lastTick = tick;
 
-  digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
+  //digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
 }

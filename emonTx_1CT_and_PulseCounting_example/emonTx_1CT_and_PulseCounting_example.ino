@@ -135,7 +135,6 @@ void setup()
 
 void loop()
 {  
-    digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
    //--------------------------------------------------------------------------------------------------
     // 1. Read current supply voltage and get current CT energy monitoring reading 
     //--------------------------------------------------------------------------------------------------
@@ -165,34 +164,13 @@ void loop()
       Serial.println(emontx.supplyV);
     }
    
+    digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
+    delay(1);
     //pulseCount=0;       //reset pulse increments 
     digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
 
-    delay(1000);        //1s delay  
+    delay(5000);        //1s delay  
 }
-
-//--------------------------------------------------------------------------------------------------
-// The interrupt routine - runs each time a falling edge of a pulse is detected
-//--------------------------------------------------------------------------------------------------
-/*
-void onPulse()                  
-{
-  digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
-
-  lastTime = pulseTime;        //used to measure time between pulses.
-  pulseTime = micros();
-
-  pulseCount++;                                                      //pulseCounter               
-
-  emontx.power = int((3600000000.0 / (pulseTime - lastTime))/ppwh);  //Calculate power
-  
-  //elapsedWh= (1.0*pulseCount/(ppwh));   // Find wh elapsed
-  
-
-  digitalWrite(LEDpin, LOW);
-}
-//--------------------------------------------------------------------------------------------------
-*/
 
 
 
