@@ -73,6 +73,7 @@ unsigned long whtime;                                  //used to calculate energ
 
 #define MAX_TIMES  3
 unsigned int txReceived[MAX_TIMES];
+unsigned int packetsReceived;
 //--------------------------------------------------------------------------------------------
 // DS18B20 temperature setup - onboard sensor 
 //--------------------------------------------------------------------------------------------
@@ -127,7 +128,7 @@ static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') {
 // Setup
 //--------------------------------------------------------------------------------------------
 void setup () {
-    Serial.begin(9600);
+    Serial.begin(11520);
     
     lcd.begin(16, 2);
   
@@ -169,6 +170,7 @@ void setup () {
     {
       txReceived[i] = 0;
     }
+    packetsReceived = 0;
     
     //pinMode(greenLED, OUTPUT); 
     //pinMode(redLED, OUTPUT);  
@@ -203,7 +205,7 @@ void loop () {
           if( index >= MAX_TIMES)
             index= MAX_TIMES-1;
           txReceived[index]++;
-
+          packetsReceived ++;
 
           emontx = *(PayloadTX*) rf12_data;       // get emontx payload data
           #ifdef DEBUG 
@@ -256,13 +258,16 @@ void loop () {
 
 
     //Do the ethernet stuff including pachube update
-    word pos = ether.packetLoop(ether.packetReceive());
-    if (pos) 
+    if( millis() % 10 == 0)
     {
-      char* data = (char *) Ethernet::buffer + pos;
-      Serial.println(data);
+        word pos = ether.packetLoop(ether.packetReceive());
+        if (pos) 
+        {
+          char* data = (char *) Ethernet::buffer + pos;
+          Serial.println(data);
+        }
     }
-    
+
     if (millis() > timer) 
     {
       timer = millis() + 60000;
@@ -275,9 +280,10 @@ void loop () {
       stash.print("1,");
       stash.println((word) emontx.ct1);
       stash.print("2,");
-      stash.println((word) emontx.supplyV);
+      stash.println((word) packetsReceived);
       stash.save();
-      
+      packetsReceived = 0;
+
       // generate the header with payload - note that the stash size is used,
       // and that a "stash descriptor" is passed in as argument using "$H"
       Stash::prepare(PSTR("PUT http://$F/v2/feeds/$F.csv HTTP/1.0" "\r\n"
