@@ -107,7 +107,7 @@ void setup()
   //-----------------------------------------
   // RFM12B Initialize
   //------------------------------------------
-  rf12_initialize(myNodeID,freq,network,10);     //Initialize RFM12 with settings defined above, use pin 10 as SSelect
+  rf12_initialize(myNodeID,freq,network,1600);     //Initialize RFM12 with settings defined above, use pin 10 as SSelect
   //------------------------------------------
   
   delay(20);
@@ -150,8 +150,8 @@ void loop()
     //--------------------------------------------------------------------------------------------------
     while (!rf12_canSend())
     rf12_recvDone();
-    //rf12_sendStart(0,&emontx, sizeof emontx); 
-    rf12_sendStart(rf12_hdr, &emontx, sizeof emontx, RADIO_SYNC_MODE); 
+    rf12_sendStart(0,&emontx, sizeof emontx); 
+    //rf12_sendStart(rf12_hdr, &emontx, sizeof emontx, RADIO_SYNC_MODE); 
     //--------------------------------------------------------------------------------------------------    
 
     if (SERIAL==1){

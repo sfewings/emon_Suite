@@ -128,12 +128,15 @@ static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') {
 // Setup
 //--------------------------------------------------------------------------------------------
 void setup () {
-    Serial.begin(11520);
+    Serial.begin(9600);
     
     lcd.begin(16, 2);
+    lcd.setCursor(0, 0);
+
+	lcd.print("Hello");
   
   
-  
+#ifdef ETHERNET  
      Serial.print("MAC: ");
     for (byte i = 0; i < 6; ++i) {
       Serial.print(mymac[i], HEX);
@@ -141,7 +144,7 @@ void setup () {
         Serial.print(':');
     }
     Serial.println();
-    
+
     if (ether.begin(sizeof Ethernet::buffer, mymac, 10) == 0) 
       Serial.println( "Failed to access Ethernet controller");
     
@@ -158,10 +161,10 @@ void setup () {
       Serial.println("DNS failed");
       
     ether.printIp("Pachube SRV: ", ether.hisip);
-   
+#endif   
    
    Serial.println("rf12_initialize");
-   rf12_initialize(MYNODE, freq,group,9);
+   rf12_initialize(MYNODE, freq,group);
    Serial.println("rf12_initialize finished");
 
     print_glcd_setup();
@@ -257,6 +260,7 @@ void loop () {
     //}
 
 
+#ifdef ETHERNET
     //Do the ethernet stuff including pachube update
     if( millis() % 10 == 0)
     {
@@ -309,6 +313,7 @@ void loop () {
       
       //Serial.println((char*)Ethernet::buffer);
     }
+#endif
 
     //--------------------------------------------------------------------
     // Control toggling of screen pages
