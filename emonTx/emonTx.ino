@@ -16,6 +16,13 @@
 // openenergymonitor.org
 // GNU GPL V3
 
+//  Modified by S Fewings.
+//		1. Use power calculations from home power monitor project
+//		2. Add temperature reading
+//		3. Add rain gauge pulse counting. Added to Arduino IO pin 5, Jeenode Port 2. Une PinChangeInt library to add additional interrupt to Atmega328
+//		4. Report line supply voltage. Only useful when powering by battery
+//
+
 // pulse input on pulse channel (top right jack)
 // CT input on CT channel 2 (middle jack on RHS)
 
@@ -81,6 +88,21 @@ double CAL=(1.295000139 *1.6);          //*calibration coefficient* IMPORTANT - 
 # define LEDpin 9          //hardwired on emonTx PCB
 //--------------------------------------------------------------------------------------------------
 
+
+//Temperature support - OneWire Dallas temperature sensor
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS 4                                                  // Data wire is plugged into port 2 on the Arduino
+OneWire oneWire(ONE_WIRE_BUS);                                          // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+DallasTemperature sensors(&oneWire);                                    // Pass our oneWire reference to Dallas Temperature.
+
+// By using direct addressing its possible to make sure that as you add temperature sensors
+// the temperature sensor to variable mapping will not change.
+// To find the addresses of your temperature sensors use the: **temperature_search sketch**
+// DeviceAddress address_T1 = { 0x28, 0x22, 0x70, 0xEE, 0x02, 0x00, 0x00, 0xB8 };
+
 //int supplyV; //no need to send supply voltage as emonTx will be powered from USB adapter when using pulse counting 
 //########################################################################################################################
 //Data Structure to be sent
@@ -90,18 +112,23 @@ typedef struct {
           int pulse;            //pulse increments 
           int ct1;              //CT reading 
           int supplyV;          // unit supply voltage
+		  int temperature;		//DB1820 temperature
+		  int rainGauge;		//rain gauge pulse
 } Payload;
 Payload emontx;
 //########################################################################################################################
+
+
 
 void setup()
 {
   Serial.begin(9600);                   //fast serial 
   pinMode(LEDpin, OUTPUT);
   digitalWrite(LEDpin, HIGH);    //turn on LED 
+
+  delay(1000);
   
-  Serial.println("emonTx interrupt pulse counting + one CT example");
-  Serial.println("openenergymonitor.org");
+  Serial.println(F("Fewings emonTx. Based on openenergymonitor.org"));
   
   delay(10);  
   //-----------------------------------------
@@ -112,13 +139,13 @@ void setup()
   
   delay(20);
   
-  Serial.print("Node: "); 
+  Serial.print(F("Node: ")); 
   Serial.print(myNodeID); 
-  Serial.print(" Freq: "); 
-  if (freq == RF12_433MHZ) Serial.print("433Mhz");
-  if (freq == RF12_868MHZ) Serial.print("868Mhz");
-  if (freq == RF12_915MHZ) Serial.print("915Mhz");  
-  Serial.print(" Network: "); 
+  Serial.print(F(" Freq: ")); 
+  if (freq == RF12_433MHZ) Serial.print(F("433Mhz"));
+  if (freq == RF12_868MHZ) Serial.print(F("868Mhz"));
+  if (freq == RF12_915MHZ) Serial.print(F("915Mhz"));  
+  Serial.print(F(" Network: ")); 
   Serial.println(network);
   delay(20);
   
@@ -126,8 +153,34 @@ void setup()
     Serial.println("serial disabled"); 
     Serial.end();
   }
+
   SetupPulseCount();
-  //attachInterrupt(1, onPulse, FALLING);    // KWH interrupt attached to IRQ 1  = pin3 - hardwired to emonTx pulse jackplug. For connections see: http://openenergymonitor.org/emon/node/208
+
+
+  //temperature
+  sensors.begin();
+
+  DeviceAddress tmp_address;
+  int numberOfDevices = sensors.getDeviceCount();
+  
+  for(int i=0;i<numberOfDevices; i++)
+  {
+    sensors.getAddress(tmp_address, i);
+	Serial.print(F("Temperature sensor address "));
+	Serial.print(i+1);
+	Serial.print(F(": "));
+    printAddress(tmp_address);
+    Serial.println();
+  }
+
+  // Initialise 
+  emontx.pulse = 0;      
+  emontx.ct1 = 0;        
+  emontx.supplyV = 0;    
+  emontx.temperature = 0;
+  emontx.rainGauge = 0;	
+
+  Serial.println(F("emontx: Power IR_Pulse CurrentTransformer Temperature RainGauge"));
 
   digitalWrite(LEDpin, LOW);              //turn off LED
 }
@@ -138,13 +191,14 @@ void loop()
    //--------------------------------------------------------------------------------------------------
     // 1. Read current supply voltage and get current CT energy monitoring reading 
     //--------------------------------------------------------------------------------------------------
-    emontx.supplyV = readVcc();  //read emontx supply voltage
-    emontx.ct1=int(emon( CT_INPUT_PIN, CAL, RMS_VOLTAGE, NUMBER_OF_SAMPLES, CT_BURDEN_RESISTOR, CT_TURNS, emontx.supplyV));
-    //--------------------------------------------------------------------------------------------------
-  
-    emontx.pulse=MeterPulseLog(); //pulseCount;        //as well as sending power we also send pulse increments inorder to accuratly calculate kwhr
-    emontx.power=MeterCurrentWatts(); 
-    
+    emontx.power = MeterCurrentWatts(); 
+    emontx.pulse = MeterPulseLog();					//as well as sending power we also send pulse increments inorder to accuratly calculate kwhr
+    emontx.supplyV = readVcc();					//read emontx supply voltage
+    emontx.ct1= int(emon( CT_INPUT_PIN, CAL, RMS_VOLTAGE, NUMBER_OF_SAMPLES, CT_BURDEN_RESISTOR, CT_TURNS, emontx.supplyV));
+	emontx.rainGauge = MeterRainGauge();			//return the raingauge counts. 
+	sensors.requestTemperatures();  
+	emontx.temperature = sensors.getTempCByIndex(0)*100;
+
     //--------------------------------------------------------------------------------------------------
     // 2. Send data via RF 
     //--------------------------------------------------------------------------------------------------
@@ -154,24 +208,45 @@ void loop()
     //rf12_sendStart(rf12_hdr, &emontx, sizeof emontx, RADIO_SYNC_MODE); 
     //--------------------------------------------------------------------------------------------------    
 
+
     if (SERIAL==1){
+      Serial.print(F("emontx: "));
       Serial.print(emontx.power);
-      Serial.print(" ");
+      Serial.print(F(" "));
       Serial.print(emontx.pulse);
-      Serial.print(" ");
+      Serial.print(F(" "));
       Serial.print(emontx.ct1);
-      Serial.print(" ");
-      Serial.println(emontx.supplyV);
+      Serial.print(F(" "));
+      //Serial.print(emontx.supplyV);
+      //Serial.print(" ");
+      Serial.print(emontx.temperature);
+      Serial.print(F(" "));
+	  Serial.println(emontx.rainGauge);
     }
    
     digitalWrite(LEDpin, HIGH);     //flash LED - very quickly each time a pluse occus  
     delay(1);
-    //pulseCount=0;       //reset pulse increments 
-    digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
+	digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
 
-    delay(5000);        //1s delay  
+    delay(1000);        //1s delay  
 }
 
+
+
+void printAddress(uint8_t deviceAddress[8])
+{
+  Serial.print("{ ");
+  for (uint8_t i = 0; i < 8; i++)
+  {
+    // zero pad the address if necessary
+    Serial.print("0x");
+    if (deviceAddress[i] < 16) Serial.print("0");
+    Serial.print(deviceAddress[i], HEX);
+    if (i<7) Serial.print(", ");
+    
+  }
+  Serial.print(" }");
+}
 
 
 //--------------------------------------------------------------------------------------------------
@@ -190,5 +265,3 @@ long readVcc() {
   return result;
 }
 //--------------------------------------------------------------------------------------------------
-
-

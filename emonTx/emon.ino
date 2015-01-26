@@ -1,4 +1,4 @@
-int lastSampleI,sampleI;         // Sample variables
+int lastSampleI=0,sampleI =0;         // Sample variables
 double lastFilteredI =0 ,filteredI = 0;  // Filter variables
 double sqI = 0,sumI = 0;                 // Power calculation variables
  

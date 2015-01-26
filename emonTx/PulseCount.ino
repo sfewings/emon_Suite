@@ -3,6 +3,10 @@
 //#include <wiring.h>
 
 
+//Library to provide additional interrupts on the Arduino Uno328
+#include <PinChangeInt.h>
+
+#define RAIN_GAUGE_PIN		5
 
 // interrupt driven pulse counts 
 #define POWER_PULSE_PIN     3   
@@ -12,17 +16,27 @@ volatile unsigned short   g_wHrCount = 0;
 volatile unsigned long    g_lastTick = 0;
 volatile unsigned long    g_period   = 0;
 
+volatile unsigned short   g_RGCount = 0;
+volatile unsigned long    g_RGlastTick = 0;
+
+
 unsigned short MeterPulseLog()
 {
-    unsigned short wattSensorCountIR; //number of watts during this logging interval 
+    unsigned short wattSensorCountIR;  //number of watts during this logging interval 
     //uint8_t oldSREG = SREG;          // save interrupt register
     //cli();                           // prevent interrupts while accessing the count   
-    wattSensorCountIR = g_wHrCount;  //get the count from the interrupt handler 
+    wattSensorCountIR = g_wHrCount;	   //get the count from the interrupt handler 
     g_wHrCount = 0;                    //reset the watts count
     //SREG = oldSREG;                  // restore interrupts
 
     return wattSensorCountIR;
 }
+
+unsigned short MeterRainGauge()
+{
+    return g_RGCount;
+}
+
 
 unsigned short MeterCurrentWatts()
 {  
@@ -63,6 +77,11 @@ void SetupPulseCount()
   pinMode(POWER_PULSE_PIN, INPUT);     
   digitalWrite(POWER_PULSE_PIN, HIGH);   
   attachInterrupt(INTERRUPT_IR, interruptHandlerIR, FALLING);   
+
+
+  pinMode(RAIN_GAUGE_PIN, INPUT_PULLUP);
+  attachPinChangeInterrupt(RAIN_GAUGE_PIN, interruptHandlerRainGauge, RISING);
+
 }
 
 
@@ -79,4 +98,20 @@ void interruptHandlerIR() // routine called when external interrupt is triggered
   g_lastTick = tick;
 
   //digitalWrite(LEDpin, LOW);     //flash LED - very quickly each time a pluse occus  
+}
+
+
+// Rain gauge interrupt routine
+void interruptHandlerRainGauge() 
+{
+  unsigned long tick = millis();
+  unsigned long period;
+  if( tick < g_RGlastTick )
+    period = tick + (g_RGlastTick-0xFFFFFFFF);  //rollover occured
+  else
+    period = tick - g_RGlastTick;
+  g_RGlastTick = tick;
+
+  if( period > 500 )  //more than 500 ms to avoid switch bounce
+    g_RGCount++;  //Update number of pulses, 1 pulse = 0.2mm of rain
 }
