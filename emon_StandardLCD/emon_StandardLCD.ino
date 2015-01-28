@@ -50,15 +50,14 @@ LiquidCrystal lcd(A2,4, 8,7,6,5);
 //---------------------------------------------------
 //typedef struct { int power, battery; } PayloadTX;
 typedef struct {
-  	  int power;		// power value
+  		  int power;		// power value
           int pulse;            //pulse increments 
           int ct1;              //CT reading 
           int supplyV;          // unit supply voltage
+		  int temperature;		//DB1820 temperature
+		  int rainGauge;		//rain gauge pulse
 } PayloadTX;
 PayloadTX emontx;    
-
-typedef struct { int temperature; } PayloadGLCD;
-PayloadGLCD emonglcd;
 
 typedef struct { int hour, mins, sec; } PayloadBase;
 PayloadBase emonbase;
@@ -74,32 +73,9 @@ unsigned long whtime;                                  //used to calculate energ
 #define MAX_TIMES  3
 unsigned int txReceived[MAX_TIMES];
 unsigned int packetsReceived;
-//--------------------------------------------------------------------------------------------
-// DS18B20 temperature setup - onboard sensor 
-//--------------------------------------------------------------------------------------------
-//OneWire oneWire(ONE_WIRE_BUS);
-//DallasTemperature sensors(&oneWire);
-//double temp,maxtemp,mintemp;
-
-
-//--------------------------------------------------------------------------------------------
-// Ethercard support
-//-------------------------------------------------------------------------------------------- 
-#include <EtherCard.h>
-static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x31 };
-byte Ethernet::buffer[700];
-
-//-------------------------------------------------------------------------------------------- 
-//Pachube support
-//-------------------------------------------------------------------------------------------- 
-// change these settings to match your own setup
-#define FEED    "52772"
-#define APIKEY  "f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
-
-char website[] PROGMEM = "api.pachube.com";
 
 uint32_t timer;
-Stash stash;
+int toggle = 0;
 
 
 //--------------------------------------------------------------------------------------------
@@ -117,13 +93,43 @@ unsigned long slow_update;                   // Used to count time for slow 10s 
 unsigned long fast_update;                   // Used to count time for fast 100ms events
   
   
-static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') {
+static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') 
+{
   lcd.setCursor(x, y);
   int places = log10(value);
   for(int i=0; i<4-places;i++)
   lcd.print(fill);
   lcd.print(value);  
 }  
+
+
+String TemperatureString(String& str, int temperature )
+{
+  int t = temperature;
+  if( t < 0 )
+  {
+    str = "-";
+    t *= -1;
+    str += t/100;
+  }
+  else
+    str = String(t/100);
+  str +=".";
+ 
+  str += (t/10)%10;
+
+  return str;
+}
+
+String RainString(String& str, int rainGauge )
+{
+	//raingauge increments in 0.2mm per value
+	str = String(rainGauge/5);
+	str += ".";
+	str += (rainGauge%5)*2;
+	return str;
+}
+
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -134,40 +140,14 @@ void setup () {
     lcd.setCursor(0, 0);
 
 	lcd.print("Hello");
-  
-  
-#ifdef ETHERNET  
-     Serial.print("MAC: ");
-    for (byte i = 0; i < 6; ++i) {
-      Serial.print(mymac[i], HEX);
-      if (i < 5)
-        Serial.print(':');
-    }
-    Serial.println();
-
-    if (ether.begin(sizeof Ethernet::buffer, mymac, 10) == 0) 
-      Serial.println( "Failed to access Ethernet controller");
-    
-    Serial.println("Setting up DHCP");
-    if (!ether.dhcpSetup())
-      Serial.println( "DHCP failed");
-    
-    ether.printIp("My IP: ", ether.myip);
-    ether.printIp("Netmask: ", ether.mymask);
-    ether.printIp("GW IP: ", ether.gwip);
-    ether.printIp("DNS IP: ", ether.dnsip);
-   
-    if (!ether.dnsLookup(website))
-      Serial.println("DNS failed");
-      
-    ether.printIp("Pachube SRV: ", ether.hisip);
-#endif   
    
    Serial.println("rf12_initialize");
    rf12_initialize(MYNODE, freq,group);
    Serial.println("rf12_initialize finished");
 
     print_glcd_setup();
+
+	print_emontx_setup();
     
     for(int i=0; i< MAX_TIMES;i++)
     {
@@ -241,79 +221,8 @@ void loop () {
       }
     }
     
-    //--------------------------------------------------------------------
-    // Things to do every 10s
-    //--------------------------------------------------------------------
-    //if ((millis()-slow_update)>10000)
-    //{
-    //   slow_update = millis();
-       
-       // Control led's
-    //   led_control();
-    //   backlight_control();
-       
-       // Get temperatue from onboard sensor
-    //   sensors.requestTemperatures();
-    //   temp = (sensors.getTempCByIndex(0));
-    //   if (temp > maxtemp) maxtemp = temp;
-    //   if (temp < mintemp) mintemp = temp;
-    //}
 
 
-#ifdef ETHERNET
-    //Do the ethernet stuff including pachube update
-    if( millis() % 10 == 0)
-    {
-        word pos = ether.packetLoop(ether.packetReceive());
-        if (pos) 
-        {
-          char* data = (char *) Ethernet::buffer + pos;
-          Serial.println(data);
-        }
-    }
-
-    if (millis() > timer) 
-    {
-      timer = millis() + 60000;
-      
-      // generate two fake values as payload - by using a separate stash,
-      // we can determine the size of the generated message ahead of time
-      byte sd = stash.create();
-      stash.print("0,");
-      stash.println((word) emontx.power);
-      stash.print("1,");
-      stash.println((word) emontx.ct1);
-      stash.print("2,");
-      stash.println((word) packetsReceived);
-      stash.save();
-      packetsReceived = 0;
-
-      // generate the header with payload - note that the stash size is used,
-      // and that a "stash descriptor" is passed in as argument using "$H"
-      Stash::prepare(PSTR("PUT http://$F/v2/feeds/$F.csv HTTP/1.0" "\r\n"
-                          "Host: $F" "\r\n"
-                          "X-PachubeApiKey: $F" "\r\n"
-                          "Content-Length: $D" "\r\n"
-                          "\r\n"
-                          "$H"),
-              website, PSTR(FEED), website, PSTR(APIKEY), stash.size(), sd);
-
-      for (;;) 
-      {
-        char c = stash.get();
-        if (c == 0)
-          break;
-        Serial.print(c);
-      }
-      Serial.println();
-
-      // send the packet - this also releases all stash buffers once done
-      ether.tcpSend();
-      
-      
-      //Serial.println((char*)Ethernet::buffer);
-    }
-#endif
 
     //--------------------------------------------------------------------
     // Control toggling of screen pages
@@ -328,14 +237,33 @@ void loop () {
       fast_update = millis();
       lcdInt(0,0, (unsigned int) emontx.power );
       lcdInt(5,0, (unsigned int) emontx.ct1 );
-      lcdInt(11,0, (unsigned int) emontx.supplyV );
 
-      for(int i=0; i<MAX_TIMES;i++)
-      {
-        lcdInt(i*5,1, txReceived[i] );
-      }
-      //if (view == 1) draw_main_screen();
-      //if (view == 2) draw_page_two();
+	  String str;
+	  lcd.setCursor(11, 0);
+	  lcd.print( TemperatureString(str, emontx.temperature));
+
+      //lcdInt(11,0, (unsigned int) emontx.supplyV );
+
+//	  if( (toggle++ < 5 ) )
+	  {
+		  lcd.setCursor(0, 1);
+		  lcd.print( RainString(str, emontx.rainGauge));
+		  lcdInt(5,1, (unsigned int) txReceived[0] );
+		  lcd.setCursor(11, 1);
+		  lcd.print( TemperatureString(str, (unsigned int)((millis()-last_emontx)/10)));
+		  //lcdInt(11,1, (unsigned int) ((millis()-last_emontx)*10) );
+	  }
+	  //else if( toggle < 10 )
+	  //{
+		 // for(int i=0; i<MAX_TIMES;i++)
+		 // {
+			//lcdInt(i*5,1, txReceived[i] );
+		 // }
+	  //}
+	  //else
+	  //{
+		 // toggle = 0;
+	  //}
     }
     
 } //end loop
