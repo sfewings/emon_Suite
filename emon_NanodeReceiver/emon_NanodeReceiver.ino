@@ -31,7 +31,19 @@
 #include <Time.h>
 //#include <Udp.h>        //for SNTP time
 
-const int redLED=6;                 // Red tri-color LED
+const int RED_LED=6;                 // Red tri-color LED
+
+
+//--------------------------------------------------------------------------------------------
+// Workaround for http://gcc.gnu.org/bugzilla/show_bug.cgi?id=34734
+//remove compiler warning "Warning: only initialized variables can be placed into program memory area" from 
+//   Serial.println(F("string literal"));
+#ifdef PROGMEM
+#undef PROGMEM
+#define PROGMEM __attribute__((section(".progmem.data")))
+#endif
+//--------------------------------------------------------------------------------------------
+
 
 //--------------------------------------------------------------------------------------------
 // RFM12B Setup
@@ -49,6 +61,8 @@ typedef struct {
           int pulse;            //pulse increments 
           int ct1;              //CT reading 
           int supplyV;          // unit supply voltage
+		  int temperature;		//DB1820 temperature
+		  int rainGauge;		//rain gauge pulse
 } PayloadTX;
 PayloadTX emontx;    
 
@@ -65,6 +79,7 @@ PayloadBase emonbase;
 double wh_gen, wh_consuming;                           //integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;                                  //used to calculate energy used per day (kWh/d)
 unsigned int pktsReceived;
+int dailyRainfall, lastRainfall;					   //daily Rainfall
 //--------------------------------------------------------------------------------------------
 // DS18B20 temperature setup - onboard sensor 
 //--------------------------------------------------------------------------------------------
@@ -111,10 +126,15 @@ unsigned long fast_update;                   // Used to count time for fast 100m
 // Setup
 //--------------------------------------------------------------------------------------------
 void setup () {
-    Serial.begin(9600);
-    
+    pinMode(RED_LED, OUTPUT);  
+    digitalWrite(RED_LED, LOW );		//Red LED has inverted logic. LOW is on, HIGH is off!
+
+	Serial.begin(9600);
   
-    Serial.print("MAC: ");
+	delay(1000);
+    Serial.println(F("Fewings Nanode emon based on openenergymonitor.org"));
+
+    Serial.print(F("MAC: "));
     for (byte i = 0; i < 6; ++i) {
       Serial.print(mymac[i], HEX);
       if (i < 5)
@@ -123,31 +143,37 @@ void setup () {
     Serial.println();
     
     if (ether.begin(sizeof Ethernet::buffer, mymac, 8) == 0) 
-      Serial.println( "Failed to access Ethernet controller");
+      Serial.println( F("Failed to access Ethernet controller"));
     
-    Serial.println("Setting up DHCP");
+    Serial.println(F("Setting up DHCP"));
     if (!ether.dhcpSetup())
-      Serial.println( "DHCP failed");
+      Serial.println( F("DHCP failed"));
     
-    ether.printIp("My IP: ", ether.myip);
-    ether.printIp("Netmask: ", ether.mymask);
-    ether.printIp("GW IP: ", ether.gwip);
-    ether.printIp("DNS IP: ", ether.dnsip);
+    ether.printIp(F("My IP: "), ether.myip);
+    ether.printIp(F("Netmask: "), ether.mymask);
+    ether.printIp(F("GW IP: "), ether.gwip);
+    ether.printIp(F("DNS IP: "), ether.dnsip);
    
+    Serial.print(F("Pachube DNS lookup : "));
     if (!ether.dnsLookup(website))
-      Serial.println("DNS failed");
+      Serial.println(F("DNS failed"));
       
-    ether.printIp("Pachube SRV: ", ether.hisip);
+    ether.printIp(F("Pachube SRV: "), ether.hisip);
    
    
-   Serial.println("rf12_initialize");
-   rf12_initialize(MYNODE, freq,group);
-   Serial.println("rf12_initialize finished");
+    Serial.println(F("rf12_initialize"));
+    rf12_initialize(MYNODE, freq,group);
+    Serial.println(F("rf12_initialize finished"));
 
     print_glcd_setup();
     
-    pinMode(redLED, OUTPUT);  
+	print_emontx_setup();
+
     pktsReceived = 0;
+	dailyRainfall = 0;
+	lastRainfall = 0;
+
+	digitalWrite(RED_LED, HIGH );
 }
 //--------------------------------------------------------------------------------------------
 
@@ -177,9 +203,9 @@ void loop () {
           last_emontx = millis();                 // set time of last update to now
 
           
-          digitalWrite(redLED, HIGH );
+          digitalWrite(RED_LED, LOW );
           delay(100);                             // delay to make sure printing finished
-          digitalWrite(redLED, LOW );
+          digitalWrite(RED_LED, HIGH );
           power_calculations();                   // do the power calculations
         }
         
@@ -238,6 +264,7 @@ void loop () {
       
       // generate two fake values as payload - by using a separate stash,
       // we can determine the size of the generated message ahead of time
+	  String str;
       byte sd = stash.create();
       stash.print("1,");
       stash.println((word) emontx.power);
@@ -248,7 +275,9 @@ void loop () {
       stash.print("4,");
       stash.println((word) wh_gen);
       stash.print("5,");
-      stash.println((word) pktsReceived);
+      stash.println( TemperatureString(str, emontx.temperature));
+      stash.print("6,");
+      stash.println((word) dailyRainfall);
       stash.save();
       
       pktsReceived = 0;
@@ -275,9 +304,9 @@ void loop () {
       // send the packet - this also releases all stash buffers once done
       ether.tcpSend();
 
-      digitalWrite(redLED, HIGH);
+      digitalWrite(RED_LED, LOW);
       delay(500);
-      digitalWrite(redLED, LOW);
+      digitalWrite(RED_LED, HIGH);
 
       //Serial.println((char*)Ethernet::buffer);
     }
@@ -291,9 +320,9 @@ void power_calculations()
 {
   //DateTime now = RTC.now();
   time_t time = now();
-  int last_hour = thisHour;
+  int lastHour = thisHour;
   thisHour = hour();
-  if (last_hour == 23 && thisHour == 00) 
+  if (lastHour == 23 && thisHour == 00) 
   { 
       wh_gen = 0; 
       wh_consuming = 0; 
@@ -308,7 +337,39 @@ void power_calculations()
   wh_gen=wh_gen+whInc;
   whInc = emontx.power *((whtime-lwhtime)/3600000.0);
   wh_consuming=wh_consuming+whInc;
-  //---------------------------------------------------------------------- 
+  //--------------------------------------------------
+  // Rainfall caculations
+  //--------------------------------------------------
+  if (lastHour == 10 && thisHour == 9 )
+  {
+	  lastRainfall = emontx.rainGauge;
+	  dailyRainfall = 0;
+  }
+  if( emontx.rainGauge < lastRainfall )
+  {
+	  // int rollover or emontx has been reset to 0
+	  dailyRainfall = dailyRainfall + emontx.rainGauge;
+  }
+  else
+	  dailyRainfall = emontx.rainGauge - lastRainfall;
+
 }
 
 
+String TemperatureString(String& str, int temperature )
+{
+  int t = temperature;
+  if( t < 0 )
+  {
+    str = "-";
+    t *= -1;
+    str += t/100;
+  }
+  else
+    str = String(t/100);
+  str +=".";
+ 
+  str += (t/10)%10;
+
+  return str;
+}
