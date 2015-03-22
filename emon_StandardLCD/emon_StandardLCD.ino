@@ -63,6 +63,13 @@ typedef struct { int hour, mins, sec; } PayloadBase;
 PayloadBase emonbase;
 //---------------------------------------------------
 
+typedef struct {
+	volatile unsigned long rainCount;			//The count from the rain gauge
+	volatile unsigned long transmitCount;		//Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0 
+	unsigned long supplyV;						// unit supply voltage
+} PayloadRain;
+PayloadRain rainTx;
+
 //--------------------------------------------------------------------------------------------
 // Power variables
 //--------------------------------------------------------------------------------------------
@@ -89,6 +96,7 @@ int thisHour;
 //-------------------------------------------------------------------------------------------- 
 int view = 1;                                // Used to control which screen view is shown
 unsigned long last_emontx;                   // Used to count time from last emontx update
+unsigned long last_rainTx;                   // Used to count time from last emontx update
 unsigned long slow_update;                   // Used to count time for slow 10s events
 unsigned long fast_update;                   // Used to count time for fast 100ms events
   
@@ -169,58 +177,65 @@ void setup () {
 //--------------------------------------------------------------------------------------------
 // Loop
 //--------------------------------------------------------------------------------------------
-void loop () {
+void loop () 
+{
   
     //--------------------------------------------------------------------------------------------
     // 1. On RF recieve
     //--------------------------------------------------------------------------------------------  
-    if (rf12_recvDone()){
-      if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)  // and no rf errors
-      {
-        int node_id = (rf12_hdr & 0x1F);
-        
-        if (node_id == 10)                        // === EMONTX ====
-        {
-          //monitor the reliability of receival
-          int index = (int) (((millis() - last_emontx)/5050.0)-1.0);  //expect these 5 seconds apart
-          if(index<0)
-            index = 0;
-          if( index >= MAX_TIMES)
-            index= MAX_TIMES-1;
-          txReceived[index]++;
-          packetsReceived ++;
+	if (rf12_recvDone())
+	{
+		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)  // and no rf errors
+		{
+			int node_id = (rf12_hdr & 0x1F);
 
-          emontx = *(PayloadTX*) rf12_data;       // get emontx payload data
-          #ifdef DEBUG 
-            print_emontx_payload();               // print data to serial
-          #endif  
-          last_emontx = millis();                 // set time of last update to now
+			if (node_id == 10)                        // === EMONTX ====
+			{
+				//monitor the reliability of receival
+				int index = (int)(((millis() - last_emontx) / 5050.0) - 1.0);  //expect these 5 seconds apart
+				if (index < 0)
+					index = 0;
+				if (index >= MAX_TIMES)
+					index = MAX_TIMES - 1;
+				txReceived[index]++;
+				packetsReceived++;
 
-          delay(100);                             // delay to make sure printing finished
-          power_calculations();                   // do the power calculations
-        }
-        
-        if (node_id == 15)                        // ==== EMONBASE ====
-        {
-          emonbase = *(PayloadBase*) rf12_data;   // get emonbase payload data
-          #ifdef DEBUG 
-            print_emonbase_payload();             // print data to serial
-          #endif  
-          //RTC.adjust(DateTime(2012, 1, 1, emonbase.hour, emonbase.mins, emonbase.sec));  // adjust emonglcd software real time clock
-          
-          delay(100);                             // delay to make sure printing and clock setting finished
-           
-          //emonglcd.temperature = (int) (temp * 100);                          // set emonglcd payload
-          //int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}  // if ready to send + exit loop if it gets stuck as it seems too
-          //rf12_sendStart(0, &emonglcd, sizeof emonglcd);                      // send emonglcd data
-          //rf12_sendWait(0);
-          #ifdef DEBUG 
-            Serial.println("3 emonglcd sent");                                // print status
-          #endif                               
-        }
-      }
-    }
-    
+				emontx = *(PayloadTX*)rf12_data;       // get emontx payload data
+#ifdef DEBUG 
+				print_emontx_payload(millis() - last_emontx);               // print data to serial
+#endif  
+				last_emontx = millis();                 // set time of last update to now
+
+				delay(100);                             // delay to make sure printing finished
+				power_calculations();                   // do the power calculations
+			}
+
+			if (node_id == 15)                        // ==== EMONBASE ====
+			{
+				emonbase = *(PayloadBase*)rf12_data;   // get emonbase payload data
+#ifdef DEBUG 
+				print_emonbase_payload();             // print data to serial
+#endif  
+				//RTC.adjust(DateTime(2012, 1, 1, emonbase.hour, emonbase.mins, emonbase.sec));  // adjust emonglcd software real time clock
+
+				delay(100);                             // delay to make sure printing and clock setting finished
+
+				//emonglcd.temperature = (int) (temp * 100);                          // set emonglcd payload
+				//int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}  // if ready to send + exit loop if it gets stuck as it seems too
+				//rf12_sendStart(0, &emonglcd, sizeof emonglcd);                      // send emonglcd data
+				//rf12_sendWait(0);
+#ifdef DEBUG 
+				Serial.println("3 emonglcd sent");                                // print status
+#endif                               
+			}
+			if (node_id == 11)                        // ==== RainGauge Jeenode ====
+			{
+				rainTx = *(PayloadRain*)rf12_data;   // get emonbase payload data
+				print_rain_payload(last_rainTx - millis());             // print data to serial
+				last_rainTx = millis();
+			}
+		}
+	}
 
 
 
@@ -247,9 +262,10 @@ void loop () {
 //	  if( (toggle++ < 5 ) )
 	  {
 		  lcd.setCursor(0, 1);
-		  lcd.print( RainString(str, emontx.rainGauge));
+		  lcd.print( RainString(str, rainTx.rainCount));
 		  lcdInt(5,1, (unsigned int) txReceived[0] );
 		  lcd.setCursor(11, 1);
+		  //use TemperatureString to display seconds since last receive
 		  lcd.print( TemperatureString(str, (unsigned int)((millis()-last_emontx)/10)));
 		  //lcdInt(11,1, (unsigned int) ((millis()-last_emontx)*10) );
 	  }

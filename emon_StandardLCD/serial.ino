@@ -16,9 +16,10 @@ void print_glcd_setup()
 void print_emontx_setup()
 {
   Serial.println(F("emontx: power pulse ct1 supplyV temperature raingauge | ms_since_last_pkt")); 
+  Serial.println(F("raintx: rain txCount supplyV | ms_since_last_pkt"));
 }
 
-void print_emontx_payload()
+void print_emontx_payload(unsigned long timeSinceLast)
 {
   Serial.print(F("emonRx "));
   Serial.print(emontx.power);
@@ -33,7 +34,7 @@ void print_emontx_payload()
   Serial.print(F(" "));
   Serial.print(emontx.rainGauge);
   Serial.print(F(" | "));
-  Serial.println(millis()-last_emontx);
+  Serial.println(timeSinceLast);
 }
 
 void print_emonbase_payload()
@@ -45,3 +46,17 @@ void print_emonbase_payload()
   Serial.print(':');
   Serial.println(emonbase.sec);
 }
+
+void print_rain_payload(unsigned long timeSinceLast)
+{
+	Serial.print(F("rainTx: "));
+	Serial.print(rainTx.rainCount);
+	Serial.print(F(" "));
+	Serial.print(rainTx.transmitCount);
+	Serial.print(F(" "));
+	Serial.print(rainTx.supplyV);
+	Serial.print(F(" | "));
+	Serial.println(timeSinceLast);
+}
+
+
