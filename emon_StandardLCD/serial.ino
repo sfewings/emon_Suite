@@ -37,16 +37,6 @@ void print_emontx_payload(unsigned long timeSinceLast)
   Serial.println(timeSinceLast);
 }
 
-void print_emonbase_payload()
-{
-  Serial.print(F("2 emonbase: "));
-  Serial.print(emonbase.hour);
-  Serial.print(':');
-  Serial.print(emonbase.mins);
-  Serial.print(':');
-  Serial.println(emonbase.sec);
-}
-
 void print_rain_payload(unsigned long timeSinceLast)
 {
 	Serial.print(F("rainTx: "));
@@ -60,3 +50,10 @@ void print_rain_payload(unsigned long timeSinceLast)
 }
 
 
+void print_emonbase_payload(time_t time, unsigned long timeSinceLast)
+{
+	Serial.print(F("emonBase: "));
+	Serial.print(time);
+	Serial.print(F(" | "));
+	Serial.println(timeSinceLast);
+}

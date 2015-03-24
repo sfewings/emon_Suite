@@ -34,12 +34,14 @@ void print_emontx_payload()
   Serial.println(millis()-last_emontx);
 }
 
-void print_emonbase_payload()
+void print_rain_payload(unsigned long timeSinceLast)
 {
-  Serial.print(F("2 emonbase: "));
-  Serial.print(emonbase.hour);
-  Serial.print(':');
-  Serial.print(emonbase.mins);
-  Serial.print(':');
-  Serial.println(emonbase.sec);
+	Serial.print(F("rainTx: "));
+	Serial.print(rainTx.rainCount);
+	Serial.print(F(" "));
+	Serial.print(rainTx.transmitCount);
+	Serial.print(F(" "));
+	Serial.print(rainTx.supplyV);
+	Serial.print(F(" | "));
+	Serial.println(timeSinceLast);
 }

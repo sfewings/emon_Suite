@@ -27,6 +27,7 @@
 #include <JeeLib.h>		    // ports and RFM12 - used for RFM12B wireless
 
 #include <PortsLCD.h>
+#include <time.h>
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
 
@@ -59,7 +60,7 @@ typedef struct {
 } PayloadTX;
 PayloadTX emontx;    
 
-typedef struct { int hour, mins, sec; } PayloadBase;
+typedef struct { time_t time; } PayloadBase;
 PayloadBase emonbase;
 //---------------------------------------------------
 
@@ -97,10 +98,15 @@ int thisHour;
 int view = 1;                                // Used to control which screen view is shown
 unsigned long last_emontx;                   // Used to count time from last emontx update
 unsigned long last_rainTx;                   // Used to count time from last emontx update
+unsigned long last_emonBase;				
 unsigned long slow_update;                   // Used to count time for slow 10s events
 unsigned long fast_update;                   // Used to count time for fast 100ms events
-  
-  
+bool g_timeSet;								 // true if time has been set
+unsigned long rainStartOfToday;
+bool rainReceived;
+unsigned long dailyRainfall;
+time_t	lastUpdateTime;
+
 static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') 
 {
   lcd.setCursor(x, y);
@@ -138,10 +144,33 @@ String RainString(String& str, int rainGauge )
 	return str;
 }
 
+String TimeString(String& str, time_t time)
+{
+	str = "";
+	if (hourFormat12(time) < 10)
+		str += " ";
+	str += hourFormat12(time);
+	str += ":";
+	if (minute(time) < 10)
+		str += "0";
+	str += minute(time);
+	str += ":";
+	if (second(time) < 10)
+		str += "0";
+	str += second(time);
+	if (hour(time) < 12)
+		str += " am";
+	else
+		str += " pm";
+	str += "   ";
+	return str;
+}
+
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
-void setup () {
+void setup () 
+{
     Serial.begin(9600);
     
     lcd.begin(16, 2);
@@ -162,7 +191,13 @@ void setup () {
       txReceived[i] = 0;
     }
     packetsReceived = 0;
+	g_timeSet = false;
     
+
+	rainReceived = false;
+	rainStartOfToday = 0;
+	lastUpdateTime = now();
+
     //pinMode(greenLED, OUTPUT); 
     //pinMode(redLED, OUTPUT);  
   
@@ -210,29 +245,37 @@ void loop ()
 				power_calculations();                   // do the power calculations
 			}
 
-			if (node_id == 15)                        // ==== EMONBASE ====
-			{
-				emonbase = *(PayloadBase*)rf12_data;   // get emonbase payload data
-#ifdef DEBUG 
-				print_emonbase_payload();             // print data to serial
-#endif  
-				//RTC.adjust(DateTime(2012, 1, 1, emonbase.hour, emonbase.mins, emonbase.sec));  // adjust emonglcd software real time clock
-
-				delay(100);                             // delay to make sure printing and clock setting finished
-
-				//emonglcd.temperature = (int) (temp * 100);                          // set emonglcd payload
-				//int i = 0; while (!rf12_canSend() && i<10) {rf12_recvDone(); i++;}  // if ready to send + exit loop if it gets stuck as it seems too
-				//rf12_sendStart(0, &emonglcd, sizeof emonglcd);                      // send emonglcd data
-				//rf12_sendWait(0);
-#ifdef DEBUG 
-				Serial.println("3 emonglcd sent");                                // print status
-#endif                               
-			}
 			if (node_id == 11)                        // ==== RainGauge Jeenode ====
 			{
 				rainTx = *(PayloadRain*)rf12_data;   // get emonbase payload data
-				print_rain_payload(last_rainTx - millis());             // print data to serial
+				print_rain_payload(millis() - last_rainTx );             // print data to serial
 				last_rainTx = millis();
+
+				if (!rainReceived)
+				{
+					rainStartOfToday = rainTx.rainCount;
+					rainReceived = true;
+					dailyRainfall = 0;
+				}
+				if (rainTx.rainCount < rainStartOfToday)
+				{
+					// int rollover or emontx has been reset to 0
+					dailyRainfall = dailyRainfall + rainTx.rainCount;
+				}
+				else
+					dailyRainfall = rainTx.rainCount - rainStartOfToday;
+
+			}
+
+
+			if (node_id == 15)						//emon base. Receives the time
+			{
+				PayloadBase base = *((PayloadBase*)rf12_data);
+				print_emonbase_payload(base.time, (millis() - last_emonBase));             // print data to serial
+				setTime(base.time);
+				lastUpdateTime = now();
+				last_emonBase = millis();
+				g_timeSet = true;
 			}
 		}
 	}
@@ -259,27 +302,41 @@ void loop ()
 
       //lcdInt(11,0, (unsigned int) emontx.supplyV );
 
-//	  if( (toggle++ < 5 ) )
+	  if( !g_timeSet || (toggle++ %10 < 5 ) )
 	  {
 		  lcd.setCursor(0, 1);
-		  lcd.print( RainString(str, rainTx.rainCount));
+		  lcd.print(RainString(str, (rainReceived? dailyRainfall : 0)));
 		  lcdInt(5,1, (unsigned int) txReceived[0] );
 		  lcd.setCursor(11, 1);
 		  //use TemperatureString to display seconds since last receive
 		  lcd.print( TemperatureString(str, (unsigned int)((millis()-last_emontx)/10)));
 		  //lcdInt(11,1, (unsigned int) ((millis()-last_emontx)*10) );
 	  }
-	  //else if( toggle < 10 )
-	  //{
-		 // for(int i=0; i<MAX_TIMES;i++)
-		 // {
-			//lcdInt(i*5,1, txReceived[i] );
-		 // }
-	  //}
-	  //else
-	  //{
-		 // toggle = 0;
-	  //}
+	  else
+	  {
+		  lcd.setCursor(0, 1);
+		  lcd.print(TimeString(str, now()));
+	  }
+
+
+	  //DateTime now = RTC.now();
+	  time_t time = now();
+	  int last_hour = thisHour;
+	  thisHour = hour();
+	  if (last_hour == 23 && thisHour == 00)
+	  {
+		  wh_gen = 0;
+		  wh_consuming = 0;
+	  }
+	  if (rainReceived)
+	  {
+		  if (last_hour == 10 && thisHour == 9)
+		  {
+			  rainStartOfToday = rainTx.rainCount;
+			  dailyRainfall = 0;
+		  }
+	  }
+
     }
     
 } //end loop
@@ -290,12 +347,6 @@ void loop ()
 //--------------------------------------------------------------------
 void power_calculations()
 {
-  //DateTime now = RTC.now();
-  time_t time = now();
-  int last_hour = thisHour;
-  thisHour = hour();
-  if (last_hour == 23 && thisHour == 00) { wh_gen = 0; wh_consuming = 0; }
-  
   gen = 0; // emontx.gen;  if (gen<100) gen=0;	// remove noise offset 
   consuming = emontx.power; 		        // for type 1 solar PV monitoring
   grid = emontx.power - gen;		        // for type 1 solar PV monitoring
