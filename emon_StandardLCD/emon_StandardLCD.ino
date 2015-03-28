@@ -22,15 +22,16 @@
 
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-
 #include <PortsLCD.h>
 #include <time.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
 
 #include <EmonShared.h>
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
 
-#include <Time.h>
 
 //--------------------------------------------------------------------------------------------
 // Power variables
@@ -39,12 +40,10 @@ int importing, night;									//flag to indicate import/export
 double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
-#define MAX_TIMES	3
-unsigned int txReceived[MAX_TIMES];
-unsigned int packetsReceived;
+#define MAX_NODES	3
+unsigned int txReceived[MAX_NODES];
+unsigned long lastReceived[MAX_NODES];
 
-uint32_t timer;
-int toggle = 0;
 
 PayloadEmon emonPayload;
 PayloadRain rainPayload;
@@ -52,19 +51,37 @@ PayloadBase basePayload;
 
 RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
-//--------------------------------------------------------------------------------------------
-// Software RTC setup
-//-------------------------------------------------------------------------------------------- 
-//RTC_Millis RTC;
 int thisHour;
-	
+time_t startTime = 0;
+
+//---------------------------------------------------------------------------------------------------
+// Push button support. On pin A3
+//---------------------------------------------------------------------------------------------------
+typedef enum {
+	eCurrent = 0,
+	//eTotal,
+	//eMax,
+	//eMin,
+	eRainFall,
+	eDateTimeNow,
+	eDateTimeStartRunning,
+	eDiagnosis
+}  ButtonDisplayMode;
+
+volatile ButtonDisplayMode pushButton = eCurrent;
+volatile unsigned long	g_RGlastTick = 0;
+ButtonDisplayMode lastPushButton = eDiagnosis;
+
+
+//---------------------------------------------------------------------------------------------------
+// Dallas temperature sensor	on pin 5, Jeenode port 2
+//---------------------------------------------------------------------------------------------------
+OneWire oneWire(A4);
+DallasTemperature temperatureSensor(&oneWire);
+
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-int view = 1;												// Used to control which screen view is shown
-unsigned long last_emontx;					// Used to count time from last emontx update
-unsigned long last_rainTx;					// Used to count time from last emontx update
-unsigned long last_emonBase;
 unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
 bool g_timeSet;											// true if time has been set
@@ -110,6 +127,19 @@ String RainString(String& str, int rainGauge )
 	return str;
 }
 
+String DateString(String& str, time_t time)
+{
+	str = "";
+	str += day(time);
+	str += "-";
+	str += monthShortStr(month(time));
+	str += "-";
+	str += year(time) % 100;
+	str += "       ";
+	return str;
+}
+
+
 String TimeString(String& str, time_t time)
 {
 	str = "";
@@ -128,9 +158,31 @@ String TimeString(String& str, time_t time)
 		str += " am";
 	else
 		str += " pm";
-	str += "	";
+	str += "	 ";
 	return str;
 }
+
+// Push button interrupt routine
+void interruptHandlerPushButton()
+{
+	unsigned long tick = millis();
+	unsigned long period;
+	if (tick < g_RGlastTick)
+		period = tick + (g_RGlastTick - 0xFFFFFFFF);	//rollover occured
+	else
+		period = tick - g_RGlastTick;
+	g_RGlastTick = tick;
+
+	if (period > 500)	//more than 500 ms to avoid switch bounce
+	{
+		if (pushButton == eDiagnosis)
+			pushButton = eCurrent;
+		else
+			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
+
+	}
+}
+
 
 //--------------------------------------------------------------------------------------------
 // Setup
@@ -142,7 +194,7 @@ void setup ()
 	lcd.begin(16, 2);
 	lcd.setCursor(0, 0);
 
-	lcd.print("Hello");
+	lcd.print(F("Fewings Power Mon"));
 	
 	Serial.println(F("Fewings emonGLCD solar PV monitor - gen and use"));
 
@@ -151,17 +203,43 @@ void setup ()
 	EmonSerial::PrintRF12Init(rf12Init);
 
 
-	for(int i=0; i< MAX_TIMES;i++)
+	for (int i = 0; i< MAX_NODES; i++)
 	{
 		txReceived[i] = 0;
+		lastReceived[i] = millis();
 	}
-	packetsReceived = 0;
+	//packetsReceived = 0;
 	g_timeSet = false;
 	
 
 	rainReceived = false;
 	rainStartOfToday = 0;
 	lastUpdateTime = now();
+
+
+	//Temperature setup
+	temperatureSensor.begin();
+	int numberOfDevices = temperatureSensor.getDeviceCount();
+	if (numberOfDevices)
+	{
+		Serial.print(F("Temperature sensors "));
+
+		for (int i = 0; i<numberOfDevices; i++)
+		{
+			uint8_t tmp_address[8];
+			temperatureSensor.getAddress(tmp_address, i);
+			Serial.print(F("Sensor address "));
+			Serial.print(i + 1);
+			Serial.print(F(": "));
+			PrintAddress(tmp_address);
+			Serial.println();
+		}
+	}
+
+	pinMode(A3, INPUT_PULLUP);
+	attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
+
+
 
 	//pinMode(greenLED, OUTPUT); 
 	//pinMode(redLED, OUTPUT);	
@@ -192,21 +270,20 @@ void loop ()
 			if (node_id == EMON_NODE)						// === EMONTX ====
 			{
 				//monitor the reliability of receival
-				int index = (int)(((millis() - last_emontx) / 5050.0) - 1.0);	//expect these 5 seconds apart
-				if (index < 0)
-					index = 0;
-				if (index >= MAX_TIMES)
-					index = MAX_TIMES - 1;
-				txReceived[index]++;
-				packetsReceived++;
+				//int index = (int)(((millis() - last_emontx) / 5050.0) - 1.0);	//expect these 5 seconds apart
+				//if (index < 0)
+				//	index = 0;
+				//if (index >= MAX_TIMES)
+				//	index = MAX_TIMES - 1;
+				//packetsReceived++;
 
 				emonPayload = *(PayloadEmon*)rf12_data;							// get emontx payload data
 
-				EmonSerial::PrintEmonPayload(&emonPayload, millis() - last_emontx);				// print data to serial
+				EmonSerial::PrintEmonPayload(&emonPayload, millis() - lastReceived[0]);				// print data to serial
+				
+				txReceived[0]++;
+				lastReceived[0] = millis();				 // set time of last update to now
 
-				last_emontx = millis();				 // set time of last update to now
-
-				delay(100);							 // delay to make sure printing finished
 				power_calculations();					// do the power calculations
 			}
 
@@ -214,8 +291,9 @@ void loop ()
 			{
 				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
 				
-				EmonSerial::PrintRainPayload(&rainPayload, millis() - last_rainTx );			 // print data to serial
-				last_rainTx = millis();
+				EmonSerial::PrintRainPayload(&rainPayload, millis() - lastReceived[1] );			 // print data to serial
+				lastReceived[1] = millis();
+				txReceived[1]++;
 
 				if (!rainReceived)
 				{
@@ -237,53 +315,115 @@ void loop ()
 			if (node_id == BASE_NODE)						//emon base. Receives the time
 			{
 				basePayload = *((PayloadBase*)rf12_data);
-				EmonSerial::PrintBasePayload(&basePayload, (millis() - last_emonBase));			 // print data to serial
+				EmonSerial::PrintBasePayload(&basePayload, (millis() - lastReceived[2]));			 // print data to serial
+				txReceived[2]++;
+				lastReceived[2] = millis();
+
 				setTime(basePayload.time);
-				lastUpdateTime = now();
-				last_emonBase = millis();
+				if (startTime == 0)
+				{
+					startTime = basePayload.time;
+				}
+				lastUpdateTime = basePayload.time;
 				g_timeSet = true;
 			}
 		}
 	}
 
 
-
-	//--------------------------------------------------------------------
-	// Control toggling of screen pages
-	//--------------------------------------------------------------------	
-	//if (digitalRead(switchpin) == TRUE) view = 2; else view = 1;
-
 	//--------------------------------------------------------------------
 	// Update the display every 200ms
 	//--------------------------------------------------------------------
 	if ((millis()-fast_update)>200)
 	{
-		fast_update = millis();
-		lcdInt(0,0, (unsigned int) emonPayload.power );
-		lcdInt(5, 0, (unsigned int)emonPayload.ct1);
-
 		String str;
-		lcd.setCursor(11, 0);
-		lcd.print(TemperatureString(str, emonPayload.temperature));
 
-		//lcdInt(11,0, (unsigned int) emontx.supplyV );
-
-		if( !g_timeSet || (toggle++ %10 < 5 ) )
+		if (pushButton != lastPushButton)
 		{
-			lcd.setCursor(0, 1);
-			lcd.print(RainString(str, (rainReceived? dailyRainfall : 0)));
-			lcdInt(5,1, (unsigned int) txReceived[0] );
-			lcd.setCursor(11, 1);
-			//use TemperatureString to display seconds since last receive
-			lcd.print( TemperatureString(str, (unsigned int)((millis()-last_emontx)/10)));
-			//lcdInt(11,1, (unsigned int) ((millis()-last_emontx)*10) );
-		}
-		else
-		{
-			lcd.setCursor(0, 1);
-			lcd.print(TimeString(str, now()));
+			lcd.clear();
+			lastPushButton = pushButton;
 		}
 
+		fast_update = millis();
+
+		switch (pushButton)
+		{
+			case eCurrent:
+			{
+				lcdInt(0, 0, (unsigned int)emonPayload.power);
+				lcdInt(5, 0, (unsigned int)emonPayload.ct1);
+				if (rainReceived && dailyRainfall != 0)
+				{
+					lcd.setCursor(11, 0);
+					lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
+				}
+
+				//print temperatures
+				lcd.setCursor(0, 1);
+				//water temperatre
+				lcd.print(TemperatureString(str, emonPayload.temperature));
+
+				//inside temperature
+				lcd.setCursor(6, 1);
+				temperatureSensor.requestTemperatures();
+				lcd.print(TemperatureString(str, temperatureSensor.getTempCByIndex(0) * 100));
+
+				//outside temperature
+				lcd.setCursor(12, 1);
+				lcd.print(TemperatureString(str, rainPayload.temperature));
+				break;
+			}
+			case eRainFall:
+			{
+				lcdInt(0, 0, (unsigned int)emonPayload.power);
+				lcdInt(5, 0, (unsigned int)emonPayload.ct1);
+				if (rainReceived && dailyRainfall != 0)
+				{
+					lcd.setCursor(11, 0);
+					lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
+				}
+
+				lcd.setCursor(0, 1);
+				lcd.print(F("Supply V: "));
+				lcd.setCursor(11, 1);
+				lcd.print(TemperatureString(str, rainPayload.supplyV/10));
+				break;
+			}
+			case eDateTimeStartRunning:
+			{
+				lcd.setCursor(5, 0);
+				lcd.print(DateString(str, startTime));
+				lcd.setCursor(5, 1);
+				lcd.print(TimeString(str, startTime));
+				break;
+			}
+
+			case eDateTimeNow:
+			{
+				lcd.setCursor(5, 0);
+				lcd.print(DateString(str, now()));
+				lcd.setCursor(5, 1);
+				lcd.print(TimeString(str, now()));
+				break;
+			}
+			case eDiagnosis:
+			{
+				for (int i = 0; i < MAX_NODES; i++)
+				{
+					lcdInt(i*5, 0, (unsigned int)txReceived[i]);
+					lcd.setCursor(i*5, 1);
+					//use TemperatureString to display seconds since last receive
+					lcd.print(TemperatureString(str, (unsigned int)((millis() - lastReceived[i]) / 10)));
+				}
+				break;
+			}
+			//default:
+			//{
+			//	lcd.setCursor(0, 1);
+			//	lcd.print(F("                "));
+			//	break;
+			//}
+		}
 
 		//DateTime now = RTC.now();
 		time_t time = now();
@@ -335,4 +475,18 @@ void power_calculations()
 	//---------------------------------------------------------------------- 
 }
 
+void PrintAddress(uint8_t deviceAddress[8])
+{
+	Serial.print("{ ");
+	for (uint8_t i = 0; i < 8; i++)
+	{
+		// zero pad the address if necessary
+		Serial.print("0x");
+		if (deviceAddress[i] < 16) Serial.print("0");
+		Serial.print(deviceAddress[i], HEX);
+		if (i<7) Serial.print(", ");
+
+	}
+	Serial.print(" }");
+}
 

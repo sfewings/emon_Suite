@@ -64,26 +64,10 @@ int dailyRainfall, dayStartRainfall;						//daily Rainfall
 //--------------------------------------------------------------------------------------------
 // NTP time support 
 //--------------------------------------------------------------------------------------------
-uint8_t clientPort = 123;
-
-// The next part is to deal with converting time received from NTP servers
-// to a value that can be displayed. This code was taken from somewhere that
-// I cant remember. Apologies for no acknowledgement.
-
-uint32_t lastNTPUpdate = 0;
-uint32_t timeLong;
-// Number of seconds between 1-Jan-1900 and 1-Jan-1970, unix time starts 1970
-// and ntp time starts 1900.
+// Number of seconds between 1-Jan-1900 and 1-Jan-1970, unix time starts 1970 and ntp time starts 1900.
 #define GETTIMEOFDAY_TO_NTP_OFFSET 2208988800UL
-
-static int currentTimeserver = 0;
-
-// Find list of servers at http://support.ntp.org/bin/view/Servers/StratumTwoTimeServers
-// Please observe server restrictions with regard to access to these servers.
-// This number should match how many ntp time server strings we have
 #define NUM_TIMESERVERS 7
 
-// Create an entry for each timeserver to use
 prog_char ntp0[] PROGMEM = "ntp1.anu.edu.au";
 prog_char ntp1[] PROGMEM = "nist1-ny.ustiming.org";
 prog_char ntp2[] PROGMEM = "ntp.exnet.com";
@@ -91,21 +75,12 @@ prog_char ntp3[] PROGMEM = "ntps1-0.cs.tu-berlin.de";
 prog_char ntp4[] PROGMEM = "time.nist.gov";
 prog_char ntp5[] PROGMEM = "ntps1-0.cs.tu-berlin.de";
 prog_char ntp6[] PROGMEM = "time.nist.gov";
-
-//static byte NTP_server_IP[NUM_NTPSERVERS][4] = {
-//	{ 150, 203, 1, 10 },	// ntp1.anu.edu.au
-//	{ 64, 90, 182, 55 },	// nist1-ny.ustiming.org
-//	{ 130, 149, 17, 21 },	// ntps1-0.cs.tu-berlin.de
-//	{ 192, 53, 103, 108 },	// ptbtime1.ptb.de
-//	{ 192, 43, 244, 18 },	// time.nist.gov
-//	{ 130, 149, 17, 21 },	// ntps1-0.cs.tu-berlin.de
-//	{ 192, 53, 103, 108 } };	// ptbtime1.ptb.de
-
-
-// Now define another array in PROGMEM for the above strings
 prog_char *ntpList[] PROGMEM = { ntp0, ntp1, ntp2, ntp3, ntp4, ntp5, ntp6 };
 
-
+uint8_t		clientPort = 123;
+uint32_t	lastNTPUpdate = 0;
+uint32_t	timeLong;
+int				currentTimeserver = 0;
 
 //--------------------------------------------------------------------------------------------
 // Ethercard support
@@ -121,10 +96,10 @@ byte Ethernet::buffer[900];
 #define FEED	"78783"
 #define APIKEY	"f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
 //#define USERAGENT "Cosm Arduino Example (78783)"
-char website[] PROGMEM = "api.pachube.com";
-uint8_t webip[4];
-Stash stash;
-word sessionID;
+prog_char website[] PROGMEM = "api.pachube.com";
+uint8_t		webip[4];
+Stash			stash;
+word			sessionID;
 
 //--------------------------------------------------------------------------------------------
 // Software RTC setup
@@ -142,6 +117,7 @@ unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
 unsigned long web_update;
 unsigned long request_NTP_Update;
+
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -243,7 +219,7 @@ void loop ()
 
 			
 				digitalWrite(RED_LED, LOW );
-				delay(100);							 // delay to make sure printing finished
+				delay(100);	
 				digitalWrite(RED_LED, HIGH );
 				power_calculations();					// do the power calculations
 			}
@@ -260,6 +236,10 @@ void loop ()
 					rainReceived = true;
 					dailyRainfall = 0;
 				}
+
+				digitalWrite(RED_LED, LOW);
+				delay(100);
+				digitalWrite(RED_LED, HIGH);
 			}
 		}
 	}
@@ -351,15 +331,15 @@ void loop ()
 		String str;
 		byte sd = stash.create();
 		stash.print("1,");
-			stash.println((word)emonPayload.power);
+		stash.println((word)emonPayload.power);
 		stash.print("2,");
-			stash.println((word)emonPayload.ct1);
+		stash.println((word)emonPayload.ct1);
 		stash.print("3,");
 		stash.println((word) wh_consuming);
 		stash.print("4,");
 		stash.println((word) wh_gen);
 		stash.print("5,");
-			stash.println(TemperatureString(str, emonPayload.temperature));
+		stash.println(TemperatureString(str, emonPayload.temperature));
 		stash.print("6,");
 		stash.println((word) dailyRainfall);
 		stash.save();
@@ -385,17 +365,19 @@ void loop ()
 				break;
 			Serial.print(c);
 		}
-		Serial.println();
-
+		
 		// send the packet - this also releases all stash buffers once done
 		sessionID = ether.tcpSend();
 
-		digitalWrite(RED_LED, LOW);
-		delay(500);
-		digitalWrite(RED_LED, HIGH);
+		for (int i = 0; i < 3; i++)
+		{
+			digitalWrite(RED_LED, LOW);
+			delay(50);
+			digitalWrite(RED_LED, HIGH);
+			delay(100);
+		}
 
 		const char* reply = ether.tcpReply(sessionID);
-
 		if (reply != NULL)
 			Serial.println(reply);
 	}
@@ -408,9 +390,7 @@ void loop ()
 		wh_gen = 0;
 		wh_consuming = 0;
 	}
-	//--------------------------------------------------
-	// Rainfall caculations
-	//--------------------------------------------------
+
 	if (rainReceived)
 	{
 		if (lastHour == 10 && thisHour == 9)
@@ -424,7 +404,9 @@ void loop ()
 			dailyRainfall = dailyRainfall + rainPayload.rainCount;
 		}
 		else
+		{
 			dailyRainfall = rainPayload.rainCount - dayStartRainfall;
+		}
 	}
 } 
 

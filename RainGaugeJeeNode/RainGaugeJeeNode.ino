@@ -3,14 +3,24 @@
 #include <RF12.h>
 #include <avr/eeprom.h>
 #include <util/crc16.h>	//cyclic redundancy check
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <eeprom.h>
 #include <Time.h>			// needed for EmonShared
 #include <EmonShared.h>
+
+
 //---------------------------------------------------------------------------------------------------
 // Serial print settings - disable all serial prints if SERIAL 0 - increases long term stability 
 //---------------------------------------------------------------------------------------------------
 #define ENABLE_SERIAL 1
 //---------------------------------------------------------------------------------------------------
+
+//---------------------------------------------------------------------------------------------------
+// Dallas temperature sensor	on pin 5, Jeenode port 2
+//---------------------------------------------------------------------------------------------------
+OneWire oneWire(5);
+DallasTemperature temperatureSensor(&oneWire);
 
 //---------------------------------------------------------------------------------------------------
 // RF12 settings 
@@ -81,6 +91,26 @@ void setup()
 		Serial.end();
 	}
 
+
+	temperatureSensor.begin();
+	int numberOfDevices = temperatureSensor.getDeviceCount();
+	if (numberOfDevices)
+	{
+		Serial.print(F("Temperature sensors "));
+
+		for (int i = 0; i<numberOfDevices; i++)
+		{
+			uint8_t tmp_address[8];
+			temperatureSensor.getAddress(tmp_address, i);
+			Serial.print(F("Sensor address "));
+			Serial.print(i + 1);
+			Serial.print(F(": "));
+			printAddress(tmp_address);
+			Serial.println();
+		}
+	}
+
+
 	// Initialise 
 	//g_rainCount = 0;
 	g_rainCount = readEEPROM(0);	//read last reading from flash
@@ -94,7 +124,6 @@ void setup()
 
 	EmonSerial::PrintRainPayload(NULL);
 	delay(100);
-
 }
 
 
@@ -106,7 +135,8 @@ void loop()
 	uint8_t oldSREG = SREG;			// save interrupt register
 	cli();							// prevent interrupts while accessing the count	
 
-	bool doTransmit = g_transmitCount < 5 || (++g_minuteCount == 30);
+	bool doTransmit = g_transmitCount < 5 || (++g_minuteCount == 5);
+
 	if (doTransmit)
 	{
 		g_transmitCount++;
@@ -119,6 +149,10 @@ void loop()
 	//transmit data on the first 5 wakups after a rain gauge event and every 30 minutes
 	if (doTransmit)
 	{
+		temperatureSensor.requestTemperatures();
+		rainPayload.temperature = temperatureSensor.getTempCByIndex(0) * 100;
+
+
 		rf12_sleep(RF12_WAKEUP);
 
 		if (rainPayload.transmitCount == 1)
@@ -146,6 +180,22 @@ void loop()
 		Sleepy::loseSomeTime(1000);
 	else
 		Sleepy::loseSomeTime(60000);
+}
+
+
+void printAddress(uint8_t deviceAddress[8])
+{
+	Serial.print("{ ");
+	for (uint8_t i = 0; i < 8; i++)
+	{
+		// zero pad the address if necessary
+		Serial.print("0x");
+		if (deviceAddress[i] < 16) Serial.print("0");
+		Serial.print(deviceAddress[i], HEX);
+		if (i<7) Serial.print(", ");
+
+	}
+	Serial.print(" }");
 }
 
 

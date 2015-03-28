@@ -34,6 +34,7 @@ typedef struct {
 typedef struct {
 	volatile unsigned long rainCount;				//The count from the rain gauge
 	volatile unsigned long transmitCount;		//Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0 
+	int temperature;												//temperature in 100ths of degrees 
 	unsigned long supplyV;									// unit supply voltage
 } PayloadRain;
 

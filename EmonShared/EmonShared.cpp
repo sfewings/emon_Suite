@@ -53,7 +53,7 @@ void EmonSerial::PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeS
 {
 	if (pPayloadRain == NULL)
 	{
-		Serial.println(F("rain: rain,txCount,supplyV|ms_since_last_pkt"));
+		Serial.println(F("rain: rain,txCount,temperature,supplyV|ms_since_last_pkt"));
 	}
 	else
 	{
@@ -61,6 +61,8 @@ void EmonSerial::PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeS
 		Serial.print(pPayloadRain->rainCount);
 		Serial.print(F(","));
 		Serial.print(pPayloadRain->transmitCount);
+		Serial.print(F(","));
+		Serial.print(pPayloadRain->temperature);
 		Serial.print(F(","));
 		Serial.print(pPayloadRain->supplyV);
 		if (timeSinceLast != 0)
