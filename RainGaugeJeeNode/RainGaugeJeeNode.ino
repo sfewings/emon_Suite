@@ -16,7 +16,7 @@
 // RF12 settings 
 //---------------------------------------------------------------------------------------------------
 
-RF12Init rf12Init = { 11, RF12_915MHZ, 210 };
+RF12Init rf12Init = { RAIN_NODE, RF12_915MHZ, 210 };
 
 #define INTERRUPT_IR			1	// ATmega 168 and 328 - interrupt 0 = pin 2, 1 = pin 3
 #define RAIN_GAUGE_PIN		3

@@ -50,7 +50,7 @@ PayloadEmon emonPayload;
 PayloadRain rainPayload;
 PayloadBase basePayload;
 
-RF12Init rf12Init = { 20, RF12_915MHZ, 210 };
+RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
 //--------------------------------------------------------------------------------------------
 // Software RTC setup
@@ -189,7 +189,7 @@ void loop ()
 		{
 			int node_id = (rf12_hdr & 0x1F);
 
-			if (node_id == 10)						// === EMONTX ====
+			if (node_id == EMON_NODE)						// === EMONTX ====
 			{
 				//monitor the reliability of receival
 				int index = (int)(((millis() - last_emontx) / 5050.0) - 1.0);	//expect these 5 seconds apart
@@ -210,7 +210,7 @@ void loop ()
 				power_calculations();					// do the power calculations
 			}
 
-			if (node_id == 11)						// ==== RainGauge Jeenode ====
+			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
 				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
 				
@@ -234,7 +234,7 @@ void loop ()
 			}
 
 
-			if (node_id == 15)						//emon base. Receives the time
+			if (node_id == BASE_NODE)						//emon base. Receives the time
 			{
 				basePayload = *((PayloadBase*)rf12_data);
 				EmonSerial::PrintBasePayload(&basePayload, (millis() - last_emonBase));			 // print data to serial

@@ -232,7 +232,7 @@ void loop ()
 		{
 			int node_id = (rf12_hdr & 0x1F);
 		
-			if (node_id == 10)						// === EMONTX ====
+			if (node_id == EMON_NODE)						// === EMONTX ====
 			{
 				//monitor the reliability of receival
 				pktsReceived++;
@@ -248,7 +248,7 @@ void loop ()
 				power_calculations();					// do the power calculations
 			}
 		
-			if (node_id == 11)						// ==== RainGauge Jeenode ====
+			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
 				rainPayload = *(PayloadRain*)rf12_data;								// get emonbase payload data
 				EmonSerial::PrintRainPayload(&rainPayload, millis() - last_rainTx);			 // print data to serial

@@ -9,6 +9,12 @@
 #include <Time.h>			// needed for time_t
 //#include <string.h> //needed for memcpy
 
+//RF12 node ID allocation
+#define EMON_NODE	10
+#define RAIN_NODE	11
+#define BASE_NODE	15
+#define DISPLAY_NODE 20
+
 
 typedef struct {
 	uint8_t node;					//Should be unique on network, node ID 30 reserved for base station
