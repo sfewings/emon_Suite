@@ -40,9 +40,13 @@ int importing, night;									//flag to indicate import/export
 double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
-#define MAX_NODES	3
+#define NUM_TEMP	3			//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
+#define MAX_NODES	3			//number of jeenodes, node		1=emon,				 2=rain,				3=base
+
 unsigned int txReceived[MAX_NODES];
-unsigned long lastReceived[MAX_NODES];
+time_t lastReceived[MAX_NODES];
+int minTemp[NUM_TEMP];
+int maxTemp[NUM_TEMP];
 
 
 PayloadEmon emonPayload;
@@ -53,22 +57,30 @@ RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
 int thisHour;
 time_t startTime = 0;
+bool g_timeSet;											// true if time has been set
+unsigned long rainStartOfToday;
+bool rainReceived;
+unsigned long dailyRainfall;
+time_t	lastUpdateTime;
+int			tempLCD;										//temperature of this unit
 
 //---------------------------------------------------------------------------------------------------
 // Push button support. On pin A3
 //---------------------------------------------------------------------------------------------------
 typedef enum {
-	eCurrent = 0,
-	//eTotal,
-	//eMax,
-	//eMin,
+	eSummary = 0,
+	eCurrentPower,
+	eTotalPower,
+	eCurrentTemperatures,
+	eMaxTemperatures,
+	eMinTemperatures,
 	eRainFall,
 	eDateTimeNow,
 	eDateTimeStartRunning,
 	eDiagnosis
 }  ButtonDisplayMode;
 
-volatile ButtonDisplayMode pushButton = eCurrent;
+volatile ButtonDisplayMode pushButton = eSummary;
 volatile unsigned long	g_RGlastTick = 0;
 ButtonDisplayMode lastPushButton = eDiagnosis;
 
@@ -84,11 +96,7 @@ DallasTemperature temperatureSensor(&oneWire);
 //-------------------------------------------------------------------------------------------- 
 unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
-bool g_timeSet;											// true if time has been set
-unsigned long rainStartOfToday;
-bool rainReceived;
-unsigned long dailyRainfall;
-time_t	lastUpdateTime;
+
 
 static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') 
 {
@@ -162,6 +170,35 @@ String TimeString(String& str, time_t time)
 	return str;
 }
 
+String TimeSpanString(String& str, time_t timeSpan)
+{
+	str = "";
+	if (timeSpan < 60)
+		str += second(timeSpan);
+	else if (timeSpan < 60 * 60)
+	{
+		str += minute(timeSpan);
+		str += ".";
+		str += second(timeSpan);
+	}
+	else if (timeSpan < 60 * 60 * 24)
+	{
+		str += hour(timeSpan);
+		str += ":";
+		str += minute(timeSpan);
+	}
+	else
+	{
+		str += day(timeSpan);
+		str += ".";
+		str += hour(timeSpan);
+		str += "d";
+	}
+	while (str.length()<5)
+		str = " " + str;
+	return str;
+}
+
 // Push button interrupt routine
 void interruptHandlerPushButton()
 {
@@ -176,13 +213,22 @@ void interruptHandlerPushButton()
 	if (period > 500)	//more than 500 ms to avoid switch bounce
 	{
 		if (pushButton == eDiagnosis)
-			pushButton = eCurrent;
+			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
 
 	}
 }
 
+
+void ResetTemperatureMinMax()
+{
+	for (int i = 0; i < NUM_TEMP; i++)
+	{
+		minTemp[i] = 9999;
+		maxTemp[i] = -9999;
+	}
+}
 
 //--------------------------------------------------------------------------------------------
 // Setup
@@ -194,8 +240,10 @@ void setup ()
 	lcd.begin(16, 2);
 	lcd.setCursor(0, 0);
 
-	lcd.print(F("Fewings Power Mon"));
-	
+	lcd.print(F("Fewings Power"));
+	lcd.setCursor(0, 1);
+	lcd.print(F("Monitor 2.0"));
+
 	Serial.println(F("Fewings emonGLCD solar PV monitor - gen and use"));
 
 	Serial.println("rf12_initialize");
@@ -206,8 +254,10 @@ void setup ()
 	for (int i = 0; i< MAX_NODES; i++)
 	{
 		txReceived[i] = 0;
-		lastReceived[i] = millis();
+		lastReceived[i] = now();
 	}
+	ResetTemperatureMinMax();
+
 	//packetsReceived = 0;
 	g_timeSet = false;
 	
@@ -239,8 +289,12 @@ void setup ()
 	pinMode(A3, INPUT_PULLUP);
 	attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
 
+	EmonSerial::PrintEmonPayload(NULL);
+	EmonSerial::PrintRainPayload(NULL);
+	EmonSerial::PrintBasePayload(NULL);
 
-
+	//let the startup LCD display for a while!
+	delay(1500);
 	//pinMode(greenLED, OUTPUT); 
 	//pinMode(redLED, OUTPUT);	
 	
@@ -257,7 +311,6 @@ void setup ()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
-	
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
@@ -269,30 +322,22 @@ void loop ()
 
 			if (node_id == EMON_NODE)						// === EMONTX ====
 			{
-				//monitor the reliability of receival
-				//int index = (int)(((millis() - last_emontx) / 5050.0) - 1.0);	//expect these 5 seconds apart
-				//if (index < 0)
-				//	index = 0;
-				//if (index >= MAX_TIMES)
-				//	index = MAX_TIMES - 1;
-				//packetsReceived++;
-
 				emonPayload = *(PayloadEmon*)rf12_data;							// get emontx payload data
 
-				EmonSerial::PrintEmonPayload(&emonPayload, millis() - lastReceived[0]);				// print data to serial
+				EmonSerial::PrintEmonPayload(&emonPayload, (now() - lastReceived[0]));				// print data to serial
 				
 				txReceived[0]++;
-				lastReceived[0] = millis();				 // set time of last update to now
+				lastReceived[0] = now();				// set time of last update to now
 
-				power_calculations();					// do the power calculations
+				power_calculations();							// do the power calculations
 			}
 
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
 				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
 				
-				EmonSerial::PrintRainPayload(&rainPayload, millis() - lastReceived[1] );			 // print data to serial
-				lastReceived[1] = millis();
+				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[1]));			 // print data to serial
+				lastReceived[1] = now();
 				txReceived[1]++;
 
 				if (!rainReceived)
@@ -308,16 +353,15 @@ void loop ()
 				}
 				else
 					dailyRainfall = rainPayload.rainCount - rainStartOfToday;
-
 			}
 
 
 			if (node_id == BASE_NODE)						//emon base. Receives the time
 			{
 				basePayload = *((PayloadBase*)rf12_data);
-				EmonSerial::PrintBasePayload(&basePayload, (millis() - lastReceived[2]));			 // print data to serial
+				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[2]));			 // print data to serial
 				txReceived[2]++;
-				lastReceived[2] = millis();
+				lastReceived[2] = now();
 
 				setTime(basePayload.time);
 				if (startTime == 0)
@@ -332,23 +376,52 @@ void loop ()
 
 
 	//--------------------------------------------------------------------
+	// Update the temperatures every 3s
+	//--------------------------------------------------------------------
+	if ((millis() - slow_update) > 3000)
+	{
+		String str;
+
+		slow_update = millis();
+		//get the temperature of this unit
+		temperatureSensor.requestTemperatures();
+		tempLCD = temperatureSensor.getTempCByIndex(0) * 100;
+
+		//update temperature min max values
+		if (tempLCD < minTemp[1])  minTemp[1] = tempLCD;
+		if (tempLCD > maxTemp[1])  maxTemp[1] = tempLCD;
+		if (txReceived[0])
+		{
+			if (emonPayload.temperature < minTemp[0])  minTemp[0] = emonPayload.temperature;
+			if (emonPayload.temperature > maxTemp[0])  maxTemp[0] = emonPayload.temperature;
+		}
+		if (txReceived[1])
+		{
+			if (rainPayload.temperature < minTemp[2])  minTemp[2] = rainPayload.temperature;
+			if (rainPayload.temperature > maxTemp[2])  maxTemp[2] = rainPayload.temperature;
+		}
+	}
+
+	//--------------------------------------------------------------------
 	// Update the display every 200ms
 	//--------------------------------------------------------------------
 	if ((millis()-fast_update)>200)
 	{
 		String str;
 
+		fast_update = millis();
+		
+
+		//clear the screen if the button has been pushed
 		if (pushButton != lastPushButton)
 		{
 			lcd.clear();
 			lastPushButton = pushButton;
 		}
 
-		fast_update = millis();
-
 		switch (pushButton)
 		{
-			case eCurrent:
+		case eSummary:
 			{
 				lcdInt(0, 0, (unsigned int)emonPayload.power);
 				lcdInt(5, 0, (unsigned int)emonPayload.ct1);
@@ -365,42 +438,109 @@ void loop ()
 
 				//inside temperature
 				lcd.setCursor(6, 1);
-				temperatureSensor.requestTemperatures();
-				lcd.print(TemperatureString(str, temperatureSensor.getTempCByIndex(0) * 100));
+				lcd.print(TemperatureString(str, tempLCD ));
 
 				//outside temperature
 				lcd.setCursor(12, 1);
 				lcd.print(TemperatureString(str, rainPayload.temperature));
 				break;
 			}
+		case eCurrentPower:
+		{
+			lcd.setCursor(0, 0);
+			lcd.print(F("Cur: Consmd Prod"));
+			lcdInt(0, 1, (unsigned int)emonPayload.power);
+			lcdInt(8, 1, (unsigned int)emonPayload.ct1);
+			break;
+		}
+		case eTotalPower:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Tot: Consmd Prod"));
+				lcdInt(0, 1, (unsigned int)wh_consuming);
+				lcdInt(8, 1, (unsigned int)wh_gen);
+				break;
+		}
+			case eCurrentTemperatures:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Cur: Wtr In  Out"));
+				//print temperatures
+				lcd.setCursor(0, 1);
+				//water temperatre
+				lcd.print(TemperatureString(str, emonPayload.temperature));
+
+				//inside temperature
+				lcd.setCursor(6, 1);
+			  lcd.print(TemperatureString(str, tempLCD));
+
+				//outside temperature
+				lcd.setCursor(12, 1);
+				lcd.print(TemperatureString(str, rainPayload.temperature));
+				break;
+			}
+			case eMinTemperatures:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Min: Wtr In  Out"));
+				//print temperatures
+				lcd.setCursor(0, 1);
+				//water temperatre
+				lcd.print(TemperatureString(str, minTemp[0]));
+
+				//inside temperature
+				lcd.setCursor(6, 1);
+				lcd.print(TemperatureString(str, minTemp[1]));
+
+				//outside temperature
+				lcd.setCursor(12, 1);
+				lcd.print(TemperatureString(str, minTemp[2]));
+				break;
+			}
+			case eMaxTemperatures:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Max: Wtr In  Out"));
+				//print temperatures
+				lcd.setCursor(0, 1);
+				//water temperatre
+				lcd.print(TemperatureString(str, maxTemp[0]));
+
+				//inside temperature
+				lcd.setCursor(6, 1);
+				lcd.print(TemperatureString(str, maxTemp[1]));
+
+				//outside temperature
+				lcd.setCursor(12, 1);
+				lcd.print(TemperatureString(str, maxTemp[2]));
+				break;
+			}
 			case eRainFall:
 			{
-				lcdInt(0, 0, (unsigned int)emonPayload.power);
-				lcdInt(5, 0, (unsigned int)emonPayload.ct1);
-				if (rainReceived && dailyRainfall != 0)
-				{
-					lcd.setCursor(11, 0);
-					lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
-				}
-
+				lcd.setCursor(0, 0);
+				lcd.print(F("Rain today:"));
+				lcd.setCursor(11, 0);
+				lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
+				
 				lcd.setCursor(0, 1);
-				lcd.print(F("Supply V: "));
+				lcd.print(F("Supply V  : "));
 				lcd.setCursor(11, 1);
 				lcd.print(TemperatureString(str, rainPayload.supplyV/10));
 				break;
 			}
 			case eDateTimeStartRunning:
 			{
-				lcd.setCursor(5, 0);
+				lcd.setCursor(0, 0);
+				lcd.print(F("Start:"));
 				lcd.print(DateString(str, startTime));
 				lcd.setCursor(5, 1);
 				lcd.print(TimeString(str, startTime));
 				break;
 			}
-
 			case eDateTimeNow:
 			{
-				lcd.setCursor(5, 0);
+				lcd.setCursor(0, 0);
+				lcd.print(F("Time :"));
 				lcd.print(DateString(str, now()));
 				lcd.setCursor(5, 1);
 				lcd.print(TimeString(str, now()));
@@ -413,26 +553,21 @@ void loop ()
 					lcdInt(i*5, 0, (unsigned int)txReceived[i]);
 					lcd.setCursor(i*5, 1);
 					//use TemperatureString to display seconds since last receive
-					lcd.print(TemperatureString(str, (unsigned int)((millis() - lastReceived[i]) / 10)));
+					lcd.print(TimeSpanString(str, (now() - lastReceived[i])));
 				}
 				break;
 			}
-			//default:
-			//{
-			//	lcd.setCursor(0, 1);
-			//	lcd.print(F("                "));
-			//	break;
-			//}
 		}
 
 		//DateTime now = RTC.now();
-		time_t time = now();
+		//time_t time = now();
 		int last_hour = thisHour;
 		thisHour = hour();
 		if (last_hour == 23 && thisHour == 00)
 		{
 			wh_gen = 0;
 			wh_consuming = 0;
+			ResetTemperatureMinMax();
 		}
 		if (rainReceived)
 		{
@@ -443,7 +578,6 @@ void loop ()
 			}
 		}
 	}
-	
 } //end loop
 //--------------------------------------------------------------------------------------------
 

@@ -112,7 +112,7 @@ void setup()
 
 
 	// Initialise 
-	//g_rainCount = 0;
+	//writeEEPROM(0, 0);					//reset the flash
 	g_rainCount = readEEPROM(0);	//read last reading from flash
 	g_transmitCount = 1;
 	g_RGlastTick = millis();

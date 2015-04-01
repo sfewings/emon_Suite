@@ -341,7 +341,7 @@ void loop ()
 		stash.print("5,");
 		stash.println(TemperatureString(str, emonPayload.temperature));
 		stash.print("6,");
-		stash.println((word) dailyRainfall);
+		stash.println(RainString(str, dailyRainfall));
 		stash.save();
 		
 		pktsReceived = 0;
@@ -426,6 +426,14 @@ void power_calculations()
 	wh_consuming=wh_consuming+whInc;
 }
 
+String RainString(String& str, int rainGauge)
+{
+	//raingauge increments in 0.2mm per value
+	str = String(rainGauge / 5);
+	str += ".";
+	str += (rainGauge % 5) * 2;
+	return str;
+}
 
 String TemperatureString(String& str, int temperature )
 {
