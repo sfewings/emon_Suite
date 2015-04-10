@@ -393,7 +393,7 @@ void loop ()
 
 	if (rainReceived)
 	{
-		if (lastHour == 10 && thisHour == 9)
+		if (lastHour == 8 && thisHour == 9)
 		{
 			dayStartRainfall = rainPayload.rainCount;
 			dailyRainfall = 0;

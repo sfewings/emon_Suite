@@ -294,7 +294,7 @@ void setup ()
 	EmonSerial::PrintBasePayload(NULL);
 
 	//let the startup LCD display for a while!
-	delay(1500);
+	delay(2500);
 	//pinMode(greenLED, OUTPUT); 
 	//pinMode(redLED, OUTPUT);	
 	
@@ -429,6 +429,7 @@ void loop ()
 				{
 					lcd.setCursor(11, 0);
 					lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
+					lcd.print(F("mm"));
 				}
 
 				//print temperatures
@@ -521,7 +522,8 @@ void loop ()
 				lcd.print(F("Rain today:"));
 				lcd.setCursor(11, 0);
 				lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
-				
+				lcd.print(F("mm"));
+
 				lcd.setCursor(0, 1);
 				lcd.print(F("Supply V  : "));
 				lcd.setCursor(11, 1);
@@ -571,7 +573,7 @@ void loop ()
 		}
 		if (rainReceived)
 		{
-			if (last_hour == 10 && thisHour == 9)
+			if (last_hour == 8 && thisHour == 9)
 			{
 				rainStartOfToday = rainPayload.rainCount;
 				dailyRainfall = 0;
