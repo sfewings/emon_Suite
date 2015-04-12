@@ -27,26 +27,33 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
+#include <EEPROM.h>
 
 #include <EmonShared.h>
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
 
+#include "EEPROMHist.h"
+
+EEPROMHistory   usageHistory;
+
 
 //--------------------------------------------------------------------------------------------
 // Power variables
 //--------------------------------------------------------------------------------------------
-int importing, night;									//flag to indicate import/export
+int importing;									//flag to indicate import/export
 double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
-#define NUM_TEMP	3			//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	3			//number of jeenodes, node		1=emon,				 2=rain,				3=base
+#define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
+#define MAX_NODES	3						//number of jeenodes, node		1=emon,				 2=rain,				3=base
+enum { eWater, eInside, eOutside};	//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
-int minTemp[NUM_TEMP];
-int maxTemp[NUM_TEMP];
+int temperature[NUM_THERMOMETERS];
+//int minTemp[NUM_TEMP];
+//int maxTemp[NUM_TEMP];
 
 
 PayloadEmon emonPayload;
@@ -56,8 +63,14 @@ PayloadBase basePayload;
 RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
 int thisHour;
-time_t startTime = 0;
-bool g_timeSet;											// true if time has been set
+time_t					startTime = 0;
+byte            currentHour = 0;
+byte            currentDay = 0;
+byte						currentRainDay = 0;
+byte            currentMonth = 0;
+byte						currentRainMonth = 0;
+
+
 unsigned long rainStartOfToday;
 bool rainReceived;
 unsigned long dailyRainfall;
@@ -75,6 +88,7 @@ typedef enum {
 	eMaxTemperatures,
 	eMinTemperatures,
 	eRainFall,
+	eRainFallTotals,
 	eDateTimeNow,
 	eDateTimeStartRunning,
 	eDiagnosis
@@ -94,7 +108,8 @@ DallasTemperature temperatureSensor(&oneWire);
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-unsigned long slow_update;					// Used to count time for slow 10s events
+time_t slow_update;									// Used to count time for slow 10s events
+time_t average_update;							// Used to store averages and totals
 unsigned long fast_update;					// Used to count time for fast 100ms events
 
 
@@ -130,8 +145,12 @@ String RainString(String& str, int rainGauge )
 {
 	//raingauge increments in 0.2mm per value
 	str = String(rainGauge/5);
-	str += ".";
-	str += (rainGauge%5)*2;
+	//don't show decimals if more that 100mm (not enough room on display!)
+	if (rainGauge < 500)
+	{
+		str += ".";
+		str += (rainGauge % 5) * 2;
+	}
 	return str;
 }
 
@@ -220,16 +239,6 @@ void interruptHandlerPushButton()
 	}
 }
 
-
-void ResetTemperatureMinMax()
-{
-	for (int i = 0; i < NUM_TEMP; i++)
-	{
-		minTemp[i] = 9999;
-		maxTemp[i] = -9999;
-	}
-}
-
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -251,23 +260,25 @@ void setup ()
 	EmonSerial::PrintRF12Init(rf12Init);
 
 
+	//initialise the day and month total histories from EEPROM memory
+	short usesEEPROMto = usageHistory.init(0);
+	Serial.print("EEPROM init:");
+	Serial.println(usesEEPROMto, DEC);
+	lcd.print(".");
+
+
 	for (int i = 0; i< MAX_NODES; i++)
 	{
 		txReceived[i] = 0;
 		lastReceived[i] = now();
 	}
-	ResetTemperatureMinMax();
-
-	//packetsReceived = 0;
-	g_timeSet = false;
-	
 
 	rainReceived = false;
 	rainStartOfToday = 0;
 	lastUpdateTime = now();
 
 
-	//Temperature setup
+	//Temperature sensor setup
 	temperatureSensor.begin();
 	int numberOfDevices = temperatureSensor.getDeviceCount();
 	if (numberOfDevices)
@@ -295,8 +306,6 @@ void setup ()
 
 	//let the startup LCD display for a while!
 	delay(2500);
-	//pinMode(greenLED, OUTPUT); 
-	//pinMode(redLED, OUTPUT);	
 	
 	//sensors.begin();						 // start up the DS18B20 temp sensor onboard	
 	//sensors.requestTemperatures();
@@ -311,6 +320,8 @@ void setup ()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
+	time_t time = now();
+
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
@@ -329,6 +340,7 @@ void loop ()
 				txReceived[0]++;
 				lastReceived[0] = now();				// set time of last update to now
 
+				temperature[eWater] = emonPayload.temperature;
 				power_calculations();							// do the power calculations
 			}
 
@@ -339,6 +351,8 @@ void loop ()
 				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[1]));			 // print data to serial
 				lastReceived[1] = now();
 				txReceived[1]++;
+
+				temperature[eOutside] = rainPayload.temperature;
 
 				if (!rainReceived)
 				{
@@ -367,9 +381,22 @@ void loop ()
 				if (startTime == 0)
 				{
 					startTime = basePayload.time;
+					//time has been updated from the base
+					currentHour = hour();
+					currentDay = day() - 1;        //note day() base 1, currentDay base 0
+					currentMonth = month() - 1;    //note month() base 1, currentMonth base 0
+					currentRainDay = currentDay;    //note the rainDay and rainMonth change at 9am!
+					currentRainMonth = currentMonth;
+					if (currentHour < 9 && currentDay > 0)
+					{
+						//correct if turned on before 9am! n.b don't wory if the moth is wrong!
+						currentRainDay = day() - 2;
+					}
+
+					average_update = now();
+					slow_update = now();
 				}
 				lastUpdateTime = basePayload.time;
-				g_timeSet = true;
 			}
 		}
 	}
@@ -378,30 +405,79 @@ void loop ()
 	//--------------------------------------------------------------------
 	// Update the temperatures every 3s
 	//--------------------------------------------------------------------
-	if ((millis() - slow_update) > 3000)
+	if (time >= (slow_update + 3))
 	{
-		String str;
+		slow_update = time;
 
-		slow_update = millis();
-		//get the temperature of this unit
+		//get the temperature of this unit (inside temperature)
 		temperatureSensor.requestTemperatures();
-		tempLCD = temperatureSensor.getTempCByIndex(0) * 100;
-
-		//update temperature min max values
-		if (tempLCD < minTemp[1])  minTemp[1] = tempLCD;
-		if (tempLCD > maxTemp[1])  maxTemp[1] = tempLCD;
-		if (txReceived[0])
-		{
-			if (emonPayload.temperature < minTemp[0])  minTemp[0] = emonPayload.temperature;
-			if (emonPayload.temperature > maxTemp[0])  maxTemp[0] = emonPayload.temperature;
-		}
-		if (txReceived[1])
-		{
-			if (rainPayload.temperature < minTemp[2])  minTemp[2] = rainPayload.temperature;
-			if (rainPayload.temperature > maxTemp[2])  maxTemp[2] = rainPayload.temperature;
-		}
+		temperature[eInside] = temperatureSensor.getTempCByIndex(0) * 100;
 	}
 
+	if (time >= (average_update + 60))
+	{
+		average_update = time;
+
+		usageHistory.addMonitoredValues(temperature, 0);
+
+		//update 24hr tallies
+		if ((timeStatus() == timeSet))
+		{
+			//usageHistory.addValue(eHour, currentHour, wattsConsumed, (unsigned short)wattsGenerated);
+
+			if (hour() != currentHour)
+			{
+				unsigned short consumed, generated;
+				//we only store the hour totals every hour. THen add it to the current hour and to the current day
+				usageHistory.getTotalTo(eHour, currentHour, &consumed, &generated);
+				usageHistory.addValue(eHour, currentHour, wh_consuming - consumed, wh_gen - generated);
+				usageHistory.addValue(eDay, currentDay, wh_consuming - consumed, wh_gen - generated);
+
+				//rainfall is measured from 9am
+				if (hour() == 9)
+				{
+					usageHistory.addRainfall(eDay, currentRainDay, dailyRainfall);
+					usageHistory.addRainfall(eMonth, currentRainMonth, dailyRainfall );
+
+					rainStartOfToday = rainPayload.rainCount;
+					dailyRainfall = 0;
+
+					if (month() - 1 != currentRainMonth)
+					{
+						currentRainMonth = month() - 1;
+						usageHistory.resetRainfall(eMonth, currentRainMonth);
+					}
+					currentRainDay = day() - 1;
+					usageHistory.resetRainfall(eDay, currentRainDay);
+				}
+
+
+				if (day() - 1 != currentDay)
+				{
+					usageHistory.resetMonitoredValues();
+					
+					//reset daily totals
+					wh_gen = 0;
+					wh_consuming = 0;
+
+					usageHistory.getValue(eDay, currentDay, &consumed, &generated);
+					usageHistory.addValue(eMonth, currentMonth, consumed, generated);
+
+					if (month() - 1 != currentMonth)
+					{
+						currentMonth = month() - 1;
+						usageHistory.resetValue(eMonth, currentMonth);
+					}
+
+					currentDay = day() - 1;
+					usageHistory.resetValue(eDay, currentDay);
+				}
+
+				currentHour = hour();
+				usageHistory.resetValue(eHour, currentHour);
+			}
+		}
+	}
 	//--------------------------------------------------------------------
 	// Update the display every 200ms
 	//--------------------------------------------------------------------
@@ -435,15 +511,15 @@ void loop ()
 				//print temperatures
 				lcd.setCursor(0, 1);
 				//water temperatre
-				lcd.print(TemperatureString(str, emonPayload.temperature));
+				lcd.print(TemperatureString(str, temperature[eWater]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
-				lcd.print(TemperatureString(str, tempLCD ));
+				lcd.print(TemperatureString(str, temperature[eInside]));
 
 				//outside temperature
 				lcd.setCursor(12, 1);
-				lcd.print(TemperatureString(str, rainPayload.temperature));
+				lcd.print(TemperatureString(str, temperature[eOutside]));
 				break;
 			}
 		case eCurrentPower:
@@ -469,15 +545,15 @@ void loop ()
 				//print temperatures
 				lcd.setCursor(0, 1);
 				//water temperatre
-				lcd.print(TemperatureString(str, emonPayload.temperature));
+				lcd.print(TemperatureString(str, temperature[eWater]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
-			  lcd.print(TemperatureString(str, tempLCD));
+				lcd.print(TemperatureString(str, temperature[eInside]));
 
 				//outside temperature
 				lcd.setCursor(12, 1);
-				lcd.print(TemperatureString(str, rainPayload.temperature));
+				lcd.print(TemperatureString(str, temperature[eOutside]));
 				break;
 			}
 			case eMinTemperatures:
@@ -486,16 +562,19 @@ void loop ()
 				lcd.print(F("Min: Wtr In  Out"));
 				//print temperatures
 				lcd.setCursor(0, 1);
+
+				int minTemp[3];
+				usageHistory.getMonitoredValues(eValueStatisticMin, minTemp, NULL);
 				//water temperatre
-				lcd.print(TemperatureString(str, minTemp[0]));
+				lcd.print(TemperatureString(str, minTemp[eWater]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
-				lcd.print(TemperatureString(str, minTemp[1]));
+				lcd.print(TemperatureString(str, minTemp[eInside]));
 
 				//outside temperature
 				lcd.setCursor(12, 1);
-				lcd.print(TemperatureString(str, minTemp[2]));
+				lcd.print(TemperatureString(str, minTemp[eOutside]));
 				break;
 			}
 			case eMaxTemperatures:
@@ -504,16 +583,20 @@ void loop ()
 				lcd.print(F("Max: Wtr In  Out"));
 				//print temperatures
 				lcd.setCursor(0, 1);
+
+				int maxTemp[3];
+				usageHistory.getMonitoredValues(eValueStatisticMax, maxTemp, NULL);
+
 				//water temperatre
-				lcd.print(TemperatureString(str, maxTemp[0]));
+				lcd.print(TemperatureString(str, maxTemp[eWater]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
-				lcd.print(TemperatureString(str, maxTemp[1]));
+				lcd.print(TemperatureString(str, maxTemp[eInside]));
 
 				//outside temperature
 				lcd.setCursor(12, 1);
-				lcd.print(TemperatureString(str, maxTemp[2]));
+				lcd.print(TemperatureString(str, maxTemp[eOutside]));
 				break;
 			}
 			case eRainFall:
@@ -528,6 +611,25 @@ void loop ()
 				lcd.print(F("Supply V  : "));
 				lcd.setCursor(11, 1);
 				lcd.print(TemperatureString(str, rainPayload.supplyV/10));
+				break;
+			}
+			case eRainFallTotals:
+			{
+				unsigned short totalRain = (rainReceived ? dailyRainfall : 0);
+
+				lcd.setCursor(0, 0);
+				lcd.print(F("Day  Month Year"));
+				lcd.setCursor(0, 1);
+
+				lcd.print(RainString(str, totalRain));
+				
+				totalRain += usageHistory.getRainfallTo(eDay, currentRainDay);
+				lcd.setCursor(5, 1);
+				lcd.print(RainString(str, totalRain));
+
+				totalRain += usageHistory.getRainfallTo(eMonth, currentRainMonth);
+				lcd.setCursor(10, 1);
+				lcd.print(RainString(str, totalRain ));
 				break;
 			}
 			case eDateTimeStartRunning:
@@ -558,25 +660,6 @@ void loop ()
 					lcd.print(TimeSpanString(str, (now() - lastReceived[i])));
 				}
 				break;
-			}
-		}
-
-		//DateTime now = RTC.now();
-		//time_t time = now();
-		int last_hour = thisHour;
-		thisHour = hour();
-		if (last_hour == 23 && thisHour == 00)
-		{
-			wh_gen = 0;
-			wh_consuming = 0;
-			ResetTemperatureMinMax();
-		}
-		if (rainReceived)
-		{
-			if (last_hour == 8 && thisHour == 9)
-			{
-				rainStartOfToday = rainPayload.rainCount;
-				dailyRainfall = 0;
 			}
 		}
 	}
