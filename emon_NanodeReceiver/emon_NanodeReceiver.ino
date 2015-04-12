@@ -253,12 +253,14 @@ void loop ()
 
 		while (!rf12_canSend())
 			rf12_recvDone();
-		
-		basePayload.time = now();
-		EmonSerial::PrintBasePayload(&basePayload);
+		if ((timeStatus() == timeSet))
+		{
+			basePayload.time = now();
+			EmonSerial::PrintBasePayload(&basePayload);
 
-		rf12_sendStart(0, &basePayload, sizeof(PayloadBase));
-		rf12_sendWait(0);
+			rf12_sendStart(0, &basePayload, sizeof(PayloadBase));
+			rf12_sendWait(0);
+		}
 	}
 
 	if (millis() > request_NTP_Update)
@@ -382,7 +384,6 @@ void loop ()
 			Serial.println(reply);
 	}
 
-	time_t time = now();
 	int lastHour = thisHour;
 	thisHour = hour();
 	if (lastHour == 23 && thisHour == 00)
