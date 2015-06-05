@@ -150,7 +150,7 @@ void setup ()
 		Serial.println( F("DHCP failed"));
 	
 	ether.printIp(F("My IP: "), ether.myip);
-	ether.printIp(F("Netmask: "), ether.mymask);
+	ether.printIp(F("Netmask: "), ether.netmask);
 	ether.printIp(F("GW IP: "), ether.gwip);
 	ether.printIp(F("DNS IP: "), ether.dnsip);
 	
@@ -380,8 +380,17 @@ void loop ()
 		}
 
 		const char* reply = ether.tcpReply(sessionID);
+		Serial.print("sessionID=");
+		Serial.println(sessionID);
+
 		if (reply != NULL)
+		{
 			Serial.println(reply);
+		}
+		else
+		{
+			Serial.println("tcpReply=0");
+		}
 	}
 
 	int lastHour = thisHour;
