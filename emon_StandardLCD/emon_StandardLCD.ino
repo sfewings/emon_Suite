@@ -72,7 +72,7 @@ byte						currentRainMonth = 0;
 
 
 unsigned long rainStartOfToday;
-bool rainReceived;
+bool rainGaugeReadingReceived;
 unsigned long dailyRainfall;
 time_t	lastUpdateTime;
 int			tempLCD;										//temperature of this unit
@@ -229,13 +229,12 @@ void interruptHandlerPushButton()
 		period = tick - g_RGlastTick;
 	g_RGlastTick = tick;
 
-	if (period > 500)	//more than 500 ms to avoid switch bounce
+	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
 		if (pushButton == eDiagnosis)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
-
 	}
 }
 
@@ -273,7 +272,7 @@ void setup ()
 		lastReceived[i] = now();
 	}
 
-	rainReceived = false;
+	rainGaugeReadingReceived = false;
 	rainStartOfToday = 0;
 	lastUpdateTime = now();
 
@@ -321,6 +320,7 @@ void setup ()
 void loop () 
 {
 	time_t time = now();
+	bool refreshScreen = false;	//set true when time to completely redraw the screen
 
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
@@ -354,10 +354,10 @@ void loop ()
 
 				temperature[eOutside] = rainPayload.temperature;
 
-				if (!rainReceived)
+				if (!rainGaugeReadingReceived)
 				{
 					rainStartOfToday = rainPayload.rainCount;
-					rainReceived = true;
+					rainGaugeReadingReceived = true;
 					dailyRainfall = 0;
 				}
 				if (rainPayload.rainCount < rainStartOfToday)
@@ -389,10 +389,11 @@ void loop ()
 					currentRainMonth = currentMonth;
 					if (currentHour < 9 && currentDay > 0)
 					{
-						//correct if turned on before 9am! n.b don't wory if the moth is wrong!
+						//correct if turned on before 9am! n.b don't wory if the month is wrong!
 						currentRainDay = day() - 2;
 					}
 
+					//reset the timers as the time has changed
 					average_update = now();
 					slow_update = now();
 				}
@@ -475,7 +476,9 @@ void loop ()
 
 				currentHour = hour();
 				usageHistory.resetValue(eHour, currentHour);
+
 			}
+			refreshScreen = true;	//every 60 seconds
 		}
 	}
 	//--------------------------------------------------------------------
@@ -495,16 +498,21 @@ void loop ()
 			lastPushButton = pushButton;
 		}
 
+		if (refreshScreen)
+		{
+			lcd.clear();
+		}
+
 		switch (pushButton)
 		{
 		case eSummary:
 			{
 				lcdInt(0, 0, (unsigned int)emonPayload.power);
 				lcdInt(5, 0, (unsigned int)emonPayload.ct1);
-				if (rainReceived && dailyRainfall != 0)
+				if (rainGaugeReadingReceived && dailyRainfall != 0)
 				{
 					lcd.setCursor(11, 0);
-					lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
+					lcd.print(RainString(str, (rainGaugeReadingReceived ? dailyRainfall : 0)));
 					lcd.print(F("mm"));
 				}
 
@@ -604,7 +612,7 @@ void loop ()
 				lcd.setCursor(0, 0);
 				lcd.print(F("Rain today:"));
 				lcd.setCursor(11, 0);
-				lcd.print(RainString(str, (rainReceived ? dailyRainfall : 0)));
+				lcd.print(RainString(str, (rainGaugeReadingReceived ? dailyRainfall : 0)));
 				lcd.print(F("mm"));
 
 				lcd.setCursor(0, 1);
@@ -615,7 +623,7 @@ void loop ()
 			}
 			case eRainFallTotals:
 			{
-				unsigned short totalRain = (rainReceived ? dailyRainfall : 0);
+				unsigned short totalRain = (rainGaugeReadingReceived ? dailyRainfall : 0);
 
 				lcd.setCursor(0, 0);
 				lcd.print(F("Day  Month Year"));
