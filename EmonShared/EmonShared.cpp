@@ -93,3 +93,65 @@ void EmonSerial::PrintBasePayload(PayloadBase *pPayloadBase, unsigned long timeS
 	}
 	Serial.println();
 }
+
+int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
+{
+	char* pch = strtok(str, ": ,|&");
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "emon"))
+		return 0;	//can't find "emon:" as first token
+
+	pPayloadEmon->power						= atoi(strtok(NULL, ": ,|\r\n&"));
+	pPayloadEmon->pulse						= atoi(strtok(NULL, ": ,|\r\n&"));
+	pPayloadEmon->ct1							= atoi(strtok(NULL, ": ,|\r\n&"));
+	pPayloadEmon->supplyV					= atoi(strtok(NULL, ": ,|\r\n&"));
+	pPayloadEmon->temperature			= atoi(strtok(NULL, ": ,|\r\n&"));
+	pPayloadEmon->rainGauge			  = atoi(strtok(NULL, ": ,|\r\n&"));
+
+	pch = strtok(NULL, ": ,|\r\n&");
+	unsigned long timeSinceLast = atol(pch);
+
+	return 1;
+}
+
+
+int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
+{
+	char* pch = strtok(str, ": ,|&");
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "rain"))
+		return 0;	//can't find "base:" as first token
+
+	pPayloadRain->rainCount = atol(strtok(NULL, ": ,|\r\n&"));
+	pPayloadRain->transmitCount = atol(strtok(NULL, ": ,|\r\n&"));
+	pPayloadRain->temperature = atoi(strtok(NULL, ": ,|\r\n&"));
+	pPayloadRain->supplyV = atol(strtok(NULL, ": ,|\r\n&"));
+
+	pch = strtok(NULL, ": ,|\r\n&");
+	unsigned long timeSinceLast = atol(pch);
+
+	return 1;
+}
+
+
+int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
+{
+	char* pch = strtok(str, ": ,|&");
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "base"))
+		return 0;	//can't find "base:" as first token
+
+	pch = strtok(NULL, ": ,|\r\n&");
+	pPayloadBase->time = (time_t)atol(pch);
+
+	pch = strtok(NULL, ": ,|\r\n&");
+	unsigned long timeSinceLast = atol(pch);
+
+	return 1;
+}

@@ -13,8 +13,10 @@
 #define EMON_NODE	10
 #define RAIN_NODE	11
 #define BASE_NODE	15
+#define BASE_JEENODE 16
 #define DISPLAY_NODE 20
 
+#define FEWINGS_MONITOR_GROUP  210
 
 typedef struct {
 	uint8_t node;					//Should be unique on network, node ID 30 reserved for base station
@@ -50,6 +52,11 @@ public:
 	static void PrintEmonPayload(PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
 	static void PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
+
+	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
+	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
+	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
+
 };
 
 #endif //EMON_SERIAL_H
