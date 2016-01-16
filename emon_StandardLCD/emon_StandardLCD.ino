@@ -635,6 +635,7 @@ void loop ()
 				lcd.setCursor(5, 1);
 				lcd.print(RainString(str, totalRain));
 
+				totalRain = (rainGaugeReadingReceived ? dailyRainfall : 0);
 				totalRain += usageHistory.getRainfallTo(eMonth, currentRainMonth);
 				lcd.setCursor(10, 1);
 				lcd.print(RainString(str, totalRain ));
