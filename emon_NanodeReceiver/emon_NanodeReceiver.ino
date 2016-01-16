@@ -28,6 +28,7 @@
 #include <EmonShared.h>
 
 const int RED_LED=6;				 // Red tri-color LED
+const int GREEN_LED = 5;		 // Red tri-color LED
 
 
 //--------------------------------------------------------------------------------------------
@@ -50,6 +51,8 @@ RF12Init rf12Init = { 15, RF12_915MHZ, 210 };
 
 unsigned long rainStartOfToday;
 bool rainReceived;
+
+unsigned int g_etherResets = 0;
 
 //---------------------------------------------------
 
@@ -118,6 +121,32 @@ unsigned long fast_update;					// Used to count time for fast 100ms events
 unsigned long web_update;
 unsigned long request_NTP_Update;
 
+void initEthercard()
+{
+	uint8_t rev = ether.begin(sizeof Ethernet::buffer, mymac, 8);
+	Serial.print(F("ENC28J60 Revision "));
+	Serial.println(rev, DEC);
+	if (rev == 0)
+		Serial.println(F("Failed to access Ethernet controller"));
+
+	Serial.println(F("Setting up DHCP"));
+	if (!ether.dhcpSetup())
+		Serial.println(F("DHCP failed"));
+
+	ether.printIp(F("My IP: "), ether.myip);
+	ether.printIp(F("Netmask: "), ether.netmask);
+	ether.printIp(F("GW IP: "), ether.gwip);
+	ether.printIp(F("DNS IP: "), ether.dnsip);
+
+	Serial.print(F("Pachube DNS lookup : "));
+	if (!ether.dnsLookup(website))
+		Serial.println(F("DNS failed"));
+
+	ether.printIp(F("Pachube SRV: "), ether.hisip);
+
+	ether.copyIp(webip, ether.hisip);
+}
+
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -125,6 +154,8 @@ void setup ()
 {
 	pinMode(RED_LED, OUTPUT);	
 	digitalWrite(RED_LED, LOW );		//Red LED has inverted logic. LOW is on, HIGH is off!
+	pinMode(GREEN_LED, OUTPUT);
+	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
 
 	Serial.begin(9600);
 	
@@ -139,28 +170,7 @@ void setup ()
 	}
 	Serial.println();
 	
-	uint8_t rev = ether.begin(sizeof Ethernet::buffer, mymac, 8);
-	Serial.print(F("ENC28J60 Revision "));
-	Serial.println(rev, DEC);
-	if (rev == 0) 
-		Serial.println( F("Failed to access Ethernet controller"));
-	
-	Serial.println(F("Setting up DHCP"));
-	if (!ether.dhcpSetup())
-		Serial.println( F("DHCP failed"));
-	
-	ether.printIp(F("My IP: "), ether.myip);
-	ether.printIp(F("Netmask: "), ether.netmask);
-	ether.printIp(F("GW IP: "), ether.gwip);
-	ether.printIp(F("DNS IP: "), ether.dnsip);
-	
-	Serial.print(F("Pachube DNS lookup : "));
-	if (!ether.dnsLookup(website))
-		Serial.println(F("DNS failed"));
-		
-	ether.printIp(F("Pachube SRV: "), ether.hisip);
-	
-	ether.copyIp(webip, ether.hisip);
+	initEthercard();
 
 	Serial.println(F("rf12_initialize"));
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
@@ -346,6 +356,10 @@ void loop ()
 		stash.println(RainString(str, dailyRainfall));
 		stash.save();
 		
+
+		Serial.println(emonPayload.temperature);
+		Serial.println(TemperatureString(str, emonPayload.temperature));
+
 		pktsReceived = 0;
 
 		ether.copyIp(ether.hisip, webip);
@@ -371,14 +385,6 @@ void loop ()
 		// send the packet - this also releases all stash buffers once done
 		sessionID = ether.tcpSend();
 
-		for (int i = 0; i < 3; i++)
-		{
-			digitalWrite(RED_LED, LOW);
-			delay(50);
-			digitalWrite(RED_LED, HIGH);
-			delay(100);
-		}
-
 		const char* reply = ether.tcpReply(sessionID);
 		Serial.print("sessionID=");
 		Serial.println(sessionID);
@@ -386,10 +392,34 @@ void loop ()
 		if (reply != NULL)
 		{
 			Serial.println(reply);
+			initEthercard();
+			g_etherResets++;
 		}
 		else
 		{
 			Serial.println("tcpReply=0");
+		}
+
+		//Green LED flashes three times for 
+		if (g_etherResets == 0)
+		{
+			for (int i = 0; i < 3; i++)
+			{
+				digitalWrite(GREEN_LED, LOW);
+				delay(50);
+				digitalWrite(GREEN_LED, HIGH);
+				delay(100);
+			}
+		}
+		else
+		{
+			for (int i = 0; i < g_etherResets; i++)
+			{
+				digitalWrite(RED_LED, LOW);
+				delay(50);
+				digitalWrite(RED_LED, HIGH);
+				delay(200);
+			}
 		}
 	}
 
@@ -439,7 +469,8 @@ void power_calculations()
 String RainString(String& str, int rainGauge)
 {
 	//raingauge increments in 0.2mm per value
-	str = String(rainGauge / 5);
+	str = "";
+	str += (int) (rainGauge / 5);
 	str += ".";
 	str += (rainGauge % 5) * 2;
 	return str;
@@ -447,17 +478,18 @@ String RainString(String& str, int rainGauge)
 
 String TemperatureString(String& str, int temperature )
 {
+	str = "";
 	int t = temperature;
 	if( t < 0 )
 	{
-	str = "-";
-	t *= -1;
-	str += t/100;
+		str = "-";
+		t *= -1;
+		str += t/100;
 	}
 	else
-	str = String(t/100);
+		str += t/100;
+
 	str +=".";
- 
 	str += (t/10)%10;
 
 	return str;
