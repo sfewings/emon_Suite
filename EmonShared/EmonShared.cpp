@@ -18,7 +18,6 @@ void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 	Serial.println(rf12Init.group);
 }
 
-
 void EmonSerial::PrintEmonPayload(PayloadEmon* pPayloadEmon, unsigned long timeSinceLast)
 {
 	if (pPayloadEmon == NULL)
@@ -74,6 +73,29 @@ void EmonSerial::PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeS
 	}
 }
 
+String EmonSerial::PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast)
+{
+	char buf[60];
+	if (pPayloadBase == NULL)
+	{
+		strcpy_P(buf, PSTR("base: time|ms_since_last_packet"));
+		str = buf;
+	}
+	else
+	{
+		strcpy_P(buf, PSTR("base: "));
+		str = buf;
+		str += pPayloadBase->time;
+		if (timeSinceLast != 0)
+		{
+			str += "|";
+			str += timeSinceLast;
+		}
+	}
+	return str;
+}
+
+
 
 void EmonSerial::PrintBasePayload(PayloadBase *pPayloadBase, unsigned long timeSinceLast)
 {
@@ -96,43 +118,66 @@ void EmonSerial::PrintBasePayload(PayloadBase *pPayloadBase, unsigned long timeS
 
 int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
 {
-	char* pch = strtok(str, ": ,|&");
+	char tok[] = ":, | \r\r&";
+	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
 
 	if (0 != strcmp(pch, "emon"))
 		return 0;	//can't find "emon:" as first token
 
-	pPayloadEmon->power						= atoi(strtok(NULL, ": ,|\r\n&"));
-	pPayloadEmon->pulse						= atoi(strtok(NULL, ": ,|\r\n&"));
-	pPayloadEmon->ct1							= atoi(strtok(NULL, ": ,|\r\n&"));
-	pPayloadEmon->supplyV					= atoi(strtok(NULL, ": ,|\r\n&"));
-	pPayloadEmon->temperature			= atoi(strtok(NULL, ": ,|\r\n&"));
-	pPayloadEmon->rainGauge			  = atoi(strtok(NULL, ": ,|\r\n&"));
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadEmon->power = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadEmon->pulse = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadEmon->ct1 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadEmon->supplyV = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadEmon->temperature = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadEmon->rainGauge = atoi(pch);
 
-	pch = strtok(NULL, ": ,|\r\n&");
-	unsigned long timeSinceLast = atol(pch);
-
+	pch = strtok(NULL, tok);
+	if (pch != NULL)
+	{
+		unsigned long timeSinceLast = atol(pch);
+	}
 	return 1;
 }
 
 
 int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 {
-	char* pch = strtok(str, ": ,|&");
+	char tok[] = ":, | \r\r&";
+	char* pch = strtok(str, tok);
+	Serial.println(pch);
 	if (pch == NULL)
 		return 0;	//can't find anything
 
 	if (0 != strcmp(pch, "rain"))
 		return 0;	//can't find "base:" as first token
 
-	pPayloadRain->rainCount = atol(strtok(NULL, ": ,|\r\n&"));
-	pPayloadRain->transmitCount = atol(strtok(NULL, ": ,|\r\n&"));
-	pPayloadRain->temperature = atoi(strtok(NULL, ": ,|\r\n&"));
-	pPayloadRain->supplyV = atol(strtok(NULL, ": ,|\r\n&"));
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	Serial.println(pch);
+	pPayloadRain->rainCount = atol(pch);
 
-	pch = strtok(NULL, ": ,|\r\n&");
-	unsigned long timeSinceLast = atol(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	Serial.println(pch);
+	pPayloadRain->transmitCount = atol(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	Serial.println(pch);
+	pPayloadRain->temperature = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	Serial.println(pch);
+	pPayloadRain->supplyV = atol(pch);
+
+	if (NULL != (pch = strtok(NULL, tok)))
+	{
+		Serial.println(pch);
+		unsigned long timeSinceLast = atol(pch);
+	}
 
 	return 1;
 }
@@ -140,18 +185,24 @@ int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 
 int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
 {
-	char* pch = strtok(str, ": ,|&");
+	char tok[] = ":, | \r\r&";
+	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
 
 	if (0 != strcmp(pch, "base"))
 		return 0;	//can't find "base:" as first token
 
-	pch = strtok(NULL, ": ,|\r\n&");
+	pch = strtok(NULL, tok);
+	if (pch == NULL)
+		return 0;
 	pPayloadBase->time = (time_t)atol(pch);
 
-	pch = strtok(NULL, ": ,|\r\n&");
-	unsigned long timeSinceLast = atol(pch);
+	pch = strtok(NULL, tok);
+	if (pch != NULL)
+	{
+		//unsigned long timeSinceLast = atol(pch);
+	}
 
 	return 1;
 }

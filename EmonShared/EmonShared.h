@@ -53,6 +53,10 @@ public:
 	static void PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
 
+	//String PrintEmonPayload(String &str, PayloadEmon *pPayloadEmon, unsigned long timeSinceLast = 0);
+	//String PrintRainPayload(String &str, PayloadRain *pPayloadRain, unsigned long timeSinceLast = 0);
+	static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
+
 	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
