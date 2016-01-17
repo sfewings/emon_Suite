@@ -370,7 +370,8 @@ void loop ()
 			}
 
 
-			if (node_id == BASE_NODE)						//emon base. Receives the time
+			if (node_id == BASE_NODE ||
+					node_id == BASE_JEENODE)						//emon base, now old and jeenode base Receives the time
 			{
 				basePayload = *((PayloadBase*)rf12_data);
 				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[2]));			 // print data to serial

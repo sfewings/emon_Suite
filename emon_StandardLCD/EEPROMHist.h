@@ -61,7 +61,7 @@ class EEPROMHistory
     unsigned short m_hourConsumed[EEPROM_HOURS];
     unsigned short m_hourGenerated[EEPROM_HOURS];
 
-    void init(const char* title, int offset, int range, const unsigned short *defaults);
+		void init(const char* title, int offset, int range, prog_uint16_t *defaults); // const unsigned short *defaults);
     void SerialPrint( const char* title, int EepromOffset, int range );
     unsigned short readEEPROM(int offset );
     void writeEEPROM(int offset, unsigned short value );
