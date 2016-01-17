@@ -42,9 +42,12 @@ PayloadRain rainPayload;
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
-
-unsigned long rainStartOfToday;
-bool rainReceived;
+//--------------------------------------------------------------------------------------------
+//Raifall variables
+//--------------------------------------------------------------------------------------------
+bool rainReceived;														//true after we have received an input from the rain gauge
+unsigned long dailyRainfall;									//amount of rain today
+unsigned long dayStartRainfall;								//raingauge counter at start of day recording
 
 //--------------------------------------------------------------------------------------------
 // Power variables
@@ -52,8 +55,6 @@ bool rainReceived;
 double wh_gen, wh_consuming;							//integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;											//used to calculate energy used per day (kWh/d)
 unsigned int pktsReceived;
-unsigned long dailyRainfall;
-unsigned long dayStartRainfall;						//daily Rainfall
 
 
 //--------------------------------------------------------------------------------------------
@@ -72,9 +73,13 @@ unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
 unsigned long request_NTP_Update;
 
-#define MAX_STRING 60
-char serialIn[MAX_STRING];
-int index = 0;
+
+//-------------------------------------------------------------------------------------------- 
+// Serial string parsing
+//-------------------------------------------------------------------------------------------- 
+#define MAX_SERIAL_STRING 60
+char serialIn[MAX_SERIAL_STRING];
+int serialInIndex = 0;
 
 //--------------------------------------------------------------------------------------------
 // Setup
@@ -97,6 +102,8 @@ void setup ()
 
 
 	pktsReceived = 0;
+
+	rainReceived = false;
 	dailyRainfall = 0;
 	dayStartRainfall = 0;
 
@@ -105,6 +112,8 @@ void setup ()
 
 	last_emontx = millis();
 	last_rainTx = millis();
+
+
 }
 //--------------------------------------------------------------------------------------------
 
@@ -149,19 +158,24 @@ void loop ()
 					dailyRainfall = 0;
 				}
 			}
+
+			//flash the LED
+			digitalWrite(4, HIGH);
+			delay(100);
+			digitalWrite(4, LOW);
+
 		}
 	}
 
 
 	while (Serial.available())
 	{
-		serialIn[index++] = Serial.read();
-		//		Serial.write(serialIn[index - 1]);
-		if (index >= MAX_STRING-1)
-			index = 0;		//overflow the buffer
-		if (serialIn[index-1] == '&') //'\n')	//end of line
+		serialIn[serialInIndex++] = Serial.read();
+		if (serialInIndex >= MAX_SERIAL_STRING - 1)
+			serialInIndex = 0;		//overflow the buffer
+		if (serialIn[serialInIndex - 1] == '\n')	//end of line
 		{
-			serialIn[index] = 0; //null terminate
+			serialIn[serialInIndex] = 0; //null terminate
 			Serial.println();
 			char* node = strchr(serialIn, ':');
 			if (node != 0)
@@ -179,7 +193,7 @@ void loop ()
 					}
 				}
 			}
-			index = 0;
+			serialInIndex = 0;
 		}
 	}
 	
