@@ -38,6 +38,7 @@
 PayloadEmon emonPayload;	
 PayloadBase basePayload;
 PayloadRain rainPayload;
+PayloadDisp dispPayload;
 
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
@@ -54,7 +55,7 @@ unsigned long dayStartRainfall;								//raingauge counter at start of day recor
 //--------------------------------------------------------------------------------------------
 double wh_gen, wh_consuming;							//integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;											//used to calculate energy used per day (kWh/d)
-unsigned int pktsReceived;
+//unsigned int pktsReceived;
 
 
 //--------------------------------------------------------------------------------------------
@@ -66,12 +67,12 @@ int thisHour;
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-int view = 1;								// Used to control which screen view is shown
 unsigned long last_emontx;					// Used to count time from last emontx update
 unsigned long last_rainTx;
+unsigned long last_dispTx; 
+
 unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
-unsigned long request_NTP_Update;
 
 
 //-------------------------------------------------------------------------------------------- 
@@ -98,10 +99,8 @@ void setup ()
 
 	EmonSerial::PrintEmonPayload(NULL);
 	EmonSerial::PrintRainPayload(NULL);
-	//EmonSerial::PrintBasePayload(NULL);
+	EmonSerial::PrintDispPayload(NULL);
 
-
-	pktsReceived = 0;
 
 	rainReceived = false;
 	dailyRainfall = 0;
@@ -112,6 +111,7 @@ void setup ()
 
 	last_emontx = millis();
 	last_rainTx = millis();
+	last_dispTx = millis();
 
 
 }
@@ -136,7 +136,7 @@ void loop ()
 			if (node_id == EMON_NODE)						// === EMONTX ====
 			{
 				//monitor the reliability of receival
-				pktsReceived++;
+				//pktsReceived++;
 
 				emonPayload = *(PayloadEmon*) rf12_data;		// get emontx payload data
 				EmonSerial::PrintEmonPayload(&emonPayload, millis() - last_emontx);				// print data to serial
@@ -158,12 +158,17 @@ void loop ()
 					dailyRainfall = 0;
 				}
 			}
+			if (node_id == DISPLAY_NODE)
+			{
+				dispPayload = *(PayloadDisp*)rf12_data;
+				EmonSerial::PrintDispPayload(&dispPayload, millis() - last_dispTx);			 // print data to serial
+				last_dispTx = millis();
+			}
 
 			//flash the LED
 			digitalWrite(4, HIGH);
 			delay(100);
 			digitalWrite(4, LOW);
-
 		}
 	}
 

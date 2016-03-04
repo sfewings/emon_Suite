@@ -116,6 +116,27 @@ void EmonSerial::PrintBasePayload(PayloadBase *pPayloadBase, unsigned long timeS
 	Serial.println();
 }
 
+void EmonSerial::PrintDispPayload(PayloadDisp *pPayloadDisp, unsigned long timeSinceLast)
+{
+	if (pPayloadDisp == NULL)
+	{
+		Serial.print(F("disp: temperature|ms_since_last_packet"));
+	}
+	else
+	{
+		Serial.print(F("disp: "));
+		Serial.print(pPayloadDisp->temperature);
+		if (timeSinceLast != 0)
+		{
+			Serial.print(F("|"));
+			Serial.print(timeSinceLast);
+		}
+	}
+	Serial.println();
+}
+
+
+
 int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
 {
 	char tok[] = ":, | \r\r&";
@@ -152,7 +173,6 @@ int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 {
 	char tok[] = ":, | \r\r&";
 	char* pch = strtok(str, tok);
-	Serial.println(pch);
 	if (pch == NULL)
 		return 0;	//can't find anything
 
@@ -160,22 +180,17 @@ int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 		return 0;	//can't find "base:" as first token
 
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	Serial.println(pch);
 	pPayloadRain->rainCount = atol(pch);
 
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	Serial.println(pch);
 	pPayloadRain->transmitCount = atol(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	Serial.println(pch);
 	pPayloadRain->temperature = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	Serial.println(pch);
 	pPayloadRain->supplyV = atol(pch);
 
 	if (NULL != (pch = strtok(NULL, tok)))
 	{
-		Serial.println(pch);
 		unsigned long timeSinceLast = atol(pch);
 	}
 
@@ -202,6 +217,27 @@ int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
 	if (pch != NULL)
 	{
 		//unsigned long timeSinceLast = atol(pch);
+	}
+
+	return 1;
+}
+
+int EmonSerial::ParseDispPayload(char* str, PayloadDisp *pPayloadDisp)
+{
+	char tok[] = ":, | \r\r&";
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "disp"))
+		return 0;	//can't find "disp:" as first token
+
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDisp->temperature = atoi(pch);
+
+	if (NULL != (pch = strtok(NULL, tok)))
+	{
+		unsigned long timeSinceLast = atol(pch);
 	}
 
 	return 1;

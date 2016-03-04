@@ -59,6 +59,7 @@ int temperature[NUM_THERMOMETERS];
 PayloadEmon emonPayload;
 PayloadRain rainPayload;
 PayloadBase basePayload;
+PayloadDisp dispPayload;
 
 RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
@@ -108,6 +109,8 @@ DallasTemperature temperatureSensor(&oneWire);
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
+#define  SEND_UPDATE_PERIOD			60	//seconds between updates
+
 time_t slow_update;									// Used to count time for slow 10s events
 time_t average_update;							// Used to store averages and totals
 unsigned long fast_update;					// Used to count time for fast 100ms events
@@ -302,6 +305,8 @@ void setup ()
 	EmonSerial::PrintEmonPayload(NULL);
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
+	EmonSerial::PrintDispPayload(NULL);
+
 
 	//let the startup LCD display for a while!
 	delay(2500);
@@ -416,7 +421,7 @@ void loop ()
 		temperature[eInside] = temperatureSensor.getTempCByIndex(0) * 100;
 	}
 
-	if (time >= (average_update + 60))
+	if (time >= (average_update + SEND_UPDATE_PERIOD))
 	{
 		average_update = time;
 
@@ -479,6 +484,12 @@ void loop ()
 				usageHistory.resetValue(eHour, currentHour);
 
 			}
+			//send the temperature every 60 seconds
+			dispPayload.temperature = temperature[eInside];
+			rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
+			rf12_sendWait(0);
+			EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
+
 			refreshScreen = true;	//every 60 seconds
 		}
 	}

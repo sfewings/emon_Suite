@@ -40,6 +40,13 @@ typedef struct {
 	unsigned long supplyV;									// unit supply voltage
 } PayloadRain;
 
+typedef struct {													// from the LCD display. Collects room temperature
+	int temperature;												//temperature in 100th of degrees
+} PayloadDisp;
+
+
+
+
 typedef struct {
 	time_t time; 
 } PayloadBase;
@@ -52,6 +59,7 @@ public:
 	static void PrintEmonPayload(PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
 	static void PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
+	static void PrintDispPayload(PayloadDisp* pPayloadDisp, unsigned long timeSinceLast = 0);
 
 	//String PrintEmonPayload(String &str, PayloadEmon *pPayloadEmon, unsigned long timeSinceLast = 0);
 	//String PrintRainPayload(String &str, PayloadRain *pPayloadRain, unsigned long timeSinceLast = 0);
@@ -60,7 +68,7 @@ public:
 	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
-
+	static int ParseDispPayload(char* str, PayloadDisp *pPayloadDisp);
 };
 
 #endif //EMON_SERIAL_H
