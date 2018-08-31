@@ -18,33 +18,24 @@
 // http://openenergymonitor.org/emon/license
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-#define DEBUG
+
 
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 
-#include <PortsLCD.h>
-#include <Time.h>
 #include <EmonShared.h>
+
+
+#include <PortsLCD.h>
+#include <Time/Time.h>
 
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
 
-//--------------------------------------------------------------------------------------------
-// Workaround for http://gcc.gnu.org/bugzilla/show_bug.cgi?id=34734
-//remove compiler warning "Warning: only initialized variables can be placed into program memory area" from 
-//	Serial.println(F("string literal"));
-//#ifdef PROGMEM
-//#undef PROGMEM
-//#define PROGMEM __attribute__((section(".progmem.data")))
-//#endif
-//--------------------------------------------------------------------------------------------
-
 PayloadEmon emonPayload;	
 PayloadBase basePayload;
 PayloadRain rainPayload;
-
 
 RF12Init rf12Init = { 15, RF12_915MHZ, 210 };
 
@@ -71,14 +62,14 @@ int dailyRainfall, dayStartRainfall;						//daily Rainfall
 #define GETTIMEOFDAY_TO_NTP_OFFSET 2208988800UL
 #define NUM_TIMESERVERS 7
 
-prog_char ntp0[] PROGMEM = "ntp1.anu.edu.au";
-prog_char ntp1[] PROGMEM = "nist1-ny.ustiming.org";
-prog_char ntp2[] PROGMEM = "ntp.exnet.com";
-prog_char ntp3[] PROGMEM = "ntps1-0.cs.tu-berlin.de";
-prog_char ntp4[] PROGMEM = "time.nist.gov";
-prog_char ntp5[] PROGMEM = "ntps1-0.cs.tu-berlin.de";
-prog_char ntp6[] PROGMEM = "time.nist.gov";
-prog_char *ntpList[] PROGMEM = { ntp0, ntp1, ntp2, ntp3, ntp4, ntp5, ntp6 };
+const char ntp0[] PROGMEM = "ntp1.anu.edu.au";
+const char ntp1[] PROGMEM = "nist1-ny.ustiming.org";
+const char ntp2[] PROGMEM = "ntp.exnet.com";
+const char ntp3[] PROGMEM = "ntps1-0.cs.tu-berlin.de";
+const char ntp4[] PROGMEM = "time.nist.gov";
+const char ntp5[] PROGMEM = "ntps1-0.cs.tu-berlin.de";
+const char ntp6[] PROGMEM = "time.nist.gov";
+PGM_P const ntpList[] PROGMEM = { ntp0, ntp1, ntp2, ntp3, ntp4, ntp5, ntp6 };
 
 uint8_t		clientPort = 123;
 uint32_t	lastNTPUpdate = 0;
@@ -92,6 +83,7 @@ int				currentTimeserver = 0;
 static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x32 };
 byte Ethernet::buffer[900];
 
+
 //-------------------------------------------------------------------------------------------- 
 //Pachube support
 //-------------------------------------------------------------------------------------------- 
@@ -99,7 +91,7 @@ byte Ethernet::buffer[900];
 #define FEED	"78783"
 #define APIKEY	"f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
 //#define USERAGENT "Cosm Arduino Example (78783)"
-prog_char website[] PROGMEM = "api.pachube.com";
+const char website[] PROGMEM = "api.pachube.com";
 uint8_t		webip[4];
 Stash			stash;
 word			sessionID;
@@ -278,7 +270,7 @@ void loop ()
 		// time to send request
 		request_NTP_Update = millis()+ 20000L;	//try again in 20 seconds
 		Serial.print(F("NTP request: "));
-		SerialPrint_P((char*)pgm_read_word(&(ntpList[currentTimeserver])));
+		SerialPrint_P((const char**)pgm_read_word(&(ntpList[currentTimeserver])));
 		Serial.println();
 
 		if (!ether.dnsLookup((char*)pgm_read_word(&(ntpList[currentTimeserver]))))
@@ -529,7 +521,7 @@ String TimeString(String& str, time_t time)
 	return str;
 }
 
-void SerialPrint_P(const prog_char* str)
+void SerialPrint_P(PGM_P* str)
 {
 	for (uint8_t c; (c = pgm_read_byte(str)); str++) 
 		Serial.write(c);
