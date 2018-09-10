@@ -34,6 +34,7 @@ const int GREEN_LED = 5;		 // Red tri-color LED
 
 
 PayloadEmon emonPayload;	
+PayloadEmon emonTempPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
 
@@ -88,10 +89,10 @@ byte Ethernet::buffer[900];
 //Pachube support
 //-------------------------------------------------------------------------------------------- 
 // change these settings to match your own setup
-#define FEED	"78783"
-#define APIKEY	"f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
-//#define USERAGENT "Cosm Arduino Example (78783)"
-const char website[] PROGMEM = "api.pachube.com";
+//#define FEED	"78783"
+//#define APIKEY	"f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
+#define APIKEY	"1OEHK8GL62859FAB"
+const char website[] PROGMEM = "api.thingspeak.com";
 uint8_t		webip[4];
 Stash			stash;
 word			sessionID;
@@ -130,11 +131,11 @@ void initEthercard()
 	ether.printIp(F("GW IP: "), ether.gwip);
 	ether.printIp(F("DNS IP: "), ether.dnsip);
 
-	Serial.print(F("Pachube DNS lookup : "));
+	Serial.print(F("ThingSpeak DNS lookup : "));
 	if (!ether.dnsLookup(website))
 		Serial.println(F("DNS failed"));
 
-	ether.printIp(F("Pachube SRV: "), ether.hisip);
+	ether.printIp(F("ThingSpeak SRV: "), ether.hisip);
 
 	ether.copyIp(webip, ether.hisip);
 }
@@ -224,6 +225,16 @@ void loop ()
 				delay(100);	
 				digitalWrite(RED_LED, HIGH );
 				power_calculations();					// do the power calculations
+			}
+
+			if (node_id == EMON_TEMP_NODE)
+			{
+				emonTempPayload = *(PayloadEmon*)rf12_data;		// get emontx payload data
+				EmonSerial::PrintEmonPayload(&emonTempPayload, 0);				// print data to serial
+
+				digitalWrite(RED_LED, LOW);
+				delay(100);
+				digitalWrite(RED_LED, HIGH);
 			}
 		
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
@@ -334,23 +345,23 @@ void loop ()
 		// we can determine the size of the generated message ahead of time
 		String str;
 		byte sd = stash.create();
-		stash.print("1,");
-		stash.println((word)emonPayload.power);
-		stash.print("2,");
-		stash.println((word)emonPayload.ct1);
-		stash.print("3,");
-		stash.println((word) wh_consuming);
-		stash.print("4,");
-		stash.println((word) wh_gen);
-		stash.print("5,");
-		stash.println(TemperatureString(str, emonPayload.temperature));
-		stash.print("6,");
-		stash.println(RainString(str, dailyRainfall));
+		stash.print("field1=");
+		stash.print((word)emonPayload.power);
+		stash.print("&field2=");
+		stash.print((word)emonPayload.ct1);
+		stash.print("&field3=");
+		stash.print((word) wh_consuming);
+		stash.print("&field4=");
+		stash.print((word) wh_gen);
+		stash.print("&field5=");
+		stash.print(TemperatureString(str, emonTempPayload.temperature));
+		stash.print("&field6=");
+		stash.print(RainString(str, dailyRainfall));
 		stash.save();
 		
 
-		Serial.println(emonPayload.temperature);
-		Serial.println(TemperatureString(str, emonPayload.temperature));
+		Serial.println(emonTempPayload.temperature);
+		Serial.println(TemperatureString(str, emonTempPayload.temperature));
 
 		pktsReceived = 0;
 
@@ -358,13 +369,24 @@ void loop ()
 
 		// generate the header with payload - note that the stash size is used,
 		// and that a "stash descriptor" is passed in as argument using "$H"
-		Stash::prepare(PSTR("PUT http://$F/v2/feeds/$F.csv HTTP/1.0" "\r\n"
-							"Host: $F" "\r\n"
-							"X-PachubeApiKey: $F" "\r\n"
-							"Content-Length: $D" "\r\n"
-							"\r\n"
-							"$H"),
-				website, PSTR(FEED), website, PSTR(APIKEY), stash.size(), sd);
+		//Stash::prepare(PSTR("PUT http://$F/v2/feeds/$F.csv HTTP/1.0" "\r\n"
+		//					"Host: $F" "\r\n"
+		//					"X-PachubeApiKey: $F" "\r\n"
+		//					"Content-Length: $D" "\r\n"
+		//					"\r\n"
+		//					"$H"),
+		//		website, PSTR(FEED), website, PSTR(APIKEY), stash.size(), sd);
+
+
+		Stash::prepare(PSTR("POST /update HTTP/1.1" "\r\n"
+			"Host: $F"  "\r\n"
+			"Connection: close"  "\r\n"
+			"X-THINGSPEAKAPIKEY: $F"  "\r\n"
+			"Content-Type: application/x-www-form-urlencoded"  "\r\n"
+			"Content-Length: $D"  "\r\n"
+			"\r\n"
+			"$H"),
+			website, PSTR(APIKEY), stash.size(), sd);
 
 		for (;;) 
 		{
