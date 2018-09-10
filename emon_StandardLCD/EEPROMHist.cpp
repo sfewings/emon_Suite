@@ -20,19 +20,14 @@
 // for some reason the default array elements below are being overwritten except the first section and the last section. So I have placed the dayRainfall and month rainfall at the
 // ends as that is the only history values we are using
 
-PROGMEM prog_uint16_t dayRainfallDefaults[EEPROM_DAYS] =
-																													//	{ 0, 0, 0, 0, 0, 0, 9 * 5, 12.4 * 5, 3.2 * 5, 12.4 * 5,
-																													//		0.6 * 5, 14.8 * 5, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-																													//		0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-																													//		0xffff };
-																													//{ 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-																												{ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-																													0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-																													0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-																													0xffff };
+PROGMEM const uint16_t dayRainfallDefaults[EEPROM_DAYS] =
+{ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+  0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+  0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+  0xffff };
 
 
-PROGMEM prog_uint16_t dayConsumedDefaults[EEPROM_DAYS] ={ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 
+PROGMEM const uint16_t dayConsumedDefaults[EEPROM_DAYS] ={ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
                                                           0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 
                                                           0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 
                                                           0xffff};
@@ -41,7 +36,7 @@ PROGMEM prog_uint16_t dayConsumedDefaults[EEPROM_DAYS] ={ 0xffff, 0xffff, 0xffff
                                                              //   11360, 1788, 22658, 8524, 7001, 10578, 8471, 17149, 11100, 4018, 
                                                              //   10438};
 
-PROGMEM prog_uint16_t dayGeneratedDefaults[EEPROM_DAYS] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 
+PROGMEM const uint16_t dayGeneratedDefaults[EEPROM_DAYS] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
                                                           0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 
                                                           0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 
                                                           0xffff};
@@ -50,13 +45,13 @@ PROGMEM prog_uint16_t dayGeneratedDefaults[EEPROM_DAYS] = { 0xffff, 0xffff, 0xff
                                                                // 3637, 5531, 8787, 5150, 7639, 7885, 4249, 2386, 5019, 2804, 
                                                                // 1646};
 
-PROGMEM prog_uint16_t monthConsumedDefaults[EEPROM_MONTHS] ={ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff};
+PROGMEM const uint16_t monthConsumedDefaults[EEPROM_MONTHS] ={ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff};
                                                               //{ 3240, 4033, 2784, 2870, 2863, 2931, 1273, 2738, 3010, 3420, 2931, 2654 };
   
-PROGMEM prog_uint16_t monthGeneratedDefaults[EEPROM_MONTHS] ={ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff};
+PROGMEM const uint16_t monthGeneratedDefaults[EEPROM_MONTHS] ={ 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff};
                                                               //{ 1574, 2186, 1741, 1810, 1037, 649, 233, 1274, 1767, 1923, 2062, 1981 };
 
-PROGMEM prog_uint16_t monthRainfallDefaults[EEPROM_MONTHS] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff };
+PROGMEM const uint16_t monthRainfallDefaults[EEPROM_MONTHS] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff };
 
 
 EEPROMHistory::EEPROMHistory()
@@ -83,7 +78,7 @@ void EEPROMHistory::SerialPrint( const char* title, int EepromOffset, int range 
     }
 }
 
-void EEPROMHistory::init(const char* title, int offset, int range, prog_uint16_t *defaults)
+void EEPROMHistory::init(const char* title, int offset, int range, const uint16_t *defaults)
 {
     unsigned short value;
 

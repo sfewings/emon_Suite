@@ -23,7 +23,7 @@
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <PortsLCD.h>
-#include <time.h>
+#include <Time/Time.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
@@ -46,7 +46,7 @@ double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	3						//number of jeenodes, node		1=emon,				 2=rain,				3=base
+#define MAX_NODES	4				//number of jeenodes, node		1=emon,	2=emonTemperature, 3=rain, 4=base, 
 enum { eWater, eInside, eOutside};	//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
@@ -92,12 +92,13 @@ typedef enum {
 	eRainFallTotals,
 	eDateTimeNow,
 	eDateTimeStartRunning,
-	eDiagnosis
+	eDiagnosisRainBase,
+	eDiagnosisEmons
 }  ButtonDisplayMode;
 
 volatile ButtonDisplayMode pushButton = eSummary;
 volatile unsigned long	g_RGlastTick = 0;
-ButtonDisplayMode lastPushButton = eDiagnosis;
+ButtonDisplayMode lastPushButton = eDiagnosisEmons;
 
 
 //---------------------------------------------------------------------------------------------------
@@ -234,7 +235,7 @@ void interruptHandlerPushButton()
 
 	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
-		if (pushButton == eDiagnosis)
+		if (pushButton == eDiagnosisEmons)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
@@ -345,17 +346,28 @@ void loop ()
 				txReceived[0]++;
 				lastReceived[0] = now();				// set time of last update to now
 
-				temperature[eWater] = emonPayload.temperature;
+				//temperature[eWater] = emonPayload.temperature;
 				power_calculations();							// do the power calculations
+			}
+			if (node_id == EMON_TEMP_NODE)
+			{
+				PayloadEmon emon2Payload = *(PayloadEmon*)rf12_data;							// get emontx payload data
+
+				EmonSerial::PrintEmonPayload(&emon2Payload, (now() - lastReceived[1]));				// print data to serial
+
+				txReceived[1]++;
+				lastReceived[1] = now();				// set time of last update to now
+
+				temperature[eWater] = emon2Payload.temperature;
 			}
 
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
 				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
 				
-				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[1]));			 // print data to serial
-				lastReceived[1] = now();
-				txReceived[1]++;
+				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[2]));			 // print data to serial
+				lastReceived[2] = now();
+				txReceived[2]++;
 
 				temperature[eOutside] = rainPayload.temperature;
 
@@ -375,13 +387,12 @@ void loop ()
 			}
 
 
-			if (node_id == BASE_NODE ||
-					node_id == BASE_JEENODE)						//emon base, now old and jeenode base Receives the time
+			if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
 			{
 				basePayload = *((PayloadBase*)rf12_data);
-				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[2]));			 // print data to serial
-				txReceived[2]++;
-				lastReceived[2] = now();
+				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[3]));			 // print data to serial
+				txReceived[3]++;
+				lastReceived[3] = now();
 
 				setTime(basePayload.time);
 				if (startTime == 0)
@@ -671,13 +682,30 @@ void loop ()
 				lcd.print(TimeString(str, now()));
 				break;
 			}
-			case eDiagnosis:
+			case eDiagnosisRainBase:
 			{
-				for (int i = 0; i < MAX_NODES; i++)
+				lcd.setCursor(0, 0);
+				lcd.print(F("Rain"));
+				lcd.setCursor(0, 1);
+				lcd.print(F("Base"));
+				for (int i = 2; i < 4; i++)
 				{
-					lcdInt(i*5, 0, (unsigned int)txReceived[i]);
-					lcd.setCursor(i*5, 1);
-					//use TemperatureString to display seconds since last receive
+					lcdInt(4, i % 2, (unsigned int)txReceived[i]);
+					lcd.setCursor(10, i % 2);
+					lcd.print(TimeSpanString(str, (now() - lastReceived[i])));
+				}
+				break;
+			}
+			case eDiagnosisEmons:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Emon1"));
+				lcd.setCursor(0, 1);
+				lcd.print(F("Emon2"));
+				for (int i = 0; i < 2; i++)
+				{
+					lcdInt(4, i % 2, (unsigned int)txReceived[i]);
+					lcd.setCursor(10, i % 2);
 					lcd.print(TimeSpanString(str, (now() - lastReceived[i])));
 				}
 				break;

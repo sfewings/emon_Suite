@@ -31,13 +31,16 @@
 //---------------------------------------------------------------------------------------------------
 // Serial print settings - disable all serial prints if SERIAL 0 - increases long term stability 
 //---------------------------------------------------------------------------------------------------
-#define SERIAL 1
+#define ENABLE_SERIAL 1
 //---------------------------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------------------------
 // RF12 settings 
 //---------------------------------------------------------------------------------------------------
+// 9Sep18 EMON_NODE and EMON_TEMP_NODE both transmit the same details fromthe same device type
+// EMON_NODE is used for Power and Solar. EMON_TEMP_NODE is for water temperature only
 RF12Init rf12Init = { EMON_NODE, RF12_915MHZ, 210 };
+//RF12Init rf12Init = { EMON_TEMP_NODE, RF12_915MHZ, 210 };
 
 //--------------------------------------------------------------------------------------------------
 // CT energy monitor setup definitions 
@@ -48,7 +51,8 @@ int RMS_VOLTAGE =			240;	//Assumed supply voltage (230V in UK).	Tolerance: +10%-
 int CT_BURDEN_RESISTOR =	15;	//value in ohms of burden resistor R3 and R6
 int CT_TURNS =				1500; //number of turns in CT sensor. 1500 is the vaue of the efergy CT 
 
-double CAL=(1.295000139 *1.6);			//*calibration coefficient* IMPORTANT - each monitor must be calibrated for maximum accuracy. See step 4 http://openenergymonitor.org/emon/node/58. Set to 1.295 for Seedstudio 100A current output CT (included in emonTx V2.0 kit)
+//double CAL=(1.295000139 *1.6);			//*calibration coefficient* IMPORTANT - each monitor must be calibrated for maximum accuracy. See step 4 http://openenergymonitor.org/emon/node/58. Set to 1.295 for Seedstudio 100A current output CT (included in emonTx V2.0 kit)
+double CAL = 5.014;		//10Sep18 For 28 Shann with new solar install
 //--------------------------------------------------------------------------------------------------
 
 
@@ -95,7 +99,7 @@ void setup()
 	
 	delay(20);
 	
-	if (SERIAL==0) {
+	if (ENABLE_SERIAL==0) {
 	Serial.println("serial disabled"); 
 	Serial.end();
 	}
