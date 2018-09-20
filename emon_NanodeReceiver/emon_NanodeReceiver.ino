@@ -38,7 +38,7 @@ PayloadEmon emonTempPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
 
-RF12Init rf12Init = { 15, RF12_915MHZ, 210 };
+RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, 210 };
 
 
 unsigned long rainStartOfToday;
