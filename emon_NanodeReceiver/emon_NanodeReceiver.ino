@@ -37,6 +37,7 @@ PayloadEmon emonPayload;
 PayloadEmon emonTempPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
+PayloadPulse pulsePayload;
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, 210 };
 
@@ -211,20 +212,36 @@ void loop ()
 		{
 			int node_id = (rf12_hdr & 0x1F);
 		
-			if (node_id == EMON_NODE)						// === EMONTX ====
+			//if (node_id == EMON_NODE)						// === EMONTX ====
+			//{
+			//	//monitor the reliability of receival
+			//	pktsReceived++;
+
+			//	emonPayload = *(PayloadEmon*)rf12_data;		// get emontx payload data
+			//	EmonSerial::PrintEmonPayload(&emonPayload, millis() - last_emontx);				// print data to serial
+			//	last_emontx = millis();				 // set time of last update to now
+
+
+			//	digitalWrite(RED_LED, LOW);
+			//	delay(100);
+			//	digitalWrite(RED_LED, HIGH);
+			//	power_calculations();					// do the power calculations
+			//}
+
+			if (node_id == PULSE_JEENODE)						// === EMONTX ====
 			{
 				//monitor the reliability of receival
 				pktsReceived++;
 
-				emonPayload = *(PayloadEmon*) rf12_data;		// get emontx payload data
-				EmonSerial::PrintEmonPayload(&emonPayload, millis() - last_emontx);				// print data to serial
+				pulsePayload = *(PayloadPulse*)rf12_data;		// get emontx payload data
+				EmonSerial::PrintPulsePayload(&pulsePayload, millis() - last_emontx);				// print data to serial
 				last_emontx = millis();				 // set time of last update to now
 
-			
-				digitalWrite(RED_LED, LOW );
-				delay(100);	
-				digitalWrite(RED_LED, HIGH );
-				power_calculations();					// do the power calculations
+
+				digitalWrite(RED_LED, LOW);
+				delay(100);
+				digitalWrite(RED_LED, HIGH);
+				power_calculations_pulse();					// do the power calculations
 			}
 
 			if (node_id == EMON_TEMP_NODE)
@@ -346,9 +363,11 @@ void loop ()
 		String str;
 		byte sd = stash.create();
 		stash.print("field1=");
-		stash.print((word)emonPayload.power);
+		//stash.print((word)emonPayload.power);
+		stash.print((word)pulsePayload.power[2]);
 		stash.print("&field2=");
-		stash.print((word)emonPayload.ct1);
+		//stash.print((word)emonPayload.ct1);
+		stash.print((word)pulsePayload.power[1]);
 		stash.print("&field3=");
 		stash.print((word) wh_consuming);
 		stash.print("&field4=");
@@ -366,17 +385,6 @@ void loop ()
 		pktsReceived = 0;
 
 		ether.copyIp(ether.hisip, webip);
-
-		// generate the header with payload - note that the stash size is used,
-		// and that a "stash descriptor" is passed in as argument using "$H"
-		//Stash::prepare(PSTR("PUT http://$F/v2/feeds/$F.csv HTTP/1.0" "\r\n"
-		//					"Host: $F" "\r\n"
-		//					"X-PachubeApiKey: $F" "\r\n"
-		//					"Content-Length: $D" "\r\n"
-		//					"\r\n"
-		//					"$H"),
-		//		website, PSTR(FEED), website, PSTR(APIKEY), stash.size(), sd);
-
 
 		Stash::prepare(PSTR("POST /update HTTP/1.1" "\r\n"
 			"Host: $F"  "\r\n"
@@ -399,15 +407,22 @@ void loop ()
 		// send the packet - this also releases all stash buffers once done
 		sessionID = ether.tcpSend();
 
+		// added from: http://jeelabs.net/boards/7/topics/2241
+		int freeCount = stash.freeCount();
+		if (freeCount <= 3) 
+		{ 
+			Stash::initMap(56); 
+		}
+
 		const char* reply = ether.tcpReply(sessionID);
 		Serial.print("sessionID=");
 		Serial.println(sessionID);
 
 		if (reply != NULL)
 		{
-			Serial.println(reply);
 			initEthercard();
 			g_etherResets++;
+			Serial.println(reply);
 		}
 		else
 		{
@@ -467,17 +482,30 @@ void loop ()
 //--------------------------------------------------------------------
 // Calculate power and energy variables
 //--------------------------------------------------------------------
-void power_calculations()
+//void power_calculations()
+//{
+//	//--------------------------------------------------
+//	// kWh calculation
+//	//--------------------------------------------------
+//	unsigned long lwhtime = whtime;
+//	whtime = millis();
+//	double whInc = emonPayload.ct1 * ((whtime - lwhtime) / 3600000.0);
+//	wh_gen=wh_gen+whInc;
+//	whInc = emonPayload.power *((whtime - lwhtime) / 3600000.0);
+//	wh_consuming=wh_consuming + whInc;
+//}
+
+void power_calculations_pulse()
 {
 	//--------------------------------------------------
 	// kWh calculation
 	//--------------------------------------------------
 	unsigned long lwhtime = whtime;
 	whtime = millis();
-	double whInc = emonPayload.ct1 * ((whtime - lwhtime) / 3600000.0);
-	wh_gen=wh_gen+whInc;
-	whInc = emonPayload.power *((whtime - lwhtime) / 3600000.0);
-	wh_consuming=wh_consuming+whInc;
+	double whInc = pulsePayload.power[1] * ((whtime - lwhtime) / 3600000.0);  //solar comes in on pin 2
+	wh_gen = wh_gen + whInc;
+	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
+	wh_consuming = wh_consuming + whInc;
 }
 
 String RainString(String& str, int rainGauge)

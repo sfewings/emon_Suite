@@ -97,6 +97,8 @@ String EmonSerial::PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsi
 
 
 
+
+
 void EmonSerial::PrintBasePayload(PayloadBase *pPayloadBase, unsigned long timeSinceLast)
 {
 	if (pPayloadBase == NULL)
@@ -135,7 +137,32 @@ void EmonSerial::PrintDispPayload(PayloadDisp *pPayloadDisp, unsigned long timeS
 	Serial.println();
 }
 
-
+void EmonSerial::PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long timeSinceLast)
+{
+	if (pPayloadPulse == NULL)
+	{
+		Serial.println(F("pulse: power1,pulse1,power2,pulse2,supplyV|ms_since_last_pkt"));
+	}
+	else
+	{
+		Serial.print(F("pulse: "));
+		Serial.print(pPayloadPulse->power1);
+		Serial.print(F(","));
+		Serial.print(pPayloadPulse->pulse1);
+		Serial.print(F(","));
+		Serial.print(pPayloadPulse->power2);
+		Serial.print(F(","));
+		Serial.print(pPayloadPulse->pulse2);
+		Serial.print(F(","));
+		Serial.print(pPayloadEmon->supplyV);
+		if (timeSinceLast != 0)
+		{
+			Serial.print(F("|"));
+			Serial.print(timeSinceLast);
+		}
+		Serial.println();
+	}
+}
 
 int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
 {

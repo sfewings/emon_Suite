@@ -10,11 +10,12 @@
 //#include <string.h> //needed for memcpy
 
 //RF12 node ID allocation
-#define EMON_NODE	10
-#define RAIN_NODE	11
-#define BASE_NODE	15
-#define BASE_JEENODE 16
-#define DISPLAY_NODE 20
+#define EMON_NODE	10				//Emon Tx with Power and Solar readings
+#define RAIN_NODE	11				//Rain gauge Jeenode with rainfall and outside temperature
+#define PULSE_JEENODE 12				//JeeNode with power pulse from main switch board
+#define EMON_TEMP_NODE	15			//Emon Tx with Temperature of hot water system
+#define BASE_JEENODE 16				//Nanode with LAN and NTP time
+#define DISPLAY_NODE 20				//Arduino with LCD display
 
 #define FEWINGS_MONITOR_GROUP  210
 
@@ -32,6 +33,16 @@ typedef struct {
 	int temperature;		//DB1820 temperature
 	int rainGauge;			//rain gauge pulse
 } PayloadEmon;
+
+typedef struct {
+	int power1;					// power value
+	int pulse1;					//pulse increments 
+	int power2;					// power value
+	int pulse2;					//pulse increments 
+	int supplyV;				// unit supply voltage
+} PayloadPulse;
+
+
 
 typedef struct {
 	volatile unsigned long rainCount;				//The count from the rain gauge
@@ -60,6 +71,7 @@ public:
 	static void PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
 	static void PrintDispPayload(PayloadDisp* pPayloadDisp, unsigned long timeSinceLast = 0);
+	static void PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long timeSinceLast = 0);
 
 	//String PrintEmonPayload(String &str, PayloadEmon *pPayloadEmon, unsigned long timeSinceLast = 0);
 	//String PrintRainPayload(String &str, PayloadRain *pPayloadRain, unsigned long timeSinceLast = 0);
@@ -69,6 +81,7 @@ public:
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
 	static int ParseDispPayload(char* str, PayloadDisp *pPayloadDisp);
+	//static int ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse);
 };
 
 #endif //EMON_SERIAL_H
