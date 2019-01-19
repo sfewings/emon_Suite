@@ -14,12 +14,12 @@
 #define FIRST_PIN 4
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 
-RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, 210 };
+RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 volatile unsigned short	g_wHrCount[NUM_PINS]		= { 0,0,0,0 };		//pulses since last call to MeterPulseLog()
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
 volatile unsigned long	g_period[NUM_PINS]			= { 0,0,0,0 };		//ms between last two pulses
-const		int							g_pulsePerWH[NUM_PINS]	= { 4,4,1,4 };		//number of pulses per wH for each input. Some are 4, some are 1					
+const		int							g_pulsePerWH[NUM_PINS]	= { 2,2,1,2 };		//number of pulses per wH for each input. Some are 2, some are 1
 PayloadPulse pulsePayload;
 
 
