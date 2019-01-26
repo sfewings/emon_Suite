@@ -60,7 +60,7 @@ void setup()
 	//				3				6				22
 	//				4				7				23
 
-	sleepDelay = 1000;	//15 seconds in milliseconds
+	sleepDelay = 30000;	//15 seconds in milliseconds
 	
 	temperaturePayload.numSensors = 0;
 	for (int i = 0; i < MAX_TEMPERATURE_SENSORS + 1; i++)

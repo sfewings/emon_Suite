@@ -38,8 +38,10 @@ PayloadEmon emonTempPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
+PayloadDisp displayPayload;
+PayloadTemperature temperaturePayload;
 
-RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, 210 };
+RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 
 unsigned long rainStartOfToday;
@@ -87,12 +89,10 @@ byte Ethernet::buffer[900];
 
 
 //-------------------------------------------------------------------------------------------- 
-//Pachube support
+//www.thingspeak.com support
 //-------------------------------------------------------------------------------------------- 
-// change these settings to match your own setup
-//#define FEED	"78783"
-//#define APIKEY	"f04d8709cfe8d8b88d5c843492a738f634f0fab11402e6c2abc2b4c7f6dfff31"
-#define APIKEY	"1OEHK8GL62859FAB"
+#define APIKEY_POWER				"1OEHK8GL62859FAB"
+#define APIKEY_TEMPERATURE	"TYG402MEEINATR4P"
 const char website[] PROGMEM = "api.thingspeak.com";
 uint8_t		webip[4];
 Stash			stash;
@@ -114,6 +114,7 @@ unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
 unsigned long web_update;
 unsigned long request_NTP_Update;
+bool	toggleWebUpdate = true;				//toggle between temperature and power updates to web
 
 void initEthercard()
 {
@@ -165,7 +166,7 @@ void setup ()
 	Serial.println();
 	
 	initEthercard();
-
+	
 	Serial.println(F("rf12_initialize"));
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
@@ -173,7 +174,11 @@ void setup ()
 	EmonSerial::PrintEmonPayload(NULL);
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
-
+	EmonSerial::PrintPulsePayload(NULL);
+	EmonSerial::PrintDispPayload(NULL);
+	EmonSerial::PrintTemperaturePayload(NULL);
+	
+	temperaturePayload.numSensors = 0;
 
 	pktsReceived = 0;
 	dailyRainfall = 0;
@@ -242,6 +247,27 @@ void loop ()
 				delay(100);
 				digitalWrite(RED_LED, HIGH);
 				power_calculations_pulse();					// do the power calculations
+			}
+
+			if (node_id == DISPLAY_NODE)
+			{
+				displayPayload = *(PayloadDisp*)rf12_data;								// get payload data
+				EmonSerial::PrintDispPayload(&displayPayload, 0);				// print data to serial
+
+				digitalWrite(RED_LED, LOW);
+				delay(100);
+				digitalWrite(RED_LED, HIGH);
+			}
+
+
+			if (node_id == TEMPERATURE_JEENODE)
+			{
+				temperaturePayload = *(PayloadTemperature*)rf12_data;								// get payload data
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload, 0);				// print data to serial
+				
+				digitalWrite(RED_LED, LOW);
+				delay(100);
+				digitalWrite(RED_LED, HIGH);
 			}
 
 			if (node_id == EMON_TEMP_NODE)
@@ -354,34 +380,72 @@ void loop ()
 		}
 	}
 
-	if (millis() - web_update > 60000)
+	if (millis() - web_update > 30000)
 	{
 		web_update = millis();
-		
-		// generate two fake values as payload - by using a separate stash,
-		// we can determine the size of the generated message ahead of time
+
 		String str;
 		byte sd = stash.create();
 		stash.print("field1=");
-		//stash.print((word)emonPayload.power);
-		stash.print((word)pulsePayload.power[2]);
-		stash.print("&field2=");
-		//stash.print((word)emonPayload.ct1);
-		stash.print((word)pulsePayload.power[1]);
-		stash.print("&field3=");
-		stash.print((word) wh_consuming);
-		stash.print("&field4=");
-		stash.print((word) wh_gen);
-		stash.print("&field5=");
-		stash.print(TemperatureString(str, emonTempPayload.temperature));
-		stash.print("&field6=");
-		stash.print(RainString(str, dailyRainfall));
+
+		toggleWebUpdate = !toggleWebUpdate;		//toggle
+		if (toggleWebUpdate)
+		{
+			//outside temperature
+			stash.print(rainPayload.temperature/100);
+			stash.print(".");
+			stash.print((rainPayload.temperature/10)%10);
+			stash.print("&field2=");
+			stash.print(displayPayload.temperature / 100);
+			stash.print(".");
+			stash.print((displayPayload.temperature / 10) % 10);
+			stash.print("&field3=");
+			stash.print(temperaturePayload.temperature[0] / 100);
+			stash.print(".");
+			stash.print((temperaturePayload.temperature[0] / 10) % 10);
+			stash.print("&field4=");
+			stash.print(temperaturePayload.temperature[1] / 100);
+			stash.print(".");
+			stash.print((temperaturePayload.temperature[1] / 10) % 10);
+			stash.print("&field5=");
+			stash.print(temperaturePayload.temperature[2] / 100);
+			stash.print(".");
+			stash.print((temperaturePayload.temperature[2] / 10) % 10);
+			stash.print("&field6=");
+			stash.print(temperaturePayload.temperature[3] / 100);
+			stash.print(".");
+			stash.print((temperaturePayload.temperature[3] / 10) % 10);
+			//stash.print(TemperatureString(str, displayPayload.temperature));
+			//stash.print("&field3=");
+			//stash.print(TemperatureString(str, temperaturePayload.temperature[0]));
+			//stash.print("&field4=");
+			//stash.print(TemperatureString(str, temperaturePayload.temperature[1]));
+			//stash.print("&field5=");
+			//stash.print(TemperatureString(str, temperaturePayload.temperature[2]));
+			//stash.print("&field6=");
+			//stash.print(TemperatureString(str, temperaturePayload.temperature[3]));
+			//stash.print("&field7=");
+			//stash.print(RainString(str, dailyRainfall));
+		}
+		else
+		{
+			stash.print((word)pulsePayload.power[2]);
+			stash.print("&field2=");
+			stash.print((word)pulsePayload.power[1]);
+			stash.print("&field3=");
+			stash.print((word)wh_consuming);
+			stash.print("&field4=");
+			stash.print((word)wh_gen);
+			stash.print("&field5=");
+			stash.print((word)pulsePayload.power[0]);
+			stash.print("&field6=");
+			stash.print((int)(dailyRainfall / 5));
+			stash.print(".");
+			stash.print((dailyRainfall % 5) * 2);
+			//stash.print(RainString(str, dailyRainfall));
+		}
+
 		stash.save();
-		
-
-		Serial.println(emonTempPayload.temperature);
-		Serial.println(TemperatureString(str, emonTempPayload.temperature));
-
 		pktsReceived = 0;
 
 		ether.copyIp(ether.hisip, webip);
@@ -394,7 +458,7 @@ void loop ()
 			"Content-Length: $D"  "\r\n"
 			"\r\n"
 			"$H"),
-			website, PSTR(APIKEY), stash.size(), sd);
+			website, (toggleWebUpdate?PSTR(APIKEY_TEMPERATURE): PSTR(APIKEY_POWER)), stash.size(), sd);
 
 		for (;;) 
 		{
@@ -413,6 +477,8 @@ void loop ()
 		{ 
 			Stash::initMap(56); 
 		}
+		Serial.print("stash.freeCount=");
+		Serial.println(freeCount);
 
 		const char* reply = ether.tcpReply(sessionID);
 		Serial.print("sessionID=");
@@ -507,6 +573,17 @@ void power_calculations_pulse()
 	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
 	wh_consuming = wh_consuming + whInc;
 }
+
+String RainStringPtr(String* str, int rainGauge)
+{
+	//raingauge increments in 0.2mm per value
+	*str = "";
+	*str += (int)(rainGauge / 5);
+	*str += ".";
+	*str += (rainGauge % 5) * 2;
+	return *str;
+}
+
 
 String RainString(String& str, int rainGauge)
 {
