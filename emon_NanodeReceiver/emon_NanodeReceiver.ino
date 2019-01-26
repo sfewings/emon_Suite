@@ -40,6 +40,7 @@ PayloadRain rainPayload;
 PayloadPulse pulsePayload;
 PayloadDisp displayPayload;
 PayloadTemperature temperaturePayload;
+PayloadHWS hwsPayload;
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
@@ -93,6 +94,8 @@ byte Ethernet::buffer[900];
 //-------------------------------------------------------------------------------------------- 
 #define APIKEY_POWER				"1OEHK8GL62859FAB"
 #define APIKEY_TEMPERATURE	"TYG402MEEINATR4P"
+#define APIKEY_HWS					"W5FD6RBQUGHU2DBP"
+
 const char website[] PROGMEM = "api.thingspeak.com";
 uint8_t		webip[4];
 Stash			stash;
@@ -114,7 +117,7 @@ unsigned long slow_update;					// Used to count time for slow 10s events
 unsigned long fast_update;					// Used to count time for fast 100ms events
 unsigned long web_update;
 unsigned long request_NTP_Update;
-bool	toggleWebUpdate = true;				//toggle between temperature and power updates to web
+byte	toggleWebUpdate = 0;				//toggle between temperature, power and hws updates to web
 
 void initEthercard()
 {
@@ -177,6 +180,7 @@ void setup ()
 	EmonSerial::PrintPulsePayload(NULL);
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintTemperaturePayload(NULL);
+	EmonSerial::PrintHWSPayload(NULL);
 	
 	temperaturePayload.numSensors = 0;
 
@@ -187,7 +191,9 @@ void setup ()
 	slow_update = millis();
 	fast_update = millis();
 	web_update = millis();
+	
 	request_NTP_Update = millis()+1000;	//update in 1 second
+	//request_NTP_Update = millis() + 24 * 60 * 60 * 10000L;	//update in 7 days
 
 
 	last_emontx = millis();
@@ -265,6 +271,16 @@ void loop ()
 				temperaturePayload = *(PayloadTemperature*)rf12_data;								// get payload data
 				EmonSerial::PrintTemperaturePayload(&temperaturePayload, 0);				// print data to serial
 				
+				digitalWrite(RED_LED, LOW);
+				delay(100);
+				digitalWrite(RED_LED, HIGH);
+			}
+
+			if (node_id == HWS_JEENODE)
+			{
+				hwsPayload = *(PayloadHWS*)rf12_data;								// get payload data
+				EmonSerial::PrintHWSPayload(&hwsPayload, 0);				// print data to serial
+
 				digitalWrite(RED_LED, LOW);
 				delay(100);
 				digitalWrite(RED_LED, HIGH);
@@ -380,18 +396,20 @@ void loop ()
 		}
 	}
 
-	if (millis() - web_update > 30000)
+	if (millis() - web_update > 20000)
 	{
 		web_update = millis();
 
-		String str;
 		byte sd = stash.create();
 		stash.print("field1=");
+		const char * apiKey;
+		if( ++toggleWebUpdate ==3) 
+			toggleWebUpdate=0;		//toggle
 
-		toggleWebUpdate = !toggleWebUpdate;		//toggle
-		if (toggleWebUpdate)
+		if (toggleWebUpdate == 0)
 		{
 			//outside temperature
+			apiKey = PSTR(APIKEY_TEMPERATURE);
 			stash.print(rainPayload.temperature/100);
 			stash.print(".");
 			stash.print((rainPayload.temperature/10)%10);
@@ -415,20 +433,10 @@ void loop ()
 			stash.print(temperaturePayload.temperature[3] / 100);
 			stash.print(".");
 			stash.print((temperaturePayload.temperature[3] / 10) % 10);
-			//stash.print(TemperatureString(str, displayPayload.temperature));
-			//stash.print("&field3=");
-			//stash.print(TemperatureString(str, temperaturePayload.temperature[0]));
-			//stash.print("&field4=");
-			//stash.print(TemperatureString(str, temperaturePayload.temperature[1]));
-			//stash.print("&field5=");
-			//stash.print(TemperatureString(str, temperaturePayload.temperature[2]));
-			//stash.print("&field6=");
-			//stash.print(TemperatureString(str, temperaturePayload.temperature[3]));
-			//stash.print("&field7=");
-			//stash.print(RainString(str, dailyRainfall));
 		}
-		else
+		else if( toggleWebUpdate == 1 )
 		{
+			apiKey = PSTR(APIKEY_POWER);
 			stash.print((word)pulsePayload.power[2]);
 			stash.print("&field2=");
 			stash.print((word)pulsePayload.power[1]);
@@ -444,6 +452,25 @@ void loop ()
 			stash.print((dailyRainfall % 5) * 2);
 			//stash.print(RainString(str, dailyRainfall));
 		}
+		else if (toggleWebUpdate == 2)
+		{
+			apiKey = PSTR(APIKEY_HWS);
+			stash.print((word)hwsPayload.temperature[0]);	//T1
+			stash.print("&field2=");
+			stash.print((word)hwsPayload.temperature[2]);	//T3
+			stash.print("&field3=");
+			stash.print((word)hwsPayload.temperature[5]);	//T1
+			stash.print("&field4=");
+			stash.print((word)hwsPayload.temperature[1]);	//T1
+			stash.print("&field5=");
+			stash.print((word)hwsPayload.temperature[4]);	//T1
+			stash.print("&field6=");
+			stash.print((word)hwsPayload.pump[0]);	//T1
+			stash.print("&field7=");
+			stash.print((word)hwsPayload.pump[1]);	//T1
+			stash.print("&field8=");
+			stash.print((word)hwsPayload.pump[2]);	//T1
+		}
 
 		stash.save();
 		pktsReceived = 0;
@@ -458,7 +485,7 @@ void loop ()
 			"Content-Length: $D"  "\r\n"
 			"\r\n"
 			"$H"),
-			website, (toggleWebUpdate?PSTR(APIKEY_TEMPERATURE): PSTR(APIKEY_POWER)), stash.size(), sd);
+			website, apiKey , stash.size(), sd);
 
 		for (;;) 
 		{

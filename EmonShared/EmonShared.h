@@ -10,12 +10,19 @@
 //#include <string.h> //needed for memcpy
 
 //RF12 node ID allocation
-#define EMON_NODE	10				//Emon Tx with Power and Solar readings
-#define RAIN_NODE	11				//Rain gauge Jeenode with rainfall and outside temperature
+#define EMON_NODE	10						//Emon Tx with Power and Solar readings
+#define RAIN_NODE	11						//Rain gauge Jeenode with rainfall and outside temperature
 #define PULSE_JEENODE 12				//JeeNode with power pulse from main switch board
 #define EMON_TEMP_NODE	15			//Emon Tx with Temperature of hot water system
-#define BASE_JEENODE 16				//Nanode with LAN and NTP time
-#define DISPLAY_NODE 20				//Arduino with LCD display
+#define BASE_JEENODE 16					//Nanode with LAN and NTP time
+#define DISPLAY_NODE 20					//Arduino with LCD display
+#define TEMPERATURE_JEENODE 21	//Jeenode with multiple DS180B temperature sensors 
+#define HWS_JEENODE 22					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
+
+#define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
+#define MAX_TEMPERATURE_SENSORS 10  //maximum number of temperature sensors on the temperature_JeeNode  
+#define HWS_TEMPERATURES 7			//number of temperature readings from the hot water system
+#define HWS_PUMPS 3							//number of pumps from the hot water system
 
 #define FEWINGS_MONITOR_GROUP  210
 
@@ -35,13 +42,10 @@ typedef struct {
 } PayloadEmon;
 
 typedef struct {
-	int power1;					// power value
-	int pulse1;					//pulse increments 
-	int power2;					// power value
-	int pulse2;					//pulse increments 
+	int power[PULSE_NUM_PINS];					// power values
+	int pulse[PULSE_NUM_PINS];					// pulse values 
 	int supplyV;				// unit supply voltage
 } PayloadPulse;
-
 
 
 typedef struct {
@@ -55,6 +59,15 @@ typedef struct {													// from the LCD display. Collects room temperature
 	int temperature;												//temperature in 100th of degrees
 } PayloadDisp;
 
+typedef struct {													// from JeeNode with many temperature sensors
+	int numSensors;
+	int temperature[MAX_TEMPERATURE_SENSORS+1];	//temperature in 100th of degrees. +1 for supplyV
+} PayloadTemperature;
+
+typedef struct {													// from JeeNode
+	byte temperature[HWS_TEMPERATURES];			//temperature in degrees only
+	bool pump[HWS_PUMPS];										//pump on or off
+} PayloadHWS;
 
 
 
@@ -72,16 +85,18 @@ public:
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
 	static void PrintDispPayload(PayloadDisp* pPayloadDisp, unsigned long timeSinceLast = 0);
 	static void PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long timeSinceLast = 0);
+	static void PrintTemperaturePayload(PayloadTemperature* pPayloadTemperature, unsigned long timeSinceLast = 0);
+	static void PrintHWSPayload(PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
 
-	//String PrintEmonPayload(String &str, PayloadEmon *pPayloadEmon, unsigned long timeSinceLast = 0);
-	//String PrintRainPayload(String &str, PayloadRain *pPayloadRain, unsigned long timeSinceLast = 0);
 	static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
 
 	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
 	static int ParseDispPayload(char* str, PayloadDisp *pPayloadDisp);
-	//static int ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse);
+	static int ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse);
+	static int ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadTemperature);
+	static int ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS);
 };
 
 #endif //EMON_SERIAL_H

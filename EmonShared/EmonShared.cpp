@@ -1,5 +1,6 @@
 #include "EmonShared.h"
 
+char tok[] = ":, | \r\r&";  //tokens used to separate 
 
 
 void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
@@ -141,20 +142,22 @@ void EmonSerial::PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long ti
 {
 	if (pPayloadPulse == NULL)
 	{
-		Serial.println(F("pulse: power1,pulse1,power2,pulse2,supplyV|ms_since_last_pkt"));
+		Serial.println(F("pulse: power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
 	}
 	else
 	{
 		Serial.print(F("pulse: "));
-		Serial.print(pPayloadPulse->power1);
-		Serial.print(F(","));
-		Serial.print(pPayloadPulse->pulse1);
-		Serial.print(F(","));
-		Serial.print(pPayloadPulse->power2);
-		Serial.print(F(","));
-		Serial.print(pPayloadPulse->pulse2);
-		Serial.print(F(","));
-		Serial.print(pPayloadEmon->supplyV);
+		for(int i=0; i< PULSE_NUM_PINS;i++)
+		{
+			Serial.print(pPayloadPulse->power[i]);
+			Serial.print(F(","));
+		}
+		for (int i = 0; i < PULSE_NUM_PINS; i++)
+		{
+			Serial.print(pPayloadPulse->pulse[i]);
+			Serial.print(F(","));
+		}
+		Serial.print(pPayloadPulse->supplyV);
 		if (timeSinceLast != 0)
 		{
 			Serial.print(F("|"));
@@ -164,9 +167,68 @@ void EmonSerial::PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long ti
 	}
 }
 
+void EmonSerial::PrintTemperaturePayload(PayloadTemperature *pPayloadTemperature, unsigned long timeSinceLast)
+{
+	if (pPayloadTemperature == NULL)
+	{
+		Serial.print(F("temp: numSensors,temperature[0..numSensors],supplyV|ms_since_last_packet"));
+	}
+	else
+	{
+		Serial.print(F("temp: "));
+		Serial.print(pPayloadTemperature->numSensors);
+		for (int i = 0; i < pPayloadTemperature->numSensors; i++)
+		{
+			Serial.print(F(","));
+			Serial.print(pPayloadTemperature->temperature[i]);
+		}
+		Serial.print(F(","));
+		Serial.print(pPayloadTemperature->temperature[pPayloadTemperature->numSensors]);
+
+		if (timeSinceLast != 0)
+		{
+			Serial.print(F("|"));
+			Serial.print(timeSinceLast);
+		}
+	}
+	Serial.println();
+}
+
+void EmonSerial::PrintHWSPayload(PayloadHWS *pPayloadHWS, unsigned long timeSinceLast)
+{
+	if (pPayloadHWS == NULL)
+	{
+		Serial.print(F("hws: temperature[0..7],pump[0..2]|ms_since_last_packet"));
+	}
+	else
+	{
+		Serial.print(F("hws: "));
+		for (int i = 0; i < HWS_TEMPERATURES; i++)
+		{
+			Serial.print(pPayloadHWS->temperature[i]);
+			Serial.print(F(","));
+		}
+		for (int i = 0; i < HWS_PUMPS; i++)
+		{
+			Serial.print(pPayloadHWS->pump[i]);
+			if( i< HWS_PUMPS-1 ) 
+				Serial.print(F(","));
+		}
+
+		if (timeSinceLast != 0)
+		{
+			Serial.print(F("|"));
+			Serial.print(timeSinceLast);
+		}
+	}
+	Serial.println();
+}
+
+
+
 int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
 {
-	char tok[] = ":, | \r\r&";
+	//char tok[] = ":, | \r\r&";
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
@@ -198,13 +260,13 @@ int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
 
 int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 {
-	char tok[] = ":, | \r\r&";
+	//char tok[] = ":, | \r\r&";
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
 
 	if (0 != strcmp(pch, "rain"))
-		return 0;	//can't find "base:" as first token
+		return 0;	//can't find "rain:" as first token
 
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadRain->rainCount = atol(pch);
@@ -227,7 +289,7 @@ int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 
 int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
 {
-	char tok[] = ":, | \r\r&";
+	//char tok[] = ":, | \r\r&";
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
@@ -251,7 +313,7 @@ int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
 
 int EmonSerial::ParseDispPayload(char* str, PayloadDisp *pPayloadDisp)
 {
-	char tok[] = ":, | \r\r&";
+	//char tok[] = ":, | \r\r&";
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
@@ -265,6 +327,93 @@ int EmonSerial::ParseDispPayload(char* str, PayloadDisp *pPayloadDisp)
 	if (NULL != (pch = strtok(NULL, tok)))
 	{
 		unsigned long timeSinceLast = atol(pch);
+	}
+
+	return 1;
+}
+
+
+int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
+{
+	//char tok[] = ":, | \r\r&";
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "pulse"))
+		return 0;	//can't find "pulse:" as first token
+	
+	for (int i = 0; i < PULSE_NUM_PINS; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadPulse->power[i] = atoi(pch);
+	}
+	for (int i = 0; i < PULSE_NUM_PINS; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadPulse->pulse[i] = atoi(pch);
+	}
+
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadPulse->supplyV = atol(pch);
+
+
+	if (NULL != (pch = strtok(NULL, tok)))
+	{
+		unsigned long timeSinceLast = atol(pch);
+	}
+
+	return 1;
+}
+
+int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadTemperature)
+{
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "temp"))
+		return 0;	//can't find "disp:" as first token
+
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadTemperature->numSensors = atoi(pch);
+	if (pPayloadTemperature->numSensors > MAX_TEMPERATURE_SENSORS)
+		return 0;  //don't support more than ten sensors!
+	
+	for (int i = 0; i < pPayloadTemperature->numSensors; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) 
+			return 0;
+		pPayloadTemperature->temperature[i] = atoi(pch);
+	}
+	if (NULL != (pch = strtok(NULL, tok)))
+	{
+		unsigned long timeSinceLast = atol(pch);
+	}
+
+	return 1;
+}
+
+int EmonSerial::ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS)
+{
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "hws"))
+		return 0;	//can't find "disp:" as first token
+
+	for (int i = 0; i < HWS_TEMPERATURES; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) 
+			return 0;
+		pPayloadHWS->temperature[i] = (byte) atoi(pch);
+	}
+	for (int i = 0; i < HWS_PUMPS; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok)))
+			return 0;
+		pPayloadHWS->pump[i] = (0!=atoi(pch));
 	}
 
 	return 1;
