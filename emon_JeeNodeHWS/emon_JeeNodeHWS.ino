@@ -18,22 +18,13 @@ RF12Init rf12Init = { HWS_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 //--------------------------------------------------------------------------------------------
 // RFM12B Setup
 //--------------------------------------------------------------------------------------------
-
-void printAddress(uint8_t deviceAddress[8])
+void LED_On(int ms)
 {
-	Serial.print("{ ");
-	for (uint8_t i = 0; i < 8; i++)
-	{
-		// zero pad the address if necessary
-		Serial.print("0x");
-		if (deviceAddress[i] < 16) Serial.print("0");
-		Serial.print(deviceAddress[i], HEX);
-		if (i < 7) Serial.print(", ");
-
-	}
-	Serial.print(" }");
+	pinMode(5, OUTPUT);
+	digitalWrite(5, 1);
+	delay(ms);
+	digitalWrite(5, 0);
 }
-
 
 void setup()
 {
@@ -43,6 +34,7 @@ void setup()
 
 	Serial.println(F("Fewings Jeenode Heattrap solar HWS node for emon network"));
 
+	LED_On(500);
 	// Data wire JeeNode port,	Arduino pin,		RF12 Group
 	//				1				4				20
 	//				2				5				21
@@ -63,43 +55,48 @@ void loop()
 	char line[256] = "";
 	char* pch= NULL;
 	
-	//format is THx, 097, 066, 066, 062, 064, 060,PCB,042 ,PUMPS 1-4, ON  , ON  , OFF , OFF , Pump mA,2694\n\r
-	if (Serial.readBytesUntil('\r', line, 256))
-		;// Serial.println(line);
-	pch = strtok(line, tok );
-
-	if (strcmp(pch, "THx") == 0)
+	//format is THx, 097, 066, 066, 062, 064, 060,PCB,042 ,PUMPS 1-4, ON  , ON  , OFF , OFF , Pump mA,2694\r\n
+	if (Serial.readBytesUntil('\n', line, 256))
 	{
-		for (int i = 0; i < HWS_TEMPERATURES - 1; i++)
+		pch = strtok(line, tok);
+
+		if (strcmp(pch, "THx") == 0)
 		{
+			for (int i = 0; i < HWS_TEMPERATURES - 1; i++)
+			{
+				pch = strtok(NULL, tok);
+				hwsPayload.temperature[i] = (byte)atoi(pch);
+			}
+			pch = strtok(NULL, tok);	//swallow the "PCB"
 			pch = strtok(NULL, tok);
-			hwsPayload.temperature[i] = (byte)atoi(pch);
+			hwsPayload.temperature[HWS_TEMPERATURES - 1] = (byte)atoi(pch);
+			pch = strtok(NULL, tok);	//swallow the "PUMPS 1-4"
+			for (int i = 0; i < HWS_PUMPS; i++)
+			{
+				pch = strtok(NULL, tok);
+				hwsPayload.pump[i] = strcmp(pch, " OFF ");
+			}
+
+			//transmit
+			rf12_sleep(RF12_WAKEUP);
+			int wait = 1000;
+			while (!rf12_canSend() && --wait)
+				rf12_recvDone();
+			if (wait)
+			{
+				rf12_sendStart(0, &hwsPayload, sizeof(PayloadHWS));
+
+				rf12_sendWait(0);
+			}
+			rf12_sleep(RF12_SLEEP);
+
+			EmonSerial::PrintHWSPayload(&hwsPayload);
+
+			//turn the led on pin 5 (port 2) on for 20ms
+			LED_On(100);
+
+			delay(50);	//time for the serial buffer to empty
 		}
-		pch = strtok(NULL, tok);	//swallow the "PCB"
-		pch = strtok(NULL, tok);
-		hwsPayload.temperature[HWS_TEMPERATURES - 1] = (byte)atoi(pch);
-		pch = strtok(NULL, tok);	//swallow the "PUMPS 1-4"
-		for (int i = 0; i < HWS_PUMPS; i++)
-		{
-			pch = strtok(NULL, tok);
-			hwsPayload.pump[i] = strcmp(pch, " OFF ");
-		}
-
-		//transmit
-		rf12_sleep(RF12_WAKEUP);
-		int wait = 1000;
-		while (!rf12_canSend() && wait--)
-			rf12_recvDone();
-		if (wait)
-		{
-			rf12_sendStart(0, &hwsPayload, sizeof(PayloadHWS));
-
-			rf12_sendWait(0);
-		}
-		rf12_sleep(RF12_SLEEP);
-
-		EmonSerial::PrintHWSPayload(&hwsPayload);
-
-		delay(50);	//time for the serial buffer to empty
 	}
+	LED_On(1);
 }
