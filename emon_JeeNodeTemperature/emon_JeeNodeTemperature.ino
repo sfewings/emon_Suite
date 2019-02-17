@@ -10,13 +10,18 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#define PORTS 4		//number of ports on the JeeNode
+#define PORTS 4							//number of ports on the JeeNode
 
 DallasTemperature *pDallasOneWire[PORTS];			// Pass our oneWire reference to Dallas Temperature.
-int numberOfSensors[PORTS];							//count of sensors on each device/pin
-int sleepDelay;											//sleep delay depends on node. So two nodes don't always transmit together
-int numberOfDevices;								//The number of temperature sensors connected to the device
+int numberOfSensors[PORTS];										//count of sensors on each device/pin
+int sleepDelay;																//sleep delay depends on node. So two nodes don't always transmit together
+int numberOfDevices;													//The number of temperature sensors connected to the device
 PayloadTemperature temperaturePayload;
+
+//moving average buffer and index
+#define READING_HISTORY 4		//number of values to average over
+int readings[MAX_TEMPERATURE_SENSORS][READING_HISTORY];
+int readingIndex = 0;
 
 #define ENABLE_SERIAL 1
 
@@ -60,16 +65,16 @@ void setup()
 	//				3				6				22
 	//				4				7				23
 
-	sleepDelay = 30000;	//15 seconds in milliseconds
-	
+	sleepDelay = 30000;	//30 seconds in milliseconds
+
 	temperaturePayload.numSensors = 0;
 	for (int i = 0; i < MAX_TEMPERATURE_SENSORS + 1; i++)
 		temperaturePayload.temperature[i] = 0;
 
 	for (int port = 1; port <= PORTS; port++)
 	{
-		OneWire* pOneWire = new OneWire(port+3);	//
-		pDallasOneWire[port-1] = new DallasTemperature(pOneWire);
+		OneWire* pOneWire = new OneWire(port + 3);	//
+		pDallasOneWire[port - 1] = new DallasTemperature(pOneWire);
 		pDallasOneWire[port - 1]->begin();
 		numberOfSensors[port - 1] = pDallasOneWire[port - 1]->getDeviceCount();
 		temperaturePayload.numSensors += numberOfSensors[port - 1];
@@ -78,7 +83,7 @@ void setup()
 			Serial.print(F("Temperature sensors on Jeenode port "));
 			Serial.print(port);
 			Serial.print(F(", arduino pin "));
-			Serial.println(port+3);
+			Serial.println(port + 3);
 
 			for (int i = 0; i < numberOfSensors[port - 1]; i++)
 			{
@@ -102,11 +107,32 @@ void setup()
 	if (temperaturePayload.numSensors == 0)
 		Serial.println(F("No temperature sensors discovered"));
 
+
+
+	//initialise the reading history
+	int readingNum = 0;
+	for (int i = 0; i < PORTS; i++)
+	{
+		if (numberOfSensors[i])
+		{
+			pDallasOneWire[i]->requestTemperatures();
+			for (int t = 0; t < numberOfSensors[i]; t++)
+			{
+				int reading = 0;
+				for (int j = 0; j < READING_HISTORY; j++)
+					readings[readingNum][j] = pDallasOneWire[i]->getTempCByIndex(t) * 100;
+				readingNum++;
+			}
+		}
+	}
+
 	EmonSerial::PrintTemperaturePayload(NULL);
 
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
 	rf12_sleep(RF12_SLEEP);
 	EmonSerial::PrintRF12Init(rf12Init);
+	Serial.println("Initialisation complete");
+	delay(50); 	//time for the serial buffer to empty
 }
 
 void loop()
@@ -119,10 +145,30 @@ void loop()
 			pDallasOneWire[i]->requestTemperatures();
 			for (int t = 0; t < numberOfSensors[i]; t++)
 			{
-				temperaturePayload.temperature[readingNum++] = pDallasOneWire[i]->getTempCByIndex(t) * 100;
+				readings[readingNum][readingIndex] = pDallasOneWire[i]->getTempCByIndex(t) * 100;
+				int reading = 0;
+				for (int j = 0; j < READING_HISTORY; j++)
+					reading += readings[readingNum][j];
+				temperaturePayload.temperature[readingNum++] = reading / READING_HISTORY;
 			}
 		}
 	}
+	readingIndex = (++readingIndex) % READING_HISTORY;
+
+
+	//debug output
+	for (int i = 0; i < temperaturePayload.numSensors; i++)
+	{
+		for (int j = 0; j < READING_HISTORY; j++)
+		{
+			Serial.print( readings[i][j] );
+			if( j < READING_HISTORY-1)
+				Serial.print(",");
+		}
+		Serial.println();
+	}
+
+
 	//add the current supply voltage at the end
 	temperaturePayload.temperature[readingNum] = readVcc();
 
@@ -142,7 +188,7 @@ void loop()
 
 	EmonSerial::PrintTemperaturePayload(&temperaturePayload);
 	
-	delay(50);	//time for the serial buffer to empty
+	delay(200);	//time for the serial buffer to empty
 
 	//turn the led on pin 5 (port 2) on for 20ms
 	pinMode(9, OUTPUT);
