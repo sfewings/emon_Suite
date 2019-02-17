@@ -19,7 +19,7 @@ RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 volatile unsigned short	g_wHrCount[NUM_PINS]		= { 0,0,0,0 };		//pulses since last call to MeterPulseLog()
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
 volatile unsigned long	g_period[NUM_PINS]			= { 0,0,0,0 };		//ms between last two pulses
-const		int							g_pulsePerWH[NUM_PINS]	= { 2,2,1,2 };		//number of pulses per wH for each input. Some are 2, some are 1
+const		double					g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,1.0,0.4 };		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
 PayloadPulse pulsePayload;
 
 
@@ -59,7 +59,7 @@ unsigned short MeterCurrentWatts(int pin)
 	else
 		thisPeriod = tick - lastTick;
 
-	periodPerWH = (double)1000 * 3600 / g_pulsePerWH[pin - FIRST_PIN];
+	periodPerWH = 1000.0 * 3600.0 / g_pulsePerWH[pin - FIRST_PIN];
 
 	if (thisPeriod < lastPeriod)
 		watts = periodPerWH / lastPeriod;		//report the watts for the last tick period
