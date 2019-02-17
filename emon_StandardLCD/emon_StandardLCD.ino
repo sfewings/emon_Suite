@@ -60,6 +60,7 @@ PayloadBase basePayload;
 PayloadDisp dispPayload;
 PayloadPulse pulsePayload;
 PayloadHWS hwsPayload;
+PayloadTemperature temperaturePayload;
 
 RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
@@ -89,16 +90,18 @@ typedef enum {
 	eMaxTemperatures,
 	eMinTemperatures,
 	eRainFall,
+	eRoomTemperatures,
 	eRainFallTotals,
 	eDateTimeNow,
 	eDateTimeStartRunning,
 	eDiagnosisRainBase,
-	eDiagnosisEmons
+	eDiagnosisPulseHWS,
+	eDisgnosisTempEmons
 }  ButtonDisplayMode;
 
 volatile ButtonDisplayMode pushButton = eSummary;
 volatile unsigned long	g_RGlastTick = 0;
-ButtonDisplayMode lastPushButton = eDiagnosisEmons;
+ButtonDisplayMode lastPushButton = eDisgnosisTempEmons;
 
 
 //---------------------------------------------------------------------------------------------------
@@ -235,7 +238,7 @@ void interruptHandlerPushButton()
 
 	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
-		if (pushButton == eDiagnosisEmons)
+		if (pushButton == eDisgnosisTempEmons)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
@@ -367,18 +370,18 @@ void loop ()
 				//temperature[eWater] = emonPayload.temperature;
 				power_calculations_pulse();							// do the power calculations
 			}
-			//if (node_id == EMON_TEMP_NODE)
-			//{
-			//	Serial.print("4");
-			//	PayloadEmon emon2Payload = *(PayloadEmon*)rf12_data;							// get emontx payload data
+			if (node_id == TEMPERATURE_JEENODE)
+			{
+				Serial.print("4");
+				temperaturePayload = *(PayloadTemperature*)rf12_data;							// get emontx payload data
 
-			//	EmonSerial::PrintEmonPayload(&emon2Payload, (now() - lastReceived[eTemp]));				// print data to serial
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload, (now() - lastReceived[eTemp]));				// print data to serial
 
-			//	txReceived[eTemp]++;
-			//	lastReceived[eTemp] = now();				// set time of last update to now
-
-			//	temperature[eWater] = emon2Payload.temperature;
-			//}
+				txReceived[eTemp]++;
+				lastReceived[eTemp] = now();				// set time of last update to now
+				//we don't use any of the temperatures from the temperature sensor
+				//temperature[eWater] = emon2Payload.temperature;
+			}
 
 			if (node_id == HWS_JEENODE)
 			{
@@ -704,6 +707,21 @@ void loop ()
 				lcd.print(TemperatureString(str, rainPayload.supplyV/10));
 				break;
 			}
+			case eRoomTemperatures:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Rm Temp:"));
+				lcd.setCursor(11, 0);
+				//3 is room temperature
+				lcd.print(TemperatureString(str, temperaturePayload.temperature[3]));
+
+				lcd.setCursor(0, 1);
+				lcd.print(F("Supply V  : "));
+				lcd.setCursor(11, 1);
+				//the battery voltage is in the array past the last sensor
+				lcd.print(TemperatureString(str, temperaturePayload.temperature[temperaturePayload.numSensors] / 10));
+				break;
+			}
 			case eRainFallTotals:
 			{
 				unsigned short totalRain = (rainGaugeReadingReceived ? dailyRainfall : 0);
@@ -746,28 +764,42 @@ void loop ()
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Rain"));
+				lcdInt(4, 0, (unsigned int)txReceived[eRain]);
+				lcd.setCursor(10, 0);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eRain])));
 				lcd.setCursor(0, 1);
 				lcd.print(F("Base"));
-				for (int i = 2; i < 4; i++)
-				{
-					lcdInt(4, i % 2, (unsigned int)txReceived[i]);
-					lcd.setCursor(10, i % 2);
-					lcd.print(TimeSpanString(str, (now() - lastReceived[i])));
-				}
+				lcdInt(4, 1, (unsigned int)txReceived[eBase]);
+				lcd.setCursor(10, 1);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eBase])));
 				break;
 			}
-			case eDiagnosisEmons:
+			case eDiagnosisPulseHWS:
 			{
 				lcd.setCursor(0, 0);
-				lcd.print(F("Emon1"));
+				lcd.print(F("Pulse"));
+				lcdInt(4, 0, (unsigned int)txReceived[ePulse]);
+				lcd.setCursor(10, 0);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[ePulse])));
 				lcd.setCursor(0, 1);
-				lcd.print(F("Emon2"));
-				for (int i = 0; i < 2; i++)
-				{
-					lcdInt(4, i % 2, (unsigned int)txReceived[i]);
-					lcd.setCursor(10, i % 2);
-					lcd.print(TimeSpanString(str, (now() - lastReceived[i])));
-				}
+				lcd.print(F("HWS"));
+				lcdInt(4, 1, (unsigned int)txReceived[eHWS]);
+				lcd.setCursor(10, 1);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eHWS])));
+				break;
+			}
+			case eDisgnosisTempEmons:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Temp"));
+				lcdInt(4, 0, (unsigned int)txReceived[eTemp]);
+				lcd.setCursor(10, 0);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eTemp])));
+				lcd.setCursor(0, 1);
+				lcd.print(F("Emon"));
+				lcdInt(4, 1, (unsigned int)txReceived[eEmon]);
+				lcd.setCursor(10, 1);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eEmon])));
 				break;
 			}
 		}
