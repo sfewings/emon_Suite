@@ -31,6 +31,7 @@
 
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
+const int RESET_OUT = A0;		//the pin tied to the reset input
 
 
 PayloadEmon emonPayload;	
@@ -150,11 +151,13 @@ void initEthercard()
 //--------------------------------------------------------------------------------------------
 void setup () 
 {
-	pinMode(RED_LED, OUTPUT);	
+	digitalWrite(RESET_OUT, HIGH);
+	pinMode(RESET_OUT, OUTPUT);
+
+	pinMode(RED_LED, OUTPUT);
 	digitalWrite(RED_LED, LOW );		//Red LED has inverted logic. LOW is on, HIGH is off!
 	pinMode(GREEN_LED, OUTPUT);
 	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
-
 	Serial.begin(9600);
 	
 	delay(1000);
@@ -401,7 +404,6 @@ void loop ()
 		web_update = millis();
 
 		byte sd = stash.create();
-		stash.print("field1=");
 		const char * apiKey;
 		if( ++toggleWebUpdate ==3) 
 			toggleWebUpdate=0;		//toggle
@@ -410,33 +412,54 @@ void loop ()
 		{
 			//outside temperature
 			apiKey = PSTR(APIKEY_TEMPERATURE);
-			stash.print(rainPayload.temperature/100);
-			stash.print(".");
-			stash.print((rainPayload.temperature/10)%10);
-			stash.print("&field2=");
-			stash.print(displayPayload.temperature / 100);
-			stash.print(".");
-			stash.print((displayPayload.temperature / 10) % 10);
-			stash.print("&field3=");
+			if (rainPayload.temperature != 0)
+			{
+				stash.print(F("field1="));
+				stash.print(rainPayload.temperature / 100);
+				stash.print(F("."));
+				stash.print((rainPayload.temperature / 10) % 10);
+			}
+			if (displayPayload.temperature != 0)
+			{
+				stash.print(F("&field2="));
+				stash.print(displayPayload.temperature / 100);
+				stash.print(F("."));
+				stash.print((displayPayload.temperature / 10) % 10);
+			}
+			if (temperaturePayload.temperature[0] != 0)
+			{
+				stash.print(F("&field3="));
 			stash.print(temperaturePayload.temperature[0] / 100);
-			stash.print(".");
+			stash.print(F("."));
 			stash.print((temperaturePayload.temperature[0] / 10) % 10);
-			stash.print("&field4=");
+			}
+			if (temperaturePayload.temperature[1] != 0)
+			{
+				stash.print(F("&field4="));
 			stash.print(temperaturePayload.temperature[1] / 100);
-			stash.print(".");
+			stash.print(F("."));
 			stash.print((temperaturePayload.temperature[1] / 10) % 10);
-			stash.print("&field5=");
+			}
+			if (temperaturePayload.temperature[2] != 0)
+			{
+				stash.print(F("&field5="));
 			stash.print(temperaturePayload.temperature[2] / 100);
-			stash.print(".");
+			stash.print(F("."));
 			stash.print((temperaturePayload.temperature[2] / 10) % 10);
-			stash.print("&field6=");
-			stash.print(temperaturePayload.temperature[3] / 100);
-			stash.print(".");
-			stash.print((temperaturePayload.temperature[3] / 10) % 10);
+			}
+			if (temperaturePayload.temperature[3] != 0)
+			{
+				stash.print(F("&field6="));
+				stash.print(temperaturePayload.temperature[3] / 100);
+				stash.print(F("."));
+				stash.print((temperaturePayload.temperature[3] / 10) % 10);
+			}
 		}
 		else if( toggleWebUpdate == 1 )
 		{
+			//power
 			apiKey = PSTR(APIKEY_POWER);
+			stash.print(F("field1="));
 			stash.print((word)pulsePayload.power[2]);
 			stash.print("&field2=");
 			stash.print((word)pulsePayload.power[1]);
@@ -450,11 +473,14 @@ void loop ()
 			stash.print((int)(dailyRainfall / 5));
 			stash.print(".");
 			stash.print((dailyRainfall % 5) * 2);
-			//stash.print(RainString(str, dailyRainfall));
+			stash.print("&field7=");
+			stash.print((word)pulsePayload.power[3]);
 		}
 		else if (toggleWebUpdate == 2)
 		{
+			//Hot water system
 			apiKey = PSTR(APIKEY_HWS);
+			stash.print(F("field1="));
 			stash.print((word)hwsPayload.temperature[0]);	//T1
 			stash.print("&field2=");
 			stash.print((word)hwsPayload.temperature[2]);	//T3
@@ -551,6 +577,10 @@ void loop ()
 	{
 		wh_gen = 0;
 		wh_consuming = 0;
+
+		Serial.println("Resetting Arduino at midnight.");
+		delay(100); //Allow serial buffer to empty
+		digitalWrite(RESET_OUT, LOW);
 	}
 
 	if (rainReceived)
