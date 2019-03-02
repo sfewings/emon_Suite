@@ -9,15 +9,17 @@
 #include <Time.h>			// needed for time_t
 //#include <string.h> //needed for memcpy
 
+
 //RF12 node ID allocation
 #define EMON_NODE	10						//Emon Tx with Power and Solar readings
 #define RAIN_NODE	11						//Rain gauge Jeenode with rainfall and outside temperature
 #define PULSE_JEENODE 12				//JeeNode with power pulse from main switch board
-#define EMON_TEMP_NODE	15			//Emon Tx with Temperature of hot water system
 #define BASE_JEENODE 16					//Nanode with LAN and NTP time
 #define DISPLAY_NODE 20					//Arduino with LCD display
 #define TEMPERATURE_JEENODE 21	//Jeenode with multiple DS180B temperature sensors 
 #define HWS_JEENODE 22					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
+#define HWS_JEENODE_RELAY 23		//Relay packet HWS_JEENODE
+#define EMON_LOGGER 24					//Logger node. Not a transmitter
 
 #define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
 #define MAX_TEMPERATURE_SENSORS 10  //maximum number of temperature sensors on the temperature_JeeNode  
@@ -32,6 +34,7 @@ typedef struct {
 	uint8_t group;				//network group, must be same as emonTx and emonBase
 }RF12Init;
 
+
 typedef struct {
 	int power;					// power value
 	int pulse;					//pulse increments 
@@ -44,7 +47,7 @@ typedef struct {
 typedef struct {
 	int power[PULSE_NUM_PINS];					// power values
 	int pulse[PULSE_NUM_PINS];					// pulse values 
-	int supplyV;				// unit supply voltage
+	int supplyV;												// unit supply voltage
 } PayloadPulse;
 
 
@@ -64,16 +67,26 @@ typedef struct {													// from JeeNode with many temperature sensors
 	int temperature[MAX_TEMPERATURE_SENSORS+1];	//temperature in 100th of degrees. +1 for supplyV
 } PayloadTemperature;
 
-typedef struct {													// from JeeNode
+typedef struct PayloadHWS {   // from JeeNode
 	byte temperature[HWS_TEMPERATURES];			//temperature in degrees only
 	bool pump[HWS_PUMPS];										//pump on or off
-} PayloadHWS;
-
-
+};
 
 typedef struct {
 	time_t time; 
 } PayloadBase;
+
+
+////Nodes that can relay packets
+//#define EMON_RELAY_DISP 0x1
+//#define EMON_RELAY_NODE 0x2
+//#define EMON_RELAY_DISP2 0x4;
+//
+//typedef struct {
+//	byte relay;
+//} PayloadRelay;
+//
+//typedef struct PayloadHWSRelay : PayloadRelay, PayloadHWS { };
 
 
 class EmonSerial{

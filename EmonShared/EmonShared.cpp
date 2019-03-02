@@ -177,11 +177,13 @@ void EmonSerial::PrintTemperaturePayload(PayloadTemperature *pPayloadTemperature
 	{
 		Serial.print(F("temp: "));
 		Serial.print(pPayloadTemperature->numSensors);
-		for (int i = 0; i < pPayloadTemperature->numSensors; i++)
+		int nSensors = (pPayloadTemperature->numSensors < MAX_TEMPERATURE_SENSORS ? pPayloadTemperature->numSensors : MAX_TEMPERATURE_SENSORS);
+		for (int i = 0; i < nSensors; i++)
 		{
 			Serial.print(F(","));
 			Serial.print(pPayloadTemperature->temperature[i]);
 		}
+		//the battery power is in the last element of the array!
 		Serial.print(F(","));
 		Serial.print(pPayloadTemperature->temperature[pPayloadTemperature->numSensors]);
 
