@@ -99,7 +99,7 @@ typedef enum {
 	eDisgnosisTempEmons
 }  ButtonDisplayMode;
 
-volatile ButtonDisplayMode pushButton = eSummary;
+volatile ButtonDisplayMode pushButton = eDiagnosisPulseHWS; // eSummary;
 volatile unsigned long	g_RGlastTick = 0;
 ButtonDisplayMode lastPushButton = eDisgnosisTempEmons;
 
@@ -109,6 +109,7 @@ ButtonDisplayMode lastPushButton = eDisgnosisTempEmons;
 //---------------------------------------------------------------------------------------------------
 OneWire oneWire(A4);
 DallasTemperature temperatureSensor(&oneWire);
+int numberOfTemperatureSensors = 0;
 
 //-------------------------------------------------------------------------------------------- 
 // Flow control
@@ -286,12 +287,12 @@ void setup ()
 
 	//Temperature sensor setup
 	temperatureSensor.begin();
-	int numberOfDevices = temperatureSensor.getDeviceCount();
-	if (numberOfDevices)
+	numberOfTemperatureSensors = temperatureSensor.getDeviceCount();
+	if (numberOfTemperatureSensors)
 	{
 		Serial.print(F("Temperature sensors "));
 
-		for (int i = 0; i<numberOfDevices; i++)
+		for (int i = 0; i< numberOfTemperatureSensors; i++)
 		{
 			uint8_t tmp_address[8];
 			temperatureSensor.getAddress(tmp_address, i);
@@ -302,6 +303,10 @@ void setup ()
 			Serial.println();
 		}
 	}
+
+	temperature[eWater] = 0;
+	temperature[eInside] = 0;
+	temperature[eOutside] = 0;
 
 	pinMode(A3, INPUT_PULLUP);
 	attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
@@ -316,11 +321,6 @@ void setup ()
 
 	//let the startup LCD display for a while!
 	delay(2500);
-	
-	//sensors.begin();						 // start up the DS18B20 temp sensor onboard	
-	//sensors.requestTemperatures();
-	//temp = (sensors.getTempCByIndex(0));	 // get inital temperture reading
-	//mintemp = temp; maxtemp = temp;			// reset min and max
 }
 //--------------------------------------------------------------------------------------------
 
@@ -332,21 +332,23 @@ void loop ()
 {
 	time_t time = now();
 	bool refreshScreen = false;	//set true when time to completely redraw the screen
-	//Serial.print("1");
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
 	
 	if (rf12_recvDone())
 	{
-		//Serial.print("2");
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
 			int node_id = (rf12_hdr & 0x1F);
 
+			//store the incoming buffer for a resend
+			uint8_t buf[66];
+			byte len = rf12_len;
+			memcpy(buf, (const void*)rf12_data, len);
+
 			if (node_id == EMON_NODE)						// === EMONTX ====
 			{
-				//Serial.print("3");
 				emonPayload = *(PayloadEmon*)rf12_data;							// get emontx payload data
 
 				EmonSerial::PrintEmonPayload(&emonPayload, (now() - lastReceived[eEmon]));				// print data to serial
@@ -359,7 +361,6 @@ void loop ()
 			}
 			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
 			{
-				//Serial.print("X");
 				pulsePayload = *(PayloadPulse*)rf12_data;							// get payload data
 
 				EmonSerial::PrintPulsePayload(&pulsePayload, (now() - lastReceived[ePulse]));				// print data to serial
@@ -372,7 +373,6 @@ void loop ()
 			}
 			if (node_id == TEMPERATURE_JEENODE)
 			{
-				Serial.print("4");
 				temperaturePayload = *(PayloadTemperature*)rf12_data;							// get emontx payload data
 
 				EmonSerial::PrintTemperaturePayload(&temperaturePayload, (now() - lastReceived[eTemp]));				// print data to serial
@@ -397,7 +397,6 @@ void loop ()
 
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
-				//Serial.print("5");
 				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
 				
 				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[eRain]));			 // print data to serial
@@ -424,7 +423,6 @@ void loop ()
 
 			if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
 			{
-				//Serial.print("5");
 				basePayload = *((PayloadBase*)rf12_data);
 				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[eBase]));			 // print data to serial
 				txReceived[eBase]++;
@@ -452,17 +450,37 @@ void loop ()
 				}
 				lastUpdateTime = basePayload.time;
 			}
+
+			//resend the incoming packets of rain, temperature and HWS systems. These are at the outer extents fo the house
+			if (node_id == HWS_JEENODE )
+			{
+
+				delay(100);
+				// switch to outgoing group
+				uint8_t ret = rf12_initialize(HWS_JEENODE_RELAY, rf12Init.freq, rf12Init.group);
+				Serial.print("Relay HWS packet "); Serial.println(node_id);
+				// send our packet, once possible
+				int wait = 1000;
+				
+				while (!rf12_canSend() && --wait)
+					rf12_recvDone();
+				if (wait)
+				{
+					rf12_sendStart(0, buf, len);
+					rf12_sendWait(0);
+				}
+				//reset our node ID
+				ret = rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
+			}
 		}
 	}
-
+	
 
 	//--------------------------------------------------------------------
 	// Update the temperatures every 3s
 	//--------------------------------------------------------------------
 	if (time >= (slow_update + 3))
 	{
-		//Serial.print("6");
-
 		slow_update = time;
 
 		//get the temperature of this unit (inside temperature)
@@ -472,7 +490,6 @@ void loop ()
 
 	if (time >= (average_update + SEND_UPDATE_PERIOD))
 	{
-		//Serial.print("7");
 		average_update = time;
 
 		usageHistory.addMonitoredValues(temperature, 0);
@@ -481,11 +498,9 @@ void loop ()
 		if ((timeStatus() == timeSet))
 		{
 			//usageHistory.addValue(eHour, currentHour, wattsConsumed, (unsigned short)wattsGenerated);
-			//Serial.print("8");
 
 			if (hour() != currentHour)
 			{
-				//Serial.print("9");
 				unsigned short consumed, generated;
 				//we only store the hour totals every hour. THen add it to the current hour and to the current day
 				usageHistory.getTotalTo(eHour, currentHour, &consumed, &generated);
@@ -495,7 +510,6 @@ void loop ()
 				//rainfall is measured from 9am
 				if (hour() == 9)
 				{
-					//Serial.print("A");
 					usageHistory.addRainfall(eDay, currentRainDay, dailyRainfall);
 					usageHistory.addRainfall(eMonth, currentRainMonth, dailyRainfall );
 
@@ -514,7 +528,6 @@ void loop ()
 
 				if (day() - 1 != currentDay)
 				{
-					//Serial.print("B");
 					usageHistory.resetMonitoredValues();
 					
 					//reset daily totals
@@ -541,21 +554,19 @@ void loop ()
 			//send the temperature every 60 seconds
 			dispPayload.temperature = temperature[eInside];
 	
-			int i = 0;
-			while (!rf12_canSend() && i < 100)
+			if (numberOfTemperatureSensors)
 			{
-				i++;
-			}
-			//Serial.print("C");
-			if (i < 100)
-			{
-				rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
-				rf12_sendWait(0);
-				EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
-				//Serial.print("D");
+				int wait = 1000;
+				while (!rf12_canSend() && --wait)
+					;
+				if (wait)
+				{
+					rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
+					rf12_sendWait(0);
+					EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
+				}
 			}
 
-			//Serial.print("E");
 			refreshScreen = true;	//every 60 seconds
 		}
 	}
@@ -564,7 +575,6 @@ void loop ()
 	//--------------------------------------------------------------------
 	if ((millis()-fast_update)>200)
 	{
-		//Serial.print("F");
 		String str;
 
 		fast_update = millis();
@@ -579,7 +589,6 @@ void loop ()
 
 		if (refreshScreen)
 		{
-			//Serial.print("G");
 			lcd.clear();
 		}
 
@@ -587,8 +596,6 @@ void loop ()
 		{
 		case eSummary:
 			{
-				//Serial.print("H");
-
 				lcdInt(0, 0, (unsigned int)pulsePayload.power[2]);
 				lcdInt(5, 0, (unsigned int)pulsePayload.power[1]);
 
@@ -803,9 +810,7 @@ void loop ()
 				break;
 			}
 		}
-		//Serial.print("I");
 	}
-	//Serial.print(".");
 } //end loop
 //--------------------------------------------------------------------------------------------
 

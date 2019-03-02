@@ -35,7 +35,6 @@ const int RESET_OUT = A0;		//the pin tied to the reset input
 
 
 PayloadEmon emonPayload;	
-PayloadEmon emonTempPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
@@ -171,7 +170,7 @@ void setup ()
 	}
 	Serial.println();
 	
-	initEthercard();
+	 initEthercard();
 	
 	Serial.println(F("rf12_initialize"));
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
@@ -279,9 +278,11 @@ void loop ()
 				digitalWrite(RED_LED, HIGH);
 			}
 
-			if (node_id == HWS_JEENODE)
+			if (node_id == HWS_JEENODE || node_id == HWS_JEENODE_RELAY )
 			{
 				hwsPayload = *(PayloadHWS*)rf12_data;								// get payload data
+				if (node_id == HWS_JEENODE_RELAY)
+					Serial.print("Relay_");
 				EmonSerial::PrintHWSPayload(&hwsPayload, 0);				// print data to serial
 
 				digitalWrite(RED_LED, LOW);
@@ -289,15 +290,6 @@ void loop ()
 				digitalWrite(RED_LED, HIGH);
 			}
 
-			if (node_id == EMON_TEMP_NODE)
-			{
-				emonTempPayload = *(PayloadEmon*)rf12_data;		// get emontx payload data
-				EmonSerial::PrintEmonPayload(&emonTempPayload, 0);				// print data to serial
-
-				digitalWrite(RED_LED, LOW);
-				delay(100);
-				digitalWrite(RED_LED, HIGH);
-			}
 		
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{

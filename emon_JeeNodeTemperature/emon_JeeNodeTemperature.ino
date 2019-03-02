@@ -156,7 +156,7 @@ void loop()
 	readingIndex = (++readingIndex) % READING_HISTORY;
 
 
-	//debug output
+/*	//debug output
 	for (int i = 0; i < temperaturePayload.numSensors; i++)
 	{
 		for (int j = 0; j < READING_HISTORY; j++)
@@ -167,7 +167,7 @@ void loop()
 		}
 		Serial.println();
 	}
-
+*/
 
 	//add the current supply voltage at the end
 	temperaturePayload.temperature[readingNum] = readVcc();
