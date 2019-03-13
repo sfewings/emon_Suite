@@ -103,6 +103,15 @@ public:
 
 	static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
 
+	static void PrintEmonPayload(Stream& stream, PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
+	static void PrintRainPayload(Stream& stream, PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
+	static void PrintBasePayload(Stream& stream, PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
+	static void PrintDispPayload(Stream& stream, PayloadDisp* pPayloadDisp, unsigned long timeSinceLast = 0);
+	static void PrintPulsePayload(Stream& stream, PayloadPulse* pPayloadPulse, unsigned long timeSinceLast = 0);
+	static void PrintTemperaturePayload(Stream& stream, PayloadTemperature* pPayloadTemperature, unsigned long timeSinceLast = 0);
+	static void PrintHWSPayload(Stream& stream, PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
+	 
+
 	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
@@ -111,5 +120,6 @@ public:
 	static int ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadTemperature);
 	static int ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS);
 };
+
 
 #endif //EMON_SERIAL_H

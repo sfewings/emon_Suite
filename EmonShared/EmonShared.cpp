@@ -21,56 +21,65 @@ void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 
 void EmonSerial::PrintEmonPayload(PayloadEmon* pPayloadEmon, unsigned long timeSinceLast)
 {
+	PrintEmonPayload(Serial, pPayloadEmon, timeSinceLast);
+}
+
+void EmonSerial::PrintEmonPayload(Stream& stream, PayloadEmon* pPayloadEmon, unsigned long timeSinceLast)
+{
 	if (pPayloadEmon == NULL)
 	{
-		Serial.println(F("emon: power,pulse,ct1,supplyV,temperature,raingauge|ms_since_last_pkt"));
+		stream.println(F("emon: power,pulse,ct1,supplyV,temperature,raingauge|ms_since_last_pkt"));
 	}
 	else
 	{
-		Serial.print(F("emon: "));
-		Serial.print(pPayloadEmon->power);
-		Serial.print(F(","));
-		Serial.print(pPayloadEmon->pulse);
-		Serial.print(F(","));
-		Serial.print(pPayloadEmon->ct1);
-		Serial.print(F(","));
-		Serial.print(pPayloadEmon->supplyV);
-		Serial.print(F(","));
-		Serial.print(pPayloadEmon->temperature);
-		Serial.print(F(","));
-		Serial.print(pPayloadEmon->rainGauge);
+		stream.print(F("emon: "));
+		stream.print(pPayloadEmon->power);
+		stream.print(F(","));
+		stream.print(pPayloadEmon->pulse);
+		stream.print(F(","));
+		stream.print(pPayloadEmon->ct1);
+		stream.print(F(","));
+		stream.print(pPayloadEmon->supplyV);
+		stream.print(F(","));
+		stream.print(pPayloadEmon->temperature);
+		stream.print(F(","));
+		stream.print(pPayloadEmon->rainGauge);
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
-		Serial.println();
+		stream.println();
 	}
 }
 
-
 void EmonSerial::PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast)
+{
+	PrintRainPayload(Serial, pPayloadRain, timeSinceLast);
+}
+
+void EmonSerial::PrintRainPayload(Stream& stream, PayloadRain* pPayloadRain, unsigned long timeSinceLast)
 {
 	if (pPayloadRain == NULL)
 	{
-		Serial.println(F("rain: rain,txCount,temperature,supplyV|ms_since_last_pkt"));
+		stream.println(F("rain: rain,txCount,temperature,supplyV|ms_since_last_pkt"));
 	}
 	else
 	{
-		Serial.print(F("rain: "));
-		Serial.print(pPayloadRain->rainCount);
-		Serial.print(F(","));
-		Serial.print(pPayloadRain->transmitCount);
-		Serial.print(F(","));
-		Serial.print(pPayloadRain->temperature);
-		Serial.print(F(","));
-		Serial.print(pPayloadRain->supplyV);
+		stream.print(F("rain: "));
+		stream.print(pPayloadRain->rainCount);
+		stream.print(F(","));
+		stream.print(pPayloadRain->transmitCount);
+		stream.print(F(","));
+		stream.print(pPayloadRain->temperature);
+		stream.print(F(","));
+		stream.print(pPayloadRain->supplyV);
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
-		Serial.println();
+		stream.println();
 	}
 }
 
@@ -97,133 +106,155 @@ String EmonSerial::PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsi
 }
 
 
-
-
-
 void EmonSerial::PrintBasePayload(PayloadBase *pPayloadBase, unsigned long timeSinceLast)
+{
+	PrintBasePayload(Serial, pPayloadBase, timeSinceLast);
+}
+
+void EmonSerial::PrintBasePayload(Stream& stream, PayloadBase *pPayloadBase, unsigned long timeSinceLast)
 {
 	if (pPayloadBase == NULL)
 	{
-		Serial.print(F("base: time|ms_since_last_packet"));
+		stream.print(F("base: time|ms_since_last_packet"));
 	}
 	else
 	{
-		Serial.print(F("base: "));
-		Serial.print(pPayloadBase->time);
+		stream.print(F("base: "));
+		stream.print(pPayloadBase->time);
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
 	}
-	Serial.println();
+	stream.println();
 }
 
 void EmonSerial::PrintDispPayload(PayloadDisp *pPayloadDisp, unsigned long timeSinceLast)
 {
+	PrintDispPayload(Serial, pPayloadDisp, timeSinceLast);
+}
+
+void EmonSerial::PrintDispPayload(Stream& stream, PayloadDisp *pPayloadDisp, unsigned long timeSinceLast)
+{
 	if (pPayloadDisp == NULL)
 	{
-		Serial.print(F("disp: temperature|ms_since_last_packet"));
+		stream.print(F("disp: temperature|ms_since_last_packet"));
 	}
 	else
 	{
-		Serial.print(F("disp: "));
-		Serial.print(pPayloadDisp->temperature);
+		stream.print(F("disp: "));
+		stream.print(pPayloadDisp->temperature);
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
 	}
-	Serial.println();
+	stream.println();
 }
 
 void EmonSerial::PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long timeSinceLast)
 {
+	PrintPulsePayload(Serial, pPayloadPulse, timeSinceLast);
+}
+
+void EmonSerial::PrintPulsePayload(Stream& stream, PayloadPulse* pPayloadPulse, unsigned long timeSinceLast)
+{
 	if (pPayloadPulse == NULL)
 	{
-		Serial.println(F("pulse: power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
+		stream.println(F("pulse: power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
 	}
 	else
 	{
-		Serial.print(F("pulse: "));
+		stream.print(F("pulse: "));
 		for(int i=0; i< PULSE_NUM_PINS;i++)
 		{
-			Serial.print(pPayloadPulse->power[i]);
-			Serial.print(F(","));
+			stream.print(pPayloadPulse->power[i]);
+			stream.print(F(","));
 		}
 		for (int i = 0; i < PULSE_NUM_PINS; i++)
 		{
-			Serial.print(pPayloadPulse->pulse[i]);
-			Serial.print(F(","));
+			stream.print(pPayloadPulse->pulse[i]);
+			stream.print(F(","));
 		}
-		Serial.print(pPayloadPulse->supplyV);
+		stream.print(pPayloadPulse->supplyV);
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
-		Serial.println();
+		stream.println();
 	}
 }
 
 void EmonSerial::PrintTemperaturePayload(PayloadTemperature *pPayloadTemperature, unsigned long timeSinceLast)
 {
+	PrintTemperaturePayload(Serial, pPayloadTemperature, timeSinceLast);
+}
+
+void EmonSerial::PrintTemperaturePayload(Stream& stream, PayloadTemperature *pPayloadTemperature, unsigned long timeSinceLast)
+{
 	if (pPayloadTemperature == NULL)
 	{
-		Serial.print(F("temp: numSensors,temperature[0..numSensors],supplyV|ms_since_last_packet"));
+		stream.print(F("temp: numSensors,temperature[0..numSensors],supplyV|ms_since_last_packet"));
 	}
 	else
 	{
-		Serial.print(F("temp: "));
-		Serial.print(pPayloadTemperature->numSensors);
+		stream.print(F("temp: "));
+		stream.print(pPayloadTemperature->numSensors);
 		int nSensors = (pPayloadTemperature->numSensors < MAX_TEMPERATURE_SENSORS ? pPayloadTemperature->numSensors : MAX_TEMPERATURE_SENSORS);
 		for (int i = 0; i < nSensors; i++)
 		{
-			Serial.print(F(","));
-			Serial.print(pPayloadTemperature->temperature[i]);
+			stream.print(F(","));
+			stream.print(pPayloadTemperature->temperature[i]);
 		}
 		//the battery power is in the last element of the array!
-		Serial.print(F(","));
-		Serial.print(pPayloadTemperature->temperature[pPayloadTemperature->numSensors]);
+		stream.print(F(","));
+		stream.print(pPayloadTemperature->temperature[pPayloadTemperature->numSensors]);
 
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
 	}
-	Serial.println();
+	stream.println();
 }
 
 void EmonSerial::PrintHWSPayload(PayloadHWS *pPayloadHWS, unsigned long timeSinceLast)
 {
+	PrintHWSPayload(Serial, pPayloadHWS, timeSinceLast);
+}
+
+void EmonSerial::PrintHWSPayload(Stream& stream, PayloadHWS *pPayloadHWS, unsigned long timeSinceLast)
+{
 	if (pPayloadHWS == NULL)
 	{
-		Serial.print(F("hws: temperature[0..7],pump[0..2]|ms_since_last_packet"));
+		stream.print(F("hws: temperature[0..7],pump[0..2]|ms_since_last_packet"));
 	}
 	else
 	{
-		Serial.print(F("hws: "));
+		stream.print(F("hws: "));
 		for (int i = 0; i < HWS_TEMPERATURES; i++)
 		{
-			Serial.print(pPayloadHWS->temperature[i]);
-			Serial.print(F(","));
+			stream.print(pPayloadHWS->temperature[i]);
+			stream.print(F(","));
 		}
 		for (int i = 0; i < HWS_PUMPS; i++)
 		{
-			Serial.print(pPayloadHWS->pump[i]);
+			stream.print(pPayloadHWS->pump[i]);
 			if( i< HWS_PUMPS-1 ) 
-				Serial.print(F(","));
+				stream.print(F(","));
 		}
 
 		if (timeSinceLast != 0)
 		{
-			Serial.print(F("|"));
-			Serial.print(timeSinceLast);
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
 		}
 	}
-	Serial.println();
+	stream.println();
 }
 
 
