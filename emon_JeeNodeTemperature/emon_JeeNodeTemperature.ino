@@ -128,6 +128,10 @@ void setup()
 
 	EmonSerial::PrintTemperaturePayload(NULL);
 
+	//a crappy way of determining the node ID!
+	if (temperaturePayload.numSensors == 2)
+		rf12Init.node = TEMPERATURE_JEENODE_2;
+
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
 	rf12_sleep(RF12_SLEEP);
 	EmonSerial::PrintRF12Init(rf12Init);

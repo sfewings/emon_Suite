@@ -18,8 +18,8 @@
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
-#define MAX_NODES	7				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS, eDisplay };	//index into txReceived and lastReceived
+#define MAX_NODES	8				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay };	//index into txReceived and lastReceived
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
@@ -30,6 +30,7 @@ PayloadRain rainPayload;
 PayloadPulse pulsePayload;
 PayloadDisp displayPayload;
 PayloadTemperature temperaturePayload;
+PayloadTemperature temperaturePayload2;
 PayloadHWS hwsPayload;
 
 RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
@@ -60,7 +61,7 @@ void setup ()
 	Serial.begin(9600);
 	
 	delay(1000);
-	Serial.println(F("Fewings Logger emon based on openenergymonitor.org"));
+	Serial.println(F("Fewings emon Logger. Logging emon packets to SD card"));
 
 	Serial.println(F("rf12_initialize"));
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
@@ -144,7 +145,13 @@ void loop ()
 				txReceived[eTemp]++;
 				lastReceived[eTemp] = now();				// set time of last update to now
 			}
-
+			if (node_id == TEMPERATURE_JEENODE_2)
+			{
+				temperaturePayload2 = *(PayloadTemperature*)rf12_data;							// get emontx payload data
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload2, (now() - lastReceived[eTemp2]));				// print data to serial
+				txReceived[eTemp2]++;
+				lastReceived[eTemp2] = now();				// set time of last update to now
+			}
 			if (node_id == HWS_JEENODE || node_id == HWS_JEENODE_RELAY )
 			{
 				hwsPayload = *(PayloadHWS*)rf12_data;							// get emontx payload data
@@ -188,7 +195,7 @@ void loop ()
 					//dd/mm/yyyy HH:mm:ss
 					char dateTime[DATETIME_LEN];
 					snprintf_P(dateTime, DATETIME_LEN, PSTR("%02d/%02d/%04d %02d:%02d:%02d,"), day(), month(), year(), hour(), minute(), second() );
-					size_t size = file.print(dateTime);
+					file.print(dateTime);
 
 					switch (node_id)
 					{
@@ -206,6 +213,9 @@ void loop ()
 						break;
 					case TEMPERATURE_JEENODE:
 						EmonSerial::PrintTemperaturePayload(file, &temperaturePayload);
+						break;
+					case TEMPERATURE_JEENODE_2:
+						EmonSerial::PrintTemperaturePayload(file, &temperaturePayload2);
 						break;
 					case HWS_JEENODE:
 					case HWS_JEENODE_RELAY:

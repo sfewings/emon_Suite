@@ -20,6 +20,7 @@
 #define HWS_JEENODE 22					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
 #define HWS_JEENODE_RELAY 23		//Relay packet HWS_JEENODE
 #define EMON_LOGGER 24					//Logger node. Not a transmitter
+#define TEMPERATURE_JEENODE_2 25	//Jeenode with multiple DS180B temperature sensors 
 
 #define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
 #define MAX_TEMPERATURE_SENSORS 10  //maximum number of temperature sensors on the temperature_JeeNode  
