@@ -1,40 +1,25 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
-// emonGLCD Single CT example
-// to be used with nanode auto update time base example
-
-// emonGLCD documentation http://openEnergyMonitor.org/emon/emonglcd
-
-// For use with emonTx setup with one CT
-// RTC to reset Kwh counters at midnight is implemented is software. 
-// Correct time is updated via NanodeRF which gets time from internet
-// Temperature recorded on the emonglcd is also sent to the NanodeRF for online graphing
-
+// Based on emonGLCD documentation http://openEnergyMonitor.org/emon/emonglcd
+//
 // GLCD library by Jean-Claude Wippler: JeeLabs.org
 // 2010-05-28 <jcw@equi4.com> http://opensource.org/licenses/mit-license.php
 //
-// Authors: Glyn Hudson and Trystan Lea
-// Part of the: openenergymonitor.org project
-// Licenced under GNU GPL V3
-// http://openenergymonitor.org/emon/license
-
+//JeeLab libraires				http://github.com/jcw
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-//JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 
 #include <EmonShared.h>
 
-
-#include <PortsLCD.h>
+//#include <PortsLCD.h>
 #include <Time/Time.h>
 
-const int RED_LED=6;				 // Red tri-color LED
-const int GREEN_LED = 5;		 // Red tri-color LED
-const int RESET_OUT = A0;		//the pin tied to the reset input
+#define RED_LED		6			// Red tri-color LED
+#define GREEN_LED 5			// Green tri-color LED
+#define RESET_OUT A0		// The pin tied to the reset input
 
 
-PayloadEmon emonPayload;	
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
@@ -44,21 +29,28 @@ PayloadHWS hwsPayload;
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
+//-------------------------------------------------------------------------------------------- 
+//remote node reliability support
+//-------------------------------------------------------------------------------------------- 
+#define MAX_NODES	7				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS, eDisplay };	//index into txReceived and lastReceived
+time_t lastReceived[MAX_NODES];
 
-unsigned long rainStartOfToday;
-bool rainReceived;
-
-unsigned int g_etherResets = 0;
-
-//---------------------------------------------------
 
 //--------------------------------------------------------------------------------------------
 // Power variables
 //--------------------------------------------------------------------------------------------
 double wh_gen, wh_consuming;							//integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
-unsigned int pktsReceived;
+
+
+//--------------------------------------------------------------------------------------------
+// Rain variables
+//--------------------------------------------------------------------------------------------
 int dailyRainfall, dayStartRainfall;						//daily Rainfall
+unsigned long rainStartOfToday;
+bool rainReceived;
+
 
 //--------------------------------------------------------------------------------------------
 // NTP time support 
@@ -81,6 +73,7 @@ uint32_t	lastNTPUpdate = 0;
 uint32_t	timeLong;
 int				currentTimeserver = 0;
 
+
 //--------------------------------------------------------------------------------------------
 // Ethercard support
 //-------------------------------------------------------------------------------------------- 
@@ -100,24 +93,18 @@ const char website[] PROGMEM = "api.thingspeak.com";
 uint8_t		webip[4];
 Stash			stash;
 word			sessionID;
+bool			awaitingReply;
 
-//--------------------------------------------------------------------------------------------
-// Software RTC setup
-//-------------------------------------------------------------------------------------------- 
-//RTC_Millis RTC;
-int thisHour;
-	
+
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-int view = 1;								// Used to control which screen view is shown
-unsigned long last_emontx;					// Used to count time from last emontx update
-unsigned long last_rainTx;
 unsigned long slow_update;					// Used to count time for slow 10s events
-unsigned long fast_update;					// Used to count time for fast 100ms events
 unsigned long web_update;
 unsigned long request_NTP_Update;
 byte	toggleWebUpdate = 0;				//toggle between temperature, power and hws updates to web
+int thisHour = 0;
+
 
 void initEthercard()
 {
@@ -139,8 +126,8 @@ void initEthercard()
 	Serial.print(F("ThingSpeak DNS lookup : "));
 	if (!ether.dnsLookup(website))
 		Serial.println(F("DNS failed"));
-
-	ether.printIp(F("ThingSpeak SRV: "), ether.hisip);
+	else
+		ether.printIp(F("ThingSpeak SRV: "), ether.hisip);
 
 	ether.copyIp(webip, ether.hisip);
 }
@@ -153,10 +140,10 @@ void setup ()
 	digitalWrite(RESET_OUT, HIGH);
 	pinMode(RESET_OUT, OUTPUT);
 
-	pinMode(RED_LED, OUTPUT);
-	digitalWrite(RED_LED, LOW );		//Red LED has inverted logic. LOW is on, HIGH is off!
 	pinMode(GREEN_LED, OUTPUT);
-	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
+	pinMode(RED_LED, OUTPUT);
+	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
+	digitalWrite(RED_LED, LOW );		//LED has inverted logic. LOW is on, HIGH is off!
 	Serial.begin(9600);
 	
 	delay(1000);
@@ -170,8 +157,11 @@ void setup ()
 	}
 	Serial.println();
 	
-	 initEthercard();
-	
+	initEthercard();
+	awaitingReply = false;
+
+	digitalWrite(GREEN_LED, HIGH);
+
 	Serial.println(F("rf12_initialize"));
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
@@ -186,20 +176,19 @@ void setup ()
 	
 	temperaturePayload.numSensors = 0;
 
-	pktsReceived = 0;
 	dailyRainfall = 0;
 	dayStartRainfall = 0;
 
 	slow_update = millis();
-	fast_update = millis();
 	web_update = millis();
 	
 	request_NTP_Update = millis()+1000;	//update in 1 second
-	//request_NTP_Update = millis() + 24 * 60 * 60 * 10000L;	//update in 7 days
-
-
-	last_emontx = millis();
-	last_rainTx = millis();
+	
+	
+	for (int i = 0; i < MAX_NODES; i++)
+	{
+		lastReceived[i] = now();
+	}
 
 	//NTP time
 	//setSyncInterval(86400 * 7);		 // update the time every week	(24*60*60) *7
@@ -223,59 +212,33 @@ void loop ()
 	{
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
+			digitalWrite(RED_LED, LOW);
+
 			int node_id = (rf12_hdr & 0x1F);
 		
-			//if (node_id == EMON_NODE)						// === EMONTX ====
-			//{
-			//	//monitor the reliability of receival
-			//	pktsReceived++;
 
-			//	emonPayload = *(PayloadEmon*)rf12_data;		// get emontx payload data
-			//	EmonSerial::PrintEmonPayload(&emonPayload, millis() - last_emontx);				// print data to serial
-			//	last_emontx = millis();				 // set time of last update to now
-
-
-			//	digitalWrite(RED_LED, LOW);
-			//	delay(100);
-			//	digitalWrite(RED_LED, HIGH);
-			//	power_calculations();					// do the power calculations
-			//}
-
-			if (node_id == PULSE_JEENODE)						// === EMONTX ====
+			if (node_id == PULSE_JEENODE)
 			{
-				//monitor the reliability of receival
-				pktsReceived++;
+				pulsePayload = *(PayloadPulse*)rf12_data;
+				EmonSerial::PrintPulsePayload(&pulsePayload, now() - lastReceived[ePulse] );
+				lastReceived[ePulse] = now();
 
-				pulsePayload = *(PayloadPulse*)rf12_data;		// get emontx payload data
-				EmonSerial::PrintPulsePayload(&pulsePayload, millis() - last_emontx);				// print data to serial
-				last_emontx = millis();				 // set time of last update to now
-
-
-				digitalWrite(RED_LED, LOW);
-				delay(100);
-				digitalWrite(RED_LED, HIGH);
-				power_calculations_pulse();					// do the power calculations
+				power_calculations_pulse();					
 			}
 
 			if (node_id == DISPLAY_NODE)
 			{
 				displayPayload = *(PayloadDisp*)rf12_data;								// get payload data
-				EmonSerial::PrintDispPayload(&displayPayload, 0);				// print data to serial
-
-				digitalWrite(RED_LED, LOW);
-				delay(100);
-				digitalWrite(RED_LED, HIGH);
+				EmonSerial::PrintDispPayload(&displayPayload, now() - lastReceived[eDisplay]);
+				lastReceived[eDisplay] = now();
 			}
 
 
 			if (node_id == TEMPERATURE_JEENODE)
 			{
 				temperaturePayload = *(PayloadTemperature*)rf12_data;								// get payload data
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload, 0);				// print data to serial
-				
-				digitalWrite(RED_LED, LOW);
-				delay(100);
-				digitalWrite(RED_LED, HIGH);
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload, now() - lastReceived[eTemp]);
+				lastReceived[eTemp] = now();
 			}
 
 			if (node_id == HWS_JEENODE || node_id == HWS_JEENODE_RELAY )
@@ -283,19 +246,16 @@ void loop ()
 				hwsPayload = *(PayloadHWS*)rf12_data;								// get payload data
 				if (node_id == HWS_JEENODE_RELAY)
 					Serial.print("Relay_");
-				EmonSerial::PrintHWSPayload(&hwsPayload, 0);				// print data to serial
-
-				digitalWrite(RED_LED, LOW);
-				delay(100);
-				digitalWrite(RED_LED, HIGH);
+				EmonSerial::PrintHWSPayload(&hwsPayload, now() - lastReceived[eHWS]);
+				lastReceived[eHWS] = now();
 			}
 
 		
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
 				rainPayload = *(PayloadRain*)rf12_data;								// get emonbase payload data
-				EmonSerial::PrintRainPayload(&rainPayload, millis() - last_rainTx);			 // print data to serial
-				last_rainTx = millis();
+				EmonSerial::PrintRainPayload(&rainPayload, now() - lastReceived[eRain]);
+				lastReceived[eRain] = now();
 
 				if (!rainReceived)
 				{
@@ -303,11 +263,9 @@ void loop ()
 					rainReceived = true;
 					dailyRainfall = 0;
 				}
-
-				digitalWrite(RED_LED, LOW);
-				delay(100);
-				digitalWrite(RED_LED, HIGH);
 			}
+
+			digitalWrite(RED_LED, HIGH);
 		}
 	}
 	
@@ -344,7 +302,7 @@ void loop ()
 		}
 		else 
 		{
-			ether.printIp("SVR IP: ", ether.hisip);
+			ether.printIp(F("SVR IP: "), ether.hisip);
 
 			ether.ntpRequest(ether.hisip, ++clientPort);
 			Serial.print(F("Send NTP request on port: "));
@@ -382,17 +340,31 @@ void loop ()
 					Serial.println(TimeString(str, now()));
 				}
 			}
-			//else
-			//{
-			//	Ethernet::buffer[pos + len] = 0;// set the byte after the end of the buffer to zero to act as an end marker (also handy for displaying the buffer as a string)	
-			//	Serial.println("HTTP response"); 
-			//	Serial.println((char *)(Ethernet::buffer+pos));
-			//}
+		}
+		
+		if (awaitingReply)
+		{
+			const char* tcpReply = ether.tcpReply(sessionID);
+			if (tcpReply)
+			{
+				//Serial.println(tcpReply);
+				Serial.print(F("TCPReply for sesionID:"));
+				Serial.println(sessionID);
+				awaitingReply = false;
+			}
 		}
 	}
 
 	if (millis() - web_update > 20000)
 	{
+		if (awaitingReply)
+		{
+			//still no return from the last post 20 seconds ago!
+			initEthercard();
+		}
+
+		//update time after a possible initEtherCard() call;
+		digitalWrite(GREEN_LED, LOW);
 		web_update = millis();
 
 		byte sd = stash.create();
@@ -421,23 +393,23 @@ void loop ()
 			if (temperaturePayload.temperature[0] != 0)
 			{
 				stash.print(F("&field3="));
-			stash.print(temperaturePayload.temperature[0] / 100);
-			stash.print(F("."));
-			stash.print((temperaturePayload.temperature[0] / 10) % 10);
+				stash.print(temperaturePayload.temperature[0] / 100);
+				stash.print(F("."));
+				stash.print((temperaturePayload.temperature[0] / 10) % 10);
 			}
 			if (temperaturePayload.temperature[1] != 0)
 			{
 				stash.print(F("&field4="));
-			stash.print(temperaturePayload.temperature[1] / 100);
-			stash.print(F("."));
-			stash.print((temperaturePayload.temperature[1] / 10) % 10);
+				stash.print(temperaturePayload.temperature[1] / 100);
+				stash.print(F("."));
+				stash.print((temperaturePayload.temperature[1] / 10) % 10);
 			}
 			if (temperaturePayload.temperature[2] != 0)
 			{
 				stash.print(F("&field5="));
-			stash.print(temperaturePayload.temperature[2] / 100);
-			stash.print(F("."));
-			stash.print((temperaturePayload.temperature[2] / 10) % 10);
+				stash.print(temperaturePayload.temperature[2] / 100);
+				stash.print(F("."));
+				stash.print((temperaturePayload.temperature[2] / 10) % 10);
 			}
 			if (temperaturePayload.temperature[3] != 0)
 			{
@@ -472,26 +444,28 @@ void loop ()
 		{
 			//Hot water system
 			apiKey = PSTR(APIKEY_HWS);
-			stash.print(F("field1="));
-			stash.print((word)hwsPayload.temperature[0]);	//T1
-			stash.print("&field2=");
-			stash.print((word)hwsPayload.temperature[2]);	//T3
-			stash.print("&field3=");
-			stash.print((word)hwsPayload.temperature[5]);	//T1
-			stash.print("&field4=");
-			stash.print((word)hwsPayload.temperature[1]);	//T1
-			stash.print("&field5=");
-			stash.print((word)hwsPayload.temperature[4]);	//T1
-			stash.print("&field6=");
-			stash.print((word)hwsPayload.pump[0]);	//T1
-			stash.print("&field7=");
-			stash.print((word)hwsPayload.pump[1]);	//T1
-			stash.print("&field8=");
-			stash.print((word)hwsPayload.pump[2]);	//T1
+			if (hwsPayload.temperature[0])		//if there is no temperature reading yet, don't publish it
+			{
+				stash.print(F("field1="));
+				stash.print((word)hwsPayload.temperature[0]);	//T1
+				stash.print("&field2=");
+				stash.print((word)hwsPayload.temperature[2]);	//T3
+				stash.print("&field3=");
+				stash.print((word)hwsPayload.temperature[5]);	//T6
+				stash.print("&field4=");
+				stash.print((word)hwsPayload.temperature[1]);	//T2
+				stash.print("&field5=");
+				stash.print((word)hwsPayload.temperature[4]);	//T5
+				stash.print("&field6=");
+				stash.print((word)hwsPayload.pump[0]);	//P1
+				stash.print("&field7=");
+				stash.print((word)hwsPayload.pump[1]);	//P2
+				stash.print("&field8=");
+				stash.print((word)hwsPayload.pump[2]);	//P3
+			}
 		}
 
 		stash.save();
-		pktsReceived = 0;
 
 		ether.copyIp(ether.hisip, webip);
 
@@ -512,9 +486,11 @@ void loop ()
 				break;
 			Serial.print(c);
 		}
-		
+		Serial.println();
+
 		// send the packet - this also releases all stash buffers once done
 		sessionID = ether.tcpSend();
+		awaitingReply = true;
 
 		// added from: http://jeelabs.net/boards/7/topics/2241
 		int freeCount = stash.freeCount();
@@ -522,45 +498,13 @@ void loop ()
 		{ 
 			Stash::initMap(56); 
 		}
-		Serial.print("stash.freeCount=");
-		Serial.println(freeCount);
-
-		const char* reply = ether.tcpReply(sessionID);
-		Serial.print("sessionID=");
+		Serial.print(F("stash.freeCount="));
+		Serial.print(freeCount);
+		Serial.print(F(",sessionID="));
 		Serial.println(sessionID);
 
-		if (reply != NULL)
-		{
-			initEthercard();
-			g_etherResets++;
-			Serial.println(reply);
-		}
-		else
-		{
-			Serial.println("tcpReply=0");
-		}
-
-		//Green LED flashes three times for 
-		if (g_etherResets == 0)
-		{
-			for (int i = 0; i < 3; i++)
-			{
-				digitalWrite(GREEN_LED, LOW);
-				delay(50);
-				digitalWrite(GREEN_LED, HIGH);
-				delay(100);
-			}
-		}
-		else
-		{
-			for (int i = 0; i < g_etherResets; i++)
-			{
-				digitalWrite(RED_LED, LOW);
-				delay(50);
-				digitalWrite(RED_LED, HIGH);
-				delay(200);
-			}
-		}
+		//const char* reply = ether.tcpReply(sessionID);
+		digitalWrite(GREEN_LED, HIGH);
 	}
 
 	int lastHour = thisHour;
@@ -570,7 +514,7 @@ void loop ()
 		wh_gen = 0;
 		wh_consuming = 0;
 
-		Serial.println("Resetting Arduino at midnight.");
+		Serial.println(F("Resetting Arduino at midnight."));
 		delay(100); //Allow serial buffer to empty
 		digitalWrite(RESET_OUT, LOW);
 	}
@@ -594,22 +538,6 @@ void loop ()
 	}
 } 
 
-//--------------------------------------------------------------------
-// Calculate power and energy variables
-//--------------------------------------------------------------------
-//void power_calculations()
-//{
-//	//--------------------------------------------------
-//	// kWh calculation
-//	//--------------------------------------------------
-//	unsigned long lwhtime = whtime;
-//	whtime = millis();
-//	double whInc = emonPayload.ct1 * ((whtime - lwhtime) / 3600000.0);
-//	wh_gen=wh_gen+whInc;
-//	whInc = emonPayload.power *((whtime - lwhtime) / 3600000.0);
-//	wh_consuming=wh_consuming + whInc;
-//}
-
 void power_calculations_pulse()
 {
 	//--------------------------------------------------
@@ -622,17 +550,6 @@ void power_calculations_pulse()
 	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
 	wh_consuming = wh_consuming + whInc;
 }
-
-String RainStringPtr(String* str, int rainGauge)
-{
-	//raingauge increments in 0.2mm per value
-	*str = "";
-	*str += (int)(rainGauge / 5);
-	*str += ".";
-	*str += (rainGauge % 5) * 2;
-	return *str;
-}
-
 
 String RainString(String& str, int rainGauge)
 {
