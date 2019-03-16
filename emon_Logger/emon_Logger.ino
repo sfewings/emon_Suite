@@ -40,7 +40,14 @@ byte  currentDay = 0;
 
 
 int thisHour;
-	
+
+
+//callback to provide creation date and time for SD card files
+void dateTime(uint16_t* date, uint16_t* time)
+{
+	*date = FAT_DATE(year(), month(), day());
+	*time = FAT_TIME(hour(), minute(), second());
+}
 
 //--------------------------------------------------------------------------------------------
 // Setup
@@ -48,9 +55,8 @@ int thisHour;
 void setup () 
 {
 	pinMode(RED_LED, OUTPUT);
-	digitalWrite(RED_LED, LOW );		//Red LED has inverted logic. LOW is on, HIGH is off!
 	pinMode(GREEN_LED, OUTPUT);
-	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
+	digitalWrite(RED_LED, LOW);		//Red LED has inverted logic. LOW is on, HIGH is off!
 	Serial.begin(9600);
 	
 	delay(1000);
@@ -73,7 +79,11 @@ void setup ()
 		txReceived[i] = 0;
 		lastReceived[i] = now();
 	}
-		
+
+
+	SdFile::dateTimeCallback(dateTime);
+
+	digitalWrite(GREEN_LED, LOW);		//Red LED has inverted logic. LOW is on, HIGH is off!
 	Serial.print("Initializing SD card...");
 
 	// see if the card is present and can be initialized:
@@ -84,7 +94,8 @@ void setup ()
 	}
 	Serial.println("card initialized.");
 
-	digitalWrite(RED_LED, HIGH );
+	digitalWrite(GREEN_LED, HIGH);
+	digitalWrite(RED_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
 }
 
 
@@ -134,9 +145,9 @@ void loop ()
 				lastReceived[eTemp] = now();				// set time of last update to now
 			}
 
-			if (node_id == HWS_JEENODE)
+			if (node_id == HWS_JEENODE || node_id == HWS_JEENODE_RELAY )
 			{
-				PayloadHWS hwsPayload = *(PayloadHWS*)rf12_data;							// get emontx payload data
+				hwsPayload = *(PayloadHWS*)rf12_data;							// get emontx payload data
 				EmonSerial::PrintHWSPayload(&hwsPayload, (now() - lastReceived[eHWS]));				// print data to serial
 				txReceived[eHWS]++;
 				lastReceived[eHWS] = now();				// set time of last update to now
@@ -171,7 +182,7 @@ void loop ()
 
 
 				File file = SD.open(fileName, FILE_WRITE);
-				
+
 				if (file)
 				{
 					//dd/mm/yyyy HH:mm:ss
