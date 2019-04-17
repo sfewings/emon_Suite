@@ -94,6 +94,7 @@ const char website[] PROGMEM = "api.thingspeak.com";
 uint8_t		webip[4];
 Stash			stash;
 word			sessionID;
+uint8_t		tcpReplyCount;
 bool			awaitingReply;
 
 
@@ -159,7 +160,7 @@ void setup ()
 	Serial.println();
 	
 	initEthercard();
-	awaitingReply = false;
+	tcpReplyCount = 0;
 
 	digitalWrite(GREEN_LED, HIGH);
 
@@ -350,7 +351,7 @@ void loop ()
 			}
 		}
 		
-		if (awaitingReply)
+		if (tcpReplyCount)
 		{
 			const char* tcpReply = ether.tcpReply(sessionID);
 			if (tcpReply)
@@ -358,22 +359,23 @@ void loop ()
 				//Serial.println(tcpReply);
 				Serial.print(F("TCPReply for sesionID:"));
 				Serial.println(sessionID);
-				awaitingReply = false;
+				tcpReplyCount = 0;
 			}
 		}
 	}
 
 	if (millis() - web_update > 20000)
 	{
-		if (awaitingReply)
+		if (tcpReplyCount && ++tcpReplyCount > 3)
 		{
-			//still no return from the last post 20 seconds ago!
+			//still no return from the last post 3*20 seconds ago!
 			initEthercard();
+			tcpReplyCount = 0;
 		}
 
 		//update time after a possible initEtherCard() call;
-		digitalWrite(GREEN_LED, LOW);
 		web_update = millis();
+		digitalWrite(GREEN_LED, LOW);
 
 		byte sd = stash.create();
 		const char * apiKey;
@@ -512,7 +514,8 @@ void loop ()
 
 		// send the packet - this also releases all stash buffers once done
 		sessionID = ether.tcpSend();
-		awaitingReply = true;
+		if (tcpReplyCount == 0)
+			tcpReplyCount++;		//start the wait for a reply if not already waiting
 
 		// added from: http://jeelabs.net/boards/7/topics/2241
 		int freeCount = stash.freeCount();
