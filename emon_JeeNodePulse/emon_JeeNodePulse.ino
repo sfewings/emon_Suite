@@ -19,7 +19,7 @@ RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 volatile unsigned short	g_wHrCount[NUM_PINS]		= { 0,0,0,0 };		//pulses since last call to MeterPulseLog()
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
 volatile unsigned long	g_period[NUM_PINS]			= { 0,0,0,0 };		//ms between last two pulses
-const		double					g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,1.0,0.4 };		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
+const		double					g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,0.4,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
 PayloadPulse pulsePayload;
 
 
@@ -146,7 +146,7 @@ void loop()
 	//print the results
 	EmonSerial::PrintPulsePayload(&pulsePayload);
 
-	delay(2000);		//10s delay	
+	delay(2000);		//2s delay	
 }
 
 
