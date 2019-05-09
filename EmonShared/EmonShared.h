@@ -6,7 +6,7 @@
 //Junction created for ..\..\arduino - 1.0.3\libraries\EmonShared <<= == >> EmonShared
 
 #include <Arduino.h> //needed for Serial.println
-#include <Time.h>			// needed for time_t
+#include <TimeLib.h>			// needed for time_t
 //#include <string.h> //needed for memcpy
 
 
@@ -28,7 +28,7 @@
 #define HWS_TEMPERATURES 7			//number of temperature readings from the hot water system
 #define HWS_PUMPS 3							//number of pumps from the hot water system
 
-#define FEWINGS_MONITOR_GROUP  210
+#define FEWINGS_MONITOR_GROUP  209
 
 typedef struct {
 	uint8_t node;					//Should be unique on network, node ID 30 reserved for base station
@@ -36,47 +36,63 @@ typedef struct {
 	uint8_t group;				//network group, must be same as emonTx and emonBase
 }RF12Init;
 
+////Nodes that can relay packets
+
+#define RELAY_1  (0x1)
+#define RELAY_2  (0x2)
+#define RELAY_3  (0x4)
+#define RELAY_4  (0x8)
+#define RELAY_5  (0x10)
+#define RELAY_6  (0x20)
+#define RELAY_7  (0x40)
+#define RELAY_8  (0x80)
 
 typedef struct {
+	byte relay;
+} PayloadRelay;
+
+typedef struct PayloadEmon: PayloadRelay{
 	int power;					// power value
 	int pulse;					//pulse increments 
 	int ct1;						//CT reading 
 	int supplyV;				// unit supply voltage
 	int temperature;		//DB1820 temperature
 	int rainGauge;			//rain gauge pulse
-} PayloadEmon;
+} ;
 
-typedef struct {
+typedef struct PayloadPulse: PayloadRelay{
 	int power[PULSE_NUM_PINS];					// power values
 	int pulse[PULSE_NUM_PINS];					// pulse values 
 	int supplyV;												// unit supply voltage
-} PayloadPulse;
+};
 
 
-typedef struct {
+typedef struct PayloadRain :PayloadRelay{
 	volatile unsigned long rainCount;				//The count from the rain gauge
 	volatile unsigned long transmitCount;		//Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0 
 	int temperature;												//temperature in 100ths of degrees 
 	unsigned long supplyV;									// unit supply voltage
-} PayloadRain;
+};
 
-typedef struct {													// from the LCD display. Collects room temperature
+typedef struct PayloadDisp: PayloadRelay{													// from the LCD display. Collects room temperature
 	int temperature;												//temperature in 100th of degrees
-} PayloadDisp;
+} ;
 
-typedef struct {													// from JeeNode with many temperature sensors
+typedef struct PayloadTemperature : PayloadRelay{													// from JeeNode with many temperature sensors
 	int numSensors;
 	int temperature[MAX_TEMPERATURE_SENSORS+1];	//temperature in 100th of degrees. +1 for supplyV
-} PayloadTemperature;
+};
 
-typedef struct PayloadHWS {   // from JeeNode
+typedef struct PayloadHWS : PayloadRelay {   // from JeeNode
 	byte temperature[HWS_TEMPERATURES];			//temperature in degrees only
 	bool pump[HWS_PUMPS];										//pump on or off
 };
 
-typedef struct {
+typedef struct PayloadBase: PayloadRelay {
 	time_t time; 
-} PayloadBase;
+};
+
+
 
 typedef struct
 {
@@ -84,15 +100,6 @@ typedef struct
 	uint32_t sensorReading;
 } PayloadWater;
 
-////Nodes that can relay packets
-//#define EMON_RELAY_DISP 0x1
-//#define EMON_RELAY_NODE 0x2
-//#define EMON_RELAY_DISP2 0x4;
-//
-//typedef struct {
-//	byte relay;
-//} PayloadRelay;
-//
 //typedef struct PayloadHWSRelay : PayloadRelay, PayloadHWS { };
 
 
