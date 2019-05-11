@@ -21,6 +21,7 @@
 #define HWS_JEENODE_RELAY 23		//Relay packet HWS_JEENODE
 #define EMON_LOGGER 24					//Logger node. Not a transmitter
 #define TEMPERATURE_JEENODE_2 25	//Jeenode with multiple DS180B temperature sensors 
+#define WATERLEVEL_NODE 26			//The water tank sensor
 
 #define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
 #define MAX_TEMPERATURE_SENSORS 10  //maximum number of temperature sensors on the temperature_JeeNode  
@@ -77,6 +78,11 @@ typedef struct {
 	time_t time; 
 } PayloadBase;
 
+typedef struct
+{
+	int waterHeight;
+	uint32_t sensorReading;
+} PayloadWater;
 
 ////Nodes that can relay packets
 //#define EMON_RELAY_DISP 0x1
@@ -101,6 +107,7 @@ public:
 	static void PrintPulsePayload(PayloadPulse* pPayloadPulse, unsigned long timeSinceLast = 0);
 	static void PrintTemperaturePayload(PayloadTemperature* pPayloadTemperature, unsigned long timeSinceLast = 0);
 	static void PrintHWSPayload(PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
+	static void PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 
 	static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
 
@@ -111,7 +118,8 @@ public:
 	static void PrintPulsePayload(Stream& stream, PayloadPulse* pPayloadPulse, unsigned long timeSinceLast = 0);
 	static void PrintTemperaturePayload(Stream& stream, PayloadTemperature* pPayloadTemperature, unsigned long timeSinceLast = 0);
 	static void PrintHWSPayload(Stream& stream, PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
-	 
+	static void PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
+
 
 	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
@@ -120,6 +128,7 @@ public:
 	static int ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse);
 	static int ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadTemperature);
 	static int ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS);
+	static int ParseWaterPayload(char* str, PayloadWater *pPayloadWater);
 };
 
 

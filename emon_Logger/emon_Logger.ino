@@ -12,14 +12,14 @@
 #include <SD.h>
 
 #include <PortsLCD.h>
-#include <Time/Time.h>
+#include <TimeLib.h>
 
 
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
-#define MAX_NODES	8				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay };	//index into txReceived and lastReceived
+#define MAX_NODES	9				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay, eWater };	//index into txReceived and lastReceived
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
@@ -32,6 +32,7 @@ PayloadDisp displayPayload;
 PayloadTemperature temperaturePayload;
 PayloadTemperature temperaturePayload2;
 PayloadHWS hwsPayload;
+PayloadWater waterPayload;
 
 RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
@@ -74,7 +75,8 @@ void setup ()
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintTemperaturePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
-	
+	EmonSerial::PrintWaterPayload(NULL);
+
 	for (int i = 0; i < MAX_NODES; i++)
 	{
 		txReceived[i] = 0;
@@ -176,6 +178,14 @@ void loop ()
 				lastReceived[eDisplay] = now();
 			}
 
+			if (node_id == WATERLEVEL_NODE)
+			{
+				waterPayload = *((PayloadWater*)rf12_data);
+				EmonSerial::PrintWaterPayload(&waterPayload, (now() - lastReceived[eWater]));			 // print data to serial
+				txReceived[eWater]++;
+				lastReceived[eWater] = now();
+			}
+
 
 			digitalWrite(RED_LED, LOW);
 			delay(100);
@@ -220,6 +230,9 @@ void loop ()
 					case HWS_JEENODE:
 					case HWS_JEENODE_RELAY:
 						EmonSerial::PrintHWSPayload(file, &hwsPayload);
+						break;
+					case WATERLEVEL_NODE:
+						EmonSerial::PrintWaterPayload(file, &waterPayload);
 						break;
 					}
 

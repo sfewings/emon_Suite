@@ -13,7 +13,7 @@
 #include <EmonShared.h>
 
 //#include <PortsLCD.h>
-#include <Time/Time.h>
+#include <TimeLib.h>
 
 #define RED_LED		6			// Red tri-color LED
 #define GREEN_LED 5			// Green tri-color LED
@@ -27,14 +27,15 @@ PayloadDisp displayPayload;
 PayloadTemperature temperaturePayload;
 PayloadTemperature temperaturePayload2;
 PayloadHWS hwsPayload;
+PayloadWater waterPayload;
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 //-------------------------------------------------------------------------------------------- 
 //remote node reliability support
 //-------------------------------------------------------------------------------------------- 
-#define MAX_NODES	8				//number of jeenodes, node		0=emon,	1=emonTemperature, 1=emonTemperature2 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay };	//index into txReceived and lastReceived
+#define MAX_NODES	9				//number of jeenodes, node		0=emon,	1=emonTemperature, 1=emonTemperature2 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay, eWater };	//index into txReceived and lastReceived
 time_t lastReceived[MAX_NODES];
 
 
@@ -175,6 +176,7 @@ void setup ()
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintTemperaturePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
+	EmonSerial::PrintWaterPayload(NULL);
 	
 	temperaturePayload.numSensors = 0;
 	temperaturePayload2.numSensors = 0;
@@ -272,6 +274,13 @@ void loop ()
 					rainReceived = true;
 					dailyRainfall = 0;
 				}
+			}
+
+			if(node_id == WATERLEVEL_NODE)
+			{
+				waterPayload = *(PayloadWater*)rf12_data;								// get payload data
+				EmonSerial::PrintWaterPayload(&waterPayload, now() - lastReceived[eWater]);
+				lastReceived[eWater] = now();
 			}
 
 			digitalWrite(RED_LED, HIGH);
@@ -431,9 +440,10 @@ void loop ()
 			if (temperaturePayload2.temperature[0] != 0)
 			{
 				stash.print(F("&field7="));
-				stash.print(temperaturePayload2.temperature[0] / 100);
-				stash.print(F("."));
-				stash.print((temperaturePayload2.temperature[0] / 10) % 10);
+				stash.print(waterPayload.waterHeight);
+				//stash.print(temperaturePayload2.temperature[0] / 100);
+				//stash.print(F("."));
+				//stash.print((temperaturePayload2.temperature[0] / 10) % 10);
 			}
 			if (temperaturePayload2.temperature[1] != 0)
 			{

@@ -23,7 +23,7 @@
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <PortsLCD.h>
-#include <Time/Time.h>
+#include <TimeLib.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
@@ -45,9 +45,9 @@ double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	6				//number of jeenodes, node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
-enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS};	//index into txReceived and lastReceived
-enum { eWater, eInside, eOutside};								//index to temperature array
+#define MAX_NODES	7				//number of jeenodes, node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS, eWaterNode};	//index into txReceived and lastReceived
+enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
@@ -61,6 +61,7 @@ PayloadDisp dispPayload;
 PayloadPulse pulsePayload;
 PayloadHWS hwsPayload;
 PayloadTemperature temperaturePayload;
+PayloadWater waterPayload;
 
 RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
 
@@ -91,6 +92,7 @@ typedef enum {
 	eMinTemperatures,
 	eRainFall,
 	eRoomTemperatures,
+	eWaterTankHeight,
 	eRainFallTotals,
 	eDateTimeNow,
 	eDateTimeStartRunning,
@@ -99,7 +101,7 @@ typedef enum {
 	eDisgnosisTempEmons
 }  ButtonDisplayMode;
 
-volatile ButtonDisplayMode pushButton = eDiagnosisPulseHWS; // eSummary;
+volatile ButtonDisplayMode pushButton = eSummary;  //set this to the startup display
 volatile unsigned long	g_RGlastTick = 0;
 ButtonDisplayMode lastPushButton = eDisgnosisTempEmons;
 
@@ -304,7 +306,7 @@ void setup ()
 		}
 	}
 
-	temperature[eWater] = 0;
+	temperature[eWaterTemp] = 0;
 	temperature[eInside] = 0;
 	temperature[eOutside] = 0;
 
@@ -317,6 +319,7 @@ void setup ()
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
+	EmonSerial::PrintWaterPayload(NULL);
 
 
 	//let the startup LCD display for a while!
@@ -392,7 +395,7 @@ void loop ()
 				txReceived[eHWS]++;
 				lastReceived[eHWS] = now();				// set time of last update to now
 
-				temperature[eWater] = 100* (int)hwsPayload.temperature[2];  //T3 . Multiply by 100 as temperature[] are in 100ths of degree
+				temperature[eWaterTemp] = 100* (int)hwsPayload.temperature[2];  //T3 . Multiply by 100 as temperature[] are in 100ths of degree
 			}
 
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
@@ -420,6 +423,15 @@ void loop ()
 					dailyRainfall = rainPayload.rainCount - rainStartOfToday;
 			}
 
+			if (node_id == WATERLEVEL_NODE)
+			{
+				PayloadWater waterPayload = *(PayloadWater*)rf12_data;							// get emontx payload data
+
+				EmonSerial::PrintWaterPayload(&waterPayload, (now() - lastReceived[eWaterNode]));				// print data to serial
+
+				txReceived[eWaterNode]++;
+				lastReceived[eWaterNode] = now();				// set time of last update to now
+			}
 
 			if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
 			{
@@ -554,18 +566,18 @@ void loop ()
 			//send the temperature every 60 seconds
 			dispPayload.temperature = temperature[eInside];
 	
-			if (numberOfTemperatureSensors)
-			{
-				int wait = 1000;
-				while (!rf12_canSend() && --wait)
-					;
-				if (wait)
-				{
-					rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
-					rf12_sendWait(0);
-					EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
-				}
-			}
+			//if (numberOfTemperatureSensors)
+			//{
+			//	int wait = 1000;
+			//	while (!rf12_canSend() && --wait)
+			//		;
+			//	if (wait)
+			//	{
+			//		rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
+			//		rf12_sendWait(0);
+			//		EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
+			//	}
+			//}
 
 			refreshScreen = true;	//every 60 seconds
 		}
@@ -612,7 +624,7 @@ void loop ()
 				//print temperatures
 				lcd.setCursor(0, 1);
 				//water temperatre
-				lcd.print(TemperatureString(str, temperature[eWater]));
+				lcd.print(TemperatureString(str, temperature[eWaterTemp]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
@@ -646,7 +658,7 @@ void loop ()
 				//print temperatures
 				lcd.setCursor(0, 1);
 				//water temperatre
-				lcd.print(TemperatureString(str, temperature[eWater]));
+				lcd.print(TemperatureString(str, temperature[eWaterTemp]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
@@ -667,7 +679,7 @@ void loop ()
 				int minTemp[3];
 				usageHistory.getMonitoredValues(eValueStatisticMin, minTemp, NULL);
 				//water temperatre
-				lcd.print(TemperatureString(str, minTemp[eWater]));
+				lcd.print(TemperatureString(str, minTemp[eWaterTemp]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
@@ -689,7 +701,7 @@ void loop ()
 				usageHistory.getMonitoredValues(eValueStatisticMax, maxTemp, NULL);
 
 				//water temperatre
-				lcd.print(TemperatureString(str, maxTemp[eWater]));
+				lcd.print(TemperatureString(str, maxTemp[eWaterTemp]));
 
 				//inside temperature
 				lcd.setCursor(6, 1);
@@ -727,6 +739,20 @@ void loop ()
 				lcd.setCursor(11, 1);
 				//the battery voltage is in the array past the last sensor
 				lcd.print(TemperatureString(str, temperaturePayload.temperature[temperaturePayload.numSensors] / 10));
+				break;
+			}
+			case eWaterTankHeight:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Water:"));
+				lcd.setCursor(7, 0);
+				lcd.print(waterPayload.waterHeight);
+				lcd.print(" mm");
+				lcd.setCursor(0, 1);
+				lcd.print(F("Node"));
+				lcdInt(4, 1, (unsigned int)txReceived[eWaterNode]);
+				lcd.setCursor(10, 1);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eWaterNode])));
 				break;
 			}
 			case eRainFallTotals:

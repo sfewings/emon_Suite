@@ -257,6 +257,40 @@ void EmonSerial::PrintHWSPayload(Stream& stream, PayloadHWS *pPayloadHWS, unsign
 	stream.println();
 }
 
+void EmonSerial::PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long timeSinceLast)
+{
+	PrintWaterPayload(Serial, pPayloadWater, timeSinceLast);
+}
+
+void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast)
+{
+	if (pPayloadWater == NULL)
+	{
+		stream.print(F("wtr: waterHeight(mm), rawReading(header,mm<<8,mm,chksum)|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("wtr: "));
+
+		stream.print(pPayloadWater->waterHeight);
+
+		for (int i = 3; i >= 0; i--)
+		{
+			stream.print(F(","));
+			stream.print((pPayloadWater->sensorReading >> (8 * i)) & 0xFF);
+		}
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
+
+//---------------Parse routines -------------------
 
 
 int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
@@ -449,5 +483,26 @@ int EmonSerial::ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS)
 		pPayloadHWS->pump[i] = (0!=atoi(pch));
 	}
 
+	return 1;
+}
+
+int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
+{
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 != strcmp(pch, "wtr"))
+		return 0;	//can't find "wtr:" as first token
+	pPayloadWater->waterHeight = (int)atoi(pch);
+
+	pPayloadWater->sensorReading = 0;
+	for (int i = 0; i < 4; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok)))
+			return 0;
+		pPayloadWater->sensorReading = pPayloadWater->sensorReading << 8 & (byte)atoi(pch);
+	}
+	
 	return 1;
 }
