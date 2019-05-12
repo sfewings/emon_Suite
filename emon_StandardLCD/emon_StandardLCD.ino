@@ -241,7 +241,9 @@ void interruptHandlerPushButton()
 
 	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
-		if (pushButton == eDisgnosisTempEmons)
+		if(period >2000)
+			pushButton = eSummary; //if press is after two seconds, return to summary
+		else if (pushButton == eDisgnosisTempEmons)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
@@ -566,18 +568,18 @@ void loop ()
 			//send the temperature every 60 seconds
 			dispPayload.temperature = temperature[eInside];
 	
-			//if (numberOfTemperatureSensors)
-			//{
-			//	int wait = 1000;
-			//	while (!rf12_canSend() && --wait)
-			//		;
-			//	if (wait)
-			//	{
-			//		rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
-			//		rf12_sendWait(0);
-			//		EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
-			//	}
-			//}
+			if (numberOfTemperatureSensors)
+			{
+				int wait = 1000;
+				while (!rf12_canSend() && --wait)
+					;
+				if (wait)
+				{
+					rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
+					rf12_sendWait(0);
+					EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
+				}
+			}
 
 			refreshScreen = true;	//every 60 seconds
 		}
