@@ -241,8 +241,8 @@ void interruptHandlerPushButton()
 
 	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
-		if(period >2000)
-			pushButton = eSummary; //if press is after two seconds, return to summary
+		if(period >5000)
+			pushButton = eSummary; //if press is after 5 seconds, return to summary
 		else if (pushButton == eDisgnosisTempEmons)
 			pushButton = eSummary;
 		else
@@ -427,7 +427,7 @@ void loop ()
 
 			if (node_id == WATERLEVEL_NODE)
 			{
-				PayloadWater waterPayload = *(PayloadWater*)rf12_data;							// get emontx payload data
+				waterPayload = *(PayloadWater*)rf12_data;							// get emontx payload data
 
 				EmonSerial::PrintWaterPayload(&waterPayload, (now() - lastReceived[eWaterNode]));				// print data to serial
 
