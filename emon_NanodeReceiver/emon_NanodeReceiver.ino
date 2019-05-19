@@ -90,6 +90,7 @@ byte Ethernet::buffer[900];
 #define APIKEY_POWER				"1OEHK8GL62859FAB"
 #define APIKEY_TEMPERATURE	"TYG402MEEINATR4P"
 #define APIKEY_HWS					"W5FD6RBQUGHU2DBP"
+#define APIKEY_WATER				"BAO9U9BAT67YTZ0J"
 
 const char website[] PROGMEM = "api.thingspeak.com";
 uint8_t		webip[4];
@@ -373,7 +374,7 @@ void loop ()
 		}
 	}
 
-	if (millis() - web_update > 20000)
+	if (millis() - web_update > 15000)
 	{
 		if (tcpReplyCount && ++tcpReplyCount > 3)
 		{
@@ -388,7 +389,7 @@ void loop ()
 
 		byte sd = stash.create();
 		const char * apiKey;
-		if( ++toggleWebUpdate ==3) 
+		if( ++toggleWebUpdate ==4) 
 			toggleWebUpdate=0;		//toggle
 
 		if (toggleWebUpdate == 0)
@@ -439,11 +440,9 @@ void loop ()
 			}
 			if (temperaturePayload2.temperature[0] != 0)
 			{
-				stash.print(F("&field7="));
-				stash.print(waterPayload.waterHeight);
-				//stash.print(temperaturePayload2.temperature[0] / 100);
-				//stash.print(F("."));
-				//stash.print((temperaturePayload2.temperature[0] / 10) % 10);
+				stash.print(temperaturePayload2.temperature[0] / 100);
+				stash.print(F("."));
+				stash.print((temperaturePayload2.temperature[0] / 10) % 10);
 			}
 			if (temperaturePayload2.temperature[1] != 0)
 			{
@@ -498,6 +497,22 @@ void loop ()
 				stash.print((word)hwsPayload.pump[2]);	//P3
 			}
 		}
+		else if (toggleWebUpdate == 3)
+		{
+			//Hot water system
+			apiKey = PSTR(APIKEY_WATER);
+			if (waterPayload.waterHeight)		//if there is no temperature reading yet, don't publish it
+			{
+				stash.print(F("&field1="));
+				stash.print(waterPayload.waterHeight);
+			}
+			stash.print("&field2=");
+			stash.print((int)(dailyRainfall / 5));
+			stash.print(".");
+			stash.print((dailyRainfall % 5) * 2);
+
+		}
+
 
 		stash.save();
 
