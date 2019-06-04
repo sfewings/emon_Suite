@@ -7,6 +7,7 @@
 #include <util/crc16.h>		//cyclic redundancy check
 #include <time.h>					//required for EmonShared.h
 #include <EmonShared.h>
+#include <EmonEEPROM.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -26,6 +27,7 @@ int readingIndex = 0;
 #define ENABLE_SERIAL 1
 
 RF12Init rf12Init = { TEMPERATURE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+EEPROMSettings  eepromSettings;
 
 
 //--------------------------------------------------------------------------------------------
@@ -65,7 +67,17 @@ void setup()
 	//				3				6				22
 	//				4				7				23
 
-	sleepDelay = 30000;	//30 seconds in milliseconds
+	sleepDelay = 5000;	//in milliseconds
+
+		//initialise the EEPROMSettings for relay and node number
+	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
+	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
+	if (eepromSettings.relayNumber)
+		temperaturePayload.relay = 1 << eepromSettings.relayNumber;
+	else
+		temperaturePayload.relay = 0;
+	temperaturePayload.subnode = eepromSettings.subnode;
+
 
 	temperaturePayload.numSensors = 0;
 	for (int i = 0; i < MAX_TEMPERATURE_SENSORS + 1; i++)
@@ -128,10 +140,6 @@ void setup()
 
 	EmonSerial::PrintTemperaturePayload(NULL);
 
-	//a crappy way of determining the node ID!
-	if (temperaturePayload.numSensors == 2)
-		rf12Init.node = TEMPERATURE_JEENODE_2;
-
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
 	rf12_sleep(RF12_SLEEP);
 	EmonSerial::PrintRF12Init(rf12Init);
@@ -153,7 +161,8 @@ void loop()
 				int reading = 0;
 				for (int j = 0; j < READING_HISTORY; j++)
 					reading += readings[readingNum][j];
-				temperaturePayload.temperature[readingNum++] = reading / READING_HISTORY;
+				temperaturePayload.temperature[readingNum] = reading / READING_HISTORY;
+				readingNum++;
 			}
 		}
 	}
@@ -174,7 +183,7 @@ void loop()
 */
 
 	//add the current supply voltage at the end
-	temperaturePayload.temperature[readingNum] = readVcc();
+	temperaturePayload.supplyV = readVcc();
 
 	//transmit
 	rf12_sleep(RF12_WAKEUP);
@@ -184,7 +193,8 @@ void loop()
 	if (wait)
 	{
 		//only send as many ints as we have temperatures plus numSensors + Vcc
-		rf12_sendStart(0, &temperaturePayload, sizeof(int)*(2 + temperaturePayload.numSensors));
+		//rf12_sendStart(0, &temperaturePayload, sizeof(int) * (2 + temperaturePayload.numSensors));
+		rf12_sendStart(0, &temperaturePayload, sizeof(temperaturePayload) - sizeof(int)*(MAX_TEMPERATURE_SENSORS- temperaturePayload.numSensors));
 
 		rf12_sendWait(0);
 	}

@@ -1,21 +1,14 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
-// emonGLCD Single CT example
-// to be used with nanode auto update time base example
+// Fewings emon_StandardLCD
+// S Fewings  Jun 2019
 
-// emonGLCD documentation http://openEnergyMonitor.org/emon/emonglcd
-
-// For use with emonTx setup with one CT
-// RTC to reset Kwh counters at midnight is implemented is software. 
-// Correct time is updated via NanodeRF which gets time from internet
-// Temperature recorded on the emonglcd is also sent to the NanodeRF for online graphing
-
-// GLCD library by Jean-Claude Wippler: JeeLabs.org
-// 2010-05-28 <jcw@equi4.com> http://opensource.org/licenses/mit-license.php
-//
+// Originally based on emonGLCD documentation http://openEnergyMonitor.org/emon/emonglcd
 // Authors: Glyn Hudson and Trystan Lea
 // Part of the: openenergymonitor.org project
 // Licenced under GNU GPL V3
 // http://openenergymonitor.org/emon/license
+// GLCD library by Jean-Claude Wippler: JeeLabs.org
+// 2010-05-28 <jcw@equi4.com> http://opensource.org/licenses/mit-license.php
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 #define DEBUG
@@ -30,6 +23,8 @@
 #include <EEPROM.h>
 
 #include <EmonShared.h>
+#include <EmonEEPROM.h>
+
 #include "EEPROMHist.h"
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
@@ -63,7 +58,8 @@ PayloadHWS hwsPayload;
 PayloadTemperature temperaturePayload;
 PayloadWater waterPayload;
 
-RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, 210 };
+RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+EEPROMSettings  eepromSettings;
 
 int thisHour;
 time_t					startTime = 0;
@@ -98,12 +94,13 @@ typedef enum {
 	eDateTimeStartRunning,
 	eDiagnosisRainBase,
 	eDiagnosisPulseHWS,
-	eDisgnosisTempEmons
+	eDiagnosisSettings,
+	eDiagnosisTempEmons
 }  ButtonDisplayMode;
 
 volatile ButtonDisplayMode pushButton = eSummary;  //set this to the startup display
 volatile unsigned long	g_RGlastTick = 0;
-ButtonDisplayMode lastPushButton = eDisgnosisTempEmons;
+ButtonDisplayMode lastPushButton = eDiagnosisTempEmons;
 
 
 //---------------------------------------------------------------------------------------------------
@@ -116,7 +113,7 @@ int numberOfTemperatureSensors = 0;
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-#define  SEND_UPDATE_PERIOD			60	//seconds between updates
+#define  SEND_UPDATE_PERIOD			5  //60	//seconds between updates
 
 time_t slow_update;									// Used to count time for slow 10s events
 time_t average_update;							// Used to store averages and totals
@@ -253,18 +250,35 @@ void interruptHandlerPushButton()
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
-void setup () 
+void setup()
 {
 	Serial.begin(9600);
-	
+
 	lcd.begin(16, 2);
 	lcd.setCursor(0, 0);
 
 	lcd.print(F("Fewings Power"));
 	lcd.setCursor(0, 1);
-	lcd.print(F("Monitor 2.0"));
+	lcd.print(F("Monitor 3.0"));
 
 	Serial.println(F("Fewings emonGLCD solar PV monitor - gen and use"));
+
+	//initialise the EEPROMSettings for relay and node number
+	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
+	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
+	if (eepromSettings.relayNumber)
+		dispPayload.relay = 1 << eepromSettings.relayNumber;
+	else
+		dispPayload.relay = 0;
+
+	if (eepromSettings.subnode)
+	{
+		lcd.setCursor(12, 1);
+		lcd.print(F("n="));
+		lcd.print(eepromSettings.subnode);
+		//set the subnode of all packets sent from us
+		dispPayload.subnode = eepromSettings.subnode;
+	}
 
 	Serial.println("rf12_initialize");
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
@@ -306,6 +320,10 @@ void setup ()
 			PrintAddress(tmp_address);
 			Serial.println();
 		}
+	}
+	else
+	{
+		Serial.println("No temperature sensors found");
 	}
 
 	temperature[eWaterTemp] = 0;
@@ -466,25 +484,34 @@ void loop ()
 			}
 
 			//resend the incoming packets of rain, temperature and HWS systems. These are at the outer extents fo the house
-			if (node_id == HWS_JEENODE )
+			if (eepromSettings.relayNumber )
 			{
-
-				delay(100);
-				// switch to outgoing group
-				uint8_t ret = rf12_initialize(HWS_JEENODE_RELAY, rf12Init.freq, rf12Init.group);
-				Serial.print("Relay HWS packet "); Serial.println(node_id);
-				// send our packet, once possible
-				int wait = 1000;
-				
-				while (!rf12_canSend() && --wait)
-					rf12_recvDone();
-				if (wait)
+				PayloadRelay relayPayload = *((PayloadRelay*)buf);
+				//check if we havn't already relayed this packet!
+				if ((relayPayload.relay & 1 << eepromSettings.relayNumber) == 0)
 				{
-					rf12_sendStart(0, buf, len);
-					rf12_sendWait(0);
+					//check that the node is one we are listed to relay
+					if ((long)1 << node_id & eepromSettings.relayNodes)
+					{
+						delay(100);
+						// switch the outgoing node to the incoming node ID.
+						uint8_t ret = rf12_initialize(node_id, rf12Init.freq, rf12Init.group);
+						Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
+						//set the bit in teh relay byte to our relayNumber ID
+						relayPayload.relay |= 1 << eepromSettings.relayNumber;
+						int wait = 1000;
+
+						while (!rf12_canSend() && --wait)
+							rf12_recvDone();
+						if (wait)
+						{
+							rf12_sendStart(0, buf, len);
+							rf12_sendWait(0);
+						}
+						//reset our node ID
+						ret = rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
+					}
 				}
-				//reset our node ID
-				ret = rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 			}
 		}
 	}
@@ -823,7 +850,31 @@ void loop ()
 				lcd.print(TimeSpanString(str, (now() - lastReceived[eHWS])));
 				break;
 			}
-			case eDisgnosisTempEmons:
+			case eDiagnosisSettings:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Subnode"));
+				lcdInt(7, 0, eepromSettings.subnode);
+				lcd.setCursor(0, 1);
+				lcd.print(F("Relay"));
+				lcdInt(5, 1, eepromSettings.relayNumber);
+				if (eepromSettings.relayNumber)
+				{
+					static int dispNodeID = 0;
+					static int wait = 4;
+					if (++wait == 5)
+					{
+						wait = 0;
+						while ((eepromSettings.relayNodes & ((long)1 << dispNodeID )) == 0)
+							dispNodeID = (++dispNodeID) % 32;
+						lcd.setCursor(11, 1);
+						lcd.print(EmonEEPROM::NodeName(dispNodeID));
+						dispNodeID = (++dispNodeID) % 32;
+					}
+				}
+				break;
+			}
+			case eDiagnosisTempEmons:
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Temp"));

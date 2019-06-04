@@ -11,16 +11,16 @@
 
 
 //RF12 node ID allocation
-#define EMON_NODE	10						//Emon Tx with Power and Solar readings
-#define RAIN_NODE	11						//Rain gauge Jeenode with rainfall and outside temperature
-#define PULSE_JEENODE 12				//JeeNode with power pulse from main switch board
-#define BASE_JEENODE 16					//Nanode with LAN and NTP time
-#define DISPLAY_NODE 20					//Arduino with LCD display
-#define TEMPERATURE_JEENODE 21	//Jeenode with multiple DS180B temperature sensors 
-#define HWS_JEENODE 22					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
-#define HWS_JEENODE_RELAY 23		//Relay packet HWS_JEENODE
-#define EMON_LOGGER 24					//Logger node. Not a transmitter
-#define TEMPERATURE_JEENODE_2 25	//Jeenode with multiple DS180B temperature sensors 
+#define BASE_JEENODE 10					//Nanode with LAN and NTP time
+#define EMON_NODE	11						//Emon Tx with Power and Solar readings. no longer used!
+#define RAIN_NODE	12						//Rain gauge Jeenode with rainfall and outside temperature
+#define PULSE_JEENODE 13				//JeeNode with power pulse from main switch board
+#define DISPLAY_NODE 24					//Arduino with LCD display
+#define TEMPERATURE_JEENODE 15	//Jeenode with multiple DS180B temperature sensors 
+#define HWS_JEENODE 16					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
+#define EMON_LOGGER 17					//Logger node. Not a transmitter
+
+#define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
 #define WATERLEVEL_NODE 26			//The water tank sensor
 
 #define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
@@ -28,7 +28,7 @@
 #define HWS_TEMPERATURES 7			//number of temperature readings from the hot water system
 #define HWS_PUMPS 3							//number of pumps from the hot water system
 
-#define FEWINGS_MONITOR_GROUP  209
+#define FEWINGS_MONITOR_GROUP  211
 
 typedef struct {
 	uint8_t node;					//Should be unique on network, node ID 30 reserved for base station
@@ -37,7 +37,6 @@ typedef struct {
 }RF12Init;
 
 ////Nodes that can relay packets
-
 #define RELAY_1  (0x1)
 #define RELAY_2  (0x2)
 #define RELAY_3  (0x4)
@@ -47,8 +46,10 @@ typedef struct {
 #define RELAY_7  (0x40)
 #define RELAY_8  (0x80)
 
+
+//base struct for all data structs
 typedef struct {
-	byte relay;
+	byte relay;			//OR of all the relay units that have transmitted this packet. 0=original node transmit
 } PayloadRelay;
 
 typedef struct PayloadEmon: PayloadRelay{
@@ -75,12 +76,15 @@ typedef struct PayloadRain :PayloadRelay{
 };
 
 typedef struct PayloadDisp: PayloadRelay{													// from the LCD display. Collects room temperature
+	byte subnode;														//allow multiple Display nodes on the network
 	int temperature;												//temperature in 100th of degrees
 } ;
 
 typedef struct PayloadTemperature : PayloadRelay{													// from JeeNode with many temperature sensors
+	byte subnode;														//allow multiple temperature nodes on the network
+	unsigned long supplyV;									// unit supply voltage
 	int numSensors;
-	int temperature[MAX_TEMPERATURE_SENSORS+1];	//temperature in 100th of degrees. +1 for supplyV
+	int temperature[MAX_TEMPERATURE_SENSORS];	//temperature in 100th of degrees
 };
 
 typedef struct PayloadHWS : PayloadRelay {   // from JeeNode
@@ -92,21 +96,15 @@ typedef struct PayloadBase: PayloadRelay {
 	time_t time; 
 };
 
-
-
 typedef struct
 {
 	int waterHeight;
 	uint32_t sensorReading;
 } PayloadWater;
-
-//typedef struct PayloadHWSRelay : PayloadRelay, PayloadHWS { };
-
-
 class EmonSerial{
 public:
 	static void PrintRF12Init(const RF12Init &rf12Init);
-	
+
 	static void PrintEmonPayload(PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
 	static void PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
@@ -116,7 +114,9 @@ public:
 	static void PrintHWSPayload(PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
 	static void PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 
-	static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
+	//static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
+
+	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
 	static void PrintEmonPayload(Stream& stream, PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
 	static void PrintRainPayload(Stream& stream, PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
@@ -128,6 +128,7 @@ public:
 	static void PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 
 
+	static void ParseRelay(PayloadRelay* pPayloadRelay, char* pch);
 	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);

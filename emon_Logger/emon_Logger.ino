@@ -18,8 +18,8 @@
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
-#define MAX_NODES	9				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay, eWater };	//index into txReceived and lastReceived
+#define MAX_NODES	14				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater };	//index into txReceived and lastReceived
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
@@ -28,9 +28,8 @@ PayloadEmon emonPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
-PayloadDisp displayPayload;
-PayloadTemperature temperaturePayload;
-PayloadTemperature temperaturePayload2;
+PayloadDisp displayPayload[MAX_SUBNODES];
+PayloadTemperature temperaturePayload[MAX_SUBNODES];
 PayloadHWS hwsPayload;
 PayloadWater waterPayload;
 
@@ -112,6 +111,7 @@ void loop ()
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
 			int node_id = (rf12_hdr & 0x1F);
+			int subnode = 0;
 
 			if (node_id == BASE_JEENODE)						// jeenode base Receives the time
 			{
@@ -142,19 +142,19 @@ void loop ()
 			}
 			if (node_id == TEMPERATURE_JEENODE)
 			{
-				temperaturePayload = *(PayloadTemperature*)rf12_data;							// get emontx payload data
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload, (now() - lastReceived[eTemp]));				// print data to serial
-				txReceived[eTemp]++;
-				lastReceived[eTemp] = now();				// set time of last update to now
+				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
+				subnode = tpl.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print("Invalid temperature subnode. Exiting");
+					return;
+				}
+				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0 + subnode]));			 // print data to serial
+				txReceived[eTemp0 + subnode]++;
+				lastReceived[eTemp0 + subnode] = now();
 			}
-			if (node_id == TEMPERATURE_JEENODE_2)
-			{
-				temperaturePayload2 = *(PayloadTemperature*)rf12_data;							// get emontx payload data
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload2, (now() - lastReceived[eTemp2]));				// print data to serial
-				txReceived[eTemp2]++;
-				lastReceived[eTemp2] = now();				// set time of last update to now
-			}
-			if (node_id == HWS_JEENODE || node_id == HWS_JEENODE_RELAY )
+			if (node_id == HWS_JEENODE )
 			{
 				hwsPayload = *(PayloadHWS*)rf12_data;							// get emontx payload data
 				EmonSerial::PrintHWSPayload(&hwsPayload, (now() - lastReceived[eHWS]));				// print data to serial
@@ -172,10 +172,17 @@ void loop ()
 
 			if (node_id == DISPLAY_NODE)
 			{
-				displayPayload = *((PayloadDisp*)rf12_data);
-				EmonSerial::PrintDispPayload(&displayPayload, (now() - lastReceived[eDisplay]));			 // print data to serial
-				txReceived[eDisplay]++;
-				lastReceived[eDisplay] = now();
+				PayloadDisp dpl = *((PayloadDisp*)rf12_data);
+				subnode = dpl.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print("Invalid subnode. Exiting");
+					return;
+				}
+				memcpy(&displayPayload[subnode], &dpl, sizeof(PayloadDisp));
+				EmonSerial::PrintDispPayload(&displayPayload[subnode], (now() - lastReceived[eDisp0 + subnode]));			 // print data to serial
+				txReceived[eDisp0 + subnode]++;
+				lastReceived[eDisp0 + subnode] = now();
 			}
 
 			if (node_id == WATERLEVEL_NODE)
@@ -219,16 +226,12 @@ void loop ()
 						EmonSerial::PrintPulsePayload(file, &pulsePayload);
 						break;
 					case DISPLAY_NODE:
-						EmonSerial::PrintDispPayload(file, &displayPayload);
+						EmonSerial::PrintDispPayload(file, &displayPayload[subnode]);
 						break;
 					case TEMPERATURE_JEENODE:
-						EmonSerial::PrintTemperaturePayload(file, &temperaturePayload);
-						break;
-					case TEMPERATURE_JEENODE_2:
-						EmonSerial::PrintTemperaturePayload(file, &temperaturePayload2);
+						EmonSerial::PrintTemperaturePayload(file, &temperaturePayload[subnode]);
 						break;
 					case HWS_JEENODE:
-					case HWS_JEENODE_RELAY:
 						EmonSerial::PrintHWSPayload(file, &hwsPayload);
 						break;
 					case WATERLEVEL_NODE:
