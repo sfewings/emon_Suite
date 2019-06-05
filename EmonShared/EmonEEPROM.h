@@ -18,7 +18,7 @@ typedef struct {
 class EmonEEPROM {
 public:
 	static word CalcCrc(const void* ptr, byte len);
-	static PGM_P NodeName(word node_id);
+	static const char* NodeName(word node_id);
 
 	static bool PrintNode(Stream& stream, const long nodeID);
 	static void PrintEEPROMSettings(Stream& stream, const EEPROMSettings& settings);

@@ -22,10 +22,11 @@ const char temp_str[] PROGMEM = "temp";
 const char hws_str[] PROGMEM = "hws";
 const char log_str[] PROGMEM = "log";
 const char emon_str[] PROGMEM = "emon";
+const char wtr_str[] PROGMEM = "wtr";
 const char empty_str[] PROGMEM = "";
 char nodeNameBuf[8];	//make sure none of the names are more than 8 chars. Including NULL termination
 
-PGM_P EmonEEPROM::NodeName(word nodeID)
+const char* EmonEEPROM::NodeName(word nodeID)
 {
 	switch (nodeID)
 	{
@@ -36,6 +37,7 @@ PGM_P EmonEEPROM::NodeName(word nodeID)
 	case TEMPERATURE_JEENODE: strcpy_P(nodeNameBuf, temp_str); break;
 	case HWS_JEENODE: strcpy_P(nodeNameBuf, hws_str); break;
 	case EMON_LOGGER: strcpy_P(nodeNameBuf, log_str); break;
+	case WATERLEVEL_NODE: strcpy_P(nodeNameBuf, wtr_str); break;
 	default: strcpy_P(nodeNameBuf, empty_str);
 	}
 	return nodeNameBuf;

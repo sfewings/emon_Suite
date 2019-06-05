@@ -1,5 +1,6 @@
 //simple configuration utility for setting the EEPROM for new nodes
 //sets the relay number and the subnode
+#include <EmonShared.h>
 #include <EmonEEPROM.h>
 
 #define VERSION "[Emon_EEPROMConfig.1]\n"           // keep in sync with the above

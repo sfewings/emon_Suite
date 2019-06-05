@@ -240,7 +240,7 @@ void interruptHandlerPushButton()
 	{
 		if(period >5000)
 			pushButton = eSummary; //if press is after 5 seconds, return to summary
-		else if (pushButton == eDisgnosisTempEmons)
+		else if (pushButton == eDiagnosisTempEmons)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
@@ -361,10 +361,16 @@ void loop ()
 	
 	if (rf12_recvDone())
 	{
+		//Serial.print("r,");
+		//Serial.print(rf12_crc);
+		//Serial.print(",");
+		//Serial.print(rf12_hdr);
+		//Serial.print(",");
+		//Serial.println(rf12_hdr & 0x1F);
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
 			int node_id = (rf12_hdr & 0x1F);
-
+			//Serial.print(node_id);
 			//store the incoming buffer for a resend
 			uint8_t buf[66];
 			byte len = rf12_len;
@@ -641,7 +647,7 @@ void loop ()
 				lcdInt(5, 0, (unsigned int)pulsePayload.power[1]);
 
 				lcd.setCursor(0,0);
-				lcd.print( txReceived[4]%2 ? "*" : " "); //toggle "*" every time a pulseNodeTx received. Every second
+				lcd.print( txReceived[ePulse]%2 ? "*" : " "); //toggle "*" every time a pulseNodeTx received. Every second
 
 				if (rainGaugeReadingReceived && dailyRainfall != 0)
 				{
@@ -854,20 +860,22 @@ void loop ()
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Subnode"));
-				lcdInt(7, 0, eepromSettings.subnode);
+				lcd.setCursor(8, 0);
+				lcd.print(eepromSettings.subnode);
 				lcd.setCursor(0, 1);
 				lcd.print(F("Relay"));
-				lcdInt(5, 1, eepromSettings.relayNumber);
+				lcd.setCursor(8, 1);
+				lcd.print(eepromSettings.relayNumber);
 				if (eepromSettings.relayNumber)
 				{
 					static int dispNodeID = 0;
 					static int wait = 4;
-					if (++wait == 5)
+					if (++wait == 5) //5*200ms= every second
 					{
 						wait = 0;
 						while ((eepromSettings.relayNodes & ((long)1 << dispNodeID )) == 0)
 							dispNodeID = (++dispNodeID) % 32;
-						lcd.setCursor(11, 1);
+						lcd.setCursor(10, 1);
 						lcd.print(EmonEEPROM::NodeName(dispNodeID));
 						dispNodeID = (++dispNodeID) % 32;
 					}

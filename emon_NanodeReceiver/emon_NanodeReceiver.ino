@@ -23,9 +23,8 @@
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
-PayloadDisp displayPayload;
-PayloadTemperature temperaturePayload;
-PayloadTemperature temperaturePayload2;
+PayloadDisp displayPayload[MAX_SUBNODES];
+PayloadTemperature temperaturePayload[MAX_SUBNODES];
 PayloadHWS hwsPayload;
 PayloadWater waterPayload;
 
@@ -34,8 +33,8 @@ RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 //-------------------------------------------------------------------------------------------- 
 //remote node reliability support
 //-------------------------------------------------------------------------------------------- 
-#define MAX_NODES	9				//number of jeenodes, node		0=emon,	1=emonTemperature, 1=emonTemperature2 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp, eTemp2, eRain, eBase, ePulse, eHWS, eDisplay, eWater };	//index into txReceived and lastReceived
+#define MAX_NODES	14				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater };	//index into txReceived and lastReceived
 time_t lastReceived[MAX_NODES];
 
 
@@ -179,8 +178,8 @@ void setup ()
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
 	
-	temperaturePayload.numSensors = 0;
-	temperaturePayload2.numSensors = 0;
+	for(int i=0;i<MAX_SUBNODES;i++)
+		temperaturePayload[i].numSensors = 0;
 
 	dailyRainfall = 0;
 	dayStartRainfall = 0;
@@ -221,6 +220,7 @@ void loop ()
 			digitalWrite(RED_LED, LOW);
 
 			int node_id = (rf12_hdr & 0x1F);
+			byte subnode = 0;
 		
 
 			if (node_id == PULSE_JEENODE)
@@ -234,30 +234,35 @@ void loop ()
 
 			if (node_id == DISPLAY_NODE)
 			{
-				displayPayload = *(PayloadDisp*)rf12_data;								// get payload data
-				EmonSerial::PrintDispPayload(&displayPayload, now() - lastReceived[eDisplay]);
-				lastReceived[eDisplay] = now();
+				PayloadDisp dpl = *((PayloadDisp*)rf12_data);
+				subnode = dpl.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print("Invalid display subnode. Exiting");
+					return;
+				}
+				memcpy(&displayPayload[subnode], &dpl, sizeof(PayloadDisp));
+				EmonSerial::PrintDispPayload(&displayPayload[subnode], (now() - lastReceived[eDisp0 + subnode]));			 // print data to serial
+				lastReceived[eDisp0 + subnode] = now();
 			}
 
 			if (node_id == TEMPERATURE_JEENODE)
 			{
-				temperaturePayload = *(PayloadTemperature*)rf12_data;								// get payload data
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload, now() - lastReceived[eTemp]);
-				lastReceived[eTemp] = now();
+				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
+				subnode = tpl.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print("Invalid temperature subnode. Exiting");
+					return;
+				}
+				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0 + subnode]));			 // print data to serial
+				lastReceived[eTemp0 + subnode] = now();
 			}
 
-			if (node_id == TEMPERATURE_JEENODE_2)
-			{
-				temperaturePayload2 = *(PayloadTemperature*)rf12_data;								// get payload data
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload2, now() - lastReceived[eTemp2]);
-				lastReceived[eTemp2] = now();
-			}
-
-			if (node_id == HWS_JEENODE || node_id == HWS_JEENODE_RELAY )
+			if (node_id == HWS_JEENODE )
 			{
 				hwsPayload = *(PayloadHWS*)rf12_data;								// get payload data
-				if (node_id == HWS_JEENODE_RELAY)
-					Serial.print("Relay_");
 				EmonSerial::PrintHWSPayload(&hwsPayload, now() - lastReceived[eHWS]);
 				lastReceived[eHWS] = now();
 			}
@@ -403,53 +408,53 @@ void loop ()
 				stash.print(F("."));
 				stash.print((rainPayload.temperature / 10) % 10);
 			}
-			if (displayPayload.temperature != 0)
+			if (displayPayload[0].temperature != 0)
 			{
 				stash.print(F("&field2="));
-				stash.print(displayPayload.temperature / 100);
+				stash.print(displayPayload[0].temperature / 100);
 				stash.print(F("."));
-				stash.print((displayPayload.temperature / 10) % 10);
+				stash.print((displayPayload[0].temperature / 10) % 10);
 			}
-			if (temperaturePayload.temperature[0] != 0)
+			if (temperaturePayload[0].temperature[0] != 0)
 			{
 				stash.print(F("&field3="));
-				stash.print(temperaturePayload.temperature[0] / 100);
+				stash.print(temperaturePayload[0].temperature[0] / 100);
 				stash.print(F("."));
-				stash.print((temperaturePayload.temperature[0] / 10) % 10);
+				stash.print((temperaturePayload[0].temperature[0] / 10) % 10);
 			}
-			if (temperaturePayload.temperature[1] != 0)
+			if (temperaturePayload[0].temperature[1] != 0)
 			{
 				stash.print(F("&field4="));
-				stash.print(temperaturePayload.temperature[1] / 100);
+				stash.print(temperaturePayload[0].temperature[1] / 100);
 				stash.print(F("."));
-				stash.print((temperaturePayload.temperature[1] / 10) % 10);
+				stash.print((temperaturePayload[0].temperature[1] / 10) % 10);
 			}
-			if (temperaturePayload.temperature[2] != 0)
+			if (temperaturePayload[0].temperature[2] != 0)
 			{
 				stash.print(F("&field5="));
-				stash.print(temperaturePayload.temperature[2] / 100);
+				stash.print(temperaturePayload[0].temperature[2] / 100);
 				stash.print(F("."));
-				stash.print((temperaturePayload.temperature[2] / 10) % 10);
+				stash.print((temperaturePayload[0].temperature[2] / 10) % 10);
 			}
-			if (temperaturePayload.temperature[3] != 0)
+			if (temperaturePayload[0].temperature[3] != 0)
 			{
 				stash.print(F("&field6="));
-				stash.print(temperaturePayload.temperature[3] / 100);
+				stash.print(temperaturePayload[0].temperature[3] / 100);
 				stash.print(F("."));
-				stash.print((temperaturePayload.temperature[3] / 10) % 10);
+				stash.print((temperaturePayload[0].temperature[3] / 10) % 10);
 			}
-			if (temperaturePayload2.temperature[0] != 0)
+			if (temperaturePayload[1].temperature[0] != 0)
 			{
-				stash.print(temperaturePayload2.temperature[0] / 100);
+				stash.print(temperaturePayload[1].temperature[0] / 100);
 				stash.print(F("."));
-				stash.print((temperaturePayload2.temperature[0] / 10) % 10);
+				stash.print((temperaturePayload[1].temperature[0] / 10) % 10);
 			}
-			if (temperaturePayload2.temperature[1] != 0)
+			if (temperaturePayload[1].temperature[1] != 0)
 			{
 				stash.print(F("&field8="));
-				stash.print(temperaturePayload2.temperature[1] / 100);
+				stash.print(temperaturePayload[1].temperature[1] / 100);
 				stash.print(F("."));
-				stash.print((temperaturePayload2.temperature[1] / 10) % 10);
+				stash.print((temperaturePayload[1].temperature[1] / 10) % 10);
 			}
 		}
 		else if( toggleWebUpdate == 1 )

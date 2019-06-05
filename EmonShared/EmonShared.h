@@ -15,13 +15,13 @@
 #define EMON_NODE	11						//Emon Tx with Power and Solar readings. no longer used!
 #define RAIN_NODE	12						//Rain gauge Jeenode with rainfall and outside temperature
 #define PULSE_JEENODE 13				//JeeNode with power pulse from main switch board
-#define DISPLAY_NODE 24					//Arduino with LCD display
+#define DISPLAY_NODE 14					//Arduino with LCD display
 #define TEMPERATURE_JEENODE 15	//Jeenode with multiple DS180B temperature sensors 
 #define HWS_JEENODE 16					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
 #define EMON_LOGGER 17					//Logger node. Not a transmitter
+#define WATERLEVEL_NODE 18			//The water tank sensor
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
-#define WATERLEVEL_NODE 26			//The water tank sensor
 
 #define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
 #define MAX_TEMPERATURE_SENSORS 10  //maximum number of temperature sensors on the temperature_JeeNode  
