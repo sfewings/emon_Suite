@@ -14,8 +14,13 @@ void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 	if (rf12Init.freq == 1) Serial.print(F("433Mhz"));
 	if (rf12Init.freq == 2) Serial.print(F("868Mhz"));
 	if (rf12Init.freq == 3) Serial.print(F("915Mhz"));
-	Serial.print(" Network: ");
-	Serial.println(rf12Init.group);
+	Serial.print(F(" Network: "));
+	Serial.print(rf12Init.group);
+#ifdef RF69_COMPAT
+	Serial.println(F("Component: RF69CW"));
+#else
+	Serial.println(F("Component: RF12B"));
+#endif
 }
 
 
@@ -267,15 +272,6 @@ void EmonSerial::PrintHWSPayload(Stream& stream, PayloadHWS *pPayloadHWS, unsign
 	stream.println();
 }
 
-void EmonSerial::ParseRelay(PayloadRelay* pPayloadRelay, char* pch)
-{
-	//convert a binary value to a number e.g. 00100101 => 37
-	word len = strlen(pch);
-	byte relay = 0;
-	for (int i = 0; i < len; i++)
-		relay = relay << 1 + (pch[i] != '0');
-	pPayloadRelay->relay = relay;
-}
 void EmonSerial::PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long timeSinceLast)
 {
 	PrintWaterPayload(Serial, pPayloadWater, timeSinceLast);
@@ -285,19 +281,20 @@ void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, 
 {
 	if (pPayloadWater == NULL)
 	{
-		stream.print(F("wtr: waterHeight(mm), rawReading(header,mm<<8,mm,chksum)|ms_since_last_packet"));
+		stream.print(F("wtr1: waterHeight(mm), flowRate, flowCount|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("wtr: "));
+		stream.print(F("wtr1: "));
 
 		stream.print(pPayloadWater->waterHeight);
 
-		for (int i = 3; i >= 0; i--)
-		{
-			stream.print(F(","));
-			stream.print((pPayloadWater->sensorReading >> (8 * i)) & 0xFF);
-		}
+		stream.print(F(","));
+		stream.print(pPayloadWater->flowRate);
+		stream.print(F(","));
+		stream.print(pPayloadWater->flowCount);
+
+		PrintRelay(stream, pPayloadWater);
 
 		if (timeSinceLast != 0)
 		{
@@ -310,6 +307,17 @@ void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, 
 
 
 //---------------Parse routines -------------------
+
+void EmonSerial::ParseRelay(PayloadRelay* pPayloadRelay, char* pch)
+{
+	//convert a binary value to a number e.g. 00100101 => 37
+	word len = strlen(pch);
+	byte relay = 0;
+	for (int i = 0; i < len; i++)
+		relay = relay << 1 + (pch[i] != '0');
+	pPayloadRelay->relay = relay;
+}
+
 
 int EmonSerial::ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon)
 {
@@ -544,17 +552,41 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 	if (pch == NULL)
 		return 0;	//can't find anything
 
-	if (0 != strcmp(pch, "wtr"))
-		return 0;	//can't find "wtr:" as first token
-	pPayloadWater->waterHeight = (int)atoi(pch);
-
-	pPayloadWater->sensorReading = 0;
-	for (int i = 0; i < 4; i++)
+	if (0 == strcmp(pch, "wtr"))
 	{
 		if (NULL == (pch = strtok(NULL, tok)))
 			return 0;
-		pPayloadWater->sensorReading = pPayloadWater->sensorReading << 8 & (byte)atoi(pch);
+		pPayloadWater->waterHeight = (int)atoi(pch);
+
+		//pPayloadWater->sensorReading = 0;
+		for (int i = 0; i < 4; i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok)))
+				return 0;
+			//pPayloadWater->sensorReading = pPayloadWater->sensorReading << 8 & (byte)atoi(pch);
+		}
 	}
+	if (0 == strcmp(pch, "wtr1"))
+	{
+		if (NULL == (pch = strtok(NULL, tok)))
+			return 0;
+		pPayloadWater->waterHeight = (int)atoi(pch);
+
+		if (NULL != (pch = strtok(NULL, tok)))
+		{
+			pPayloadWater->flowRate = (int)atoi(pch);
+
+			if (NULL != (pch = strtok(NULL, tok)))
+				pPayloadWater->flowCount = (int)atoi(pch);
+		}
+
+		if (NULL != (pch = strtok(NULL, tok)))
+		{
+			ParseRelay(pPayloadWater, pch);
+		}
+	}
+	else
+		return 0; //couldn't find wtr or wtr1
 	
 	return 1;
 }

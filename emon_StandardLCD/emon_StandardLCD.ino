@@ -14,6 +14,8 @@
 #define DEBUG
 
 //JeeLab libraires				http://github.com/jcw
+#define RF69_COMPAT 0
+
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <PortsLCD.h>
 #include <TimeLib.h>
@@ -74,7 +76,7 @@ unsigned long rainStartOfToday;
 bool rainGaugeReadingReceived;
 unsigned long dailyRainfall;
 time_t	lastUpdateTime;
-int			tempLCD;										//temperature of this unit
+bool		refreshScreen = false;	//set true when time to completely redraw the screen
 
 //---------------------------------------------------------------------------------------------------
 // Push button support. On pin A3
@@ -267,7 +269,7 @@ void setup()
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	if (eepromSettings.relayNumber)
-		dispPayload.relay = 1 << eepromSettings.relayNumber;
+		dispPayload.relay = 1 << (eepromSettings.relayNumber-1);
 	else
 		dispPayload.relay = 0;
 
@@ -341,6 +343,8 @@ void setup()
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
 
+	average_update = now();
+	slow_update = now();
 
 	//let the startup LCD display for a while!
 	delay(2500);
@@ -354,23 +358,22 @@ void setup()
 void loop () 
 {
 	time_t time = now();
-	bool refreshScreen = false;	//set true when time to completely redraw the screen
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
 	
 	if (rf12_recvDone())
 	{
-		//Serial.print("r,");
-		//Serial.print(rf12_crc);
-		//Serial.print(",");
-		//Serial.print(rf12_hdr);
-		//Serial.print(",");
-		//Serial.println(rf12_hdr & 0x1F);
+		if (rf12_crc)
+		{
+			Serial.print(F("rcv crc err:"));
+			Serial.print(rf12_crc);
+			Serial.print(F(",len:"));
+			Serial.println(rf12_hdr);
+		}
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
 			int node_id = (rf12_hdr & 0x1F);
-			//Serial.print(node_id);
 			//store the incoming buffer for a resend
 			uint8_t buf[66];
 			byte len = rf12_len;
@@ -459,6 +462,14 @@ void loop ()
 				lastReceived[eWaterNode] = now();				// set time of last update to now
 			}
 
+			if (node_id == DISPLAY_NODE)
+			{
+				PayloadDisp dp = *(PayloadDisp*)rf12_data;							// get emontx payload data
+
+				EmonSerial::PrintDispPayload(&dp );				// print data to serial
+			}
+
+
 			if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
 			{
 				basePayload = *((PayloadBase*)rf12_data);
@@ -492,19 +503,19 @@ void loop ()
 			//resend the incoming packets of rain, temperature and HWS systems. These are at the outer extents fo the house
 			if (eepromSettings.relayNumber )
 			{
-				PayloadRelay relayPayload = *((PayloadRelay*)buf);
+				PayloadRelay* pRelayPayload = (PayloadRelay*)buf;
 				//check if we havn't already relayed this packet!
-				if ((relayPayload.relay & 1 << eepromSettings.relayNumber) == 0)
+				if ((pRelayPayload->relay & (1 << (eepromSettings.relayNumber-1))) == 0)
 				{
 					//check that the node is one we are listed to relay
-					if ((long)1 << node_id & eepromSettings.relayNodes)
+					if (((long)1 << node_id) & eepromSettings.relayNodes)
 					{
 						delay(100);
 						// switch the outgoing node to the incoming node ID.
 						uint8_t ret = rf12_initialize(node_id, rf12Init.freq, rf12Init.group);
 						Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
 						//set the bit in teh relay byte to our relayNumber ID
-						relayPayload.relay |= 1 << eepromSettings.relayNumber;
+						pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
 						int wait = 1000;
 
 						while (!rf12_canSend() && --wait)
@@ -558,7 +569,7 @@ void loop ()
 				if (hour() == 9)
 				{
 					usageHistory.addRainfall(eDay, currentRainDay, dailyRainfall);
-					usageHistory.addRainfall(eMonth, currentRainMonth, dailyRainfall );
+					usageHistory.addRainfall(eMonth, currentRainMonth, dailyRainfall);
 
 					rainStartOfToday = rainPayload.rainCount;
 					dailyRainfall = 0;
@@ -576,7 +587,7 @@ void loop ()
 				if (day() - 1 != currentDay)
 				{
 					usageHistory.resetMonitoredValues();
-					
+
 					//reset daily totals
 					wh_gen = 0;
 					wh_consuming = 0;
@@ -598,23 +609,23 @@ void loop ()
 				usageHistory.resetValue(eHour, currentHour);
 
 			}
-			//send the temperature every 60 seconds
-			dispPayload.temperature = temperature[eInside];
-	
-			if (numberOfTemperatureSensors)
-			{
-				int wait = 1000;
-				while (!rf12_canSend() && --wait)
-					;
-				if (wait)
-				{
-					rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
-					rf12_sendWait(0);
-					EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
-				}
-			}
 
 			refreshScreen = true;	//every 60 seconds
+		}
+		if (numberOfTemperatureSensors)
+		{
+			int wait = 1000;
+			while (!rf12_canSend() && --wait)
+				;
+			if (wait)
+			{
+				//send the temperature every 60 seconds
+				dispPayload.temperature = temperature[eInside];
+
+				rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
+				rf12_sendWait(0);
+				EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
+			}
 		}
 	}
 	//--------------------------------------------------------------------
@@ -637,6 +648,7 @@ void loop ()
 		if (refreshScreen)
 		{
 			lcd.clear();
+			refreshScreen = false;
 		}
 
 		switch (pushButton)

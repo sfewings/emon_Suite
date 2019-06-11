@@ -1,3 +1,6 @@
+
+#define RF69_COMPAT 0
+
 #include <JeeLib.h>
 //Temperature support - OneWire Dallas temperature sensor
 
@@ -73,7 +76,7 @@ void setup()
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	if (eepromSettings.relayNumber)
-		temperaturePayload.relay = 1 << eepromSettings.relayNumber;
+		temperaturePayload.relay = 1 << (eepromSettings.relayNumber-1);
 	else
 		temperaturePayload.relay = 0;
 	temperaturePayload.subnode = eepromSettings.subnode;

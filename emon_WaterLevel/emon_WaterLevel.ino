@@ -5,92 +5,109 @@
 #define RF69_COMPAT 1
 
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <PortsLCD.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
+#include <eeprom.h>
 #include <DS1603L.h>
 #include <EmonShared.h>
 #include <SoftwareSerial.h>
 
 SoftwareSerial sensorSerial(A1, A0);	//A1=rx, A0=tx
 
+#define EEPROM_BASE 0x10	//where the water count is stored
+
 // If your sensor is connected to Serial, Serial1, Serial2, AltSoftSerial, etc. pass that object to the sensor constructor.
 DS1603L waterHeightSensor(sensorSerial);
 
-LiquidCrystal lcd(A2,4, 8,7,6,5);
+#define TIMEOUT_PERIOD 2000		//10 seconds in ms. don't report litres/min if no tick recieved in this period
+#define PULSES_PER_LITRE  1000
 
+volatile unsigned short	g_flowCount = 0;		//pulses since last call to MeterPulseLog()
+volatile unsigned long	g_lastTick = 0; 		//millis() value at last pulse
+volatile unsigned long	g_period = 0;				//ms between last two pulses
 
-RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, 210 };
-
+RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 PayloadWater payloadWater;
 
-//---------------------------------------------------------------------------------------------------
-// Dallas temperature sensor	on pin 5, Jeenode port 2
-//---------------------------------------------------------------------------------------------------
-OneWire oneWire(A4);
-DallasTemperature temperatureSensor(&oneWire);
-int numberOfTemperatureSensors = 0;
-bool toggle = true;
+ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
-static void lcdSerialReading(uint32_t reading)
+
+unsigned long readEEPROM(int offset)
 {
-	lcd.setCursor(0, 1);
-	for (int i = 3; i >= 0; i--)
+	unsigned long value = 0;
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(unsigned long); l++)
 	{
-		lcd.print((reading >> (8 * i)) & 0xFF);
-		if (i)
-			lcd.print(",");
+		*(pc + l) = EEPROM.read(EEPROM_BASE + offset + l);
+	}
+
+	return value;
+}
+
+void writeEEPROM(int offset, unsigned long value)
+{
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(unsigned long); l++)
+	{
+		EEPROM.write(EEPROM_BASE + offset + l, *(pc + l));
 	}
 }
 
-String TemperatureString(String& str, int temperature )
+
+void interruptHandlerWaterFlow()
 {
-	int t = temperature;
-	if( t < 0 )
-	{
-		str = "-";
-		t *= -1;
-		str += t/100;
-	}
+	g_flowCount++;								//Update number of pulses, 1 pulse = 1 watt
+	unsigned long tick = millis();
+	if (tick < g_lastTick)
+		g_period = tick + (g_lastTick - 0xFFFFFFFF);	//rollover occured
 	else
-		str = String(t/100);
-	str +=".";
- 
-	str += (t/10)%10;
-
-	return str;
+		g_period = tick - g_lastTick;
+	g_lastTick = tick;
 }
 
-
-void PrintAddress(uint8_t deviceAddress[8])
+unsigned short FlowRateInLitresPerMinute()
 {
-	Serial.print("{ ");
-	for (uint8_t i = 0; i < 8; i++)
-	{
-		// zero pad the address if necessary
-		Serial.print("0x");
-		if (deviceAddress[i] < 16) Serial.print("0");
-		Serial.print(deviceAddress[i], HEX);
-		if (i < 7) Serial.print(", ");
-	}
-	Serial.print(" }");
+	unsigned long lastPeriod;
+	unsigned long thisPeriod;
+	unsigned long lastTick;
+	unsigned long tick = millis();
+	double periodfor1LitrePerMinute;	//ms petween puses that represent 1 litre/minute
+	double litresPerMinute;
+
+	uint8_t oldSREG = SREG;			// save interrupt register
+	cli();							// prevent interrupts while accessing the count	
+
+	lastPeriod = g_period;
+	lastTick = g_lastTick;
+
+	SREG = oldSREG;					// restore interrupts
+
+	if (tick < lastTick)
+		thisPeriod = tick + (lastTick - 0xFFFFFFFF);	//rollover occured
+	else
+		thisPeriod = tick - lastTick;
+
+	periodfor1LitrePerMinute = 1000.0 * 60.0 / PULSES_PER_LITRE;
+
+	if (thisPeriod < lastPeriod)
+		litresPerMinute = periodfor1LitrePerMinute / lastPeriod;		//report the watts for the last tick period
+	else if (thisPeriod >= TIMEOUT_PERIOD)
+		litresPerMinute = 0;									// report 0 instead of tappering off slowly towards 0 over time.
+	else
+		litresPerMinute = periodfor1LitrePerMinute / thisPeriod;		//report the litres as if the tick occured now 
+
+
+	return (unsigned short)litresPerMinute;
 }
 
 
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
-void setup () 
+void setup()
 {
 	Serial.begin(9600);
-	
-	lcd.begin(16, 2);
-	lcd.setCursor(0, 0);
-
-	lcd.print(F("Water sensor"));
-	lcd.setCursor(0, 1);
-	lcd.print(F("Monitor 2.0"));
 
 	Serial.println(F("Water sensor start"));
 
@@ -99,31 +116,23 @@ void setup ()
 	EmonSerial::PrintRF12Init(rf12Init);
 
 
-	//Temperature sensor setup
-	temperatureSensor.begin();
-	numberOfTemperatureSensors = temperatureSensor.getDeviceCount();
-	if (numberOfTemperatureSensors)
-	{
-		Serial.print(F("Temperature sensors "));
-
-		for (int i = 0; i< numberOfTemperatureSensors; i++)
-		{
-			uint8_t tmp_address[8];
-			temperatureSensor.getAddress(tmp_address, i);
-			Serial.print(F("Sensor address "));
-			Serial.print(i + 1);
-			Serial.print(F(": "));
-			PrintAddress(tmp_address);
-			Serial.println();
-		}
-	}
-
 	sensorSerial.begin(9600);     // Sensor transmits its data at 9600 bps.
 	waterHeightSensor.begin();               // Initialise the sensor library.
 
-	//let the startup LCD display for a while!
-	delay(2000);
-	lcd.clear();
+
+	//water flow rate setup
+
+	//writeEEPROM(0, 0);					//reset the flash
+	g_flowCount = readEEPROM(0);	//read last reading from flash
+
+	g_period = millis() - TIMEOUT_PERIOD;
+	payloadWater.flowRate = 0;
+	payloadWater.flowCount = g_flowCount;
+
+	pinMode(3, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
+
+	delay(100);
 }
 
 //--------------------------------------------------------------------------------------------
@@ -132,55 +141,52 @@ void setup ()
 void loop () 
 {
 	char s[16];
+	int activity = payloadWater.flowCount != g_flowCount;
 
+	if(activity)
+	{
+		writeEEPROM(0, g_flowCount);
+	}
 
-		//toggle a "*" every read
-		lcd.setCursor(15, 1);
-		lcd.print((toggle = !toggle)? "*": " ");
+	payloadWater.flowRate = FlowRateInLitresPerMinute();
+	payloadWater.flowCount = g_flowCount;
+	payloadWater.waterHeight = waterHeightSensor.readSensor();
 
-		if (numberOfTemperatureSensors)
-		{
-			temperatureSensor.requestTemperatures();
-			float t = temperatureSensor.getTempCByIndex(0);
-			sprintf(s,  "T=%d.%dc", (int)t, ((int)(t*10)%10));
-			lcd.setCursor(10, 1);
-			lcd.print(s);
-			Serial.println(s);
-		}
+	switch (waterHeightSensor.getStatus())
+	{
+	case DS1603L_NO_SENSOR_DETECTED:                // No sensor detected: no valid transmission received for >10 seconds.
+		strncpy(s,"No sensor",16);
+		break;
 
-		payloadWater.waterHeight = waterHeightSensor.readSensor();
-		payloadWater.sensorReading = waterHeightSensor.SerialData();
+	case DS1603L_READING_CHECKSUM_FAIL:             // Checksum of the latest transmission failed.
+		snprintf(s, 16, "CRC %d mm       ", payloadWater.waterHeight);
+		break;
 
-		switch (waterHeightSensor.getStatus())
-		{
-		case DS1603L_NO_SENSOR_DETECTED:                // No sensor detected: no valid transmission received for >10 seconds.
-			strncpy(s,"No sensor",16);
-			break;
-
-		case DS1603L_READING_CHECKSUM_FAIL:             // Checksum of the latest transmission failed.
-			snprintf(s, 16, "CRC %d mm       ", payloadWater.waterHeight);
-			break;
-
-		case DS1603L_READING_SUCCESS:                   // Latest reading was valid and received successfully.
-			snprintf(s, 16, "Water %d mm     ", payloadWater.waterHeight);
-			break;
-		}
+	case DS1603L_READING_SUCCESS:                   // Latest reading was valid and received successfully.
+		snprintf(s, 16, "Water %d mm     ", payloadWater.waterHeight);
+		break;
+	}
 		
-		lcd.setCursor(0, 0);
-		lcd.print(s);
-		lcd.setCursor(0, 1);
-		lcdSerialReading(payloadWater.sensorReading);
+	Serial.println(s);
 
-		Serial.println(s);
-		waterHeightSensor.printReading();
-		
-		rf12_sleep(RF12_WAKEUP);
-		while (!rf12_canSend())
-			rf12_recvDone();
+	rf12_sleep(RF12_WAKEUP);
+
+	int wait = 1000;
+	while (!rf12_canSend() && wait--)
+		rf12_recvDone();
+	if (wait)
+	{
 		rf12_sendStart(0, &payloadWater, sizeof payloadWater);
 		rf12_sendWait(0);
-		rf12_sleep(RF12_SLEEP);
+		EmonSerial::PrintWaterPayload(&payloadWater);
+	}
+	else
+	{
+		Serial.println(F("RF12 waiting. No packet sent"));
+	}
+	rf12_sleep(RF12_SLEEP);
+	delay(1000);
 
-		//Sleepy::loseSomeTime(2000); // go to sleep for n
-		delay(10000);
+	if(!activity)
+		Sleepy::loseSomeTime(10000); // go to sleep for longer if nothing is happening
 }

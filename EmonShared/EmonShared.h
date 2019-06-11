@@ -96,11 +96,12 @@ typedef struct PayloadBase: PayloadRelay {
 	time_t time; 
 };
 
-typedef struct
-{
+typedef struct PayloadWater: PayloadRelay {
 	int waterHeight;
-	uint32_t sensorReading;
-} PayloadWater;
+	int flowRate;			//water flowrate in l/min
+	uint32_t flowCount;		//number of pulses since installation
+} ;
+
 class EmonSerial{
 public:
 	static void PrintRF12Init(const RF12Init &rf12Init);
