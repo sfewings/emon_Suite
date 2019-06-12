@@ -2,6 +2,8 @@
 // emon WaterLevel
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
+#define RF69_COMPAT 1
+
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <PortsLCD.h>
 #include <OneWire.h>
@@ -180,5 +182,5 @@ void loop ()
 		rf12_sleep(RF12_SLEEP);
 
 		//Sleepy::loseSomeTime(2000); // go to sleep for n
-		delay(2000);
+		delay(10000);
 }
