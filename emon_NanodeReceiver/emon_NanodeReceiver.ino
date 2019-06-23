@@ -27,16 +27,10 @@ PayloadDisp displayPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
 PayloadHWS hwsPayload;
 PayloadWater waterPayload;
+PayloadScale scalePayload;
+
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
-
-//-------------------------------------------------------------------------------------------- 
-//remote node reliability support
-//-------------------------------------------------------------------------------------------- 
-#define MAX_NODES	14				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater };	//index into txReceived and lastReceived
-time_t lastReceived[MAX_NODES];
-
 
 //--------------------------------------------------------------------------------------------
 // Power variables
@@ -190,11 +184,6 @@ void setup ()
 	request_NTP_Update = millis()+1000;	//update in 1 second
 	
 	
-	for (int i = 0; i < MAX_NODES; i++)
-	{
-		lastReceived[i] = now();
-	}
-
 	//NTP time
 	//setSyncInterval(86400 * 7);		 // update the time every week	(24*60*60) *7
 	//setSyncProvider(GetNtpTime);		// initiate the callback to GetNtpTime	
@@ -226,9 +215,7 @@ void loop ()
 			if (node_id == PULSE_JEENODE)
 			{
 				pulsePayload = *(PayloadPulse*)rf12_data;
-				EmonSerial::PrintPulsePayload(&pulsePayload, now() - lastReceived[ePulse] );
-				lastReceived[ePulse] = now();
-
+				EmonSerial::PrintPulsePayload(&pulsePayload);
 				power_calculations_pulse();					
 			}
 
@@ -242,8 +229,7 @@ void loop ()
 					return;
 				}
 				memcpy(&displayPayload[subnode], &dpl, sizeof(PayloadDisp));
-				EmonSerial::PrintDispPayload(&displayPayload[subnode], (now() - lastReceived[eDisp0 + subnode]));			 // print data to serial
-				lastReceived[eDisp0 + subnode] = now();
+				EmonSerial::PrintDispPayload(&displayPayload[subnode]);			 // print data to serial
 			}
 
 			if (node_id == TEMPERATURE_JEENODE)
@@ -256,23 +242,20 @@ void loop ()
 					return;
 				}
 				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0 + subnode]));			 // print data to serial
-				lastReceived[eTemp0 + subnode] = now();
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode]);			 // print data to serial
 			}
 
 			if (node_id == HWS_JEENODE )
 			{
 				hwsPayload = *(PayloadHWS*)rf12_data;								// get payload data
-				EmonSerial::PrintHWSPayload(&hwsPayload, now() - lastReceived[eHWS]);
-				lastReceived[eHWS] = now();
+				EmonSerial::PrintHWSPayload(&hwsPayload);
 			}
 
 		
 			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
 			{
 				rainPayload = *(PayloadRain*)rf12_data;								// get emonbase payload data
-				EmonSerial::PrintRainPayload(&rainPayload, now() - lastReceived[eRain]);
-				lastReceived[eRain] = now();
+				EmonSerial::PrintRainPayload(&rainPayload);
 
 				if (!rainReceived)
 				{
@@ -285,8 +268,13 @@ void loop ()
 			if(node_id == WATERLEVEL_NODE)
 			{
 				waterPayload = *(PayloadWater*)rf12_data;								// get payload data
-				EmonSerial::PrintWaterPayload(&waterPayload, now() - lastReceived[eWater]);
-				lastReceived[eWater] = now();
+				EmonSerial::PrintWaterPayload(&waterPayload);
+			}
+
+			if(node_id == SCALE_NODE)
+			{
+				scalePayload = *(PayloadScale*)rf12_data;								// get payload data
+				EmonSerial::PrintScalePayload(&scalePayload);
 			}
 
 			digitalWrite(RED_LED, HIGH);

@@ -18,8 +18,8 @@
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
-#define MAX_NODES	14				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater };	//index into txReceived and lastReceived
+#define MAX_NODES	18				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eEmon, eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater, eScale0, eScale1, eScale2 };	//index into txReceived and lastReceived
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
@@ -32,6 +32,7 @@ PayloadDisp displayPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
 PayloadHWS hwsPayload;
 PayloadWater waterPayload;
+PayloadScale scalePayload[MAX_SUBNODES];
 
 RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
@@ -193,6 +194,21 @@ void loop ()
 				lastReceived[eWater] = now();
 			}
 
+			if (node_id == SCALE_NODE)
+			{
+				PayloadScale spl = *((PayloadScale*)rf12_data);
+				subnode = spl.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print("Invalid subnode. Exiting");
+					return;
+				}
+				memcpy(&scalePayload[subnode], &spl, sizeof(PayloadScale));
+				EmonSerial::PrintScalePayload(&scalePayload[subnode], (now() - lastReceived[eScale0+subnode]));			 // print data to serial
+				txReceived[eScale0+subnode]++;
+				lastReceived[eScale0+subnode] = now();
+			}
+
 
 			digitalWrite(RED_LED, LOW);
 			delay(100);
@@ -236,6 +252,9 @@ void loop ()
 						break;
 					case WATERLEVEL_NODE:
 						EmonSerial::PrintWaterPayload(file, &waterPayload);
+						break;
+					case SCALE_NODE:
+						EmonSerial::PrintScalePayload(file, &scalePayload[subnode]);
 						break;
 					}
 

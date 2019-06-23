@@ -42,8 +42,8 @@ double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	7				//number of jeenodes, node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
-enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS, eWaterNode};	//index into txReceived and lastReceived
+#define MAX_NODES	8				//number of jeenodes, node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS, eWaterNode, eScale};	//index into txReceived and lastReceived
 enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
@@ -59,6 +59,8 @@ PayloadPulse pulsePayload;
 PayloadHWS hwsPayload;
 PayloadTemperature temperaturePayload;
 PayloadWater waterPayload;
+PayloadScale scalePayload;
+
 
 RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 EEPROMSettings  eepromSettings;
@@ -97,12 +99,13 @@ typedef enum {
 	eDiagnosisRainBase,
 	eDiagnosisPulseHWS,
 	eDiagnosisSettings,
-	eDiagnosisTempEmons
+	eDiagnosisTempEmons,
+	eDiagnosisScale
 }  ButtonDisplayMode;
 
 volatile ButtonDisplayMode pushButton = eSummary;  //set this to the startup display
 volatile unsigned long	g_RGlastTick = 0;
-ButtonDisplayMode lastPushButton = eDiagnosisTempEmons;
+ButtonDisplayMode lastPushButton = eDiagnosisScale;
 
 
 //---------------------------------------------------------------------------------------------------
@@ -242,7 +245,7 @@ void interruptHandlerPushButton()
 	{
 		if(period >5000)
 			pushButton = eSummary; //if press is after 5 seconds, return to summary
-		else if (pushButton == eDiagnosisTempEmons)
+		else if (pushButton == eDiagnosisScale)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
@@ -460,6 +463,16 @@ void loop ()
 
 				txReceived[eWaterNode]++;
 				lastReceived[eWaterNode] = now();				// set time of last update to now
+			}
+
+			if (node_id == SCALE_NODE)
+			{
+				scalePayload = *(PayloadScale*)rf12_data;							// get emontx payload data
+
+				EmonSerial::PrintScalePayload(&scalePayload, (now() - lastReceived[eScale]));				// print data to serial
+
+				txReceived[eScale]++;
+				lastReceived[eScale] = now();				// set time of last update to now
 			}
 
 			if (node_id == DISPLAY_NODE)
@@ -892,6 +905,21 @@ void loop ()
 						dispNodeID = (++dispNodeID) % 32;
 					}
 				}
+				break;
+			}
+			case eDiagnosisScale:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Scale"));
+				lcdInt(4, 0, (unsigned int)txReceived[eScale]);
+				lcd.setCursor(10, 0);
+				lcd.print(TimeSpanString(str, (now() - lastReceived[eScale])));
+				lcd.setCursor(0, 1);
+				lcd.print(F("Gram"));
+				lcdInt(4, 1, scalePayload.grams);
+				lcdInt(10, 1, scalePayload.supplyV);
+				lcd.setCursor(15, 1);
+				lcd.print(F("v"));
 				break;
 			}
 			case eDiagnosisTempEmons:

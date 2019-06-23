@@ -1,6 +1,7 @@
 #include "EmonShared.h"
 
 char tok[] = ":, | \r\r&";  //tokens used to separate 
+#ifndef _WIN32
 
 void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 {
@@ -17,9 +18,9 @@ void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 	Serial.print(F(" Network: "));
 	Serial.print(rf12Init.group);
 #ifdef RF69_COMPAT
-	Serial.println(F("Component: RF69CW"));
+	Serial.println(F(" Component: RF69CW"));
 #else
-	Serial.println(F("Component: RF12B"));
+	Serial.println(F(" Component: RF12B"));
 #endif
 }
 
@@ -141,11 +142,11 @@ void EmonSerial::PrintDispPayload(Stream& stream, PayloadDisp *pPayloadDisp, uns
 {
 	if (pPayloadDisp == NULL)
 	{
-		stream.print(F("disp[n],temperature|ms_since_last_packet"));
+		stream.print(F("disp1,subnode,temperature|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("disp"));
+		stream.print(F("disp1,"));
 		stream.print(pPayloadDisp->subnode);
 		stream.print(F(","));
 		stream.print(pPayloadDisp->temperature);
@@ -207,11 +208,11 @@ void EmonSerial::PrintTemperaturePayload(Stream& stream, PayloadTemperature *pPa
 {
 	if (pPayloadTemperature == NULL)
 	{
-		stream.print(F("temp[n],supplyV,numSensors,temperature[0..numSensors]|ms_since_last_packet"));
+		stream.print(F("temp1,subnode,supplyV,numSensors,temperature[0..numSensors]|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("temp"));
+		stream.print(F("temp1,"));
 		stream.print(pPayloadTemperature->subnode);
 		stream.print(F(","));
 		stream.print(pPayloadTemperature->supplyV);
@@ -281,11 +282,11 @@ void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, 
 {
 	if (pPayloadWater == NULL)
 	{
-		stream.print(F("wtr1: waterHeight(mm), flowRate, flowCount|ms_since_last_packet"));
+		stream.print(F("wtr1,waterHeight(mm),flowRate,flowCount|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("wtr1: "));
+		stream.print(F("wtr1,"));
 
 		stream.print(pPayloadWater->waterHeight);
 
@@ -305,16 +306,47 @@ void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, 
 	stream.println();
 }
 
+void EmonSerial::PrintScalePayload(PayloadScale* pPayloadScale, unsigned long timeSinceLast)
+{
+	PrintScalePayload(Serial, pPayloadScale, timeSinceLast);
+}
 
+void EmonSerial::PrintScalePayload(Stream& stream, PayloadScale* pPayloadScale, unsigned long timeSinceLast)
+{
+	if (pPayloadScale == NULL)
+	{
+		stream.print(F("scl,subnode,grams,supplyV|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("scl,"));
+		stream.print(pPayloadScale->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadScale->grams);
+		stream.print(F(","));
+		stream.print(pPayloadScale->supplyV);
+
+		PrintRelay(stream, pPayloadScale);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+#else
+#endif
 //---------------Parse routines -------------------
 
 void EmonSerial::ParseRelay(PayloadRelay* pPayloadRelay, char* pch)
 {
 	//convert a binary value to a number e.g. 00100101 => 37
-	word len = strlen(pch);
+	size_t len = strlen(pch);
 	byte relay = 0;
-	for (int i = 0; i < len; i++)
-		relay = relay << 1 + (pch[i] != '0');
+	for (size_t i = 0; i < len; i++)
+		relay = (relay << 1) + (pch[i] != '0');
 	pPayloadRelay->relay = relay;
 }
 
@@ -415,20 +447,20 @@ int EmonSerial::ParseDispPayload(char* str, PayloadDisp* pPayloadDisp)
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadDisp->temperature = atoi(pch);
 	}
-	else if (strlen(pch)==5) //version 2
+	else if (0 == strcmp(pch,"disp1")) //version 2
 	{
-		pPayloadDisp->subnode = atoi(pch[5]);	//the last char is the subnode number
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadDisp->subnode = atoi(pch);	//the last char is the subnode number
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadDisp->temperature = atoi(pch);
+		if (NULL != (pch = strtok(NULL, tok)))
+		{
+			ParseRelay(pPayloadDisp, pch);
+				//unsigned long timeSinceLast = atol(pch);
+		}
 	}
 	else
-		return 0;	//can't find "disp" or "disp[n]" as first token
-
-	if (NULL != (pch = strtok(NULL, tok)))
-	{
-		ParseRelay(pPayloadDisp, pch);
-		//unsigned long timeSinceLast = atol(pch);
-	}
+		return 0;	//can't find "disp" or "disp1" as first token
 
 	return 1;
 }
@@ -487,9 +519,10 @@ int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadT
 			pPayloadTemperature->temperature[i] = atoi(pch);
 		}
 	}
-	else if (strlen(pch) == 5)	//version 2
+	else if (0 == strcmp(pch, "temp1"))	//version 2
 	{
-		pPayloadTemperature->subnode = atoi(pch[5]);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadTemperature->subnode = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadTemperature->supplyV = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
@@ -503,15 +536,16 @@ int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadT
 				return 0;
 			pPayloadTemperature->temperature[i] = atoi(pch);
 		}
+
+		if (NULL != (pch = strtok(NULL, tok)))
+		{
+			ParseRelay(pPayloadTemperature, pch);
+			//unsigned long timeSinceLast = atol(pch);
+		}
 	}
 	else
 		return 0;	//can't find "temp" or "Temp" as first token
 
-	if (NULL != (pch = strtok(NULL, tok)))
-	{
-		ParseRelay(pPayloadTemperature, pch);
-		//unsigned long timeSinceLast = atol(pch);
-	}
 
 	return 1;
 }
@@ -590,3 +624,30 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 	
 	return 1;
 }
+
+int EmonSerial::ParseScalePayload(char* str, PayloadScale* pPayloadScale)
+{
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 == strcmp(pch, "scl"))
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadScale->subnode = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadScale->grams = atol(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadScale->supplyV = atol(pch);
+
+		if (NULL != (pch = strtok(NULL, tok)))
+		{
+			ParseRelay(pPayloadScale, pch);
+		}
+	}
+	else 
+		return 0;
+
+	return 1;
+}
+
