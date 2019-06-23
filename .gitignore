@@ -22,3 +22,5 @@
 *.json
 *.db-shm
 *.db-wal
+**/Debug/
+**/x64/

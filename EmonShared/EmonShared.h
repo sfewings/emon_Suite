@@ -9,7 +9,6 @@
 #include <Windows.h>
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t; 
-
 #else
 #include <Arduino.h> //needed for Serial.println
 #include <TimeLib.h>			// needed for time_t
