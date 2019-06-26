@@ -30,7 +30,7 @@ compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
 int main()
 {
 	int i, n,
-		cport_nr = 8,        /* /dev/ttyS0 (COM1 on windows) */
+		cport_nr = 6,        /* /dev/ttyS0 (COM1 on windows) */
 		bdrate = 9600;       /* 9600 baud */
 
 	PayloadFactory pf;

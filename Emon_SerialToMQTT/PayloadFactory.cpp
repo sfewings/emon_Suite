@@ -154,7 +154,7 @@ bool PayloadFactory::PublishPayload(char* s)
 			for (int i = 0; i < 7; i++)
 			{
 				sprintf_s(topic, "temperature/hws/%d", i);
-				sprintf_s(buf, "%d.%02d", hws->temperature[i] / 100, hws->temperature[i] % 100);
+				sprintf_s(buf, "%d", hws->temperature[i] );
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
