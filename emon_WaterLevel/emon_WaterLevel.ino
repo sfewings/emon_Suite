@@ -11,6 +11,25 @@
 #include <EmonEEPROM.h>
 #include <SoftwareSerial.h>
 
+#define ENABLE_LCD 0
+#if ENABLE_LCD
+#include <PortsLCD.h>
+
+LiquidCrystal lcd(A2, 4, 8, 7, 6, 5);
+
+static void lcdSerialReading(uint32_t reading)
+{
+	lcd.setCursor(0, 1);
+	for (int i = 3; i >= 0; i--)
+	{
+		lcd.print((reading >> (8 * i)) & 0xFF);
+		if (i)
+			lcd.print(",");
+	}
+}
+
+#endif
+
 SoftwareSerial sensorSerial(A1, A0);	//A1=rx, A0=tx
 
 #define EEPROM_BASE 0x10	//where the water count is stored
@@ -28,7 +47,6 @@ volatile unsigned long	g_period = 0;				//ms between last two pulses
 RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 PayloadWater waterPayload;
-
 
 unsigned long readEEPROM(int offset)
 {
@@ -108,6 +126,17 @@ void setup()
 {
 	Serial.begin(9600);
 
+#if ENABLE_LCD
+	lcd.begin(16, 2);
+	lcd.setCursor(0, 0);
+
+	lcd.print(F("Water sensor"));
+	lcd.setCursor(0, 1);
+	lcd.print(F("Monitor 3.0"));
+	delay(1000);
+	lcd.clear();
+#endif
+
 	Serial.println(F("Water sensor start"));
 
 	Serial.println("rf12_initialize");
@@ -179,6 +208,19 @@ void loop ()
 	}
 		
 	Serial.println(s);
+
+#if ENABLE_LCD
+	//toggle a "*" every read
+	static bool toggle = true;
+	lcd.setCursor(15, 1);
+	lcd.print((toggle = !toggle) ? "*" : " ");
+
+	lcd.setCursor(0, 0);
+	lcd.print(s);
+	lcd.setCursor(0, 1);
+	lcdSerialReading(waterHeightSensor.SerialData());
+	activity = true;	//loop every second
+#endif
 
 	rf12_sleep(RF12_WAKEUP);
 
