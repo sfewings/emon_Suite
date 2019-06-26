@@ -8,6 +8,7 @@
 #include <eeprom.h>
 #include <DS1603L.h>
 #include <EmonShared.h>
+#include <EmonEEPROM.h>
 #include <SoftwareSerial.h>
 
 SoftwareSerial sensorSerial(A1, A0);	//A1=rx, A0=tx
@@ -20,15 +21,13 @@ DS1603L waterHeightSensor(sensorSerial);
 #define TIMEOUT_PERIOD 2000		//10 seconds in ms. don't report litres/min if no tick recieved in this period
 #define PULSES_PER_LITRE  1000
 
-volatile unsigned short	g_flowCount = 0;		//pulses since last call to MeterPulseLog()
+volatile unsigned long	g_flowCount = 0;		//number of pulses in total since installation
 volatile unsigned long	g_lastTick = 0; 		//millis() value at last pulse
 volatile unsigned long	g_period = 0;				//ms between last two pulses
 
-RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
-PayloadWater payloadWater;
-
-ISR(WDT_vect) { Sleepy::watchdogEvent(); }
+PayloadWater waterPayload;
 
 
 unsigned long readEEPROM(int offset)
@@ -120,14 +119,21 @@ void setup()
 	waterHeightSensor.begin();               // Initialise the sensor library.
 
 
-	//water flow rate setup
+	//initialise the EEPROMSettings for relay and node number
+	EEPROMSettings eepromSettings;
+	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
+	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 
+	waterPayload.subnode = eepromSettings.subnode;
+
+
+	//water flow rate setup
 	//writeEEPROM(0, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
 	g_period = millis() - TIMEOUT_PERIOD;
-	payloadWater.flowRate = 0;
-	payloadWater.flowCount = g_flowCount;
+	waterPayload.flowRate = 0;
+	waterPayload.flowCount = g_flowCount;
 
 	pinMode(3, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
@@ -141,16 +147,21 @@ void setup()
 void loop () 
 {
 	char s[16];
-	int activity = payloadWater.flowCount != g_flowCount;
+
+	unsigned long flowCount = g_flowCount;
+	uint16_t	waterHeight = waterHeightSensor.readSensor();
+
+	bool activity = ( waterPayload.flowCount   != flowCount || 
+										waterPayload.waterHeight != waterHeight   );
 
 	if(activity)
 	{
-		writeEEPROM(0, g_flowCount);
+		writeEEPROM(0, flowCount);
 	}
 
-	payloadWater.flowRate = FlowRateInLitresPerMinute();
-	payloadWater.flowCount = g_flowCount;
-	payloadWater.waterHeight = waterHeightSensor.readSensor();
+	waterPayload.flowCount = flowCount;
+	waterPayload.flowRate = FlowRateInLitresPerMinute();
+	waterPayload.waterHeight = waterHeight;
 
 	switch (waterHeightSensor.getStatus())
 	{
@@ -159,11 +170,11 @@ void loop ()
 		break;
 
 	case DS1603L_READING_CHECKSUM_FAIL:             // Checksum of the latest transmission failed.
-		snprintf(s, 16, "CRC %d mm       ", payloadWater.waterHeight);
+		snprintf(s, 16, "CRC %d mm       ", waterHeight);
 		break;
 
 	case DS1603L_READING_SUCCESS:                   // Latest reading was valid and received successfully.
-		snprintf(s, 16, "Water %d mm     ", payloadWater.waterHeight);
+		snprintf(s, 16, "Water %d mm     ", waterHeight);
 		break;
 	}
 		
@@ -176,17 +187,18 @@ void loop ()
 		rf12_recvDone();
 	if (wait)
 	{
-		rf12_sendStart(0, &payloadWater, sizeof payloadWater);
+		rf12_sendStart(0, &waterPayload, sizeof waterPayload);
 		rf12_sendWait(0);
-		EmonSerial::PrintWaterPayload(&payloadWater);
+		EmonSerial::PrintWaterPayload(&waterPayload);
 	}
 	else
 	{
 		Serial.println(F("RF12 waiting. No packet sent"));
 	}
 	rf12_sleep(RF12_SLEEP);
-	delay(1000);
 
-	if(!activity)
-		Sleepy::loseSomeTime(10000); // go to sleep for longer if nothing is happening
+	if (activity)
+		delay(1000);
+	else
+		delay(30000);
 }

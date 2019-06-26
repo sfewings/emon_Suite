@@ -5,7 +5,7 @@
 // mklink / J ..\..\arduino - 1.0.3\libraries\EmonShared EmonShared
 //Junction created for ..\..\arduino - 1.0.3\libraries\EmonShared <<= == >> EmonShared
 
-#ifdef _WIN32
+#ifdef MQTT_LIB
 #include <Windows.h>
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t; 
@@ -16,7 +16,6 @@ typedef unsigned int uint32_t;
 
 //RF12 node ID allocation
 #define BASE_JEENODE 10					//Nanode with LAN and NTP time
-#define EMON_NODE	11						//Emon Tx with Power and Solar readings. no longer used!
 #define RAIN_NODE	12						//Rain gauge Jeenode with rainfall and outside temperature
 #define PULSE_JEENODE 13				//JeeNode with power pulse from main switch board
 #define DISPLAY_NODE 14					//Arduino with LCD display
@@ -39,6 +38,7 @@ typedef struct RF12Init {
 	uint8_t node;					//Should be unique on network, node ID 30 reserved for base station
 	uint8_t freq;					//frequency - match to same frequency as RFM12B module (change to RF12_868MHZ or RF12_915MHZ as appropriate)
 	uint8_t group;				//network group, must be same as emonTx and emonBase
+	bool rf69compat;			//set to indicate the HOPE_RF is RF69 and not eh RF12b. Only for reporting!
 }RF12Init;
 
 ////Nodes that can relay packets
@@ -56,15 +56,6 @@ typedef struct RF12Init {
 typedef struct {
 	byte relay;			//OR of all the relay units that have transmitted this packet. 0=original node transmit
 } PayloadRelay;
-
-typedef struct PayloadEmon: PayloadRelay{
-	int power;					// power value
-	int pulse;					//pulse increments 
-	int ct1;						//CT reading 
-	int supplyV;				// unit supply voltage
-	int temperature;		//DB1820 temperature
-	int rainGauge;			//rain gauge pulse
-} PayloadEmon;
 
 typedef struct PayloadPulse: PayloadRelay{
 	int power[PULSE_NUM_PINS];					// power values
@@ -102,9 +93,10 @@ typedef struct PayloadBase: PayloadRelay {
 }PayloadBase;
 
 typedef struct PayloadWater: PayloadRelay {
+	byte subnode;
 	int waterHeight;
 	int flowRate;			//water flowrate in l/min
-	uint32_t flowCount;		//number of pulses since installation
+	unsigned long flowCount;		//number of pulses since installation
 } PayloadWater;
 
 typedef struct PayloadScale : PayloadRelay {
@@ -117,10 +109,9 @@ typedef struct PayloadScale : PayloadRelay {
 
 class EmonSerial{
 public:
-#ifndef _WIN32
+#ifndef MQTT_LIB
 	static void PrintRF12Init(const RF12Init &rf12Init);
 
-	static void PrintEmonPayload(PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
 	static void PrintRainPayload(PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
 	static void PrintDispPayload(PayloadDisp* pPayloadDisp, unsigned long timeSinceLast = 0);
@@ -134,7 +125,6 @@ public:
 
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
-	static void PrintEmonPayload(Stream& stream, PayloadEmon* pPayloadEmon, unsigned long timeSinceLast = 0);
 	static void PrintRainPayload(Stream& stream, PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
 	static void PrintBasePayload(Stream& stream, PayloadBase* pPayloadBase, unsigned long timeSinceLast = 0);
 	static void PrintDispPayload(Stream& stream, PayloadDisp* pPayloadDisp, unsigned long timeSinceLast = 0);
@@ -147,7 +137,6 @@ public:
 #endif
 
 	static void ParseRelay(PayloadRelay* pPayloadRelay, char* pch);
-	static int ParseEmonPayload(char* str, PayloadEmon *pPayloadEmon);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
 	static int ParseBasePayload(char* str, PayloadBase *pPayloadBase);
 	static int ParseDispPayload(char* str, PayloadDisp *pPayloadDisp);

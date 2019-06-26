@@ -70,7 +70,7 @@ void setup()
 	//				3				6				22
 	//				4				7				23
 
-	sleepDelay = 5000;	//in milliseconds
+	sleepDelay = 30000;	//in milliseconds
 
 		//initialise the EEPROMSettings for relay and node number
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);

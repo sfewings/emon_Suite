@@ -37,13 +37,12 @@ EEPROMHistory   usageHistory;
 //--------------------------------------------------------------------------------------------
 // Power variables
 //--------------------------------------------------------------------------------------------
-int importing;									//flag to indicate import/export
-double consuming, gen, grid, wh_gen, wh_consuming;	 //integer variables to store ammout of power currenty being consumed grid (in/out) +gen
-unsigned long whtime;									//used to calculate energy used per day (kWh/d)
+double wh_gen, wh_consuming;	 
+unsigned long whtime;						//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	8				//number of jeenodes, node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
-enum { eEmon, eTemp, eRain, eBase, ePulse, eHWS, eWaterNode, eScale};	//index into txReceived and lastReceived
+#define MAX_NODES	14				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode, eScale};	//index into txReceived and lastReceived
 enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
@@ -51,18 +50,17 @@ time_t lastReceived[MAX_NODES];
 int temperature[NUM_THERMOMETERS];
 
 
-PayloadEmon emonPayload;
 PayloadRain rainPayload;
 PayloadBase basePayload;
-PayloadDisp dispPayload;
 PayloadPulse pulsePayload;
 PayloadHWS hwsPayload;
-PayloadTemperature temperaturePayload;
 PayloadWater waterPayload;
 PayloadScale scalePayload;
+PayloadDisp dispPayload[MAX_SUBNODES];
+PayloadTemperature temperaturePayload[MAX_SUBNODES];
 
 
-RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 EEPROMSettings  eepromSettings;
 
 int thisHour;
@@ -75,8 +73,8 @@ byte						currentRainMonth = 0;
 
 
 unsigned long rainStartOfToday;
-bool rainGaugeReadingReceived;
-unsigned long dailyRainfall;
+unsigned long hotWaterStartOfToday;
+
 time_t	lastUpdateTime;
 bool		refreshScreen = false;	//set true when time to completely redraw the screen
 
@@ -91,21 +89,24 @@ typedef enum {
 	eMaxTemperatures,
 	eMinTemperatures,
 	eRainFall,
-	eRoomTemperatures,
-	eWaterTankHeight,
 	eRainFallTotals,
+	eRoomTemperatures,
+	eWaterUse,
+	eScaleReadings,
 	eDateTimeNow,
 	eDateTimeStartRunning,
 	eDiagnosisRainBase,
 	eDiagnosisPulseHWS,
-	eDiagnosisSettings,
+	eDiagnosisDisp,
 	eDiagnosisTempEmons,
-	eDiagnosisScale
+	eDiagnosisWater,
+	eDiagnosisScale,
+	eDiagnosisEEPROMSettings
 }  ButtonDisplayMode;
 
 volatile ButtonDisplayMode pushButton = eSummary;  //set this to the startup display
 volatile unsigned long	g_RGlastTick = 0;
-ButtonDisplayMode lastPushButton = eDiagnosisScale;
+ButtonDisplayMode lastPushButton = eDiagnosisEEPROMSettings;
 
 
 //---------------------------------------------------------------------------------------------------
@@ -125,7 +126,7 @@ time_t average_update;							// Used to store averages and totals
 unsigned long fast_update;					// Used to count time for fast 100ms events
 
 
-static void lcdInt (byte x, byte y, unsigned int value, char fill =' ') 
+static void lcdUint (byte x, byte y, unsigned int value, char fill =' ') 
 {
 	lcd.setCursor(x, y);
 	int places = log10(value);
@@ -133,6 +134,39 @@ static void lcdInt (byte x, byte y, unsigned int value, char fill =' ')
 	lcd.print(fill);
 	lcd.print(value);	
 }	
+
+static void lcdLong(byte x, byte y, long value, char fill = ' ')
+{
+	lcd.setCursor(x, y);
+	int places = 0;
+	if (value < 0)
+		places = 1; //for -ve sign
+	places += log10(abs(value));
+	for (int i = 0; i < 4 - places; i++)
+		lcd.print(fill);
+	lcd.print(value);
+}
+
+void lcdSupplyV(byte line, unsigned long supplyV)
+{
+	String str;
+
+	lcd.setCursor(0, line);
+	lcd.print(F("Supply V :"));
+	lcd.setCursor(9, line);
+	lcd.print(TemperatureString(str, supplyV / 10));
+}
+
+void lcdDiagnosis(byte line, const __FlashStringHelper* text, uint16_t index)
+{
+	String str;
+
+	lcd.setCursor(0, line);
+	lcd.print(text);
+	lcdUint(4, line, txReceived[index]);
+	lcd.setCursor(10, line);
+	lcd.print(TimeSpanString(str, (now() - lastReceived[index])));
+}
 
 
 String TemperatureString(String& str, int temperature )
@@ -243,9 +277,9 @@ void interruptHandlerPushButton()
 
 	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
-		if(period >5000)
-			pushButton = eSummary; //if press is after 5 seconds, return to summary
-		else if (pushButton == eDiagnosisScale)
+		if(period >10000)
+			pushButton = eSummary; //if press is after 10 seconds, return to summary
+		else if (pushButton == eDiagnosisEEPROMSettings)
 			pushButton = eSummary;
 		else
 			pushButton = (ButtonDisplayMode)((int)pushButton + 1);
@@ -266,15 +300,15 @@ void setup()
 	lcd.setCursor(0, 1);
 	lcd.print(F("Monitor 3.0"));
 
-	Serial.println(F("Fewings emonGLCD solar PV monitor - gen and use"));
+	Serial.println(F("Fewings emon LCD monitor - gen and use"));
 
 	//initialise the EEPROMSettings for relay and node number
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	if (eepromSettings.relayNumber)
-		dispPayload.relay = 1 << (eepromSettings.relayNumber-1);
+		dispPayload[eepromSettings.subnode].relay = 1 << (eepromSettings.relayNumber-1);
 	else
-		dispPayload.relay = 0;
+		dispPayload[eepromSettings.subnode].relay = 0;
 
 	if (eepromSettings.subnode)
 	{
@@ -282,7 +316,7 @@ void setup()
 		lcd.print(F("n="));
 		lcd.print(eepromSettings.subnode);
 		//set the subnode of all packets sent from us
-		dispPayload.subnode = eepromSettings.subnode;
+		dispPayload[eepromSettings.subnode].subnode = eepromSettings.subnode;
 	}
 
 	Serial.println("rf12_initialize");
@@ -303,8 +337,9 @@ void setup()
 		lastReceived[i] = now();
 	}
 
-	rainGaugeReadingReceived = false;
-	rainStartOfToday = 0;
+	rainPayload.rainCount = rainStartOfToday = 0;
+	waterPayload.flowCount = hotWaterStartOfToday = 0;
+
 	lastUpdateTime = now();
 
 
@@ -328,23 +363,27 @@ void setup()
 	}
 	else
 	{
-		Serial.println("No temperature sensors found");
+		Serial.println(F("No temperature sensors found"));
 	}
 
 	temperature[eWaterTemp] = 0;
 	temperature[eInside] = 0;
 	temperature[eOutside] = 0;
 
+	wh_gen = 0;
+	wh_consuming = 0;
+
+	//pushbutton configuration
 	pinMode(A3, INPUT_PULLUP);
 	attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
 
-	EmonSerial::PrintEmonPayload(NULL);
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
+	EmonSerial::PrintScalePayload(NULL);
 
 	average_update = now();
 	slow_update = now();
@@ -382,18 +421,6 @@ void loop ()
 			byte len = rf12_len;
 			memcpy(buf, (const void*)rf12_data, len);
 
-			if (node_id == EMON_NODE)						// === EMONTX ====
-			{
-				emonPayload = *(PayloadEmon*)rf12_data;							// get emontx payload data
-
-				EmonSerial::PrintEmonPayload(&emonPayload, (now() - lastReceived[eEmon]));				// print data to serial
-				
-				txReceived[eEmon]++;
-				lastReceived[eEmon] = now();				// set time of last update to now
-
-				//temperature[eWater] = emonPayload.temperature;
-				power_calculations_emon();							// do the power calculations
-			}
 			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
 			{
 				pulsePayload = *(PayloadPulse*)rf12_data;							// get payload data
@@ -403,17 +430,22 @@ void loop ()
 				txReceived[ePulse]++;
 				lastReceived[ePulse] = now();				// set time of last update to now
 
-				//temperature[eWater] = emonPayload.temperature;
 				power_calculations_pulse();							// do the power calculations
 			}
 			if (node_id == TEMPERATURE_JEENODE)
 			{
-				temperaturePayload = *(PayloadTemperature*)rf12_data;							// get emontx payload data
+				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
+				byte subnode = tpl.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print(F("Invalid display subnode. Exiting"));
+					return;
+				}
+				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
+				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0+subnode]));				// print data to serial
 
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload, (now() - lastReceived[eTemp]));				// print data to serial
-
-				txReceived[eTemp]++;
-				lastReceived[eTemp] = now();				// set time of last update to now
+				txReceived[eTemp0 + subnode]++;
+				lastReceived[eTemp0 + subnode] = now();				// set time of last update to now
 				//we don't use any of the temperatures from the temperature sensor
 				//temperature[eWater] = emon2Payload.temperature;
 			}
@@ -440,19 +472,10 @@ void loop ()
 
 				temperature[eOutside] = rainPayload.temperature;
 
-				if (!rainGaugeReadingReceived)
+				if (rainStartOfToday == 0)
 				{
 					rainStartOfToday = rainPayload.rainCount;
-					rainGaugeReadingReceived = true;
-					dailyRainfall = 0;
 				}
-				if (rainPayload.rainCount < rainStartOfToday)
-				{
-					// int rollover or emontx has been reset to 0
-					dailyRainfall = dailyRainfall + rainPayload.rainCount;
-				}
-				else
-					dailyRainfall = rainPayload.rainCount - rainStartOfToday;
 			}
 
 			if (node_id == WATERLEVEL_NODE)
@@ -460,6 +483,12 @@ void loop ()
 				waterPayload = *(PayloadWater*)rf12_data;							// get emontx payload data
 
 				EmonSerial::PrintWaterPayload(&waterPayload, (now() - lastReceived[eWaterNode]));				// print data to serial
+
+				if (hotWaterStartOfToday == 0)
+				{
+					hotWaterStartOfToday = waterPayload.flowCount;
+				}
+
 
 				txReceived[eWaterNode]++;
 				lastReceived[eWaterNode] = now();				// set time of last update to now
@@ -479,9 +508,18 @@ void loop ()
 			{
 				PayloadDisp dp = *(PayloadDisp*)rf12_data;							// get emontx payload data
 
-				EmonSerial::PrintDispPayload(&dp );				// print data to serial
-			}
+				byte subnode = dp.subnode;
+				if (subnode > MAX_SUBNODES)
+				{
+					Serial.print(F("Invalid display subnode. Exiting"));
+					return;
+				}
+				memcpy(&dispPayload[subnode], &dp, sizeof(PayloadDisp));
+				EmonSerial::PrintDispPayload(&dispPayload[subnode]);			 // print data to serial
 
+				txReceived[eDisp0 + subnode]++;
+				lastReceived[eDisp0 + subnode] = now();				// set time of last update to now
+			}
 
 			if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
 			{
@@ -523,11 +561,11 @@ void loop ()
 					//check that the node is one we are listed to relay
 					if (((long)1 << node_id) & eepromSettings.relayNodes)
 					{
-						delay(100);
+						delay(10);
 						// switch the outgoing node to the incoming node ID.
 						uint8_t ret = rf12_initialize(node_id, rf12Init.freq, rf12Init.group);
 						Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
-						//set the bit in teh relay byte to our relayNumber ID
+						//set the bit in the relay byte to our relayNumber ID
 						pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
 						int wait = 1000;
 
@@ -581,11 +619,10 @@ void loop ()
 				//rainfall is measured from 9am
 				if (hour() == 9)
 				{
-					usageHistory.addRainfall(eDay, currentRainDay, dailyRainfall);
-					usageHistory.addRainfall(eMonth, currentRainMonth, dailyRainfall);
+					usageHistory.addRainfall(eDay, currentRainDay, rainPayload.rainCount - rainStartOfToday);
+					usageHistory.addRainfall(eMonth, currentRainMonth, rainPayload.rainCount - rainStartOfToday);
 
 					rainStartOfToday = rainPayload.rainCount;
-					dailyRainfall = 0;
 
 					if (month() - 1 != currentRainMonth)
 					{
@@ -604,6 +641,7 @@ void loop ()
 					//reset daily totals
 					wh_gen = 0;
 					wh_consuming = 0;
+					whtime = millis();
 
 					usageHistory.getValue(eDay, currentDay, &consumed, &generated);
 					usageHistory.addValue(eMonth, currentMonth, consumed, generated);
@@ -616,6 +654,9 @@ void loop ()
 
 					currentDay = day() - 1;
 					usageHistory.resetValue(eDay, currentDay);
+
+					//reset daily hotwater usage
+					hotWaterStartOfToday = waterPayload.flowCount;
 				}
 
 				currentHour = hour();
@@ -633,11 +674,11 @@ void loop ()
 			if (wait)
 			{
 				//send the temperature every 60 seconds
-				dispPayload.temperature = temperature[eInside];
+				dispPayload[eepromSettings.subnode].temperature = temperature[eInside];
 
-				rf12_sendStart(0, &dispPayload, sizeof(PayloadDisp));
+				rf12_sendStart(0, &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
 				rf12_sendWait(0);
-				EmonSerial::PrintDispPayload(&dispPayload, SEND_UPDATE_PERIOD);
+				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
 			}
 		}
 	}
@@ -668,16 +709,16 @@ void loop ()
 		{
 		case eSummary:
 			{
-				lcdInt(0, 0, (unsigned int)pulsePayload.power[2]);
-				lcdInt(5, 0, (unsigned int)pulsePayload.power[1]);
+				lcdUint(0, 0, (unsigned int)pulsePayload.power[2]);
+				lcdUint(5, 0, (unsigned int)pulsePayload.power[1]);
 
 				lcd.setCursor(0,0);
 				lcd.print( txReceived[ePulse]%2 ? "*" : " "); //toggle "*" every time a pulseNodeTx received. Every second
 
-				if (rainGaugeReadingReceived && dailyRainfall != 0)
+				if (rainPayload.rainCount - rainStartOfToday != 0)
 				{
 					lcd.setCursor(11, 0);
-					lcd.print(RainString(str, (rainGaugeReadingReceived ? dailyRainfall : 0)));
+					lcd.print(RainString(str, rainPayload.rainCount - rainStartOfToday));
 					lcd.print(F("mm"));
 				}
 
@@ -699,16 +740,16 @@ void loop ()
 		{
 			lcd.setCursor(0, 0);
 			lcd.print(F("Cur: Consmd Prod"));
-			lcdInt(0, 1, (unsigned int)pulsePayload.power[2]);
-			lcdInt(8, 1, (unsigned int)pulsePayload.power[1]);
+			lcdUint(0, 1, (unsigned int)pulsePayload.power[2]);
+			lcdUint(8, 1, (unsigned int)pulsePayload.power[1]);
 			break;
 		}
 		case eTotalPower:
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Tot: Consmd Prod"));
-				lcdInt(0, 1, (unsigned int)wh_consuming);
-				lcdInt(8, 1, (unsigned int)wh_gen);
+				lcdUint(0, 1, (unsigned int)wh_consuming);
+				lcdUint(8, 1, (unsigned int)wh_gen);
 				break;
 		}
 			case eCurrentTemperatures:
@@ -777,13 +818,14 @@ void loop ()
 				lcd.setCursor(0, 0);
 				lcd.print(F("Rain today:"));
 				lcd.setCursor(11, 0);
-				lcd.print(RainString(str, (rainGaugeReadingReceived ? dailyRainfall : 0)));
+				lcd.print(RainString(str, rainPayload.rainCount - rainStartOfToday));
 				lcd.print(F("mm"));
 
-				lcd.setCursor(0, 1);
-				lcd.print(F("Supply V  : "));
-				lcd.setCursor(11, 1);
-				lcd.print(TemperatureString(str, rainPayload.supplyV/10));
+				lcdSupplyV(1, rainPayload.supplyV);
+				//lcd.setCursor(0, 1);
+				//lcd.print(F("Supply V  : "));
+				//lcd.setCursor(11, 1);
+				//lcd.print(TemperatureString(str, rainPayload.supplyV/10));
 				break;
 			}
 			case eRoomTemperatures:
@@ -792,16 +834,17 @@ void loop ()
 				lcd.print(F("Rm Temp:"));
 				lcd.setCursor(11, 0);
 				//3 is room temperature
-				lcd.print(TemperatureString(str, temperaturePayload.temperature[3]));
+				lcd.print(TemperatureString(str, temperaturePayload[0].temperature[3]));
 
-				lcd.setCursor(0, 1);
-				lcd.print(F("Supply V  : "));
-				lcd.setCursor(11, 1);
-				//the battery voltage is in the array past the last sensor
-				lcd.print(TemperatureString(str, temperaturePayload.temperature[temperaturePayload.numSensors] / 10));
+				lcdSupplyV(1, temperaturePayload[0].supplyV);
+
+				//lcd.setCursor(0, 1);
+				//lcd.print(F("Supply V  : "));
+				//lcd.setCursor(11, 1);
+				//lcd.print(TemperatureString(str, temperaturePayload[0].supplyV / 10));
 				break;
 			}
-			case eWaterTankHeight:
+			case eWaterUse:
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Water:"));
@@ -809,15 +852,27 @@ void loop ()
 				lcd.print(waterPayload.waterHeight);
 				lcd.print(" mm");
 				lcd.setCursor(0, 1);
-				lcd.print(F("Node"));
-				lcdInt(4, 1, (unsigned int)txReceived[eWaterNode]);
-				lcd.setCursor(10, 1);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eWaterNode])));
+				lcd.print(F("Day hot:"));
+				lcdUint(9, 1, ((unsigned int)((waterPayload.flowCount - hotWaterStartOfToday)/1000)));
+				lcd.print(" l");
+				break;
+			}
+			case eScaleReadings:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Gram"));
+				lcdLong(4, 0, scalePayload.grams);
+				lcdSupplyV(1, scalePayload.supplyV);
+
+				//lcd.setCursor(0, 1);
+				//lcd.print(F("Supply V  : "));
+				//lcd.setCursor(11, 1);
+				//lcd.print(TemperatureString(str, scalePayload.supplyV / 10));
 				break;
 			}
 			case eRainFallTotals:
 			{
-				unsigned short totalRain = (rainGaugeReadingReceived ? dailyRainfall : 0);
+				unsigned short totalRain = rainPayload.rainCount - rainStartOfToday;
 
 				lcd.setCursor(0, 0);
 				lcd.print(F("Day  Month Year"));
@@ -829,7 +884,7 @@ void loop ()
 				lcd.setCursor(5, 1);
 				lcd.print(RainString(str, totalRain));
 
-				totalRain = (rainGaugeReadingReceived ? dailyRainfall : 0);
+				totalRain = rainPayload.rainCount - rainStartOfToday;
 				totalRain += usageHistory.getRainfallTo(eMonth, currentRainMonth);
 				lcd.setCursor(10, 1);
 				lcd.print(RainString(str, totalRain ));
@@ -855,33 +910,53 @@ void loop ()
 			}
 			case eDiagnosisRainBase:
 			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Rain"));
-				lcdInt(4, 0, (unsigned int)txReceived[eRain]);
-				lcd.setCursor(10, 0);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eRain])));
-				lcd.setCursor(0, 1);
-				lcd.print(F("Base"));
-				lcdInt(4, 1, (unsigned int)txReceived[eBase]);
-				lcd.setCursor(10, 1);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eBase])));
+				lcdDiagnosis(0, F("Rain"), eRain);
+				lcdDiagnosis(1, F("Base"), eBase);
 				break;
 			}
 			case eDiagnosisPulseHWS:
 			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Pulse"));
-				lcdInt(4, 0, (unsigned int)txReceived[ePulse]);
-				lcd.setCursor(10, 0);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[ePulse])));
-				lcd.setCursor(0, 1);
-				lcd.print(F("HWS"));
-				lcdInt(4, 1, (unsigned int)txReceived[eHWS]);
-				lcd.setCursor(10, 1);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eHWS])));
+				lcdDiagnosis(0, F("Puls"), ePulse);
+				lcdDiagnosis(1, F("HWS"), eHWS);
 				break;
 			}
-			case eDiagnosisSettings:
+			case eDiagnosisScale:
+			{
+				lcdDiagnosis(0, F("Scl"), eScale);
+				break;
+			}
+			case eDiagnosisDisp:
+			{
+				switch (eepromSettings.subnode)
+				{
+				case 0:
+					lcdDiagnosis(0, F("Dsp1"), eDisp1);
+					lcdDiagnosis(1, F("Dsp3"), eDisp3);
+					break;
+				case 1:
+					lcdDiagnosis(0, F("Dsp0"), eDisp0);
+					lcdDiagnosis(1, F("Dsp3"), eDisp3);
+					break;
+				case 2:
+				case 3:
+					lcdDiagnosis(0, F("Dsp0"), eDisp0);
+					lcdDiagnosis(1, F("Dsp1"), eDisp1);
+					break;
+				}
+				break;
+			}
+			case eDiagnosisTempEmons:
+			{
+				lcdDiagnosis(0, F("Tmp0"), eTemp0);
+				lcdDiagnosis(1, F("Tmp1"), eTemp1);
+				break;
+			}
+			case eDiagnosisWater:
+			{
+				lcdDiagnosis(0, F("Wtr"), eWaterNode);
+				break;
+			}
+			case eDiagnosisEEPROMSettings:
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Subnode"));
@@ -898,42 +973,13 @@ void loop ()
 					if (++wait == 5) //5*200ms= every second
 					{
 						wait = 0;
-						while ((eepromSettings.relayNodes & ((long)1 << dispNodeID )) == 0)
+						while ((eepromSettings.relayNodes & ((long)1 << dispNodeID)) == 0)
 							dispNodeID = (++dispNodeID) % 32;
 						lcd.setCursor(10, 1);
 						lcd.print(EmonEEPROM::NodeName(dispNodeID));
 						dispNodeID = (++dispNodeID) % 32;
 					}
 				}
-				break;
-			}
-			case eDiagnosisScale:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Scale"));
-				lcdInt(4, 0, (unsigned int)txReceived[eScale]);
-				lcd.setCursor(10, 0);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eScale])));
-				lcd.setCursor(0, 1);
-				lcd.print(F("Gram"));
-				lcdInt(4, 1, scalePayload.grams);
-				lcdInt(10, 1, scalePayload.supplyV);
-				lcd.setCursor(15, 1);
-				lcd.print(F("v"));
-				break;
-			}
-			case eDiagnosisTempEmons:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Temp"));
-				lcdInt(4, 0, (unsigned int)txReceived[eTemp]);
-				lcd.setCursor(10, 0);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eTemp])));
-				lcd.setCursor(0, 1);
-				lcd.print(F("Emon"));
-				lcdInt(4, 1, (unsigned int)txReceived[eEmon]);
-				lcd.setCursor(10, 1);
-				lcd.print(TimeSpanString(str, (now() - lastReceived[eEmon])));
 				break;
 			}
 		}
@@ -944,19 +990,6 @@ void loop ()
 //--------------------------------------------------------------------
 // Calculate power and energy variables
 //--------------------------------------------------------------------
-void power_calculations_emon()
-{
-	//--------------------------------------------------
-	// kWh calculation
-	//--------------------------------------------------
-	unsigned long lwhtime = whtime;
-	whtime = millis();
-	double whInc = emonPayload.ct1 * ((whtime-lwhtime)/3600000.0);
-	wh_gen=wh_gen+whInc;
-	whInc = emonPayload.power *((whtime-lwhtime)/3600000.0);
-	wh_consuming=wh_consuming+whInc;
-}
-
 void power_calculations_pulse()
 {
 	//--------------------------------------------------

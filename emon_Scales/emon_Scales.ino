@@ -13,16 +13,20 @@
 
 RF12Init rf12Init = { SCALE_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
-EEPROMSettings  eepromSettings;
-PayloadScale scalePayload;
-long lastScaleValue;
-long	secondsSinceActivity;		//Increment for each time the weight is transmitted. When activity is encountered, this is reset to 0
+PayloadScale g_scalePayload;
+long g_lastScaleValue;
+long g_secondsSinceActivity;		//Increment for each time the weight is transmitted. When activity is encountered, this is reset to 0
 
 
-ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 #define SCALE_FACTOR  19.55f
 
-Hx711 scale(A0, A1, SCALE_FACTOR); //calibration_factor = 19550000; // for 4 load-cell 200kg rating
+Hx711 scale(A0, A1, SCALE_FACTOR); //calibration_factor = 19.55 for 4 load-cell 200kg rating
+
+
+//--------------------------------------------------------------------------------------------------
+// Sleepy interrupt service routine callback
+//--------------------------------------------------------------------------------------------------
+ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
 
 //--------------------------------------------------------------------------------------------------
@@ -49,25 +53,24 @@ void setup()
 {
 	Serial.begin(9600);
 
-	Serial.println(F("Scale sensor start"));
-
+	Serial.println(F("Scale sensor"));
+		
 	//initialise the EEPROMSettings for relay and node number
+	EEPROMSettings  eepromSettings;
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
-	if (eepromSettings.relayNumber)
-		scalePayload.relay = 1 << (eepromSettings.relayNumber - 1);
-	else
-		scalePayload.relay = 0;
+	
+	g_scalePayload.subnode = eepromSettings.subnode;
+	
+	g_lastScaleValue = scale.getValue();
+	g_secondsSinceActivity = 0;
 
-	scalePayload.grams = (long)scale.getGram();
-	lastScaleValue = scale.getValue();
-	secondsSinceActivity = 0;
-
-	Serial.println("rf12_initialize");
+	Serial.print("rf12_initialize:");
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
-	
-	delay(500);
+	EmonSerial::PrintScalePayload(NULL);
+
+	delay(100);
 }
 
 //--------------------------------------------------------------------------------------------
@@ -75,31 +78,38 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
-	if (abs(scale.getValue() - lastScaleValue) > 1000)
+	if (abs(scale.getValue() - g_lastScaleValue) > 1000)
 	{
-		scalePayload.grams = (long)scale.getGram();
-		secondsSinceActivity = 0;
-		lastScaleValue = scale.getValue();
+		g_secondsSinceActivity = 1;
+		g_lastScaleValue = scale.getValue();
 	}
 	else
 	{
-		secondsSinceActivity++;
+		g_secondsSinceActivity++;
 	}
 
-	if(secondsSinceActivity < 5 || secondsSinceActivity%600 == 0)	//transmit for the 5 seconds after activity and then every 10 minutes
+	//Serial.print("g_secondsSinceActivity ="); 
+	//Serial.print(g_secondsSinceActivity);
+	//Serial.print(", g_lastScaleValue =");
+	//Serial.print(g_lastScaleValue);
+	//Serial.print(", Scale reading: ");
+	//Serial.println(scale.getGram());
+	//delay(100);
+
+	if((g_secondsSinceActivity > 15 && g_secondsSinceActivity <=20) || g_secondsSinceActivity%600 == 0)	//transmit for the 5 seconds, 15 seconds after activity finishes. Then every 10 minutes.
 	{
+		g_scalePayload.grams = (long)scale.getGram();
+		g_scalePayload.supplyV = readVcc();
+
 		rf12_sleep(RF12_WAKEUP);
-
-		scalePayload.supplyV = readVcc();
-
 		int wait = 1000;
 		while (!rf12_canSend() && wait--)
 			rf12_recvDone();
 		if (wait)
 		{
-			rf12_sendStart(0, &scalePayload, sizeof scalePayload);
+			rf12_sendStart(0, &g_scalePayload, sizeof g_scalePayload);
 			rf12_sendWait(0);
-			EmonSerial::PrintScalePayload(&scalePayload);
+			EmonSerial::PrintScalePayload(&g_scalePayload);
 		}
 		else
 		{
@@ -108,7 +118,7 @@ void loop ()
 		rf12_sleep(RF12_SLEEP);
 
 
-		delay(100); //let serial buffer empty
+		delay(50); //let serial buffer empty
 	}
 	
 	Sleepy::loseSomeTime(1000); // go to sleep for longer if nothing is happening

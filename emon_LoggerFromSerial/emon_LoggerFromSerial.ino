@@ -12,7 +12,6 @@
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
-byte  currentDay = 0;
 #define MAX_FILENAME_LEN 15
 #define DATETIME_LEN 24
 #define MAX_SERIAL_BUF 120
@@ -22,6 +21,7 @@ char buf1[MAX_SERIAL_BUF];
 char buf2[MAX_SERIAL_BUF];
 byte bufIndex1;
 byte bufIndex2;
+bool  timeReceived = false;
 
 
 SoftwareSerial softSerial(2,3);
@@ -38,7 +38,7 @@ void dateTime(uint16_t* date, uint16_t* time)
 
 bool WriteDateToFile()
 {
-	if (timeStatus() == timeSet )  //the time has been set!
+	if (timeReceived)  //the time has been set!
 	{
 		char fileName[MAX_FILENAME_LEN];
 		//yyyy-mm-dd.txt
@@ -85,6 +85,7 @@ bool ParseBuffer(char* buf, byte bufIndex)
 		if (EmonSerial::ParseBasePayload(buf, &pl))
 		{
 			setTime(pl.time);
+			timeReceived = true;
 
 			if (WriteDateToFile())
 			{

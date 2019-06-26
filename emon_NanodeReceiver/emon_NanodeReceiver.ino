@@ -23,11 +23,11 @@
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
-PayloadDisp displayPayload[MAX_SUBNODES];
-PayloadTemperature temperaturePayload[MAX_SUBNODES];
 PayloadHWS hwsPayload;
 PayloadWater waterPayload;
 PayloadScale scalePayload;
+PayloadDisp displayPayload[MAX_SUBNODES];
+PayloadTemperature temperaturePayload[MAX_SUBNODES];
 
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
@@ -42,10 +42,8 @@ unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 //--------------------------------------------------------------------------------------------
 // Rain variables
 //--------------------------------------------------------------------------------------------
-int dailyRainfall, dayStartRainfall;						//daily Rainfall
 unsigned long rainStartOfToday;
-bool rainReceived;
-
+unsigned long hotWaterStartOfToday;
 
 //--------------------------------------------------------------------------------------------
 // NTP time support 
@@ -73,8 +71,8 @@ int				currentTimeserver = 0;
 // Ethercard support
 //-------------------------------------------------------------------------------------------- 
 #include <EtherCard.h>
-static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x32 };
-byte Ethernet::buffer[900];
+static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x33 };
+byte Ethernet::buffer[800];
 
 
 //-------------------------------------------------------------------------------------------- 
@@ -163,7 +161,6 @@ void setup ()
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
 
-	EmonSerial::PrintEmonPayload(NULL);
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
@@ -171,23 +168,20 @@ void setup ()
 	EmonSerial::PrintTemperaturePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
-	
+	EmonSerial::PrintScalePayload(NULL);
+
 	for(int i=0;i<MAX_SUBNODES;i++)
 		temperaturePayload[i].numSensors = 0;
 
-	dailyRainfall = 0;
-	dayStartRainfall = 0;
+	
+	rainPayload.rainCount = rainStartOfToday = 0;
+	waterPayload.flowCount = hotWaterStartOfToday = 0;
 
 	slow_update = millis();
 	web_update = millis();
 	
 	request_NTP_Update = millis()+1000;	//update in 1 second
 	
-	
-	//NTP time
-	//setSyncInterval(86400 * 7);		 // update the time every week	(24*60*60) *7
-	//setSyncProvider(GetNtpTime);		// initiate the callback to GetNtpTime	
-
 	digitalWrite(RED_LED, HIGH );
 }
 //--------------------------------------------------------------------------------------------
@@ -209,7 +203,7 @@ void loop ()
 			digitalWrite(RED_LED, LOW);
 
 			int node_id = (rf12_hdr & 0x1F);
-			byte subnode = 0;
+			
 		
 
 			if (node_id == PULSE_JEENODE)
@@ -222,10 +216,10 @@ void loop ()
 			if (node_id == DISPLAY_NODE)
 			{
 				PayloadDisp dpl = *((PayloadDisp*)rf12_data);
-				subnode = dpl.subnode;
+				byte subnode = dpl.subnode;
 				if (subnode > MAX_SUBNODES)
 				{
-					Serial.print("Invalid display subnode. Exiting");
+					Serial.print(F("Invalid display subnode. Exiting"));
 					return;
 				}
 				memcpy(&displayPayload[subnode], &dpl, sizeof(PayloadDisp));
@@ -235,10 +229,10 @@ void loop ()
 			if (node_id == TEMPERATURE_JEENODE)
 			{
 				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
-				subnode = tpl.subnode;
+				byte subnode = tpl.subnode;
 				if (subnode > MAX_SUBNODES)
 				{
-					Serial.print("Invalid temperature subnode. Exiting");
+					Serial.print(F("Invalid display subnode. Exiting"));
 					return;
 				}
 				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
@@ -257,11 +251,9 @@ void loop ()
 				rainPayload = *(PayloadRain*)rf12_data;								// get emonbase payload data
 				EmonSerial::PrintRainPayload(&rainPayload);
 
-				if (!rainReceived)
+				if (rainStartOfToday == 0)
 				{
-					dayStartRainfall = rainPayload.rainCount;
-					rainReceived = true;
-					dailyRainfall = 0;
+					rainStartOfToday = rainPayload.rainCount;
 				}
 			}
 
@@ -269,6 +261,11 @@ void loop ()
 			{
 				waterPayload = *(PayloadWater*)rf12_data;								// get payload data
 				EmonSerial::PrintWaterPayload(&waterPayload);
+				if (hotWaterStartOfToday == 0)
+				{
+					hotWaterStartOfToday = waterPayload.flowCount;
+				}
+				
 			}
 
 			if(node_id == SCALE_NODE)
@@ -433,6 +430,7 @@ void loop ()
 			}
 			if (temperaturePayload[1].temperature[0] != 0)
 			{
+				stash.print(F("&field7="));
 				stash.print(temperaturePayload[1].temperature[0] / 100);
 				stash.print(F("."));
 				stash.print((temperaturePayload[1].temperature[0] / 10) % 10);
@@ -459,10 +457,7 @@ void loop ()
 			stash.print((word)wh_gen);
 			stash.print("&field5=");
 			stash.print((word)pulsePayload.power[0]);
-			stash.print("&field6=");
-			stash.print((int)(dailyRainfall / 5));
-			stash.print(".");
-			stash.print((dailyRainfall % 5) * 2);
+
 			stash.print("&field7=");
 			stash.print((word)pulsePayload.power[3]);
 		}
@@ -500,10 +495,12 @@ void loop ()
 				stash.print(waterPayload.waterHeight);
 			}
 			stash.print("&field2=");
-			stash.print((int)(dailyRainfall / 5));
+			stash.print((int)((rainPayload.rainCount - rainStartOfToday) / 5));
 			stash.print(".");
-			stash.print((dailyRainfall % 5) * 2);
+			stash.print(((rainPayload.rainCount - rainStartOfToday) % 5) * 2);
 
+			stash.print("&field3=");
+			stash.print((int)((waterPayload.flowCount - hotWaterStartOfToday)/1000));
 		}
 
 
@@ -557,27 +554,12 @@ void loop ()
 		wh_gen = 0;
 		wh_consuming = 0;
 
-		Serial.println(F("Resetting Arduino at midnight."));
-		delay(100); //Allow serial buffer to empty
-		digitalWrite(RESET_OUT, LOW);
+		hotWaterStartOfToday = waterPayload.flowCount;
 	}
 
-	if (rainReceived)
+	if (lastHour == 8 && thisHour == 9)
 	{
-		if (lastHour == 8 && thisHour == 9)
-		{
-			dayStartRainfall = rainPayload.rainCount;
-			dailyRainfall = 0;
-		}
-		if (rainPayload.rainCount < dayStartRainfall)
-		{
-			// int rollover or emontx has been reset to 0
-			dailyRainfall = dailyRainfall + rainPayload.rainCount;
-		}
-		else
-		{
-			dailyRainfall = rainPayload.rainCount - dayStartRainfall;
-		}
+		rainStartOfToday = rainPayload.rainCount;
 	}
 } 
 
@@ -592,35 +574,6 @@ void power_calculations_pulse()
 	wh_gen = wh_gen + whInc;
 	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
 	wh_consuming = wh_consuming + whInc;
-}
-
-String RainString(String& str, int rainGauge)
-{
-	//raingauge increments in 0.2mm per value
-	str = "";
-	str += (int) (rainGauge / 5);
-	str += ".";
-	str += (rainGauge % 5) * 2;
-	return str;
-}
-
-String TemperatureString(String& str, int temperature )
-{
-	str = "";
-	int t = temperature;
-	if( t < 0 )
-	{
-		str = "-";
-		t *= -1;
-		str += t/100;
-	}
-	else
-		str += t/100;
-
-	str +=".";
-	str += (t/10)%10;
-
-	return str;
 }
 
 String DateString(String& str, time_t time)

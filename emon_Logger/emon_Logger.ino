@@ -18,13 +18,12 @@
 const int RED_LED=6;				 // Red tri-color LED
 const int GREEN_LED = 5;		 // Red tri-color LED
 
-#define MAX_NODES	18				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eEmon, eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater, eScale0, eScale1, eScale2 };	//index into txReceived and lastReceived
+#define MAX_NODES	17				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
+enum { eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater, eScale0, eScale1, eScale2 };	//index into txReceived and lastReceived
 
 unsigned int txReceived[MAX_NODES];
 time_t lastReceived[MAX_NODES];
 
-PayloadEmon emonPayload;
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
@@ -68,7 +67,6 @@ void setup ()
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
 
-	EmonSerial::PrintEmonPayload(NULL);
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
@@ -124,14 +122,6 @@ void loop ()
 				//set the time from the base
 				setTime(basePayload.time);
 				currentDay = day();		//will indicate time is set
-			}
-
-			if (node_id == EMON_NODE)						// === EMONTX ====
-			{
-				emonPayload = *(PayloadEmon*)rf12_data;							// get emontx payload data
-				EmonSerial::PrintEmonPayload(&emonPayload, (now() - lastReceived[eEmon]));				// print data to serial
-				txReceived[eEmon]++;
-				lastReceived[eEmon] = now();				// set time of last update to now
 			}
 
 			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====

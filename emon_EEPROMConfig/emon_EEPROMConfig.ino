@@ -99,10 +99,10 @@ static void handleInput (char c) {
 					break;
 
       case 's': // set subnode number
-				if (value > MAX_SUBNODES)
+				if (value >= MAX_SUBNODES)
 				{
 					Serial.print("Invalid subnode number. Set 0..");
-					Serial.println(MAX_SUBNODES);
+					Serial.println(MAX_SUBNODES-1);
 				}
 				else
 				{

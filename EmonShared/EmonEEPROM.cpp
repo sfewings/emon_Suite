@@ -21,7 +21,6 @@ const char disp_str[] PROGMEM = "disp";
 const char temp_str[] PROGMEM = "temp";
 const char hws_str[] PROGMEM = "hws";
 const char log_str[] PROGMEM = "log";
-const char emon_str[] PROGMEM = "emon";
 const char wtr_str[] PROGMEM = "wtr";
 const char scl_str[] PROGMEM = "scl";
 const char empty_str[] PROGMEM = "";

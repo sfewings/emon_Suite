@@ -26,7 +26,7 @@ DallasTemperature temperatureSensor(&oneWire);
 // RF12 settings 
 //---------------------------------------------------------------------------------------------------
 
-RF12Init rf12Init = { RAIN_NODE, RF12_915MHZ, 210 };
+RF12Init rf12Init = { RAIN_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 #define INTERRUPT_IR			1	// ATmega 168 and 328 - interrupt 0 = pin 2, 1 = pin 3
 #define RAIN_GAUGE_PIN		3
@@ -130,6 +130,7 @@ void setup()
 void loop()
 {
 	PayloadRain rainPayload;
+	memset(&rainPayload, 0, sizeof(PayloadRain));
 
 	//transfer all the data from the interrupt values with interrupts disabled
 	uint8_t oldSREG = SREG;			// save interrupt register
