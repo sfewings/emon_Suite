@@ -59,8 +59,8 @@ typedef struct {
 
 typedef struct PayloadPulse: PayloadRelay{
 	int power[PULSE_NUM_PINS];					// power values
-	int pulse[PULSE_NUM_PINS];					// pulse values 
-	int supplyV;												// unit supply voltage
+	unsigned long pulse[PULSE_NUM_PINS];	// pulse values 
+	unsigned long supplyV;							// unit supply voltage
 } PayloadPulse;
 
 

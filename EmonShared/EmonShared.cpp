@@ -132,11 +132,11 @@ void EmonSerial::PrintPulsePayload(Stream& stream, PayloadPulse* pPayloadPulse, 
 {
 	if (pPayloadPulse == NULL)
 	{
-		stream.println(F("pulse,power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
+		stream.println(F("pulse2,power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
 	}
 	else
 	{
-		stream.print(F("pulse,"));
+		stream.print(F("pulse2,"));
 		for(int i=0; i< PULSE_NUM_PINS;i++)
 		{
 			stream.print(pPayloadPulse->power[i]);
@@ -400,13 +400,17 @@ int EmonSerial::ParseDispPayload(char* str, PayloadDisp* pPayloadDisp)
 int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
 {
 	memset(pPayloadPulse, 0, sizeof(PayloadPulse));
-
+	//version 1 stored pulse as int. version2 sotred as unsigned long
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
-
-	if (0 != strcmp(pch, "pulse"))
-		return 0;	//can't find "pulse:" as first token
+	int version;
+	if (0 == strcmp(pch, "pulse") )
+		version = 1;
+	else if(0 == strcmp(pch, "pulse2"))
+		version = 2;
+	else
+		return 0;	//can't find "pulse" or "pulse2" as first token
 	
 	for (int i = 0; i < PULSE_NUM_PINS; i++)
 	{
@@ -416,7 +420,7 @@ int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
 	for (int i = 0; i < PULSE_NUM_PINS; i++)
 	{
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
-		pPayloadPulse->pulse[i] = atoi(pch);
+		pPayloadPulse->pulse[i] = atol(pch);
 	}
 
 	if (NULL == (pch = strtok(NULL, tok))) return 0;

@@ -8,19 +8,48 @@
 #include <time.h>					//required for EmonShared.h
 #include <EmonShared.h>
 #include <PinChangeInt.h>
+#include <eeprom.h>
+
 
 #define ENABLE_SERIAL 1
 #define NUM_PINS	PULSE_NUM_PINS
 #define FIRST_PIN 4
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
+#define EEPROM_BASE 0x10	//where the pulse count is stored
 
 RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
-volatile unsigned short	g_wHrCount[NUM_PINS]		= { 0,0,0,0 };		//pulses since last call to MeterPulseLog()
+volatile unsigned short	g_pulseCount[NUM_PINS]		= { 0,0,0,0 };	//pulses since recording started
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
 volatile unsigned long	g_period[NUM_PINS]			= { 0,0,0,0 };		//ms between last two pulses
 const		double					g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,0.4,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
 PayloadPulse pulsePayload;
+
+int g_currentHour;
+
+
+unsigned long readEEPROM(int offset)
+{
+	unsigned long value = 0;
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(unsigned long); l++)
+	{
+		*(pc + l) = EEPROM.read(EEPROM_BASE + offset + l);
+	}
+
+	return value;
+}
+
+void writeEEPROM(int offset, unsigned long value)
+{
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(unsigned long); l++)
+	{
+		EEPROM.write(EEPROM_BASE + offset + l, *(pc + l));
+	}
+}
 
 
 // routine called when external interrupt is triggered
@@ -28,7 +57,7 @@ void interruptHandlerIR()
 {
 	uint8_t pin = PCintPort::arduinoPin - FIRST_PIN; //pin number of this interrupt
 
-	g_wHrCount[pin]++;								//Update number of pulses, 1 pulse = 1 watt
+	g_pulseCount[pin]++;								//Update number of pulses, 1 pulse = 1 watt
 	unsigned long tick = millis();
 	if (tick < g_lastTick[pin])
 		g_period[pin] = tick + (g_lastTick[pin] - 0xFFFFFFFF);	//rollover occured
@@ -37,7 +66,7 @@ void interruptHandlerIR()
 	g_lastTick[pin] = tick;
 }
 
-unsigned short MeterCurrentWatts(int pin)
+unsigned short MeterCurrentWatts(int channel)
 {
 	unsigned long lastPeriod;
 	unsigned long thisPeriod;
@@ -49,8 +78,8 @@ unsigned short MeterCurrentWatts(int pin)
 	uint8_t oldSREG = SREG;			// save interrupt register
 	cli();							// prevent interrupts while accessing the count	
 
-	lastPeriod = g_period[pin - FIRST_PIN];
-	lastTick = g_lastTick[pin - FIRST_PIN];
+	lastPeriod = g_period[channel];
+	lastTick = g_lastTick[channel];
 	
 	SREG = oldSREG;					// restore interrupts
 
@@ -59,7 +88,7 @@ unsigned short MeterCurrentWatts(int pin)
 	else
 		thisPeriod = tick - lastTick;
 
-	periodPerWH = 1000.0 * 3600.0 / g_pulsePerWH[pin - FIRST_PIN];
+	periodPerWH = 1000.0 * 3600.0 / g_pulsePerWH[channel];
 
 	if (thisPeriod < lastPeriod)
 		watts = periodPerWH / lastPeriod;		//report the watts for the last tick period
@@ -73,16 +102,16 @@ unsigned short MeterCurrentWatts(int pin)
 }
 
 
-unsigned short MeterPulseLog(int pin)
+unsigned long MeterTotalWatts(int channel)
 {
-	unsigned short wattSensorCountIR;	// number of watts during this logging interval 
+	unsigned long pulseCount;	// number of watts during this logging interval 
+	
 	uint8_t oldSREG = SREG;						// save interrupt register
 	cli();														// prevent interrupts while accessing the count	
-	wattSensorCountIR = g_wHrCount[pin - FIRST_PIN];		// get the count from the interrupt handler 
-	g_wHrCount[pin - FIRST_PIN] = 0;										// reset the watts count
+	pulseCount = g_pulseCount[channel];		// get the count from the interrupt handler 
 	SREG = oldSREG;										// restore interrupts
 
-	return wattSensorCountIR;
+	return (unsigned long) (pulseCount/ g_pulsePerWH[channel]);
 }
 
 
@@ -105,19 +134,26 @@ void setup()
 		Serial.end();
 	}
 
+	for (int i = 0; i < NUM_PINS; i++)
+	{
+		writeEEPROM(i * sizeof(unsigned long), 0);
+	}
+
 	//initialise
 	for (int i = 0; i < NUM_PINS; i++)
 	{
 		g_period[i] = millis() - TIMEOUT_PERIOD;
 
 		pulsePayload.power[i] = 0;
-		pulsePayload.pulse[i] = 0;
+		g_pulseCount[i] = readEEPROM(i * sizeof(unsigned long));
+		pulsePayload.pulse[i] = (unsigned long) (g_pulseCount[i] / g_pulsePerWH[i]); // convert from number of pulses since recoding started to wHrs since start
 
 		pinMode(FIRST_PIN+i, INPUT_PULLUP);
 		attachPinChangeInterrupt(FIRST_PIN + i, interruptHandlerIR, RISING);
 	}
 	pulsePayload.supplyV = 0;
 
+	g_currentHour = hour();
 
 	EmonSerial::PrintPulsePayload(NULL);
 	
@@ -130,11 +166,29 @@ void loop()
 	//read values
 	for (int i = 0; i < NUM_PINS; i++)
 	{
-		pulsePayload.power[i] = MeterCurrentWatts(FIRST_PIN + i);
-		pulsePayload.pulse[i] = MeterPulseLog(FIRST_PIN + i);
+		pulsePayload.power[i] = MeterCurrentWatts(i);
+		pulsePayload.pulse[i] = MeterTotalWatts(i);
 	}
 	pulsePayload.supplyV = readVcc();
 
+	if (hour() != g_currentHour)
+	{
+		g_currentHour = hour();
+
+		unsigned long pulse[NUM_PINS];
+		uint8_t oldSREG = SREG;			
+		cli();							
+		for (int i = 0; i < NUM_PINS; i++)
+		{
+			pulse[i] = g_pulseCount[i];
+		}
+		SREG = oldSREG;					// restore interrupts
+		//store to EEPROM every hour
+		for (int i = 0; i < NUM_PINS; i++)
+		{
+			writeEEPROM(i * sizeof(unsigned long), pulse[i]);
+		}
+	}
 	// Send data via RF 
 	int i = 0;
 	while (!rf12_canSend() && i++ < 100)
