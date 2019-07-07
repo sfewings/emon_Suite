@@ -24,3 +24,5 @@
 *.db-wal
 **/Debug/
 **/x64/
+**/Release/
+
