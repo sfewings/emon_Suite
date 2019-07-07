@@ -450,7 +450,12 @@ int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadT
 		pPayloadTemperature->numSensors = atoi(pch);
 		if (pPayloadTemperature->numSensors > MAX_TEMPERATURE_SENSORS)
 			return 0;  //don't support more than ten sensors!
-
+		if (pPayloadTemperature->numSensors == 2)
+			pPayloadTemperature->subnode = 1; // garage temperature prob
+		else if (pPayloadTemperature->numSensors == 4)
+			pPayloadTemperature->subnode = 0;	// room sensors
+		else
+			pPayloadTemperature->subnode = 2; //unknown
 		for (int i = 0; i < pPayloadTemperature->numSensors; i++)
 		{
 			if (NULL == (pch = strtok(NULL, tok)))
