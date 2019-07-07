@@ -134,10 +134,10 @@ void setup()
 		Serial.end();
 	}
 
-	for (int i = 0; i < NUM_PINS; i++)
-	{
-		writeEEPROM(i * sizeof(unsigned long), 0);
-	}
+//for reset to 0.	for (int i = 0; i < NUM_PINS; i++)
+	//{
+	//	writeEEPROM(i * sizeof(unsigned long), 0);
+	//}
 
 	//initialise
 	for (int i = 0; i < NUM_PINS; i++)

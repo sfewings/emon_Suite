@@ -1,5 +1,4 @@
-
-#define RF69_COMPAT 0
+#define RF69_COMPAT 1
 
 #include <JeeLib.h>
 //Temperature support - OneWire Dallas temperature sensor

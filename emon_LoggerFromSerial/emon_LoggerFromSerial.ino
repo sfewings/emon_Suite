@@ -41,8 +41,8 @@ bool WriteDateToFile()
 	if (timeReceived)  //the time has been set!
 	{
 		char fileName[MAX_FILENAME_LEN];
-		//yyyy-mm-dd.txt
-		snprintf_P(fileName, MAX_FILENAME_LEN, PSTR("%02d%02d%02d-A.txt"), year()%100, month(), day());
+		//yyyymmdd.txt
+		snprintf_P(fileName, MAX_FILENAME_LEN, PSTR("%04d%02d%02d.txt"), year(), month(), day());
 
 		file = SD.open(fileName, FILE_WRITE);
 
