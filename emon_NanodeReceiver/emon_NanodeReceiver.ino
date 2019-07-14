@@ -35,7 +35,8 @@ RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 //--------------------------------------------------------------------------------------------
 // Power variables
 //--------------------------------------------------------------------------------------------
-double wh_gen, wh_consuming;							//integer variables to store ammout of power currenty being consumed grid (in/out) +gen
+unsigned long pulseStartOfToday[PULSE_NUM_PINS];
+//double wh_gen, wh_consuming, wh_hws;							//integer variables to store ammout of power currenty being consumed grid (in/out) +gen
 unsigned long whtime;									//used to calculate energy used per day (kWh/d)
 
 
@@ -176,6 +177,8 @@ void setup ()
 	
 	rainPayload.rainCount = rainStartOfToday = 0;
 	waterPayload.flowCount = hotWaterStartOfToday = 0;
+	for (int i = 0; i < PULSE_NUM_PINS; i++)
+		pulsePayload.pulse[i] = pulseStartOfToday[i] = 0;
 
 	slow_update = millis();
 	web_update = millis();
@@ -210,7 +213,12 @@ void loop ()
 			{
 				pulsePayload = *(PayloadPulse*)rf12_data;
 				EmonSerial::PrintPulsePayload(&pulsePayload);
-				power_calculations_pulse();					
+				if (pulseStartOfToday[0] == 0)
+				{
+					for (int i = 0; i < PULSE_NUM_PINS; i++)
+						pulseStartOfToday[i] = pulsePayload.pulse[i];
+				}
+				//power_calculations_pulse();					
 			}
 
 			if (node_id == DISPLAY_NODE)
@@ -452,14 +460,17 @@ void loop ()
 			stash.print("&field2=");
 			stash.print((word)pulsePayload.power[1]);
 			stash.print("&field3=");
-			stash.print((word)wh_consuming);
+			stash.print((word)((pulsePayload.pulse[2] - pulseStartOfToday[2])));
 			stash.print("&field4=");
-			stash.print((word)wh_gen);
+			stash.print((word)((pulsePayload.pulse[1] - pulseStartOfToday[1])));
 			stash.print("&field5=");
 			stash.print((word)pulsePayload.power[0]);
-
+			stash.print("&field6=");
+			stash.print((word)((pulsePayload.pulse[0] - pulseStartOfToday[0])));
 			stash.print("&field7=");
 			stash.print((word)pulsePayload.power[3]);
+			stash.print("&field8=");
+			stash.print((word)((pulsePayload.pulse[3] - pulseStartOfToday[3])));
 		}
 		else if (toggleWebUpdate == 2)
 		{
@@ -551,8 +562,11 @@ void loop ()
 	thisHour = hour();
 	if (lastHour == 23 && thisHour == 00)
 	{
-		wh_gen = 0;
-		wh_consuming = 0;
+		for (int i = 0; i < PULSE_NUM_PINS; i++)
+			pulseStartOfToday[i] = pulsePayload.pulse[i];
+		//wh_gen = 0;
+		//wh_consuming = 0;
+		//wh_hws = 0;
 
 		hotWaterStartOfToday = waterPayload.flowCount;
 	}
@@ -563,18 +577,24 @@ void loop ()
 	}
 } 
 
-void power_calculations_pulse()
-{
-	//--------------------------------------------------
-	// kWh calculation
-	//--------------------------------------------------
-	unsigned long lwhtime = whtime;
-	whtime = millis();
-	double whInc = pulsePayload.power[1] * ((whtime - lwhtime) / 3600000.0);  //solar comes in on pin 2
-	wh_gen = wh_gen + whInc;
-	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
-	wh_consuming = wh_consuming + whInc;
-}
+//void power_calculations_pulse()
+//{
+//	//--------------------------------------------------
+//	// kWh calculation
+//	//--------------------------------------------------
+//	double whInc;
+//	unsigned long lwhtime = whtime;
+//	whtime = millis();
+//	
+//	whInc = pulsePayload.power[0] * ((whtime - lwhtime) / 3600000.0);  //hot water system comes in on pin 0
+//	wh_hws = wh_hws + whInc;
+//
+//	whInc = pulsePayload.power[1] * ((whtime - lwhtime) / 3600000.0);  //solar comes in on pin 2
+//	wh_gen = wh_gen + whInc;
+//
+//	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
+//	wh_consuming = wh_consuming + whInc;
+//}
 
 String DateString(String& str, time_t time)
 {
