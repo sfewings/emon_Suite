@@ -38,7 +38,7 @@ SensorReader::SensorReader(std::string rootPath):
 	m_powerTotal("powerTotal", rootPath, ReadingDataType::eRatePerSecond),
 	m_rainFall("rain", rootPath, ReadingDataType::eCounter),
 	m_supplyV("supplyV", rootPath, ReadingDataType::eReading),
-	m_HWS("HWS", rootPath, ReadingDataType::eReading),
+	m_HWS("HWS", rootPath, ReadingDataType::eReading, true),
 	m_water("water", rootPath, ReadingDataType::eReading),
 	m_waterUsage("waterUsage", rootPath, ReadingDataType::eCounter)
 {
@@ -130,10 +130,10 @@ void SensorReader::AddReading(std::string reading, tm time)
 			{
 				if (rain.rainCount != 0)
 				{
-					m_temperatures.Add("r", time, rain.temperature / 100.0);
-					m_rainFall.Add("r", time, rain.rainCount * 0.2);
+					m_temperatures.Add("Outside", time, rain.temperature / 100.0);
+					m_rainFall.Add("Rain", time, rain.rainCount * 0.2);
 					if (rain.supplyV / 1000.0 < 5)
-						m_supplyV.Add("r", time, rain.supplyV / 1000.0);
+						m_supplyV.Add("Rain Gauge", time, rain.supplyV / 1000.0);
 				}
 			}
 			break;
@@ -143,11 +143,11 @@ void SensorReader::AddReading(std::string reading, tm time)
 			PayloadPulse pulse;
 			if (EmonSerial::ParsePulsePayload((char*)reading.c_str(), &pulse))
 			{
+				std::string sensor[4] = { "HWS", "Consumed", "Produced", "Imported" };
 				for (int i = 0; i< PULSE_NUM_PINS; i++)
 				{
-					m_power.Add("p" + std::to_string(i), time, pulse.power[i]);
-					m_powerTotal.Add("p" + std::to_string(i), time, pulse.power[i] / 3600000.0);
-//					m_powerTotal.Add("p" + std::to_string(i), time, pulse.pulse[i]);
+					m_power.Add(sensor[i], time, pulse.power[i]);
+					m_powerTotal.Add(sensor[i], time, pulse.power[i] / 3600000.0);
 				}
 			}
 		break;
@@ -162,9 +162,10 @@ void SensorReader::AddReading(std::string reading, tm time)
 			PayloadDisp disp;
 			if (EmonSerial::ParseDispPayload((char*)reading.c_str(), &disp))
 			{
+				std::string sensor[4] = { "Kitchen", "Office", "unused", "Upstairs" };
 				//_ASSERT(disp.subnode < 4);
 				if(disp.subnode < 4)
-					m_temperatures.Add("d"+std::to_string(disp.subnode), time, disp.temperature/100.0);
+					m_temperatures.Add(sensor[disp.subnode], time, disp.temperature/100.0);
 			}
 			break;
 		}
@@ -174,6 +175,13 @@ void SensorReader::AddReading(std::string reading, tm time)
 			PayloadTemperature temp;
 			if (EmonSerial::ParseTemperaturePayload((char*)reading.c_str(), &temp))
 			{
+				std::string sensor[4][4] = { 
+					{"Under roof", "Living room slab", "Living room", "Ceiling space"}, 
+					{"Garage", "Beer fridge", "unused", "unused"},
+					{"unused", "unused", "unused", "unused"},
+					{"unused", "unused", "unused", "unused"}
+			};
+
 				//_ASSERT(temp.subnode < 4);
 				if (temp.subnode < 4)
 				{
@@ -181,7 +189,7 @@ void SensorReader::AddReading(std::string reading, tm time)
 					{
 						if (temp.temperature[i] > 0 && temp.temperature[i] / 100 < 110 )	//filter out some noisy temperature values
 						{
-							m_temperatures.Add("t" + std::to_string(temp.subnode) + std::to_string(i), time, temp.temperature[i] / 100.0);
+							m_temperatures.Add(sensor[temp.subnode][i], time, temp.temperature[i] / 100.0);
 						}
 					}
 					if(temp.supplyV / 1000.0 < 5)
@@ -199,11 +207,11 @@ void SensorReader::AddReading(std::string reading, tm time)
 				for (int i = 0; i < HWS_TEMPERATURES; i++)
 				{
 					if(hws.temperature[i] > 0 && hws.temperature[i] < 110)
-					m_HWS.Add("h" + std::to_string(i), time, hws.temperature[i]);
+					m_HWS.Add("Temp " + std::to_string(i), time, hws.temperature[i]);
 				}
 				for (int i = 0; i < HWS_PUMPS; i++)
 				{
-					m_HWS.Add("p" + std::to_string(i), time, hws.pump[i]*(i+1));
+					m_HWS.Add("Pump " + std::to_string(i), time, hws.pump[i]*(i+1));
 				}
 			}
 			break;

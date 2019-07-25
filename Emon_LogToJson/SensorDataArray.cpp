@@ -6,27 +6,6 @@
 #include "SensorDataArray.h"
 
 
-//std::string string_format(const std::string fmt, ...) {
-//	int size = ((int)fmt.size()) * 2 + 50;   // Use a rubric appropriate for your code
-//	std::string str;
-//	va_list ap;
-//	while (1) {     // Maximum two passes on a POSIX system...
-//		str.resize(size);
-//		va_start(ap, fmt);
-//		int n = vsnprintf((char*)str.data(), size, fmt.c_str(), ap);
-//		va_end(ap);
-//		if (n > -1 && n < size) {  // Everything worked
-//			str.resize(n);
-//			return str;
-//		}
-//		if (n > -1)  // Needed size returned
-//			size = n + 1;   // For null char
-//		else
-//			size *= 2;      // Guess at a larger size (OS specific)
-//	}
-//	return str;
-//}
-
 std::string string_format(const std::string fmt_str, ...) {
 	int final_n, n = ((int)fmt_str.size()) * 2; /* Reserve two times as much as the length of the fmt_str */
 	std::unique_ptr<char[]> formatted;
@@ -62,7 +41,9 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 	switch (m_readingDataType)
 	{
 	case eReading:
-		m_sensorData[name][index] = std::max(m_sensorData[name][index], data);
+		if (data == 0.0 && m_skipZeroReading)
+			break;
+			m_sensorData[name][index] = std::max(m_sensorData[name][index], data);
 		break;
 	case eCounter:
 		if (m_startCount.find(name) == m_startCount.end())
@@ -87,6 +68,34 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 		break;
 	}
 };
+
+template<std::size_t F>
+std::map<std::string, std::string> ReadSensorNameMapping(std::string path)
+{
+	std::cout << "reading sensor name mapping: "<< path << std::endl;
+	std::map<std::string, std::string> map;
+	std::ifstream file(path);
+
+	if (file.is_open())
+	{
+		std::string line;
+		while (std::getline(file, line))
+		{
+			size_t pos = line.find_first_of("=", 0);
+			if (pos != std::string::npos)
+			{
+				std::string code, sensorName;
+				code = line.substr(0, pos);
+				sensorName = line.substr(pos, line.length() - pos);
+				map[code] = sensorName;
+				std::cout << code << "=" << sensorName << std::endl;
+			}
+		}
+		file.close();
+	}
+	return map;
+}
+
 
 template<std::size_t F>
 inline int BaseDataArray<F>::SaveToFile(std::string path)
@@ -213,10 +222,10 @@ int YearDataArray::SaveToFile(std::string path)
 
 ///////////////////////////
 
-SensorData::SensorData(std::string dataName, std::string rootPath, ReadingDataType readingDataType):
-	m_day(readingDataType), 
-	m_month(readingDataType),
-	m_year(readingDataType)
+SensorData::SensorData(std::string dataName, std::string rootPath, ReadingDataType readingDataType, bool skipZeroReading):
+	m_day(readingDataType, skipZeroReading),
+	m_month(readingDataType, skipZeroReading),
+	m_year(readingDataType, skipZeroReading)
 {
 	m_dataName = dataName;
 	m_rootPath = rootPath;

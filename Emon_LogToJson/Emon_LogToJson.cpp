@@ -51,6 +51,7 @@ void getPaths(std::string rootPath)
 int main()
 {
 	SensorReader sensorReader("C:\\EmonData\\Output");
+	
 	getPaths("C:\\EmonData\\Input");
 
 	for (int i = 0; i < 300; i++)
@@ -58,7 +59,6 @@ int main()
 		if(g_paths[i].length() != 0)
 			sensorReader.AddFile(g_paths[i]);
 	}
-//		sensorReader.AddFile("C:\\EmonData\\Input\\20190704.TXT");
 
 	sensorReader.Close();
 

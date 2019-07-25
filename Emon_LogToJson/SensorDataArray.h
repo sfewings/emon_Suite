@@ -16,10 +16,10 @@ template <std::size_t F>
 class BaseDataArray
 {
 public:
-	BaseDataArray(ReadingDataType readingDataType)
+	BaseDataArray(ReadingDataType readingDataType, bool skipZeroReading = false)
 	{
 		m_baseTime = { 0 };
-
+		m_skipZeroReading = skipZeroReading;
 		m_readingDataType = readingDataType;
 	};
 
@@ -35,6 +35,7 @@ public:
 		m_lastTime.clear();
 	}
 private:
+	std::map<std::string, std::string> ReadSensorNameMapping(std::string path);
 	bool SaveToJson(std::string path);
 	bool SaveToText(std::string path);
 
@@ -43,6 +44,7 @@ protected:
 	tm m_baseTime;		//minimum time reading
 	tm m_maxTime;			//maximum time reading
 	ReadingDataType m_readingDataType;
+	bool m_skipZeroReading;
 	std::map < std::string, long>		m_startCount;				//for eCounter. the counter at staart of readings
 	std::map < std::string, time_t> m_lastTime;				// for eRaatePerSecond. the last second reading
 
@@ -54,8 +56,8 @@ protected:
 class DayDataArray:public BaseDataArray<(24 * 12)>
 {
 public:
-	DayDataArray(ReadingDataType readingDataType)
-		:BaseDataArray(readingDataType)
+	DayDataArray(ReadingDataType readingDataType, bool skipZeroReading = false)
+		:BaseDataArray(readingDataType, skipZeroReading)
 	{}
 
 	int Day()
@@ -90,8 +92,8 @@ protected:
 class MonthDataArray :public BaseDataArray<31>
 {
 public:
-	MonthDataArray(ReadingDataType readingDataType)
-		:BaseDataArray(readingDataType)
+	MonthDataArray(ReadingDataType readingDataType, bool skipZeroReading = false)
+		:BaseDataArray(readingDataType, skipZeroReading)
 	{	}
 
 	int Month()
@@ -125,8 +127,8 @@ protected:
 class YearDataArray :public BaseDataArray<12>
 {
 public:
-	YearDataArray(ReadingDataType readingDataType)
-		:BaseDataArray(readingDataType)
+	YearDataArray(ReadingDataType readingDataType, bool skipZeroReading)
+		:BaseDataArray(readingDataType, skipZeroReading)
 	{}
 	
 	int Year()
@@ -161,7 +163,7 @@ protected:
 class SensorData
 {
 public:
-	SensorData(std::string dataName, std::string rootPath, ReadingDataType readingDataType);
+	SensorData(std::string dataName, std::string rootPath, ReadingDataType readingDataType, bool skipZeroReading = false);
 
 
 	void Add(std::string name, tm time, double data);
