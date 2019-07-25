@@ -1,46 +1,24 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
-//emon_Logger. Receive each packet from an emon group and write to Serial
+//emon_Logger. Receive each packet from an emon group and write to Serial and SD card
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-
 #include <EmonShared.h>
-
-#include <SoftwareSerial.h>
 #include <SD.h>
-
-#include <PortsLCD.h>
 #include <TimeLib.h>
 
 
-const int RED_LED=6;				 // Red tri-color LED
-const int GREEN_LED = 5;		 // Red tri-color LED
+const int RED_LED=6;	 
+const int GREEN_LED = 5;
 
-#define MAX_NODES	17				//number of jeenodes, node		0=emon,	1=emonTemperature, 2=rain, 3=base, 4=pulse, 5=hws, 6 = Display 
-enum { eTemp0, eTemp1, eTemp2, eTemp3, eRain, eBase, ePulse, eHWS, eDisp0, eDisp1, eDisp2, eDisp3, eWater, eScale0, eScale1, eScale2 };	//index into txReceived and lastReceived
-
-unsigned int txReceived[MAX_NODES];
-time_t lastReceived[MAX_NODES];
-
-PayloadBase basePayload;
-PayloadRain rainPayload;
-PayloadPulse pulsePayload;
-PayloadDisp displayPayload[MAX_SUBNODES];
-PayloadTemperature temperaturePayload[MAX_SUBNODES];
-PayloadHWS hwsPayload;
-PayloadWater waterPayload;
-PayloadScale scalePayload[MAX_SUBNODES];
+byte  currentDay = 0;
 
 RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
-byte  currentDay = 0;
 #define MAX_FILENAME_LEN 15
 #define DATETIME_LEN 24
-
-
-int thisHour;
 
 
 //callback to provide creation date and time for SD card files
@@ -57,7 +35,7 @@ void setup ()
 {
 	pinMode(RED_LED, OUTPUT);
 	pinMode(GREEN_LED, OUTPUT);
-	digitalWrite(RED_LED, LOW);		//Red LED has inverted logic. LOW is on, HIGH is off!
+	digitalWrite(RED_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
 	Serial.begin(9600);
 	
 	delay(1000);
@@ -74,13 +52,7 @@ void setup ()
 	EmonSerial::PrintTemperaturePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
-
-	for (int i = 0; i < MAX_NODES; i++)
-	{
-		txReceived[i] = 0;
-		lastReceived[i] = now();
-	}
-
+	EmonSerial::PrintScalePayload(NULL);
 
 	SdFile::dateTimeCallback(dateTime);
 
@@ -95,9 +67,19 @@ void setup ()
 	}
 	Serial.println("card initialized.");
 
-	digitalWrite(GREEN_LED, HIGH);
-	digitalWrite(RED_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
+	digitalWrite(GREEN_LED, LOW);
+	digitalWrite(RED_LED, LOW);		//Red LED has inverted logic. LOW is on, HIGH is off!
 }
+
+#define PRINT_AND_LOG(NAME, PAYLOAD)\
+		Payload##NAME* pPayload = (Payload##NAME*)rf12_data; \
+		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
+		if(file) {\
+			digitalWrite(GREEN_LED, HIGH);\
+			file.print(dateTime);\
+			EmonSerial::Print##NAME##PAYLOAD(file, pPayload); \
+		}\
+
 
 
 void loop () 
@@ -107,154 +89,82 @@ void loop ()
 	//--------------------------------------------------------------------------------------------	
 	if (rf12_recvDone())
 	{
+		digitalWrite(RED_LED, HIGH);
+
+		if (rf12_crc)
+		{
+			Serial.print(F("rcv crc err:"));
+			Serial.print(rf12_crc);
+			Serial.print(F(",len:"));
+			Serial.println(rf12_hdr);
+		}
+
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
 			int node_id = (rf12_hdr & 0x1F);
 			int subnode = 0;
-
-			if (node_id == BASE_JEENODE)						// jeenode base Receives the time
-			{
-				basePayload = *((PayloadBase*)rf12_data);
-				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[eBase]));			 // print data to serial
-				txReceived[eBase]++;
-				lastReceived[eBase] = now();
-
-				//set the time from the base
-				setTime(basePayload.time);
-				currentDay = day();		//will indicate time is set
-			}
-
-			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
-			{
-				pulsePayload = *(PayloadPulse*)rf12_data;							// get payload data
-				EmonSerial::PrintPulsePayload(&pulsePayload, (now() - lastReceived[ePulse]));				// print data to serial
-				txReceived[ePulse]++;
-				lastReceived[ePulse] = now();				// set time of last update to now
-			}
-			if (node_id == TEMPERATURE_JEENODE)
-			{
-				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
-				subnode = tpl.subnode;
-				if (subnode > MAX_SUBNODES)
-				{
-					Serial.print("Invalid temperature subnode. Exiting");
-					return;
-				}
-				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0 + subnode]));			 // print data to serial
-				txReceived[eTemp0 + subnode]++;
-				lastReceived[eTemp0 + subnode] = now();
-			}
-			if (node_id == HWS_JEENODE )
-			{
-				hwsPayload = *(PayloadHWS*)rf12_data;							// get emontx payload data
-				EmonSerial::PrintHWSPayload(&hwsPayload, (now() - lastReceived[eHWS]));				// print data to serial
-				txReceived[eHWS]++;
-				lastReceived[eHWS] = now();				// set time of last update to now
-			}
-
-			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
-			{
-				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
-				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[eRain]));			 // print data to serial
-				lastReceived[eRain] = now();
-				txReceived[eRain]++;
-			}
-
-			if (node_id == DISPLAY_NODE)
-			{
-				PayloadDisp dpl = *((PayloadDisp*)rf12_data);
-				subnode = dpl.subnode;
-				if (subnode > MAX_SUBNODES)
-				{
-					Serial.print("Invalid subnode. Exiting");
-					return;
-				}
-				memcpy(&displayPayload[subnode], &dpl, sizeof(PayloadDisp));
-				EmonSerial::PrintDispPayload(&displayPayload[subnode], (now() - lastReceived[eDisp0 + subnode]));			 // print data to serial
-				txReceived[eDisp0 + subnode]++;
-				lastReceived[eDisp0 + subnode] = now();
-			}
-
-			if (node_id == WATERLEVEL_NODE)
-			{
-				waterPayload = *((PayloadWater*)rf12_data);
-				EmonSerial::PrintWaterPayload(&waterPayload, (now() - lastReceived[eWater]));			 // print data to serial
-				txReceived[eWater]++;
-				lastReceived[eWater] = now();
-			}
-
-			if (node_id == SCALE_NODE)
-			{
-				PayloadScale spl = *((PayloadScale*)rf12_data);
-				subnode = spl.subnode;
-				if (subnode > MAX_SUBNODES)
-				{
-					Serial.print("Invalid subnode. Exiting");
-					return;
-				}
-				memcpy(&scalePayload[subnode], &spl, sizeof(PayloadScale));
-				EmonSerial::PrintScalePayload(&scalePayload[subnode], (now() - lastReceived[eScale0+subnode]));			 // print data to serial
-				txReceived[eScale0+subnode]++;
-				lastReceived[eScale0+subnode] = now();
-			}
-
-
-			digitalWrite(RED_LED, LOW);
-			delay(100);
-			digitalWrite(RED_LED, HIGH);
+			File file = File();
+			char dateTime[DATETIME_LEN];
 
 			if (currentDay != 0)  //the time has been set!
 			{
 				char fileName[MAX_FILENAME_LEN];
 				//yyyy-mm-dd.txt
-				snprintf_P(fileName, MAX_FILENAME_LEN, PSTR("%02d%02d%02d.txt"), year(), month(), day());
+				snprintf_P(fileName, MAX_FILENAME_LEN, PSTR("%04d%02d%02d.txt"), year(), month(), day());
 
+				file = SD.open(fileName, FILE_WRITE);
 
-				File file = SD.open(fileName, FILE_WRITE);
-
-				if (file)
-				{
-					//dd/mm/yyyy HH:mm:ss
-					char dateTime[DATETIME_LEN];
-					snprintf_P(dateTime, DATETIME_LEN, PSTR("%02d/%02d/%04d %02d:%02d:%02d,"), day(), month(), year(), hour(), minute(), second() );
-					file.print(dateTime);
-
-					switch (node_id)
-					{
-					case BASE_JEENODE:
-						EmonSerial::PrintBasePayload(file, &basePayload);
-						break;
-					case RAIN_NODE:
-						EmonSerial::PrintRainPayload(file, &rainPayload);
-						break;
-					case PULSE_JEENODE:
-						EmonSerial::PrintPulsePayload(file, &pulsePayload);
-						break;
-					case DISPLAY_NODE:
-						EmonSerial::PrintDispPayload(file, &displayPayload[subnode]);
-						break;
-					case TEMPERATURE_JEENODE:
-						EmonSerial::PrintTemperaturePayload(file, &temperaturePayload[subnode]);
-						break;
-					case HWS_JEENODE:
-						EmonSerial::PrintHWSPayload(file, &hwsPayload);
-						break;
-					case WATERLEVEL_NODE:
-						EmonSerial::PrintWaterPayload(file, &waterPayload);
-						break;
-					case SCALE_NODE:
-						EmonSerial::PrintScalePayload(file, &scalePayload[subnode]);
-						break;
-					}
-
-					file.close();
-
-					digitalWrite(GREEN_LED, LOW);
-					delay(100);
-					digitalWrite(GREEN_LED, HIGH);
-				}
+				//dd/mm/yyyy HH:mm:ss
+				snprintf_P(dateTime, DATETIME_LEN, PSTR("%02d/%02d/%04d %02d:%02d:%02d,"), day(), month(), year(), hour(), minute(), second());
 			}
+
+
+			if (node_id == BASE_JEENODE)						// jeenode base Receives the time
+			{
+				PRINT_AND_LOG(Base, Payload);
+				setTime(pPayload->time);
+				currentDay = day();		//will indicate time is set
+			}
+
+			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
+			{
+				PRINT_AND_LOG(Pulse, Payload);
+			}
+			if (node_id == TEMPERATURE_JEENODE)
+			{
+				PRINT_AND_LOG(Temperature, Payload);
+			}
+			if (node_id == HWS_JEENODE )
+			{
+				PRINT_AND_LOG(HWS, Payload);
+			}
+
+			if (node_id == RAIN_NODE)				
+			{
+				PRINT_AND_LOG(Rain, Payload);
+			}
+
+			if (node_id == DISPLAY_NODE)
+			{
+				PRINT_AND_LOG(Disp, Payload);
+			}
+
+			if (node_id == WATERLEVEL_NODE)
+			{
+				PRINT_AND_LOG(Water, Payload);
+			}
+
+			if (node_id == SCALE_NODE)
+			{
+				PRINT_AND_LOG(Scale, Payload);
+			}
+
+			if (file)
+				file.close();
 		}
+		
+
+		digitalWrite(GREEN_LED, LOW);
+		digitalWrite(RED_LED, LOW);
 	}
 } 
