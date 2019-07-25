@@ -2,7 +2,7 @@
 // emon WaterLevel
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-#define RF69_COMPAT 1
+#define RF69_COMPAT 0
 
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <eeprom.h>
@@ -10,6 +10,9 @@
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
 #include <SoftwareSerial.h>
+
+#define GREEN_LED 9			// Green LED on emonTx
+bool g_toggleLED = false;
 
 #define ENABLE_LCD 0
 #if ENABLE_LCD
@@ -74,6 +77,9 @@ void writeEEPROM(int offset, unsigned long value)
 
 void interruptHandlerWaterFlow()
 {
+	digitalWrite(GREEN_LED, g_toggleLED?HIGH:LOW);		//LED has inverted logic. LOW is on, HIGH is off!
+	g_toggleLED = !g_toggleLED;
+
 	g_flowCount++;								//Update number of pulses, 1 pulse = 1 watt
 	unsigned long tick = millis();
 	if (tick < g_lastTick)
@@ -124,6 +130,9 @@ unsigned short FlowRateInLitresPerMinute()
 //--------------------------------------------------------------------------------------------
 void setup()
 {
+	pinMode(GREEN_LED, OUTPUT);
+	digitalWrite(GREEN_LED, HIGH);		//LED has inverted logic. LOW is on, HIGH is off!
+
 	Serial.begin(9600);
 
 #if ENABLE_LCD
@@ -168,6 +177,8 @@ void setup()
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
 
 	delay(100);
+	
+	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
 
 //--------------------------------------------------------------------------------------------

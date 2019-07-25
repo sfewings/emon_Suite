@@ -41,8 +41,8 @@ double wh_gen, wh_consuming;
 unsigned long whtime;						//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	14				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
-enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode, eScale};	//index into txReceived and lastReceived
+#define MAX_NODES	17				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode0, eWaterNode1, eWaterNode2, eWaterNode3 , eScale};	//index into txReceived and lastReceived
 enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
@@ -54,7 +54,7 @@ PayloadRain rainPayload;
 PayloadBase basePayload;
 PayloadPulse pulsePayload;
 PayloadHWS hwsPayload;
-PayloadWater waterPayload;
+PayloadWater waterPayload[MAX_SUBNODES];
 PayloadScale scalePayload;
 PayloadDisp dispPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
@@ -73,7 +73,7 @@ byte						currentRainMonth = 0;
 
 
 unsigned long rainStartOfToday;
-unsigned long hotWaterStartOfToday;
+unsigned long waterStartOfToday[MAX_SUBNODES];
 
 time_t	lastUpdateTime;
 bool		refreshScreen = false;	//set true when time to completely redraw the screen
@@ -91,7 +91,8 @@ typedef enum {
 	eRainFall,
 	eRainFallTotals,
 	eRoomTemperatures,
-	eWaterUse,
+	eWaterUseTotal,
+	eWaterUseHot,
 	eScaleReadings,
 	eDateTimeNow,
 	eDateTimeStartRunning,
@@ -119,7 +120,7 @@ int numberOfTemperatureSensors = 0;
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-#define  SEND_UPDATE_PERIOD			5  //60	//seconds between updates
+#define  SEND_UPDATE_PERIOD			60  //60	//seconds between updates
 
 time_t slow_update;									// Used to count time for slow 10s events
 time_t average_update;							// Used to store averages and totals
@@ -338,7 +339,11 @@ void setup()
 	}
 
 	rainPayload.rainCount = rainStartOfToday = 0;
-	waterPayload.flowCount = hotWaterStartOfToday = 0;
+
+	for (int i = 0; i<MAX_SUBNODES; i++)
+	{
+		waterPayload[i].flowCount = waterStartOfToday[i] = 0;
+	}
 
 	lastUpdateTime = now();
 
@@ -436,9 +441,9 @@ void loop ()
 			{
 				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
 				byte subnode = tpl.subnode;
-				if (subnode > MAX_SUBNODES)
+				if (subnode >= MAX_SUBNODES)
 				{
-					Serial.print(F("Invalid display subnode. Exiting"));
+					Serial.print(F("Invalid temperature subnode. Exiting"));
 					return;
 				}
 				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
@@ -480,18 +485,24 @@ void loop ()
 
 			if (node_id == WATERLEVEL_NODE)
 			{
-				waterPayload = *(PayloadWater*)rf12_data;							// get emontx payload data
-
-				EmonSerial::PrintWaterPayload(&waterPayload, (now() - lastReceived[eWaterNode]));				// print data to serial
-
-				if (hotWaterStartOfToday == 0)
+				PayloadWater wpl = *(PayloadWater*)rf12_data;							// get emontx payload data
+				byte subnode = wpl.subnode;
+				if (subnode >= MAX_SUBNODES)
 				{
-					hotWaterStartOfToday = waterPayload.flowCount;
+					Serial.print(F("Invalid water subnode. Exiting"));
+					return;
+				}
+				memcpy(&waterPayload[subnode], &wpl, sizeof(PayloadWater));
+				EmonSerial::PrintWaterPayload(&waterPayload[subnode], (now() - lastReceived[eWaterNode0 + subnode]));				// print data to serial
+
+				if (waterStartOfToday[subnode] == 0)
+				{
+					waterStartOfToday[subnode] = waterPayload[subnode].flowCount;
 				}
 
 
-				txReceived[eWaterNode]++;
-				lastReceived[eWaterNode] = now();				// set time of last update to now
+				txReceived[eWaterNode0 + subnode]++;
+				lastReceived[eWaterNode0 + subnode] = now();				// set time of last update to now
 			}
 
 			if (node_id == SCALE_NODE)
@@ -509,7 +520,7 @@ void loop ()
 				PayloadDisp dp = *(PayloadDisp*)rf12_data;							// get emontx payload data
 
 				byte subnode = dp.subnode;
-				if (subnode > MAX_SUBNODES)
+				if (subnode >= MAX_SUBNODES)
 				{
 					Serial.print(F("Invalid display subnode. Exiting"));
 					return;
@@ -656,7 +667,8 @@ void loop ()
 					usageHistory.resetValue(eDay, currentDay);
 
 					//reset daily hotwater usage
-					hotWaterStartOfToday = waterPayload.flowCount;
+					for(int i =0; i<MAX_SUBNODES;i++)
+						waterStartOfToday[i] = waterPayload[i].flowCount;
 				}
 
 				currentHour = hour();
@@ -844,16 +856,24 @@ void loop ()
 				//lcd.print(TemperatureString(str, temperaturePayload[0].supplyV / 10));
 				break;
 			}
-			case eWaterUse:
+			case eWaterUseTotal:
 			{
 				lcd.setCursor(0, 0);
-				lcd.print(F("Water:"));
-				lcd.setCursor(7, 0);
-				lcd.print(waterPayload.waterHeight);
+				lcd.print(F("Wtr Mtr:"));
+				lcdUint(9, 0, ((unsigned int)((waterPayload[1].flowCount - waterStartOfToday[1]))));
+				lcd.print(" l");
+				break;
+			}
+			case eWaterUseHot:
+			{
+				lcd.setCursor(0, 0);
+				lcd.print(F("Rain Wtr:"));
+				lcd.setCursor(9, 0);
+				lcd.print(waterPayload[0].waterHeight);
 				lcd.print(" mm");
 				lcd.setCursor(0, 1);
 				lcd.print(F("Day hot:"));
-				lcdUint(9, 1, ((unsigned int)((waterPayload.flowCount - hotWaterStartOfToday)/1000)));
+				lcdUint(9, 1, ((unsigned int)((waterPayload[0].flowCount - waterStartOfToday[0])/1000)));
 				lcd.print(" l");
 				break;
 			}
@@ -953,7 +973,8 @@ void loop ()
 			}
 			case eDiagnosisWater:
 			{
-				lcdDiagnosis(0, F("Wtr"), eWaterNode);
+				lcdDiagnosis(0, F("Wtr0"), eWaterNode0);
+				lcdDiagnosis(1, F("Wtr1"), eWaterNode1);
 				break;
 			}
 			case eDiagnosisEEPROMSettings:
