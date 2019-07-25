@@ -14,17 +14,28 @@
 
 //#include <PortsLCD.h>
 #include <TimeLib.h>
+#include <eeprom.h>
 
 #define RED_LED		6			// Red tri-color LED
 #define GREEN_LED 5			// Green tri-color LED
-#define RESET_OUT A0		// The pin tied to the reset input
+
+
+//--------------------------------------------------------------------------------------------
+// EEPROM startofDay counts support
+//--------------------------------------------------------------------------------------------
+#define EEPROM_BASE 0x10	//where the startOfToday counts are stored
+typedef struct eepromStore
+{
+	byte version;
+	time_t time;
+} eepromStore;
 
 
 PayloadBase basePayload;
 PayloadRain rainPayload;
 PayloadPulse pulsePayload;
 PayloadHWS hwsPayload;
-PayloadWater waterPayload;
+PayloadWater waterPayload[MAX_SUBNODES/2];
 PayloadScale scalePayload;
 PayloadDisp displayPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
@@ -33,18 +44,11 @@ PayloadTemperature temperaturePayload[MAX_SUBNODES];
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 //--------------------------------------------------------------------------------------------
-// Power variables
+// pulse start of day counts 
 //--------------------------------------------------------------------------------------------
 unsigned long pulseStartOfToday[PULSE_NUM_PINS];
-//double wh_gen, wh_consuming, wh_hws;							//integer variables to store ammout of power currenty being consumed grid (in/out) +gen
-unsigned long whtime;									//used to calculate energy used per day (kWh/d)
-
-
-//--------------------------------------------------------------------------------------------
-// Rain variables
-//--------------------------------------------------------------------------------------------
+unsigned long waterStartOfToday[MAX_SUBNODES / 2];
 unsigned long rainStartOfToday;
-unsigned long hotWaterStartOfToday;
 
 //--------------------------------------------------------------------------------------------
 // NTP time support 
@@ -73,7 +77,7 @@ int				currentTimeserver = 0;
 //-------------------------------------------------------------------------------------------- 
 #include <EtherCard.h>
 static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x33 };
-byte Ethernet::buffer[800];
+byte Ethernet::buffer[850];
 
 
 //-------------------------------------------------------------------------------------------- 
@@ -89,7 +93,6 @@ uint8_t		webip[4];
 Stash			stash;
 word			sessionID;
 uint8_t		tcpReplyCount;
-bool			awaitingReply;
 
 
 //-------------------------------------------------------------------------------------------- 
@@ -101,6 +104,84 @@ unsigned long request_NTP_Update;
 byte	toggleWebUpdate = 0;				//toggle between temperature, power and hws updates to web
 int thisHour = 0;
 
+
+//--------------------------------------------------------------------------------------------
+unsigned long readEEPROM(int offset)
+{
+	unsigned long value = 0;
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(unsigned long); l++)
+	{
+		*(pc + l) = EEPROM.read(EEPROM_BASE + offset + l);
+	}
+
+	return value;
+}
+
+void writeEEPROM(int offset, unsigned long value)
+{
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(unsigned long); l++)
+	{
+		EEPROM.write(EEPROM_BASE + offset + l, *(pc + l));
+	}
+}
+
+int loadStartOfTodayCounts()
+{
+	eepromStore storage;
+	storage.version = 1;
+	storage.time = now();
+	char* pc = (char*)& storage;
+
+	if (timeStatus() != timeSet)
+		return 0;
+
+	for (long l = 0; l < sizeof(storage); l++)
+	{
+		*(pc + l) = EEPROM.read(EEPROM_BASE + l);
+	}
+	if (storage.version != 1)
+		return 0;
+	if (day(storage.time) != day() || month(storage.time) != month() || year(storage.time) != year())
+		return 0;
+
+	for (long l = 0; l < PULSE_NUM_PINS; l++)
+		pulseStartOfToday[l] = readEEPROM(sizeof(storage) + l * sizeof(unsigned long));
+	for (long l = 0; l < MAX_SUBNODES / 2; l++)
+		waterStartOfToday[l] = readEEPROM(sizeof(storage) + ((PULSE_NUM_PINS + l) * sizeof(unsigned long)));
+	rainStartOfToday = readEEPROM(sizeof(storage) + ((PULSE_NUM_PINS + MAX_SUBNODES) * sizeof(unsigned long)));
+
+	return 1;
+}
+
+
+int storeStartOfTodayCounts()
+{
+	eepromStore storage;
+	storage.version = 1;
+	storage.time = now();
+	char* pc = (char*)& storage;
+
+	if (timeStatus() != timeSet)
+		return 0;
+
+	for (long l = 0; l < sizeof(storage); l++)
+	{
+		EEPROM.write(EEPROM_BASE + l, *(pc + l));
+	}
+
+	for( long l = 0; l < PULSE_NUM_PINS; l++)
+		writeEEPROM( sizeof(storage) + l*sizeof(unsigned long), pulseStartOfToday[l]);
+	for (long l = 0; l < MAX_SUBNODES / 2; l++)
+		writeEEPROM(sizeof(storage) + ((PULSE_NUM_PINS + l) * sizeof(unsigned long)), waterStartOfToday[l]);
+	writeEEPROM(sizeof(storage) + ((PULSE_NUM_PINS + MAX_SUBNODES) * sizeof(unsigned long)), rainStartOfToday);
+
+	return 1;
+}
+//--------------------------------------------------------------------------------------------
 
 void initEthercard()
 {
@@ -133,9 +214,6 @@ void initEthercard()
 //--------------------------------------------------------------------------------------------
 void setup () 
 {
-	digitalWrite(RESET_OUT, HIGH);
-	pinMode(RESET_OUT, OUTPUT);
-
 	pinMode(GREEN_LED, OUTPUT);
 	pinMode(RED_LED, OUTPUT);
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
@@ -176,9 +254,10 @@ void setup ()
 
 	
 	rainPayload.rainCount = rainStartOfToday = 0;
-	waterPayload.flowCount = hotWaterStartOfToday = 0;
 	for (int i = 0; i < PULSE_NUM_PINS; i++)
 		pulsePayload.pulse[i] = pulseStartOfToday[i] = 0;
+	for (int i = 0; i < MAX_SUBNODES / 2; i++)
+		waterStartOfToday[i] = waterPayload[i].flowCount = 0;
 
 	slow_update = millis();
 	web_update = millis();
@@ -218,14 +297,13 @@ void loop ()
 					for (int i = 0; i < PULSE_NUM_PINS; i++)
 						pulseStartOfToday[i] = pulsePayload.pulse[i];
 				}
-				//power_calculations_pulse();					
 			}
 
 			if (node_id == DISPLAY_NODE)
 			{
 				PayloadDisp dpl = *((PayloadDisp*)rf12_data);
 				byte subnode = dpl.subnode;
-				if (subnode > MAX_SUBNODES)
+				if (subnode >= MAX_SUBNODES)
 				{
 					Serial.print(F("Invalid display subnode. Exiting"));
 					return;
@@ -238,7 +316,7 @@ void loop ()
 			{
 				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
 				byte subnode = tpl.subnode;
-				if (subnode > MAX_SUBNODES)
+				if (subnode >= MAX_SUBNODES)
 				{
 					Serial.print(F("Invalid display subnode. Exiting"));
 					return;
@@ -267,13 +345,20 @@ void loop ()
 
 			if(node_id == WATERLEVEL_NODE)
 			{
-				waterPayload = *(PayloadWater*)rf12_data;								// get payload data
-				EmonSerial::PrintWaterPayload(&waterPayload);
-				if (hotWaterStartOfToday == 0)
+				PayloadWater wpl = *((PayloadWater*)rf12_data);
+				byte subnode = wpl.subnode;
+				if (subnode >= MAX_SUBNODES / 2)
 				{
-					hotWaterStartOfToday = waterPayload.flowCount;
+					Serial.print(F("Invalid water subnode. Exiting"));
+					return;
 				}
-				
+				memcpy(&waterPayload[subnode], &wpl, sizeof(PayloadWater));
+				EmonSerial::PrintWaterPayload(&waterPayload[subnode]);			 // print data to serial
+
+				if (waterStartOfToday[subnode] == 0)
+				{
+					waterStartOfToday[subnode] = waterPayload[subnode].flowCount;
+				}			
 			}
 
 			if(node_id == SCALE_NODE)
@@ -355,6 +440,13 @@ void loop ()
 					Serial.print(F("NTP time received: "));
 					Serial.print(DateString(str, now()));
 					Serial.println(TimeString(str, now()));
+
+					Serial.print(F("Load startOfToday pulse counts - "));
+					if( loadStartOfTodayCounts() )
+						Serial.println(F("Success"));
+					else
+						Serial.println(F("Fail"));
+						
 				}
 			}
 		}
@@ -500,18 +592,28 @@ void loop ()
 		{
 			//Hot water system
 			apiKey = PSTR(APIKEY_WATER);
-			if (waterPayload.waterHeight)		//if there is no temperature reading yet, don't publish it
+			if (waterPayload[0].waterHeight)		//if there is no temperature reading yet, don't publish it
 			{
 				stash.print(F("&field1="));
-				stash.print(waterPayload.waterHeight);
+				stash.print(waterPayload[0].waterHeight);
 			}
-			stash.print("&field2=");
-			stash.print((int)((rainPayload.rainCount - rainStartOfToday) / 5));
-			stash.print(".");
-			stash.print(((rainPayload.rainCount - rainStartOfToday) % 5) * 2);
-
-			stash.print("&field3=");
-			stash.print((int)((waterPayload.flowCount - hotWaterStartOfToday)/1000));
+			if (rainPayload.rainCount != 0)
+			{
+				stash.print("&field2=");
+				stash.print((int)((rainPayload.rainCount - rainStartOfToday) / 5));
+				stash.print(".");
+				stash.print(((rainPayload.rainCount - rainStartOfToday) % 5) * 2);
+			}
+			if (waterPayload[0].flowCount != 0)
+			{
+				stash.print("&field3=");
+				stash.print((int)((waterPayload[0].flowCount - waterStartOfToday[0]) / 1000));
+			}
+			if (waterPayload[1].flowCount != 0)
+			{
+				stash.print("&field4=");
+				stash.print((int)((waterPayload[1].flowCount - waterStartOfToday[1])));
+			}
 		}
 
 
@@ -552,7 +654,9 @@ void loop ()
 		Serial.print(F("stash.freeCount="));
 		Serial.print(freeCount);
 		Serial.print(F(",sessionID="));
-		Serial.println(sessionID);
+		Serial.print(sessionID);
+		Serial.print(F(",freeMem="));
+		Serial.println( getFreeMemory() );
 
 		//const char* reply = ether.tcpReply(sessionID);
 		digitalWrite(GREEN_LED, HIGH);
@@ -564,37 +668,27 @@ void loop ()
 	{
 		for (int i = 0; i < PULSE_NUM_PINS; i++)
 			pulseStartOfToday[i] = pulsePayload.pulse[i];
-		//wh_gen = 0;
-		//wh_consuming = 0;
-		//wh_hws = 0;
+		for (int i = 0; i < MAX_SUBNODES / 2; i++)
+			waterStartOfToday[i] = waterPayload[i].flowCount;
 
-		hotWaterStartOfToday = waterPayload.flowCount;
+		Serial.print(F("Store startOfToday pulse counts - "));
+		if (storeStartOfTodayCounts())
+			Serial.println(F("Success"));
+		else
+			Serial.println(F("Fail"));
 	}
 
 	if (lastHour == 8 && thisHour == 9)
 	{
 		rainStartOfToday = rainPayload.rainCount;
+		
+		Serial.print(F("Store startOfToday pulse counts - "));
+		if (storeStartOfTodayCounts())
+			Serial.println(F("Success"));
+		else
+			Serial.println(F("Fail"));
 	}
 } 
-
-//void power_calculations_pulse()
-//{
-//	//--------------------------------------------------
-//	// kWh calculation
-//	//--------------------------------------------------
-//	double whInc;
-//	unsigned long lwhtime = whtime;
-//	whtime = millis();
-//	
-//	whInc = pulsePayload.power[0] * ((whtime - lwhtime) / 3600000.0);  //hot water system comes in on pin 0
-//	wh_hws = wh_hws + whInc;
-//
-//	whInc = pulsePayload.power[1] * ((whtime - lwhtime) / 3600000.0);  //solar comes in on pin 2
-//	wh_gen = wh_gen + whInc;
-//
-//	whInc = pulsePayload.power[2] * ((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
-//	wh_consuming = wh_consuming + whInc;
-//}
 
 String DateString(String& str, time_t time)
 {
@@ -628,6 +722,27 @@ String TimeString(String& str, time_t time)
 		str += " pm";
 	str += "	";
 	return str;
+}
+
+
+// predefined variables
+extern unsigned int __data_start;
+extern unsigned int __data_end;
+extern unsigned int __bss_start;
+extern unsigned int __bss_end;
+extern unsigned int __heap_start;
+extern void* __brkval;
+
+int getFreeMemory()
+{
+	int free_memory;
+
+	if ((int)__brkval == 0)
+		free_memory = ((int)& free_memory) - ((int)& __bss_end);
+	else
+		free_memory = ((int)& free_memory) - ((int)__brkval);
+
+	return free_memory;
 }
 
 void SerialPrint_P(PGM_P* str)
