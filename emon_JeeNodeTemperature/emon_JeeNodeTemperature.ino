@@ -13,7 +13,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#define PORTS 4							//number of ports on the JeeNode
+#define PORTS 5							//number of ports on the JeeNode
 
 DallasTemperature *pDallasOneWire[PORTS];			// Pass our oneWire reference to Dallas Temperature.
 int numberOfSensors[PORTS];										//count of sensors on each device/pin
@@ -63,11 +63,13 @@ void setup()
 
 	Serial.println(F("Fewings Jeenode temperature node for emon network"));
 
-	// Data wire JeeNode port,	Arduino pin,		RF12 Group
-	//				1				4				20
-	//				2				5				21
-	//				3				6				22
-	//				4				7				23
+	// Data wire assignements
+	//JeeNode port,	Arduino pin
+	//		IRQ3			3
+	//			1				4			
+	//			2				5			
+	//			3				6			
+	//			4				7			
 
 	sleepDelay = 30000;	//in milliseconds
 
@@ -85,24 +87,24 @@ void setup()
 	for (int i = 0; i < MAX_TEMPERATURE_SENSORS + 1; i++)
 		temperaturePayload.temperature[i] = 0;
 
-	for (int port = 1; port <= PORTS; port++)
+	for (int port = 0; port < PORTS; port++)
 	{
 		OneWire* pOneWire = new OneWire(port + 3);	//
-		pDallasOneWire[port - 1] = new DallasTemperature(pOneWire);
-		pDallasOneWire[port - 1]->begin();
-		numberOfSensors[port - 1] = pDallasOneWire[port - 1]->getDeviceCount();
-		temperaturePayload.numSensors += numberOfSensors[port - 1];
-		if (numberOfSensors[port - 1])
+		pDallasOneWire[port] = new DallasTemperature(pOneWire);
+		pDallasOneWire[port]->begin();
+		numberOfSensors[port] = pDallasOneWire[port]->getDeviceCount();
+		temperaturePayload.numSensors += numberOfSensors[port];
+		if (numberOfSensors[port])
 		{
 			Serial.print(F("Temperature sensors on Jeenode port "));
 			Serial.print(port);
 			Serial.print(F(", arduino pin "));
 			Serial.println(port + 3);
 
-			for (int i = 0; i < numberOfSensors[port - 1]; i++)
+			for (int i = 0; i < numberOfSensors[port]; i++)
 			{
 				uint8_t tmp_address[8];
-				pDallasOneWire[port - 1]->getAddress(tmp_address, i);
+				pDallasOneWire[port]->getAddress(tmp_address, i);
 				Serial.print(F("Sensor address "));
 				Serial.print(i + 1);
 				Serial.print(F(": "));
@@ -112,15 +114,23 @@ void setup()
 		}
 		else
 		{
-			delete pDallasOneWire[port - 1];
+			delete pDallasOneWire[port];
 			delete pOneWire;
-			pDallasOneWire[port - 1] = NULL;
+			pDallasOneWire[port] = NULL;
 		}
 	}
 
 	if (temperaturePayload.numSensors == 0)
 		Serial.println(F("No temperature sensors discovered"));
-
+	pinMode(9, OUTPUT);
+	for (int i = 0; i < temperaturePayload.numSensors; i++)
+	{
+		//turn the led on pin 5 (port 2) on for 1ms
+		digitalWrite(9, 1);
+		delay(20);
+		digitalWrite(9, 0);
+		delay(480);
+	}
 
 
 	//initialise the reading history
@@ -145,6 +155,7 @@ void setup()
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
 	rf12_sleep(RF12_SLEEP);
 	EmonSerial::PrintRF12Init(rf12Init);
+
 	Serial.println("Initialisation complete");
 	delay(50); 	//time for the serial buffer to empty
 }
@@ -206,7 +217,7 @@ void loop()
 	
 	delay(200);	//time for the serial buffer to empty
 
-	//turn the led on pin 5 (port 2) on for 20ms
+	//turn the led on pin 5 (port 2) on for 1ms
 	pinMode(9, OUTPUT);
 	digitalWrite(9, 1);
 	delay(1);
