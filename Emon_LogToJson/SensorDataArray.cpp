@@ -2,6 +2,8 @@
 #include <memory>    // For std::unique_ptr
 #include <fstream> 
 #include <sstream> 
+#include <cstring>
+#include <iostream>
 
 #include "SensorDataArray.h"
 
@@ -12,7 +14,8 @@ std::string string_format(const std::string fmt_str, ...) {
 	va_list ap;
 	while (1) {
 		formatted.reset(new char[n]); /* Wrap the plain char array into the unique_ptr */
-		strcpy_s(&formatted[0],n, fmt_str.c_str());
+		strcpy(&formatted[0], fmt_str.c_str());
+		//strcpy_s(&formatted[0],n, fmt_str.c_str());
 		va_start(ap, fmt_str);
 		final_n = vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
 		va_end(ap);
@@ -34,34 +37,31 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 		m_baseTime = time;
 	}
 
-	_ASSERT(mktime(&time) >= mktime(&m_maxTime));
+	////_ASSERT(mktime(&time) >= mktime(&m_maxTime));
 	m_maxTime = time;		//always in chronological order so the latest reading is the latest time!
 
 	int index = GetIndex(time);
 
 	//Can't index outside the array size
-	_ASSERT(index < Size() );
-	if (index >= Size())
+	//_ASSERT(index < Size() );
+	if ((size_t)index >= Size())
 		return;
+
+	if (m_sensorData.find(name) == m_sensorData.end())
+	{
+		for (size_t l = 0; l < Size(); l++)
+			m_sensorData[name][l] = -1;
+	}
 
 	switch (m_readingDataType)
 	{
 	case eReading:
-		if (m_sensorData.find(name) == m_sensorData.end())
-		{
-			m_sensorData[name][0] = -1;
-			for (long l = 0; l < Size(); l++)
-				m_sensorData[name][l] = -1;		//initialise all elements to -1 to indicate no reading yet
-		}
-
 		m_sensorData[name][index] = std::max(m_sensorData[name][index], data);
 		break;
 	case eCounterTotal:
 		if (m_startCount.find(name) == m_startCount.end())
 		{
 			m_startCount[name] = (long)data;
-			for (long l = 0; l < Size(); l++)
-				m_sensorData[name][l] = -1;		//initialise all elements to -1 to indicate no reading yet
 		}
 		m_sensorData[name][index] = data - m_startCount[name];
 		break;
@@ -71,15 +71,13 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 			m_startCount[name] = (long)data;
 			m_lastCount[name] = (long)data;
 			m_lastIndex[name] = index;
-			for (long l = 0; l < Size(); l++)
-				m_sensorData[name][l] = -1;		//initialise all elements to -1 to indicate no reading yet
 		}
 		else if(m_lastIndex[name] != index)
 		{
 			m_startCount[name] = (long)m_lastCount[name];
 			m_lastIndex[name] = index;
 		}
-		m_lastCount[name] = data;
+		m_lastCount[name] = (long)data;
 		m_sensorData[name][index] = data - m_startCount[name];
 		break;
 	case eRatePerSecond:
@@ -103,9 +101,14 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 template<std::size_t F>
 inline int BaseDataArray<F>::SaveToFile(std::string path)
 {
-	std::string jsonPath = string_format("%s.json", path);
+	char buf[2048];
+
+	sprintf(buf, "%s.json", path.c_str());
+	std::string jsonPath = buf;
 	bool jsonOk = SaveToJson(jsonPath);
-	std::string textPath = string_format("%s.txt", path);
+
+	sprintf(buf, "%s.txt", path.c_str());
+	std::string textPath = buf;
 	bool textOk = SaveToText(textPath);
 	
 	return jsonOk && textOk;
@@ -143,12 +146,13 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 			{
 				if (it->second[i] != -1.0)	//skip outputs if no value has been set
 				{
-					time_t t = mktime(&m_baseTime) + (i - GetIndex(m_baseTime)) * TimeStep();
+					long long t = mktime(&m_baseTime) + ((time_t)i - (time_t)GetIndex(m_baseTime)) * TimeStep();
 					t -= t % TimeStep();	//remove the fraction of a TimeStep
 					if (!innerFirst)
 						ofs << ",";
 					innerFirst = false;
-					ofs << "{\"x\":" << t * 1000 << ",\"y\":" << it->second[i] << "}";
+					ofs << "{\"x\":" << t*1000 << ",\"y\":" << it->second[i] << "}";
+
 				}
 			}
 			ofs << "]";
@@ -175,10 +179,11 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 		{
 			std::ostringstream line;
 			bool hasValues = false;
-			time_t t = mktime( &m_baseTime ) + (i-GetIndex(m_baseTime)) * TimeStep();
+			time_t t = mktime( &m_baseTime ) + ((time_t)i-GetIndex(m_baseTime)) * TimeStep();
 			t -= t % TimeStep();	//remove the fraction of a TimeStep
 			tm time;
-			localtime_s(&time, &t);
+			time = *localtime(&t);
+			//localtime_s(&time, &t);
 			ofs << "{\"time\":" << time.tm_year + 1900 << "-" << time.tm_mon + 1 << "-" << time.tm_mday << " ";
 			ofs << (time.tm_hour < 10 ? "0" : "") << time.tm_hour << ":"<< (time.tm_min<10?"0":"") <<time.tm_min << ":"<< (time.tm_sec < 10 ? "0" : "") << time.tm_sec ;
 			for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
@@ -208,19 +213,17 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 
 int DayDataArray::SaveToFile(std::string path)
 {
-	std::string fullPath = string_format("%s\\%02d%02d%02d", path.c_str(), m_baseTime.tm_year + 1900, m_baseTime.tm_mon+1, m_baseTime.tm_mday);
-
-	return BaseDataArray::SaveToFile(fullPath);
+	return BaseDataArray::SaveToFile(string_format("%s/%02d%02d%02d", path.c_str(), m_baseTime.tm_year +1900, m_baseTime.tm_mon+1, m_baseTime.tm_mday));
 }
 
 int MonthDataArray::SaveToFile(std::string path)
 {
-	return BaseDataArray::SaveToFile(string_format("%s\\%02d%02d", path.c_str(), m_baseTime.tm_year +1900, m_baseTime.tm_mon+1));
+	return BaseDataArray::SaveToFile(string_format("%s/%02d%02d", path.c_str(), m_baseTime.tm_year +1900, m_baseTime.tm_mon+1));
 }
 
 int YearDataArray::SaveToFile(std::string path)
 {
-	return BaseDataArray::SaveToFile(string_format("%s\\%02d", path.c_str(), m_baseTime.tm_year + 1900));
+	return BaseDataArray::SaveToFile(string_format("%s/%02d", path.c_str(), m_baseTime.tm_year + 1900));
 }
 
 ///////////////////////////
@@ -241,29 +244,30 @@ void SensorData::Add(std::string name, tm time, double data)
 {
 	if (time.tm_mday != m_day.Day() && m_day.ContainsData())
 	{
-		m_day.SaveToFile(string_format("%s\\%s", m_rootPath.c_str(), m_dataName.c_str()));
+		m_day.SaveToFile(string_format("%s/%s", m_rootPath.c_str(), m_dataName.c_str()));
 		m_day.Clear();
 	}
 	m_day.Add(name, time, data);
 
 	if (time.tm_mon != m_month.Month() && m_month.ContainsData())
 	{
-		m_month.SaveToFile(string_format("%s\\%s", m_rootPath.c_str(), m_dataName.c_str()));
+		m_month.SaveToFile(string_format("%s/%s", m_rootPath.c_str(), m_dataName.c_str()));
 		m_month.Clear();
 	}
 	m_month.Add(name, time, data);
 
 	if (time.tm_year != m_year.Year() && m_year.ContainsData())
 	{
-		m_year.SaveToFile(string_format("%s\\%s", m_rootPath.c_str(), m_dataName.c_str()));
+		m_year.SaveToFile(string_format("%s/%s", m_rootPath.c_str(), m_dataName.c_str()));
 		m_year.Clear();
 	}
 	m_year.Add(name, time, data);
 }
 
+
 void SensorData::Close()
 {
-	std::string path = string_format("%s\\%s", m_rootPath.c_str(), m_dataName.c_str());
+	std::string path = string_format("%s/%s", m_rootPath.c_str(), m_dataName.c_str());
 	
 	m_day.SaveToFile(path);
 	m_day.Clear();

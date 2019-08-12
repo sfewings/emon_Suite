@@ -17,12 +17,12 @@ protected:
 
 	SensorData m_temperatures;
 	SensorData m_power;
-	//SensorData m_powerTotal;
 	SensorData m_rainFall;
 	SensorData m_supplyV;
 	SensorData m_HWS;
 	SensorData m_water;
 	SensorData m_waterUsage;
+	SensorData m_scale;
 
 	std::string m_rootPath;
 };

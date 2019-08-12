@@ -33,7 +33,9 @@ public:
 		m_sensorData.clear();
 		m_baseTime = { 0 };
 		m_startCount.clear();
+		//m_lastCount.clear();
 		m_lastTime.clear();
+		m_lastIndex.clear();
 	}
 private:
 	bool SaveToJson(std::string path);
@@ -48,7 +50,7 @@ protected:
 	std::map < std::string, long>		m_startCount;			//for eCounterTotal. the counter at start of readings
 	std::map < std::string, time_t> m_lastTime;				// for eRatePerSecond. the last second reading
 	std::map < std::string, int> m_lastIndex;					// for eCounterPeriod. the last index
-	std::map < std::string, long> m_lastCount;		// for eCounterPeriod. the last reading
+	std::map < std::string, long> m_lastCount;				// for eCounterPeriod. the last reading
 
 
 	virtual int GetIndex(tm time) { return 0; }
@@ -81,7 +83,8 @@ protected:
 	{
 		time_t t = time(NULL);
 		tm tm1, tm2;
-		localtime_s(&tm1, &t );
+		tm1 = *localtime( &t );
+		//localtime_s(&tm1, &t );
 		tm2 = tm1;
 		tm2.tm_min += 5;
 
@@ -110,7 +113,8 @@ public:
 	{
 		time_t t = time(NULL);
 		tm tm1, tm2;
-		localtime_s(&tm1, &t);
+		tm1 = *localtime( &t );
+		//localtime_s(&tm1, &t);
 		tm2 = tm1;
 		tm2.tm_mday += 1;
 
@@ -152,7 +156,8 @@ protected:
 	{
 		time_t t = time(NULL);
 		tm tm1, tm2;
-		localtime_s(&tm1, &t);
+		tm1 = *localtime( &t );
+		//localtime_s(&tm1, &t);
 		tm2 = tm1;
 		//tm2.tm_mon += 1;
 		tm2.tm_mday += 1;
@@ -177,7 +182,6 @@ public:
 
 	void Add(std::string name, tm time, double data);
 	void Close();
-
 private:
 	std::string m_rootPath;
 	std::string m_dataName;

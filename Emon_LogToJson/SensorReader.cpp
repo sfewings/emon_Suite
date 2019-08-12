@@ -1,16 +1,21 @@
 #include <fstream>
 
+#ifndef MQTT_LIB
+	#define MQTT_LIB
+#endif
 
-
-
-#include "..\\EmonShared\EmonShared.h"
+#include "../EmonShared/EmonShared.h"
 #include "SensorReader.h"
 
 #include <time.h>
 #include <iomanip>
 #include <sstream>
-#include <filesystem>
+
+#include <experimental/filesystem>
+//#include <filesystem>
 #include <iostream>
+
+
 namespace fs = std::experimental::filesystem;
 
 extern "C" char* strptime(const char* s,
@@ -36,12 +41,12 @@ extern "C" char* strptime(const char* s,
 SensorReader::SensorReader(std::string rootPath):
 	m_temperatures("temp", rootPath, eReading, eReading, eReading),
 	m_power("power", rootPath, eReading, eRatePerSecond, eRatePerSecond),
-//	m_powerTotal("powerTotal", rootPath, eRatePerSecond),
 	m_rainFall("rain", rootPath, eCounterTotal, eCounterTotal, eCounterTotal),
 	m_supplyV("supplyV", rootPath, eReading, eReading, eReading),
-	m_HWS("HWS", rootPath, eReading, eReading, eReading),
+	m_HWS("hws", rootPath, eReading, eReading, eReading),
 	m_water("water", rootPath, eReading, eReading, eReading),
-	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod)
+	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod),
+	m_scale("scale", rootPath,eReading, eReading, eReading)
 {
 	m_rootPath = rootPath;
 	if (fs::is_directory(rootPath) && rootPath.length()> 5)
@@ -56,6 +61,7 @@ SensorReader::SensorReader(std::string rootPath):
 	fs::create_directory(rootPath + "/waterUsage");
 	fs::create_directory(rootPath + "/power");
 	fs::create_directory(rootPath + "/supplyV");
+	fs::create_directory(rootPath + "/scale");
 }
 
 void SensorReader::AddFile(std::string path)
@@ -110,11 +116,6 @@ size_t SensorReader::GetTime(std::string line, tm &time)
 		std::string timeString = line.substr(0, pos);
 		strptime(timeString.c_str(), "%d/%m/%Y %H:%M:%S", &time);
 		mktime(&time);	// call to fill out all of time struct
-
-		//long long ll = atoll(timeString.c_str());
-		//if (ll == 0)
-		//	return std::string::npos;
-		//gmtime_s(&time,  &ll);
 	}
 
 	return pos;
@@ -147,8 +148,7 @@ void SensorReader::AddReading(std::string reading, tm time)
 				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported" };
 				for (int i = 0; i< PULSE_NUM_PINS; i++)
 				{
-					m_power.Add(sensor[i], time, pulse.power[i]);
-					//m_powerTotal.Add(sensor[i], time, pulse.power[i] / 3600.0);
+						m_power.Add(sensor[i], time, pulse.power[i]);
 				}
 			}
 		break;
@@ -182,7 +182,6 @@ void SensorReader::AddReading(std::string reading, tm time)
 					{"unused", "unused", "unused", "unused"}
 			};
 
-				//_ASSERT(temp.subnode < 4);
 				if (temp.subnode < 4)
 				{
 					for (int i = 0; i < temp.numSensors; i++)
@@ -201,17 +200,20 @@ void SensorReader::AddReading(std::string reading, tm time)
 		break;
 		case HWS_JEENODE: 
 		{
+			std::string hwsTemp[HWS_TEMPERATURES] = {"Top of Panel (T1)", "Water (T3)", "Inlet (T6)", "Water 2 (T2)", "Water 3 (T5)"};
+			std::string hwsPump[HWS_PUMPS] = {"Solar Pump", "Heat Exchange Pump", "Heat Pump"};
+
 			PayloadHWS hws;
 			if (EmonSerial::ParseHWSPayload((char*)reading.c_str(), &hws))
 			{
 				for (int i = 0; i < HWS_TEMPERATURES; i++)
 				{
 					if(hws.temperature[i] > 0 && hws.temperature[i] < 110)
-					m_HWS.Add("Temp " + std::to_string(i), time, hws.temperature[i]);
+					m_HWS.Add(hwsTemp[i], time, hws.temperature[i]);
 				}
 				for (int i = 0; i < HWS_PUMPS; i++)
 				{
-					m_HWS.Add("Pump " + std::to_string(i), time, hws.pump[i]*(i+5));
+					m_HWS.Add(hwsPump[i], time, (double)hws.pump[i]*(i+5));
 				}
 			}
 			break;
@@ -221,19 +223,39 @@ void SensorReader::AddReading(std::string reading, tm time)
 			break;
 		case WATERLEVEL_NODE:
 		{
-			PayloadWater water;
+			std::string sensor[2][2] = {
+				{"Rain water tank", "Hot water"},
+				{"unused", "Mains water"}
+			};
+		PayloadWater water;
 			if (EmonSerial::ParseWaterPayload((char*)reading.c_str(), &water))
 			{
-				if(water.waterHeight < 2200)
-					m_water.Add("wh" + std::to_string(water.subnode), time, water.waterHeight);
-				if(water.flowCount != 0 && (time.tm_year >119 || (time.tm_year >= 119 && time.tm_yday > 205)) ) //didn't log correctly until 24Jul2019
-					m_waterUsage.Add("wf" + std::to_string(water.subnode), time, water.flowCount/1000);
+				if (water.subnode < 2)
+				{
+					if (water.waterHeight < 2200)
+						m_water.Add(sensor[water.subnode][0], time, water.waterHeight);
+					if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))) //didn't log correctly until 24Jul2019
+						m_waterUsage.Add(sensor[water.subnode][1], time, water.flowCount / 1000);
+				}
 			}
 			break;
 		}
 		case SCALE_NODE:
-			//todo:
+		{
+			PayloadScale scale;
+			std::string sensor[2] = { "Dog food", "unused" };
+
+			if (EmonSerial::ParseScalePayload((char*)reading.c_str(), &scale))
+			{
+				if (scale.subnode < 2)
+				{
+					m_scale.Add(sensor[scale.subnode], time, scale.grams);
+					if (scale.supplyV / 1000.0 < 5)
+						m_supplyV.Add("s" + std::to_string(scale.subnode), time, scale.supplyV / 1000.0);
+				}
+			}
 			break;
+		}
 		default: 
 			break;
 	}
@@ -243,10 +265,10 @@ void SensorReader::Close()
 {
 	m_temperatures.Close();
 	m_power.Close();
-	//m_powerTotal.Close();
 	m_rainFall.Close();
 	m_supplyV.Close();
 	m_HWS.Close();
 	m_water.Close();
 	m_waterUsage.Close();
+	m_scale.Close();
 }
