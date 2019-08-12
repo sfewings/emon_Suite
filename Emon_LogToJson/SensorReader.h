@@ -17,7 +17,7 @@ protected:
 
 	SensorData m_temperatures;
 	SensorData m_power;
-	SensorData m_powerTotal;
+	//SensorData m_powerTotal;
 	SensorData m_rainFall;
 	SensorData m_supplyV;
 	SensorData m_HWS;

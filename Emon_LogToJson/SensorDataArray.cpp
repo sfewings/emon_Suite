@@ -34,22 +34,52 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 		m_baseTime = time;
 	}
 
-	_ASSERT(mktime(&time) > mktime(&m_maxTime));
+	_ASSERT(mktime(&time) >= mktime(&m_maxTime));
 	m_maxTime = time;		//always in chronological order so the latest reading is the latest time!
 
 	int index = GetIndex(time);
+
+	//Can't index outside the array size
+	_ASSERT(index < Size() );
+	if (index >= Size())
+		return;
+
 	switch (m_readingDataType)
 	{
 	case eReading:
-		if (data == 0.0 && m_skipZeroReading)
-			break;
-			m_sensorData[name][index] = std::max(m_sensorData[name][index], data);
+		if (m_sensorData.find(name) == m_sensorData.end())
+		{
+			m_sensorData[name][0] = -1;
+			for (long l = 0; l < Size(); l++)
+				m_sensorData[name][l] = -1;		//initialise all elements to -1 to indicate no reading yet
+		}
+
+		m_sensorData[name][index] = std::max(m_sensorData[name][index], data);
 		break;
-	case eCounter:
+	case eCounterTotal:
 		if (m_startCount.find(name) == m_startCount.end())
 		{
 			m_startCount[name] = (long)data;
+			for (long l = 0; l < Size(); l++)
+				m_sensorData[name][l] = -1;		//initialise all elements to -1 to indicate no reading yet
 		}
+		m_sensorData[name][index] = data - m_startCount[name];
+		break;
+	case eCounterPeriod:
+		if (m_lastIndex.find(name) == m_lastIndex.end())
+		{
+			m_startCount[name] = (long)data;
+			m_lastCount[name] = (long)data;
+			m_lastIndex[name] = index;
+			for (long l = 0; l < Size(); l++)
+				m_sensorData[name][l] = -1;		//initialise all elements to -1 to indicate no reading yet
+		}
+		else if(m_lastIndex[name] != index)
+		{
+			m_startCount[name] = (long)m_lastCount[name];
+			m_lastIndex[name] = index;
+		}
+		m_lastCount[name] = data;
 		m_sensorData[name][index] = data - m_startCount[name];
 		break;
 	case eRatePerSecond:
@@ -62,39 +92,12 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 			time_t thisTime = mktime(&time);
 			time_t elapsed =  thisTime - m_lastTime[name];			//returns seconds since last reading
 			m_lastTime[name] = thisTime;
-			m_sensorData[name][index] += data * elapsed;		//gives the units for the period
+			m_sensorData[name][index] += data/3600.0 * elapsed;		//convert to rate per second to rate per hour
 		}
 
 		break;
 	}
 };
-
-template<std::size_t F>
-std::map<std::string, std::string> ReadSensorNameMapping(std::string path)
-{
-	std::cout << "reading sensor name mapping: "<< path << std::endl;
-	std::map<std::string, std::string> map;
-	std::ifstream file(path);
-
-	if (file.is_open())
-	{
-		std::string line;
-		while (std::getline(file, line))
-		{
-			size_t pos = line.find_first_of("=", 0);
-			if (pos != std::string::npos)
-			{
-				std::string code, sensorName;
-				code = line.substr(0, pos);
-				sensorName = line.substr(pos, line.length() - pos);
-				map[code] = sensorName;
-				std::cout << code << "=" << sensorName << std::endl;
-			}
-		}
-		file.close();
-	}
-	return map;
-}
 
 
 template<std::size_t F>
@@ -138,7 +141,7 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 			bool innerFirst = true;
 			for (int i = GetIndex(m_baseTime); i <= GetIndex(m_maxTime); i++)
 			{
-				if (it->second[i] != 0.0)
+				if (it->second[i] != -1.0)	//skip outputs if no value has been set
 				{
 					time_t t = mktime(&m_baseTime) + (i - GetIndex(m_baseTime)) * TimeStep();
 					t -= t % TimeStep();	//remove the fraction of a TimeStep
@@ -222,10 +225,13 @@ int YearDataArray::SaveToFile(std::string path)
 
 ///////////////////////////
 
-SensorData::SensorData(std::string dataName, std::string rootPath, ReadingDataType readingDataType, bool skipZeroReading):
-	m_day(readingDataType, skipZeroReading),
-	m_month(readingDataType, skipZeroReading),
-	m_year(readingDataType, skipZeroReading)
+SensorData::SensorData(std::string dataName, std::string rootPath, 
+	ReadingDataType dayReadingDataType, 
+	ReadingDataType monthReadingDataType, 
+	ReadingDataType yearReadingDataType ):
+	m_day(dayReadingDataType),
+	m_month(monthReadingDataType),
+	m_year(yearReadingDataType)
 {
 	m_dataName = dataName;
 	m_rootPath = rootPath;

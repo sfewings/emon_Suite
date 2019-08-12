@@ -11,6 +11,7 @@
 #include <sstream>
 #include <filesystem>
 #include <iostream>
+namespace fs = std::experimental::filesystem;
 
 extern "C" char* strptime(const char* s,
 	const char* f,
@@ -33,29 +34,28 @@ extern "C" char* strptime(const char* s,
 
 
 SensorReader::SensorReader(std::string rootPath):
-	m_temperatures("temp", rootPath, ReadingDataType::eReading),
-	m_power("power", rootPath, ReadingDataType::eReading),
-	m_powerTotal("powerTotal", rootPath, ReadingDataType::eRatePerSecond),
-	m_rainFall("rain", rootPath, ReadingDataType::eCounter),
-	m_supplyV("supplyV", rootPath, ReadingDataType::eReading),
-	m_HWS("HWS", rootPath, ReadingDataType::eReading, true),
-	m_water("water", rootPath, ReadingDataType::eReading),
-	m_waterUsage("waterUsage", rootPath, ReadingDataType::eCounter)
+	m_temperatures("temp", rootPath, eReading, eReading, eReading),
+	m_power("power", rootPath, eReading, eRatePerSecond, eRatePerSecond),
+//	m_powerTotal("powerTotal", rootPath, eRatePerSecond),
+	m_rainFall("rain", rootPath, eCounterTotal, eCounterTotal, eCounterTotal),
+	m_supplyV("supplyV", rootPath, eReading, eReading, eReading),
+	m_HWS("HWS", rootPath, eReading, eReading, eReading),
+	m_water("water", rootPath, eReading, eReading, eReading),
+	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod)
 {
 	m_rootPath = rootPath;
-	if (std::experimental::filesystem::is_directory(rootPath) && rootPath.length()> 5)
+	if (fs::is_directory(rootPath) && rootPath.length()> 5)
 	{
-		std::experimental::filesystem::remove_all(rootPath);
+		fs::remove_all(rootPath);
 	}
-	std::experimental::filesystem::create_directory(rootPath);
-	std::experimental::filesystem::create_directory(rootPath+ "\\temp");
-	std::experimental::filesystem::create_directory(rootPath + "\\rain");
-	std::experimental::filesystem::create_directory(rootPath + "\\hws");
-	std::experimental::filesystem::create_directory(rootPath + "\\water");
-	std::experimental::filesystem::create_directory(rootPath + "\\waterUsage");
-	std::experimental::filesystem::create_directory(rootPath + "\\power");
-	std::experimental::filesystem::create_directory(rootPath + "\\powerTotal");
-	std::experimental::filesystem::create_directory(rootPath + "\\supplyV");
+	fs::create_directory(rootPath);
+	fs::create_directory(rootPath + "/temp");
+	fs::create_directory(rootPath + "/rain");
+	fs::create_directory(rootPath + "/hws");
+	fs::create_directory(rootPath + "/water");
+	fs::create_directory(rootPath + "/waterUsage");
+	fs::create_directory(rootPath + "/power");
+	fs::create_directory(rootPath + "/supplyV");
 }
 
 void SensorReader::AddFile(std::string path)
@@ -109,6 +109,7 @@ size_t SensorReader::GetTime(std::string line, tm &time)
 	{
 		std::string timeString = line.substr(0, pos);
 		strptime(timeString.c_str(), "%d/%m/%Y %H:%M:%S", &time);
+		mktime(&time);	// call to fill out all of time struct
 
 		//long long ll = atoll(timeString.c_str());
 		//if (ll == 0)
@@ -143,11 +144,11 @@ void SensorReader::AddReading(std::string reading, tm time)
 			PayloadPulse pulse;
 			if (EmonSerial::ParsePulsePayload((char*)reading.c_str(), &pulse))
 			{
-				std::string sensor[4] = { "HWS", "Consumed", "Produced", "Imported" };
+				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported" };
 				for (int i = 0; i< PULSE_NUM_PINS; i++)
 				{
 					m_power.Add(sensor[i], time, pulse.power[i]);
-					m_powerTotal.Add(sensor[i], time, pulse.power[i] / 3600000.0);
+					//m_powerTotal.Add(sensor[i], time, pulse.power[i] / 3600.0);
 				}
 			}
 		break;
@@ -163,7 +164,6 @@ void SensorReader::AddReading(std::string reading, tm time)
 			if (EmonSerial::ParseDispPayload((char*)reading.c_str(), &disp))
 			{
 				std::string sensor[4] = { "Kitchen", "Office", "unused", "Upstairs" };
-				//_ASSERT(disp.subnode < 4);
 				if(disp.subnode < 4)
 					m_temperatures.Add(sensor[disp.subnode], time, disp.temperature/100.0);
 			}
@@ -187,7 +187,7 @@ void SensorReader::AddReading(std::string reading, tm time)
 				{
 					for (int i = 0; i < temp.numSensors; i++)
 					{
-						if (temp.temperature[i] > 0 && temp.temperature[i] / 100 < 110 )	//filter out some noisy temperature values
+						if (temp.temperature[i] > 0 && temp.temperature[i] / 100 < 70 )	//filter out some noisy temperature values
 						{
 							m_temperatures.Add(sensor[temp.subnode][i], time, temp.temperature[i] / 100.0);
 						}
@@ -211,7 +211,7 @@ void SensorReader::AddReading(std::string reading, tm time)
 				}
 				for (int i = 0; i < HWS_PUMPS; i++)
 				{
-					m_HWS.Add("Pump " + std::to_string(i), time, hws.pump[i]*(i+1));
+					m_HWS.Add("Pump " + std::to_string(i), time, hws.pump[i]*(i+5));
 				}
 			}
 			break;
@@ -226,7 +226,7 @@ void SensorReader::AddReading(std::string reading, tm time)
 			{
 				if(water.waterHeight < 2200)
 					m_water.Add("wh" + std::to_string(water.subnode), time, water.waterHeight);
-				if(water.flowCount != 0)
+				if(water.flowCount != 0 && (time.tm_year >119 || (time.tm_year >= 119 && time.tm_yday > 205)) ) //didn't log correctly until 24Jul2019
 					m_waterUsage.Add("wf" + std::to_string(water.subnode), time, water.flowCount/1000);
 			}
 			break;
@@ -243,7 +243,7 @@ void SensorReader::Close()
 {
 	m_temperatures.Close();
 	m_power.Close();
-	m_powerTotal.Close();
+	//m_powerTotal.Close();
 	m_rainFall.Close();
 	m_supplyV.Close();
 	m_HWS.Close();

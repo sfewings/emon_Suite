@@ -7,19 +7,20 @@
 #include <array>
 
 typedef enum {
-	eReading,
-	eCounter,
-	eRatePerSecond
+	eReading,					//display the actual reading
+	eCounterTotal,		//tally the total since start of readings
+	eCounterPeriod,		//tally the total usage within each index range
+	eRatePerSecond		//calculate the total based on rate/second readings
 } ReadingDataType;
 
 template <std::size_t F>
 class BaseDataArray
 {
 public:
-	BaseDataArray(ReadingDataType readingDataType, bool skipZeroReading = false)
+	BaseDataArray(ReadingDataType readingDataType)
 	{
+		m_maxTime = { 0 };
 		m_baseTime = { 0 };
-		m_skipZeroReading = skipZeroReading;
 		m_readingDataType = readingDataType;
 	};
 
@@ -35,18 +36,20 @@ public:
 		m_lastTime.clear();
 	}
 private:
-	std::map<std::string, std::string> ReadSensorNameMapping(std::string path);
 	bool SaveToJson(std::string path);
 	bool SaveToText(std::string path);
+	size_t Size() { return F; }
 
 protected:
 	std::map<std::string, std::array<double, F> > m_sensorData;
 	tm m_baseTime;		//minimum time reading
 	tm m_maxTime;			//maximum time reading
 	ReadingDataType m_readingDataType;
-	bool m_skipZeroReading;
-	std::map < std::string, long>		m_startCount;				//for eCounter. the counter at staart of readings
-	std::map < std::string, time_t> m_lastTime;				// for eRaatePerSecond. the last second reading
+	std::map < std::string, long>		m_startCount;			//for eCounterTotal. the counter at start of readings
+	std::map < std::string, time_t> m_lastTime;				// for eRatePerSecond. the last second reading
+	std::map < std::string, int> m_lastIndex;					// for eCounterPeriod. the last index
+	std::map < std::string, long> m_lastCount;		// for eCounterPeriod. the last reading
+
 
 	virtual int GetIndex(tm time) { return 0; }
 	virtual time_t TimeStep()			{	return 0;	}
@@ -56,9 +59,10 @@ protected:
 class DayDataArray:public BaseDataArray<(24 * 12)>
 {
 public:
-	DayDataArray(ReadingDataType readingDataType, bool skipZeroReading = false)
-		:BaseDataArray(readingDataType, skipZeroReading)
-	{}
+	DayDataArray(ReadingDataType readingDataType)
+		:BaseDataArray(readingDataType)
+	{
+	}
 
 	int Day()
 	{ 
@@ -92,8 +96,8 @@ protected:
 class MonthDataArray :public BaseDataArray<31>
 {
 public:
-	MonthDataArray(ReadingDataType readingDataType, bool skipZeroReading = false)
-		:BaseDataArray(readingDataType, skipZeroReading)
+	MonthDataArray(ReadingDataType readingDataType)
+		:BaseDataArray(readingDataType)
 	{	}
 
 	int Month()
@@ -124,11 +128,11 @@ protected:
 	}
 };
 
-class YearDataArray :public BaseDataArray<12>
+class YearDataArray :public BaseDataArray<366>
 {
 public:
-	YearDataArray(ReadingDataType readingDataType, bool skipZeroReading)
-		:BaseDataArray(readingDataType, skipZeroReading)
+	YearDataArray(ReadingDataType readingDataType)
+		:BaseDataArray(readingDataType)
 	{}
 	
 	int Year()
@@ -140,7 +144,8 @@ public:
 protected:
 	virtual int GetIndex(tm time)
 	{
-		return time.tm_mon;
+		//return time.tm_mon;
+		return time.tm_yday;
 	}
 
 	virtual time_t TimeStep()
@@ -149,7 +154,8 @@ protected:
 		tm tm1, tm2;
 		localtime_s(&tm1, &t);
 		tm2 = tm1;
-		tm2.tm_mon += 1;
+		//tm2.tm_mon += 1;
+		tm2.tm_mday += 1;
 
 		time_t time1 = mktime(&tm1);
 		time_t time2 = mktime(&tm2);
@@ -163,7 +169,10 @@ protected:
 class SensorData
 {
 public:
-	SensorData(std::string dataName, std::string rootPath, ReadingDataType readingDataType, bool skipZeroReading = false);
+	SensorData(std::string dataName, std::string rootPath, 
+							ReadingDataType dayReadingDataType, 
+							ReadingDataType monthReadingDataType, 
+							ReadingDataType yearReadingDataType);
 
 
 	void Add(std::string name, tm time, double data);
