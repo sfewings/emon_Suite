@@ -39,6 +39,7 @@ PayloadWater waterPayload[MAX_SUBNODES/2];
 PayloadScale scalePayload;
 PayloadDisp displayPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
+unsigned long lastRFReceived;
 
 
 RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
@@ -77,7 +78,7 @@ int				currentTimeserver = 0;
 //-------------------------------------------------------------------------------------------- 
 #include <EtherCard.h>
 static byte mymac[] = { 0x74,0x69,0x69,0x2D,0x30,0x33 };
-byte Ethernet::buffer[850];
+byte Ethernet::buffer[800];
 
 
 //-------------------------------------------------------------------------------------------- 
@@ -209,6 +210,13 @@ void initEthercard()
 	ether.copyIp(webip, ether.hisip);
 }
 
+void initRF12()
+{
+	Serial.println(F("rf12_initialize"));
+	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
+	EmonSerial::PrintRF12Init(rf12Init);
+}
+
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -236,9 +244,9 @@ void setup ()
 
 	digitalWrite(GREEN_LED, HIGH);
 
-	Serial.println(F("rf12_initialize"));
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
-	EmonSerial::PrintRF12Init(rf12Init);
+	initRF12();
+
+	lastRFReceived = millis();
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
@@ -251,13 +259,14 @@ void setup ()
 
 	for(int i=0;i<MAX_SUBNODES;i++)
 		temperaturePayload[i].numSensors = 0;
-
-	
+		
 	rainPayload.rainCount = rainStartOfToday = 0;
 	for (int i = 0; i < PULSE_NUM_PINS; i++)
 		pulsePayload.pulse[i] = pulseStartOfToday[i] = 0;
 	for (int i = 0; i < MAX_SUBNODES / 2; i++)
 		waterStartOfToday[i] = waterPayload[i].flowCount = 0;
+
+	scalePayload.grams = 0;
 
 	slow_update = millis();
 	web_update = millis();
@@ -280,13 +289,22 @@ void loop ()
 	//--------------------------------------------------------------------------------------------	
 	if (rf12_recvDone())
 	{
+		lastRFReceived = millis();
+
+		if (rf12_crc)
+		{
+			Serial.print(F("rcv crc err:"));
+			Serial.print(rf12_crc);
+			Serial.print(F(",len:"));
+			Serial.println(rf12_hdr);
+		}
+
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
 			digitalWrite(RED_LED, LOW);
 
 			int node_id = (rf12_hdr & 0x1F);
 			
-		
 
 			if (node_id == PULSE_JEENODE)
 			{
@@ -318,7 +336,7 @@ void loop ()
 				byte subnode = tpl.subnode;
 				if (subnode >= MAX_SUBNODES)
 				{
-					Serial.print(F("Invalid display subnode. Exiting"));
+					Serial.print(F("Invalid temperature subnode. Exiting"));
 					return;
 				}
 				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
@@ -371,6 +389,12 @@ void loop ()
 		}
 	}
 	
+	if (millis() - lastRFReceived > 60000)
+	{
+		//no RF12 data received for 60 secnds. Re-initialise the RF12
+		initRF12();
+	}
+
 	//--------------------------------------------------------------------
 	// 
 	//--------------------------------------------------------------------
@@ -614,9 +638,13 @@ void loop ()
 				stash.print("&field4=");
 				stash.print((int)((waterPayload[1].flowCount - waterStartOfToday[1])));
 			}
+			if (scalePayload.grams != 0)
+			{
+				stash.print("&field5=");
+				stash.print((int)scalePayload.grams);
+			}
 		}
-
-
+		
 		stash.save();
 
 		ether.copyIp(ether.hisip, webip);

@@ -477,6 +477,11 @@ void loop ()
 
 				temperature[eOutside] = rainPayload.temperature;
 
+				//if outside temperature on LCD is not correct, uncomment the lines below. Not sure why!
+				//Serial.print("temperature[eOutside] = ");
+				//Serial.println(temperature[eOutside]);
+
+
 				if (rainStartOfToday == 0)
 				{
 					rainStartOfToday = rainPayload.rainCount;
@@ -780,6 +785,7 @@ void loop ()
 				//outside temperature
 				lcd.setCursor(12, 1);
 				lcd.print(TemperatureString(str, temperature[eOutside]));
+
 				break;
 			}
 			case eMinTemperatures:

@@ -92,11 +92,11 @@ void loop ()
 	//Serial.print(g_secondsSinceActivity);
 	//Serial.print(", g_lastScaleValue =");
 	//Serial.print(g_lastScaleValue);
-	//Serial.print(", Scale reading: ");
+	//Serial.print("Scale reading: ");
 	//Serial.println(scale.getGram());
 	//delay(100);
 
-	if((g_secondsSinceActivity > 15 && g_secondsSinceActivity <=20) || g_secondsSinceActivity%600 == 0)	//transmit for the 5 seconds, 15 seconds after activity finishes. Then every 10 minutes.
+	if((g_secondsSinceActivity > 30 && g_secondsSinceActivity <=35) || g_secondsSinceActivity%600 == 0)	//transmit for the 5 seconds, 30 seconds after activity finishes. Then every 10 minutes.
 	{
 		g_scalePayload.grams = (long)scale.getGram();
 		g_scalePayload.supplyV = readVcc();
@@ -121,5 +121,5 @@ void loop ()
 		delay(50); //let serial buffer empty
 	}
 	
-	Sleepy::loseSomeTime(1000); // go to sleep for longer if nothing is happening
+	Sleepy::loseSomeTime(1000); 
 }
