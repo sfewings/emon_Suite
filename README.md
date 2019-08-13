@@ -15,7 +15,7 @@ Data is captured on sensors connected to multiple Arduino based devices and tran
 ### EmonShared
 Definitions for packet data, print, store and parse routines
 
-## EmonEEPROM
+### EmonEEPROM
 Definitions and routines for storing and retreiving node settings (subnode, relay, relay Nodes) from EEPROM
 
 ## Arduino based nodes and sources
