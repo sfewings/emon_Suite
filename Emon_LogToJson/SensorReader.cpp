@@ -1,8 +1,5 @@
 #include <fstream>
 
-#ifndef MQTT_LIB
-	#define MQTT_LIB
-#endif
 
 #include "../EmonShared/EmonShared.h"
 #include "SensorReader.h"
@@ -52,6 +49,11 @@ SensorReader::SensorReader(std::string rootPath):
 	if (fs::is_directory(rootPath) && rootPath.length()> 5)
 	{
 		fs::remove_all(rootPath);
+		#ifdef __linux__
+			usleep(100000);  /* sleep for 100 milliSeconds */
+		#else
+			Sleep(100);
+		#endif
 	}
 	fs::create_directory(rootPath);
 	fs::create_directory(rootPath + "/temp");
@@ -121,9 +123,10 @@ size_t SensorReader::GetTime(std::string line, tm &time)
 	return pos;
 }
 
-void SensorReader::AddReading(std::string reading, tm time)
+unsigned short SensorReader::AddReading(std::string reading, tm time)
 {
-	switch (StringToNode(reading))
+	unsigned short node = StringToNode(reading);
+	switch (node)
 	{
 		case RAIN_NODE:	
 		{
@@ -259,6 +262,19 @@ void SensorReader::AddReading(std::string reading, tm time)
 		default: 
 			break;
 	}
+	return node;
+}
+
+void SensorReader::SaveAll()
+{
+	m_temperatures.Close(false);
+	m_power.Close(false);
+	m_rainFall.Close(false);
+	m_supplyV.Close(false);
+	m_HWS.Close(false);
+	m_water.Close(false);
+	m_waterUsage.Close(false);
+	m_scale.Close(false);
 }
 
 void SensorReader::Close()

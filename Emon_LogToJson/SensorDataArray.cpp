@@ -8,24 +8,34 @@
 #include "SensorDataArray.h"
 
 
-std::string string_format(const std::string fmt_str, ...) {
-	int final_n, n = ((int)fmt_str.size()) * 2; /* Reserve two times as much as the length of the fmt_str */
-	std::unique_ptr<char[]> formatted;
-	va_list ap;
-	while (1) {
-		formatted.reset(new char[n]); /* Wrap the plain char array into the unique_ptr */
-		strcpy(&formatted[0], fmt_str.c_str());
-		//strcpy_s(&formatted[0],n, fmt_str.c_str());
-		va_start(ap, fmt_str);
-		final_n = vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
-		va_end(ap);
-		if (final_n < 0 || final_n >= n)
-			n += abs(final_n - n + 1);
-		else
-			break;
-	}
-	return std::string(formatted.get());
+template<typename ... Args>
+std::string string_format(const std::string& format, Args ... args)
+{
+	size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + 1; // Extra space for '\0'
+	std::unique_ptr<char[]> buf(new char[size]);
+	snprintf(buf.get(), size, format.c_str(), args ...);
+	return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
 }
+//
+//std::string string_format(const std::string fmt_str, ...) {
+//	int final_n, n = ((int)fmt_str.size()) * 2; /* Reserve two times as much as the length of the fmt_str */
+//	std::unique_ptr<char[]> formatted;
+//	va_list ap;
+//	while (1) {
+//		formatted.reset(new char[n]); /* Wrap the plain char array into the unique_ptr */
+//		strcpy(&formatted[0], fmt_str.c_str());
+//		//strcpy_s(&formatted[0],n, fmt_str.c_str());
+//		va_start(ap, fmt_str);
+//		final_n = std::vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
+//		//final_n = vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
+//		va_end(ap);
+//		if (final_n < 0 || final_n >= n)
+//			n += abs(final_n - n + 1);
+//		else
+//			break;
+//	}
+//	return std::string(formatted.get());
+//}
 
 /////////////////////////
 
@@ -265,16 +275,19 @@ void SensorData::Add(std::string name, tm time, double data)
 }
 
 
-void SensorData::Close()
+void SensorData::Close(bool clear /*=true*/)
 {
 	std::string path = string_format("%s/%s", m_rootPath.c_str(), m_dataName.c_str());
 	
 	m_day.SaveToFile(path);
-	m_day.Clear();
+	if( clear )
+		m_day.Clear();
 	
 	m_month.SaveToFile(path);
-	m_month.Clear();
+	if (clear)
+		m_month.Clear();
 	
 	m_year.SaveToFile(path);
-	m_year.Clear();
+	if (clear)
+		m_year.Clear();
 }

@@ -1,4 +1,8 @@
 #include "EmonShared.h"
+#ifdef __linux__
+	#include <cstring>
+	#include <cstdlib>
+#endif
 
 char tok[] = ":, | \r\r&";  //tokens used to separate 
 #ifndef MQTT_LIB

@@ -181,7 +181,7 @@ public:
 
 
 	void Add(std::string name, tm time, double data);
-	void Close();
+	void Close(bool clear = true);
 private:
 	std::string m_rootPath;
 	std::string m_dataName;

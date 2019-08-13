@@ -2,6 +2,9 @@
 //
 
 #include <iostream>
+#include <iomanip>
+
+
 /**************************************************
 
 file: demo_rx.c
@@ -17,14 +20,12 @@ compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
 #include <stdio.h>
 
 #ifdef _WIN32
-#include <Windows.h>
+	#include <Windows.h>
+	#include <conio.h>	//for _kbhit()
 #else
-#include <unistd.h>
+	#include <unistd.h>
 #endif
 
-#ifndef MQTT_LIB
-	#define MQTT_LIB
-#endif
 
 #include "../EmonShared/EmonShared.h"
 #include "SensorReader.h"
@@ -33,8 +34,19 @@ compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
 #include <iostream>
 #include <experimental/filesystem>
 #include <algorithm>
+#include "rs232.h"
 
 namespace fs = std::experimental::filesystem;
+
+template<typename ... Args>
+std::string string_format(const std::string& format, Args ... args)
+{
+	size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + 1; // Extra space for '\0'
+	std::unique_ptr<char[]> buf(new char[size]);
+	snprintf(buf.get(), size, format.c_str(), args ...);
+	return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
+}
+
 
 class InputParser {
 public:
@@ -82,24 +94,38 @@ void getPaths(std::string rootPath)
 }
 
 
-int main(int argc, char** argv) 
+int main(int argc, char** argv)
 {
 	InputParser input(argc, argv);
-	if (input.cmdOptionExists("-h")) 
+	if (input.cmdOptionExists("-h"))
 	{
-		std::cout << "Emon_LogToJson	[-i inputFolder] [-o OutputFolder]" << std::endl;
+		std::cout << "Emon_LogToJson	[-i inputFolder] [-o OutputFolder] [-c COM port #]" << std::endl;
 		return 0;
 	}
 	std::string inputFolder = input.getCmdOption("-i");
 	if (inputFolder.empty())
 	{
+#ifdef __linux__
+		inputFolder = "/share/Input";
+#else
 		inputFolder = "C:/EmonData/Input";
+#endif
 	}
 
 	std::string outputFolder = input.getCmdOption("-o");
 	if (outputFolder.empty())
 	{
+#ifdef __linux__
+		outputFolder = "/share/Output";
+#else
 		outputFolder = "C:/EmonData/Output";
+#endif
+	}
+	int comPort = -1;
+	std::string str = input.getCmdOption("-c");
+	if (!str.empty())
+	{
+		comPort = atoi(str.c_str()) -1;	//COM1 == comPort0
 	}
 
 	getPaths(inputFolder);
@@ -110,6 +136,78 @@ int main(int argc, char** argv)
 	{
 		if(g_paths[i].length() != 0)
 			sensorReader.AddFile(g_paths[i]);
+	}
+
+	if (comPort >= 0)
+	{
+
+		int n, bdrate = 9600;       /* 9600 baud */
+
+		unsigned char buf[4096];
+		std::time_t lastSave = std::time(0);
+
+		char mode[] = { '8','N','1',0 };
+
+
+		if (RS232_OpenComport(comPort, bdrate, mode, 0))
+		{
+			printf("Can not open comport\n");
+		}
+		else
+		{
+#ifdef _WIN32
+			while (!_kbhit())
+#else
+			while(1)
+#endif
+			{
+				n = RS232_PollComportLine(comPort, buf, 4095);
+
+				if (n > 0)
+				{
+					buf[n] = 0;   /* always put a "null" at the end of a string! */
+
+					//replace trailing chars with \0. Remove \r\n
+					while (n && buf[n] < 32)
+						buf[n--] = 0;
+
+					std::string str = (char*)buf;
+
+					std::time_t t = std::time(0);   // get time now
+					std::tm now = *std::localtime(&t);
+
+					if (sensorReader.AddReading(str, now))
+					{
+						//log the reading to a log file
+						std::string fullPath = string_format("%s/%04d%02d%02d.TXT", inputFolder.c_str(), now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
+						std::ofstream f(fullPath, std::ios::app);
+						if (!f.bad())
+						{
+							std::string line = string_format("%02d/%02d/%02d %02d:%02d:%02d,%s", now.tm_mday, now.tm_mon + 1, now.tm_year + 1900, now.tm_hour, now.tm_min, now.tm_sec, str.c_str() );
+							f << line << std::endl;
+						}
+						std::cout << str << " logged" << std::endl;
+					}
+					else
+					{
+						std::cout << str << std::endl;
+					}
+
+					if (t - lastSave > 60 * 5)
+					{
+						sensorReader.SaveAll();
+						lastSave = t;
+					}
+
+				}
+#ifdef _WIN32
+				Sleep(100);
+#else
+				usleep(100000);  /* sleep for 100 milliSeconds */
+#endif
+
+			}
+		}
 	}
 
 	sensorReader.Close();

@@ -8,7 +8,8 @@ public:
 	SensorReader(std::string rootPath);
 
 	void AddFile(std::string path);
-	void AddReading(std::string reading, tm time);
+	unsigned short AddReading(std::string reading, tm time);
+	void SaveAll();
 	void Close();
 
 protected:
