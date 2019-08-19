@@ -5,8 +5,8 @@
 #include <map>
 #include <vector>
 #include <cstring>
-#include "mqtt\client.h"
-#include "..\Emon_SerialToMQTT\EmonMQTTClient.h"
+#include "mqtt/client.h"
+#include "EmonMQTTClient.h"
 //#include "..\..\Libraries\paho.mqtt.c-win64\include\MQTTClient.h"
 
 

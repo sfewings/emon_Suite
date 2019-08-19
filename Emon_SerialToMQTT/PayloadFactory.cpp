@@ -38,8 +38,8 @@ bool PayloadFactory::PublishPayload(char* s)
 			char topic[100];
 			for( int i=0; i< temp->numSensors;i++)
 			{
-				sprintf_s(topic, "temperature/temp/%d/%d", temp->subnode,i);
-				sprintf_s(buf, "%d.%02d", temp->temperature[i] / 100, temp->temperature[i] % 100);
+				sprintf(topic, "temperature/temp/%d/%d", temp->subnode,i);
+				sprintf(buf, "%d.%02d", temp->temperature[i] / 100, temp->temperature[i] % 100);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
@@ -57,16 +57,16 @@ bool PayloadFactory::PublishPayload(char* s)
 
 			for (int i = 0; i < 4; i++)
 			{
-				sprintf_s(topic, "power/%d", i);
-				sprintf_s(buf, "%d", pulse->power[i]);
+				sprintf(topic, "power/%d", i);
+				sprintf(buf, "%d", pulse->power[i]);
 				m_MQTTClient.Publish(topic, buf);
-				sprintf_s(topic, "pulse/%d", i);
-				sprintf_s(buf, "%d", pulse->pulse[i]);
+				sprintf(topic, "pulse/%d", i);
+				sprintf(buf, "%d", pulse->pulse[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
-			sprintf_s(topic, "supplyV/pulse");
-			sprintf_s(buf, "%d", pulse->supplyV);
+			sprintf(topic, "supplyV/pulse");
+			sprintf(buf, "%d", pulse->supplyV);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}
@@ -79,13 +79,13 @@ bool PayloadFactory::PublishPayload(char* s)
 			pBasePayload = p;
 			char buf[100];
 			char topic[100];
-			sprintf_s(topic, "scales/%d", p->subnode);
-			_ltoa_s(p->grams, buf, sizeof(buf),10);
+			sprintf(topic, "scales/%d", p->subnode);
+			sprintf(buf, "%d", p->grams);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 
-			sprintf_s(topic, "supplyV/scales/%d", p->subnode);
-			sprintf_s(buf, "%d", p->supplyV);
+			sprintf(topic, "supplyV/scales/%d", p->subnode);
+			sprintf(buf, "%d", p->supplyV);
 			m_MQTTClient.Publish(topic, buf);
 		}
 	}
@@ -97,18 +97,18 @@ bool PayloadFactory::PublishPayload(char* s)
 			pBasePayload = rain;
 			char buf[100];
 			char topic[100];
-			sprintf_s(topic, "rain");
-			sprintf_s(buf, "%d", rain->rainCount);
+			sprintf(topic, "rain");
+			sprintf(buf, "%d", rain->rainCount);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 
-			sprintf_s(topic, "temperature/rain/0");
-			sprintf_s(buf, "%d.%02d", rain->temperature / 100, rain->temperature % 100);
+			sprintf(topic, "temperature/rain/0");
+			sprintf(buf, "%d.%02d", rain->temperature / 100, rain->temperature % 100);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 
-			sprintf_s(topic, "supplyV/rain");
-			sprintf_s(buf, "%d", rain->supplyV);
+			sprintf(topic, "supplyV/rain");
+			sprintf(buf, "%d", rain->supplyV);
 			m_MQTTClient.Publish(topic, buf);
 		}
 	}
@@ -121,8 +121,8 @@ bool PayloadFactory::PublishPayload(char* s)
 
 			char buf[100];
 			char topic[100];
-			sprintf_s(topic, "base");
-			sprintf_s(buf, "%d", (int)p->time);
+			sprintf(topic, "base");
+			sprintf(buf, "%d", (int)p->time);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}
@@ -136,8 +136,8 @@ bool PayloadFactory::PublishPayload(char* s)
 
 			char buf[100];
 			char topic[100];
-			sprintf_s(topic, "temperature/disp/%d/0", disp->subnode);
-			sprintf_s(buf, "%d.%02d", disp->temperature / 100, disp->temperature % 100);
+			sprintf(topic, "temperature/disp/%d/0", disp->subnode);
+			sprintf(buf, "%d.%02d", disp->temperature / 100, disp->temperature % 100);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}
@@ -153,15 +153,15 @@ bool PayloadFactory::PublishPayload(char* s)
 			char topic[100];
 			for (int i = 0; i < 7; i++)
 			{
-				sprintf_s(topic, "temperature/hws/%d", i);
-				sprintf_s(buf, "%d", hws->temperature[i] );
+				sprintf(topic, "temperature/hws/%d", i);
+				sprintf(buf, "%d", hws->temperature[i] );
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
 			for (int i = 0; i < 3; i++)
 			{
-				sprintf_s(topic, "pump/hws/%d", i);
-				sprintf_s(buf, "%d", hws->pump[i]);
+				sprintf(topic, "pump/hws/%d", i);
+				sprintf(buf, "%d", hws->pump[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
@@ -177,18 +177,18 @@ bool PayloadFactory::PublishPayload(char* s)
 			char buf[100];
 			char topic[100];
 
-			sprintf_s(topic, "water/height/0");
-			sprintf_s(buf, "%d", water->waterHeight);
+			sprintf(topic, "water/height/0");
+			sprintf(buf, "%d", water->waterHeight);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 
-			sprintf_s(topic, "water/flowCount/0");
-			sprintf_s(buf, "%d", water->flowCount);
+			sprintf(topic, "water/flowCount/0");
+			sprintf(buf, "%d", water->flowCount);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			
-			sprintf_s(topic, "water/flowRate/0");
-			sprintf_s(buf, "%d", water->flowRate);
+			sprintf(topic, "water/flowRate/0");
+			sprintf(buf, "%d", water->flowRate);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}

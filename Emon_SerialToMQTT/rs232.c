@@ -30,11 +30,11 @@
 /* Added support for hardware flow control using RTS and CTS lines */
 /* For more info and how to use this library, visit: http://www.teuniz.net/RS-232/ */
 
-
 #include "rs232.h"
 
 
 #if defined(__linux__) || defined(__FreeBSD__)   /* Linux & FreeBSD */
+#include <string.h>
 
 #define RS232_PORTNR  38
 
@@ -45,7 +45,7 @@ int Cport[RS232_PORTNR],
 struct termios new_port_settings,
        old_port_settings[RS232_PORTNR];
 
-char *comports[RS232_PORTNR]={"/dev/ttyS0","/dev/ttyS1","/dev/ttyS2","/dev/ttyS3","/dev/ttyS4","/dev/ttyS5",
+const char *comports[RS232_PORTNR]={"/dev/ttyS0","/dev/ttyS1","/dev/ttyS2","/dev/ttyS3","/dev/ttyS4","/dev/ttyS5",
                        "/dev/ttyS6","/dev/ttyS7","/dev/ttyS8","/dev/ttyS9","/dev/ttyS10","/dev/ttyS11",
                        "/dev/ttyS12","/dev/ttyS13","/dev/ttyS14","/dev/ttyS15","/dev/ttyUSB0",
                        "/dev/ttyUSB1","/dev/ttyUSB2","/dev/ttyUSB3","/dev/ttyUSB4","/dev/ttyUSB5",
@@ -282,6 +282,25 @@ int RS232_PollComport(int comport_number, unsigned char *buf, int size)
   return(n);
 }
 
+
+int RS232_PollComportLine(int comport_number, unsigned char* buf, int size)
+{
+	int n=0;
+	do
+	{
+    int nRead = read(Cport[comport_number], buf+n, 1);
+    if(nRead < 0)
+    {
+      if(errno == EAGAIN)  return 0;
+    }
+
+		n += nRead;
+		if (n >= size)
+			return n;
+	} while (buf[n-1] != '\n');
+
+	return(n);
+}
 
 int RS232_SendByte(int comport_number, unsigned char byte)
 {
@@ -861,11 +880,12 @@ int RS232_GetPortnr(const char *devname)
   char str[32];
 
 #if defined(__linux__) || defined(__FreeBSD__)   /* Linux & FreeBSD */
-  strncpy_s(str, "/dev/");
+  strncpy(str,"/dev/", 32);
+  strncat(str, devname, 16);
 #else  /* windows */
   strncpy_s(str, 32, "\\\\.\\",32);
-#endif
   strncat_s(str, 16, devname, 16);
+#endif
   str[31] = 0;
 
   for(i=0; i<RS232_PORTNR; i++)

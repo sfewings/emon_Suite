@@ -1,6 +1,6 @@
 #pragma once
 
-#include "..\\EmonShared\EmonShared.h"
+#include "../EmonShared/EmonShared.h"
 #include "EmonMQTTClient.h"
 
 class PayloadFactory
