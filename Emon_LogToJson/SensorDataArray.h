@@ -22,25 +22,29 @@ public:
 		m_maxTime = { 0 };
 		m_baseTime = { 0 };
 		m_readingDataType = readingDataType;
+
+		//calculate GMT offset for later export time operations
+		time_t gmt, rawtime = time(NULL);
+		struct tm* ptm;
+		ptm = gmtime(&rawtime);
+		// Request that mktime() looksup dst in timezone database
+		ptm->tm_isdst = -1;
+		gmt = mktime(ptm);
+
+		m_GMTOffset = rawtime - gmt;
 	};
 
 	void Add(std::string name, tm time, double data);
 	bool ContainsData() { return m_baseTime.tm_year != 0; }
 	virtual int SaveToFile(std::string path);
+	void ResetReadingDataType(ReadingDataType readingDataType);
+	void Clear();
 
-	void Clear()
-	{
-		m_sensorData.clear();
-		m_baseTime = { 0 };
-		m_startCount.clear();
-		//m_lastCount.clear();
-		m_lastTime.clear();
-		m_lastIndex.clear();
-	}
 private:
 	bool SaveToJson(std::string path);
 	bool SaveToText(std::string path);
 	size_t Size() { return F; }
+	time_t m_GMTOffset;
 
 protected:
 	std::map<std::string, std::array<double, F> > m_sensorData;
@@ -52,7 +56,7 @@ protected:
 	std::map < std::string, int> m_lastIndex;					// for eCounterPeriod. the last index
 	std::map < std::string, long> m_lastCount;				// for eCounterPeriod. the last reading
 
-
+	virtual time_t GetStartTime() { return 0; }
 	virtual int GetIndex(tm time) { return 0; }
 	virtual time_t TimeStep()			{	return 0;	}
 };
@@ -63,37 +67,15 @@ class DayDataArray:public BaseDataArray<(24 * 12)>
 public:
 	DayDataArray(ReadingDataType readingDataType)
 		:BaseDataArray(readingDataType)
-	{
-	}
+	{	}
 
-	int Day()
-	{ 
-		return m_baseTime.tm_mday; 
-	}
+	int Day();
 	virtual int SaveToFile(std::string path);
 
 protected:
-	virtual int GetIndex(tm time)
-	{
-		const int recordingsPerHour = 12;
-		return time.tm_hour * recordingsPerHour + (int)(time.tm_min / 5);
-	}
-
-	virtual time_t TimeStep()
-	{
-		time_t t = time(NULL);
-		tm tm1, tm2;
-		tm1 = *localtime( &t );
-		//localtime_s(&tm1, &t );
-		tm2 = tm1;
-		tm2.tm_min += 5;
-
-		time_t time1 = mktime(&tm1);
-		time_t time2 = mktime(&tm2);
-
-		t = time2 - time1;
-		return t;
-	}
+	virtual time_t GetStartTime();
+	virtual int GetIndex(tm time);
+	virtual time_t TimeStep();
 };
 
 class MonthDataArray :public BaseDataArray<31>
@@ -103,33 +85,13 @@ public:
 		:BaseDataArray(readingDataType)
 	{	}
 
-	int Month()
-	{
-		return m_baseTime.tm_mon;
-	}
+	int Month();
 	virtual int SaveToFile(std::string path);
 
-	virtual time_t TimeStep()
-	{
-		time_t t = time(NULL);
-		tm tm1, tm2;
-		tm1 = *localtime( &t );
-		//localtime_s(&tm1, &t);
-		tm2 = tm1;
-		tm2.tm_mday += 1;
-
-		time_t time1 = mktime(&tm1);
-		time_t time2 = mktime(&tm2);
-
-		t = time2 - time1;
-		return t;
-	}
-
 protected:
-	virtual int GetIndex(tm time)
-	{
-		return time.tm_mday-1;
-	}
+	virtual time_t GetStartTime();
+	virtual int GetIndex(tm time);
+	virtual time_t TimeStep();
 };
 
 class YearDataArray :public BaseDataArray<366>
@@ -139,35 +101,13 @@ public:
 		:BaseDataArray(readingDataType)
 	{}
 	
-	int Year()
-	{
-		return m_baseTime.tm_year;
-	}
+	int Year();
 	virtual int SaveToFile(std::string path);
 
 protected:
-	virtual int GetIndex(tm time)
-	{
-		//return time.tm_mon;
-		return time.tm_yday;
-	}
-
-	virtual time_t TimeStep()
-	{
-		time_t t = time(NULL);
-		tm tm1, tm2;
-		tm1 = *localtime( &t );
-		//localtime_s(&tm1, &t);
-		tm2 = tm1;
-		//tm2.tm_mon += 1;
-		tm2.tm_mday += 1;
-
-		time_t time1 = mktime(&tm1);
-		time_t time2 = mktime(&tm2);
-
-		t = time2 - time1;
-		return t;
-	}
+	virtual time_t GetStartTime();
+	virtual int GetIndex(tm time);
+	virtual time_t TimeStep();
 };
 
 /////////////////
@@ -182,6 +122,9 @@ public:
 
 	void Add(std::string name, tm time, double data);
 	void Close(bool clear = true);
+	void ResetReadingDataType(ReadingDataType dayReadingDataType,
+		ReadingDataType monthReadingDataType,
+		ReadingDataType yearReadingDataType);
 private:
 	std::string m_rootPath;
 	std::string m_dataName;

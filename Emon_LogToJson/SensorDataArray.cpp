@@ -16,26 +16,7 @@ std::string string_format(const std::string& format, Args ... args)
 	snprintf(buf.get(), size, format.c_str(), args ...);
 	return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
 }
-//
-//std::string string_format(const std::string fmt_str, ...) {
-//	int final_n, n = ((int)fmt_str.size()) * 2; /* Reserve two times as much as the length of the fmt_str */
-//	std::unique_ptr<char[]> formatted;
-//	va_list ap;
-//	while (1) {
-//		formatted.reset(new char[n]); /* Wrap the plain char array into the unique_ptr */
-//		strcpy(&formatted[0], fmt_str.c_str());
-//		//strcpy_s(&formatted[0],n, fmt_str.c_str());
-//		va_start(ap, fmt_str);
-//		final_n = std::vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
-//		//final_n = vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
-//		va_end(ap);
-//		if (final_n < 0 || final_n >= n)
-//			n += abs(final_n - n + 1);
-//		else
-//			break;
-//	}
-//	return std::string(formatted.get());
-//}
+
 
 /////////////////////////
 
@@ -100,7 +81,7 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 			time_t thisTime = mktime(&time);
 			time_t elapsed =  thisTime - m_lastTime[name];			//returns seconds since last reading
 			m_lastTime[name] = thisTime;
-			m_sensorData[name][index] += data/3600.0 * elapsed;		//convert to rate per second to rate per hour
+			m_sensorData[name][index] += data/3600.0 * elapsed;		//convert rate per second to rate per hour
 		}
 
 		break;
@@ -131,7 +112,7 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 	if (!ofs.bad())
 	{
 		//[{"series":["Power","Solar","HWS"],"data":[[{"x":1562314758226,"y":0},{"x":1562314758226,"y":0}, ...],[...],[...]],"labels":[""]}]
-		ofs << "[{\"series\":[";
+		ofs << "[{\"series\":[\"\",";
 		bool first = true;
 		for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
 		{
@@ -142,6 +123,20 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 		}
 
 		ofs << "],\"data\":[";
+
+		ofs << "[";
+		first = true;
+		long long periodStart = GetStartTime();
+		for (int i = 0; i < Size(); i++)
+		{
+			if (!first)
+				ofs << ",";
+			first = false;
+			ofs << "{\"x\":" << (periodStart +i*TimeStep())* 1000 << ",\"y\":" << 0 << "}";
+//			ofs << "{\"x\":" << (periodStart + TimeStep() * Size()) * 1000 << ",\"y\":" << 0 << "}],";
+		}
+		ofs << "],";
+
 		std::string lastLine;
 		first = true;
 		for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
@@ -153,11 +148,13 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 
 			bool innerFirst = true;
 			for (int i = GetIndex(m_baseTime); i <= GetIndex(m_maxTime); i++)
+//			for (int i = 0; i < Size(); i++)
 			{
 				if (it->second[i] != -1.0)	//skip outputs if no value has been set
 				{
 					long long t = mktime(&m_baseTime) + ((time_t)i - (time_t)GetIndex(m_baseTime)) * TimeStep();
-					t -= t % TimeStep();	//remove the fraction of a TimeStep
+					t -= (t + m_GMTOffset) % TimeStep(); //remove the fraction of a TimeStep based on GMT time-base
+					//t -= t % TimeStep();	//remove the fraction of a TimeStep
 					if (!innerFirst)
 						ofs << ",";
 					innerFirst = false;
@@ -190,7 +187,7 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 			std::ostringstream line;
 			bool hasValues = false;
 			time_t t = mktime( &m_baseTime ) + ((time_t)i-GetIndex(m_baseTime)) * TimeStep();
-			t -= t % TimeStep();	//remove the fraction of a TimeStep
+			t -=  (t+ m_GMTOffset) % TimeStep(); //remove the fraction of a TimeStep based on GMT time-base
 			tm time;
 			time = *localtime(&t);
 			//localtime_s(&time, &t);
@@ -219,6 +216,22 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 }
 
 
+template<std::size_t F>
+void  BaseDataArray<F>::Clear()
+{
+	m_sensorData.clear();
+	m_baseTime = { 0 };
+	m_startCount.clear();
+	//m_lastCount.clear();
+	m_lastTime.clear();
+	m_lastIndex.clear();
+}
+
+template<std::size_t F>
+void BaseDataArray<F>::ResetReadingDataType(ReadingDataType readingDataType)
+{
+	m_readingDataType = readingDataType;
+}
 /////////////////////////
 
 int DayDataArray::SaveToFile(std::string path)
@@ -226,15 +239,123 @@ int DayDataArray::SaveToFile(std::string path)
 	return BaseDataArray::SaveToFile(string_format("%s/%02d%02d%02d", path.c_str(), m_baseTime.tm_year +1900, m_baseTime.tm_mon+1, m_baseTime.tm_mday));
 }
 
+int DayDataArray::Day()
+{
+	return m_baseTime.tm_mday;
+}
+
+time_t DayDataArray::GetStartTime() 
+{ 
+	tm time = m_baseTime;
+	time.tm_hour = time.tm_min = time.tm_sec = 0;
+	
+	return mktime( &time) ;
+}
+
+int DayDataArray::GetIndex(tm time)
+{
+	const int recordingsPerHour = 12;
+	return time.tm_hour * recordingsPerHour + (int)(time.tm_min / 5);
+}
+
+time_t DayDataArray::TimeStep()
+{
+	time_t t = time(NULL);
+	tm tm1, tm2;
+	tm1 = *localtime(&t);
+	tm2 = tm1;
+	tm2.tm_min += 5;
+
+	time_t time1 = mktime(&tm1);
+	time_t time2 = mktime(&tm2);
+
+	t = time2 - time1;
+	return t;
+}
+
+/////////
 int MonthDataArray::SaveToFile(std::string path)
 {
 	return BaseDataArray::SaveToFile(string_format("%s/%02d%02d", path.c_str(), m_baseTime.tm_year +1900, m_baseTime.tm_mon+1));
 }
 
+int MonthDataArray::Month()
+{
+	return m_baseTime.tm_mon;
+}
+
+time_t MonthDataArray::GetStartTime()
+{
+	tm time = m_baseTime;
+	time.tm_mday = 1;
+	time.tm_hour = time.tm_min = time.tm_sec = 0;
+
+	return mktime(&time);
+}
+
+int MonthDataArray::GetIndex(tm time)
+{
+	return time.tm_mday - 1;
+}
+
+time_t MonthDataArray::TimeStep()
+{
+	time_t t = time(NULL);
+	tm tm1, tm2;
+	tm1 = *localtime(&t);
+	tm2 = tm1;
+	tm2.tm_mday += 1;
+
+	time_t time1 = mktime(&tm1);
+	time_t time2 = mktime(&tm2);
+
+	t = time2 - time1;
+	return t;
+}
+
+////////////////
+
+int YearDataArray::Year()
+{
+	return m_baseTime.tm_year;
+}
+
+time_t YearDataArray::GetStartTime()
+{
+	tm time = m_baseTime;
+	time.tm_mday = 1;
+	time.tm_mon = time.tm_hour = time.tm_min = time.tm_sec = 0;
+
+	return mktime(&time);
+}
+
+
 int YearDataArray::SaveToFile(std::string path)
 {
 	return BaseDataArray::SaveToFile(string_format("%s/%02d", path.c_str(), m_baseTime.tm_year + 1900));
 }
+
+int YearDataArray::GetIndex(tm time)
+{
+	return time.tm_yday;
+}
+
+time_t YearDataArray::TimeStep()
+{
+	time_t t = time(NULL);
+	tm tm1, tm2;
+	tm1 = *localtime(&t);
+	tm2 = tm1;
+	//tm2.tm_mon += 1;
+	tm2.tm_mday += 1;
+
+	time_t time1 = mktime(&tm1);
+	time_t time2 = mktime(&tm2);
+
+	t = time2 - time1;
+	return t;
+}
+
 
 ///////////////////////////
 
@@ -290,4 +411,11 @@ void SensorData::Close(bool clear /*=true*/)
 	m_year.SaveToFile(path);
 	if (clear)
 		m_year.Clear();
+}
+
+void SensorData::ResetReadingDataType(ReadingDataType dayReadingDataType, ReadingDataType monthReadingDataType, ReadingDataType yearReadingDataType)
+{
+	m_day.ResetReadingDataType(dayReadingDataType);
+	m_month.ResetReadingDataType(monthReadingDataType);
+	m_year.ResetReadingDataType(yearReadingDataType);
 }

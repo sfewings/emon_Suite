@@ -149,10 +149,21 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			if (EmonSerial::ParsePulsePayload((char*)reading.c_str(), &pulse))
 			{
 				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported" };
-				for (int i = 0; i< PULSE_NUM_PINS; i++)
-				{
-						m_power.Add(sensor[i], time, pulse.power[i]);
-				}
+				//if( time.tm_yday <180)
+				//{
+					for (int i = 0; i< PULSE_NUM_PINS; i++)
+					{
+							m_power.Add(sensor[i], time, pulse.power[i]);
+					}
+				//}
+				//else
+				//{
+				//	m_power.ResetReadingDataType(eReading, eCounterPeriod, eCounterPeriod);
+					//for (int i = 0; i < PULSE_NUM_PINS; i++)
+					//{
+					//	m_power.Add(sensor[i], time, pulse.pulse[i]);
+					//}
+				//}
 			}
 		break;
 		}
@@ -203,7 +214,7 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		break;
 		case HWS_JEENODE: 
 		{
-			std::string hwsTemp[HWS_TEMPERATURES] = {"Top of Panel (T1)", "Water (T3)", "Inlet (T6)", "Water 2 (T2)", "Water 3 (T5)"};
+			std::string hwsTemp[HWS_TEMPERATURES] = {"Top of Panel (T1)", "Water (T3)", "Inlet (T6)", "Water 2 (T2)", "Water 3 (T5)", "(T4)", "PCB" };
 			std::string hwsPump[HWS_PUMPS] = {"Solar Pump", "Heat Exchange Pump", "Heat Pump"};
 
 			PayloadHWS hws;
