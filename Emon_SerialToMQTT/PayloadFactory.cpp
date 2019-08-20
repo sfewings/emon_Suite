@@ -20,6 +20,9 @@ PayloadFactory::~PayloadFactory()
 
 bool PayloadFactory::PublishPayload(char* s)
 {
+	bool parsed = false;
+	std::string copyOfPayload(s);
+
 	//char* pch, *pNextCh = NULL;
 	if (pBasePayload != NULL)
 	{
@@ -32,6 +35,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadTemperature *temp = new PayloadTemperature();
 		if (EmonSerial::ParseTemperaturePayload(s, temp))
 		{
+			parsed = true;
 			pBasePayload = temp;
 
 			char buf[100];
@@ -50,6 +54,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadPulse* pulse = new PayloadPulse();
 		if (EmonSerial::ParsePulsePayload(s, pulse))
 		{
+			parsed = true;
 			pBasePayload = pulse;
 			
 			char buf[100];
@@ -76,6 +81,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadScale* p = new PayloadScale();
 		if (EmonSerial::ParseScalePayload(s, p))
 		{
+			parsed = true;
 			pBasePayload = p;
 			char buf[100];
 			char topic[100];
@@ -94,6 +100,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadRain* rain = new PayloadRain();
 		if (EmonSerial::ParseRainPayload(s, rain))
 		{
+			parsed = true;
 			pBasePayload = rain;
 			char buf[100];
 			char topic[100];
@@ -117,6 +124,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadBase* p = new PayloadBase();
 		if (EmonSerial::ParseBasePayload(s, p))
 		{
+			parsed = true;
 			pBasePayload = p;
 
 			char buf[100];
@@ -132,6 +140,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadDisp* disp = new PayloadDisp();
 		if (EmonSerial::ParseDispPayload(s, disp))
 		{
+			parsed = true;
 			pBasePayload = disp;
 
 			char buf[100];
@@ -147,6 +156,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadHWS* hws = new PayloadHWS();
 		if (EmonSerial::ParseHWSPayload(s, hws))
 		{
+			parsed = true;
 			pBasePayload = hws;
 
 			char buf[100];
@@ -172,6 +182,7 @@ bool PayloadFactory::PublishPayload(char* s)
 		PayloadWater* water = new PayloadWater();
 		if (EmonSerial::ParseWaterPayload(s, water))
 		{
+			parsed = true;
 			pBasePayload = water;
 
 			char buf[100];
@@ -194,5 +205,14 @@ bool PayloadFactory::PublishPayload(char* s)
 		}
 	}
 	
-	return pBasePayload != NULL;
+	if (parsed)
+	{
+		char topic[10] = { "EmonLog" };
+
+		m_MQTTClient.Publish(topic ,(char*) copyOfPayload.c_str());
+
+
+	}
+
+	return parsed;
 }

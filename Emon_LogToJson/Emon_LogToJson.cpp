@@ -1,20 +1,6 @@
-// Emon_SerialToMQTT.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// Emon_LogToJson.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-#include <iostream>
-#include <iomanip>
-
-
-/**************************************************
-
-file: demo_rx.c
-purpose: simple demo that receives characters from
-the serial port and print them on the screen,
-exit the program by pressing Ctrl-C
-
-compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
-
-**************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,22 +12,40 @@ compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
 	#include <unistd.h>
 #endif
 
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <cstring>
+#include <cctype>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <experimental/filesystem>
+#include <algorithm>
+#include <iomanip>
+
+#include "mqtt/client.h"
+#include "rs232.h"
 
 #include "../EmonShared/EmonShared.h"
 #include "SensorReader.h"
 
-#include <fstream>
-#include <iostream>
-#include <experimental/filesystem>
-#include <algorithm>
-#include "rs232.h"
+
+//MQTT support
+const std::string SERVER_ADDRESS("tcp://localhost:1883");
+const std::string CLIENT_ID("Emon_LogToJson");
+//const std::string TOPIC("EmonLog");
+const std::string TOPIC("#");
+
+const int QOS = 0;
+
 
 namespace fs = std::experimental::filesystem;
 
 template<typename ... Args>
 std::string string_format(const std::string& format, Args ... args)
 {
-	size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + 1; // Extra space for '\0'
+	size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + (size_t)1; // Extra space for '\0'
 	std::unique_ptr<char[]> buf(new char[size]);
 	snprintf(buf.get(), size, format.c_str(), args ...);
 	return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
@@ -74,6 +78,56 @@ private:
 };
 
 
+/////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Local callback & listener class for use with the client connection.
+	 * This is primarily intended to receive messages, but it will also monitor
+	 * the connection to the broker. If the connection is lost, it will attempt
+	 * to restore the connection and re-subscribe to the topic.
+	 */
+class callback : public virtual mqtt::callback
+{
+public:
+	callback(mqtt::client& _cli, SensorReader& _sensorReader) : cli(_cli), sensorReader(_sensorReader) {}
+
+	mqtt::client& cli;
+	SensorReader& sensorReader;
+
+	void connected(const std::string& cause) override {
+		std::cout << "\nConnected: " << cause << std::endl;
+		//cli.subscribe(TOPIC, QOS);
+		std::cout << "subscribed" << std::endl;
+	}
+
+	// Callback for when the connection is lost.
+	// This will initiate the attempt to manually reconnect.
+	void connection_lost(const std::string& cause) override {
+		std::cout << "\nConnection lost";
+		if (!cause.empty())
+			std::cout << ": " << cause << std::endl;
+		std::cout << std::endl;
+	}
+
+	// Callback for when a message arrives.
+	void message_arrived(mqtt::const_message_ptr msg) override 
+	{
+//		std::cout << msg->get_topic() << ": " << msg->get_payload_str() << std::endl;
+		if (msg->get_topic() == TOPIC)
+		{
+			std::time_t t = std::time(0);   // get time now
+			std::tm now = *std::localtime(&t);
+			std::cout << msg->get_payload_str() << std::endl;
+
+			if( sensorReader.AddReading(msg->get_payload_str(), now) )
+				std::cout << "Added";
+			std::cout <<std::endl;
+		}
+	}
+
+	void delivery_complete(mqtt::delivery_token_ptr token) override {}
+};
+
 
 int g_count = 0;
 #define MAX_INPUT_FILES 365
@@ -99,7 +153,7 @@ int main(int argc, char** argv)
 	InputParser input(argc, argv);
 	if (input.cmdOptionExists("-h"))
 	{
-		std::cout << "Emon_LogToJson	[-i inputFolder] [-o OutputFolder] [-c COM port #]" << std::endl;
+		std::cout << "Emon_LogToJson	[-i inputFolder] [-o OutputFolder] [-c COM port #] [-m MQTT server IP]" << std::endl;
 		return 0;
 	}
 	std::string inputFolder = input.getCmdOption("-i");
@@ -138,7 +192,74 @@ int main(int argc, char** argv)
 			sensorReader.AddFile(g_paths[i]);
 	}
 
-	if (comPort >= 0)
+
+
+	
+	/////////////////////////////////////////////////////////////////////////////
+	std::string MQTTIPAAddress = input.getCmdOption("-m");
+	if (!MQTTIPAAddress.empty())
+	{
+		mqtt::connect_options connOpts;
+		connOpts.set_keep_alive_interval(20);
+		connOpts.set_clean_session(false);
+		connOpts.set_automatic_reconnect(true);
+
+		mqtt::client cli(MQTTIPAAddress, CLIENT_ID);
+
+		callback cb(cli, sensorReader);
+		cli.set_callback(cb);
+
+		// Start the connection.
+
+		try {
+			std::cout << "Connecting to the MQTT server " << MQTTIPAAddress << "..." << std::flush;
+			cli.connect(connOpts);
+			cli.subscribe(TOPIC, QOS);
+			std::cout << "OK" << std::endl;
+		}
+		catch (const mqtt::exception& exc) {
+			std::cerr << "\nERROR: Unable to connect to MQTT server: '"
+				<< MQTTIPAAddress << "'" << exc.get_message() << std::endl;
+			return 1;
+		}
+
+		// Just block till user tells us to quit.
+
+		std::time_t lastSave = std::time(0);
+
+		while (std::tolower(std::cin.get()) != 'q')
+		{
+			std::time_t t = std::time(0);
+
+			if (t - lastSave > 60 * 5)
+			{
+				sensorReader.SaveAll();
+				lastSave = t;
+			}
+#ifdef _WIN32
+			Sleep(100);
+#else
+			usleep(100000);  /* sleep for 100 milliSeconds */
+#endif
+
+		}
+
+
+		// Disconnect
+
+		try {
+			std::cout << "\nDisconnecting from the MQTT server..." << std::flush;
+			cli.disconnect();
+			std::cout << "OK" << std::endl;
+		}
+		catch (const mqtt::exception& exc) {
+			std::cerr << exc.what() << std::endl;
+			return 1;
+		}
+
+		return 0;
+	}
+	else if (comPort >= 0)
 	{
 
 		int n, bdrate = 9600;       /* 9600 baud */

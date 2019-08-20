@@ -22,13 +22,31 @@ compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
 #include <unistd.h>
 #endif
 
-#include <fstream>
 #include <iostream>
+#include <cstdlib>
+#include <string>
+#include <cstring>
+#include <cctype>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <experimental/filesystem>
 #include <algorithm>
+#include <iomanip>
+
 
 #include "rs232.h"
 #include "../EmonShared/EmonShared.h"
 #include "PayloadFactory.h"
+
+template<typename ... Args>
+std::string string_format(const std::string& format, Args ... args)
+{
+	size_t size = snprintf(nullptr, 0, format.c_str(), args ...) + (size_t)1; // Extra space for '\0'
+	std::unique_ptr<char[]> buf(new char[size]);
+	snprintf(buf.get(), size, format.c_str(), args ...);
+	return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
+}
 
 
 class InputParser {
@@ -63,21 +81,22 @@ int main(int argc, char** argv)
 	InputParser input(argc, argv);
 	if (input.cmdOptionExists("-h"))
 	{
-		std::cout << "Emon_SerialToMQTT	[-c COM port #]" << std::endl;
+		std::cout << "Emon_SerialToMQTT [-l logging folder]	[-c COM port #]" << std::endl;
 		return 0;
 	}
 
+	std::string loggingFolder = input.getCmdOption("-l");
+
 	int comPort = -1;
-	std::string str = input.getCmdOption("-c");
-	if (!str.empty())
+	std::string comPortStr = input.getCmdOption("-c");
+	if (!comPortStr.empty())
 	{
-		comPort = atoi(str.c_str()) -1;	//COM1 == comPort0
+		comPort = atoi(comPortStr.c_str()) -1;	//COM1 == comPort0
 	}
 
 	if (comPort >= 0)
 	{
-		int i, n,
-			bdrate = 9600;       /* 9600 baud */
+		int n, bdrate = 9600;       /* 9600 baud */
 
 		PayloadFactory pf;
 
@@ -102,19 +121,31 @@ int main(int argc, char** argv)
 			{
 				buf[n] = 0;   /* always put a "null" at the end of a string! */
 
-				for (i = 0; i < n; i++)
+					//replace trailing chars with \0. Remove \r\n
+				while (n && buf[n] < 32)
+					buf[n--] = 0;
+
+				std::string str = (char*)buf;
+				std::time_t t = std::time(0);   // get time now
+				std::tm now = *std::localtime(&t);
+				std::cout << str << std::endl;
+
+				if (pf.PublishPayload((char*)buf) &&
+					!loggingFolder.empty())
 				{
-					if (buf[i] < 32)  /* replace unreadable control-codes by dots */
+
+					//log the reading to a log file
+					std::string fullPath = string_format("%s/%04d%02d%02d.TXT", loggingFolder.c_str(), now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
+					std::ofstream f(fullPath, std::ios::app);
+					if (!f.bad())
 					{
-						buf[i] = '.';
+						std::string line = string_format("%02d/%02d/%02d %02d:%02d:%02d,%s", now.tm_mday, now.tm_mon + 1, now.tm_year + 1900, now.tm_hour, now.tm_min, now.tm_sec, str.c_str());
+						f << line << std::endl;
 					}
+					std::cout << " logged" << std::endl;
 				}
-
-				printf("received %i bytes: %s", n, (char*)buf);
-				if(! pf.PublishPayload((char*) buf) )
-					std::cout << "...not parsed" << std::endl;
-
 			}
+			std::cout << std::endl;
 
 	#ifdef _WIN32
 			Sleep(100);
