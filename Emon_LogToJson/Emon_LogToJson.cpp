@@ -32,10 +32,8 @@
 
 
 //MQTT support
-const std::string SERVER_ADDRESS("tcp://localhost:1883");
+const std::string SERVER_ADDRESS("tcp://192.168.1.111:1883");
 const std::string CLIENT_ID("Emon_LogToJson");
-//const std::string TOPIC("EmonLog");
-const std::string TOPIC("#");
 
 const int QOS = 0;
 
@@ -78,55 +76,27 @@ private:
 };
 
 
-/////////////////////////////////////////////////////////////////////////////
 
-	/**
-	 * Local callback & listener class for use with the client connection.
-	 * This is primarily intended to receive messages, but it will also monitor
-	 * the connection to the broker. If the connection is lost, it will attempt
-	 * to restore the connection and re-subscribe to the topic.
-	 */
-class callback : public virtual mqtt::callback
+
+// --------------------------------------------------------------------------
+// Simple function to manually reconect a client.
+
+bool try_reconnect(mqtt::client& cli)
 {
-public:
-	callback(mqtt::client& _cli, SensorReader& _sensorReader) : cli(_cli), sensorReader(_sensorReader) {}
+	constexpr int N_ATTEMPT = 30;
 
-	mqtt::client& cli;
-	SensorReader& sensorReader;
-
-	void connected(const std::string& cause) override {
-		std::cout << "\nConnected: " << cause << std::endl;
-		//cli.subscribe(TOPIC, QOS);
-		std::cout << "subscribed" << std::endl;
-	}
-
-	// Callback for when the connection is lost.
-	// This will initiate the attempt to manually reconnect.
-	void connection_lost(const std::string& cause) override {
-		std::cout << "\nConnection lost";
-		if (!cause.empty())
-			std::cout << ": " << cause << std::endl;
-		std::cout << std::endl;
-	}
-
-	// Callback for when a message arrives.
-	void message_arrived(mqtt::const_message_ptr msg) override 
-	{
-//		std::cout << msg->get_topic() << ": " << msg->get_payload_str() << std::endl;
-		if (msg->get_topic() == TOPIC)
-		{
-			std::time_t t = std::time(0);   // get time now
-			std::tm now = *std::localtime(&t);
-			std::cout << msg->get_payload_str() << std::endl;
-
-			if( sensorReader.AddReading(msg->get_payload_str(), now) )
-				std::cout << "Added";
-			std::cout <<std::endl;
+	for (int i = 0; i < N_ATTEMPT && !cli.is_connected(); ++i) {
+		try {
+			cli.reconnect();
+			return true;
+		}
+		catch (const mqtt::exception&) {
+			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 	}
-
-	void delivery_complete(mqtt::delivery_token_ptr token) override {}
-};
+	return false;
+}
+// --------------------------------------------------------------------------
 
 
 int g_count = 0;
@@ -182,6 +152,8 @@ int main(int argc, char** argv)
 		comPort = atoi(str.c_str()) -1;	//COM1 == comPort0
 	}
 
+
+
 	getPaths(inputFolder);
 
 	SensorReader sensorReader(outputFolder);
@@ -191,73 +163,85 @@ int main(int argc, char** argv)
 		if(g_paths[i].length() != 0)
 			sensorReader.AddFile(g_paths[i]);
 	}
+	sensorReader.SaveAll();
 
 
-
-	
-	/////////////////////////////////////////////////////////////////////////////
 	std::string MQTTIPAAddress = input.getCmdOption("-m");
 	if (!MQTTIPAAddress.empty())
 	{
+
 		mqtt::connect_options connOpts;
 		connOpts.set_keep_alive_interval(20);
-		connOpts.set_clean_session(false);
-		connOpts.set_automatic_reconnect(true);
+		connOpts.set_clean_session(true);
 
 		mqtt::client cli(MQTTIPAAddress, CLIENT_ID);
 
-		callback cb(cli, sensorReader);
-		cli.set_callback(cb);
-
-		// Start the connection.
+		const std::vector<std::string> TOPICS{ "EmonLog", "command" };
+		const std::vector<int> QOS{ 0, 1 };
 
 		try {
-			std::cout << "Connecting to the MQTT server " << MQTTIPAAddress << "..." << std::flush;
+			std::cout << "Connecting to the MQTT server..." << std::flush;
 			cli.connect(connOpts);
-			cli.subscribe(TOPIC, QOS);
-			std::cout << "OK" << std::endl;
-		}
-		catch (const mqtt::exception& exc) {
-			std::cerr << "\nERROR: Unable to connect to MQTT server: '"
-				<< MQTTIPAAddress << "'" << exc.get_message() << std::endl;
-			return 1;
-		}
+			cli.subscribe(TOPICS, QOS);
+			std::cout << "OK\n" << std::endl;
 
-		// Just block till user tells us to quit.
+			std::time_t lastSave = std::time(0);
+			// Consume messages
 
-		std::time_t lastSave = std::time(0);
-
-		while (std::tolower(std::cin.get()) != 'q')
-		{
-			std::time_t t = std::time(0);
-
-			if (t - lastSave > 60 * 5)
-			{
-				sensorReader.SaveAll();
-				lastSave = t;
-			}
 #ifdef _WIN32
-			Sleep(100);
+			while (!_kbhit())
 #else
-			usleep(100000);  /* sleep for 100 milliSeconds */
-#endif
+			while (1)
+#endif			
+			{
+				auto msg = cli.consume_message();
 
-		}
+				if (!msg) {
+					if (!cli.is_connected()) {
+						std::cout << "Lost connection. Attempting reconnect" << std::endl;
+						if (try_reconnect(cli)) {
+							cli.subscribe(TOPICS, QOS);
+							std::cout << "Reconnected" << std::endl;
+							continue;
+						}
+						else {
+							std::cout << "Reconnect failed." << std::endl;
+							break;
+						}
+					}
+					else
+						break;
+				}
+				if (msg->get_topic() == "command" &&
+					msg->to_string() == "exit") {
+					std::cout << "Exit command received" << std::endl;
+					break;
+				}
 
+				std::time_t t = std::time(0);   // get time now
+				std::tm now = *std::localtime(&t);
 
-		// Disconnect
+				std::cout << msg->to_string();
+				if( sensorReader.AddReading(msg->get_payload_str(), now) )
+					std::cout << "...added";
+				std::cout <<std::endl;
 
-		try {
+				if (t - lastSave > 60 * 5)
+				{
+					sensorReader.SaveAll();
+					lastSave = t;
+				}
+			}
+
+			// Disconnect
+
 			std::cout << "\nDisconnecting from the MQTT server..." << std::flush;
 			cli.disconnect();
 			std::cout << "OK" << std::endl;
 		}
 		catch (const mqtt::exception& exc) {
 			std::cerr << exc.what() << std::endl;
-			return 1;
 		}
-
-		return 0;
 	}
 	else if (comPort >= 0)
 	{

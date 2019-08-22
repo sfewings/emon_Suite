@@ -155,6 +155,8 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 					{
 							m_power.Add(sensor[i], time, pulse.power[i]);
 					}
+					if(pulse.power[1] > pulse.power[2])
+					m_power.Add("Exported", time, pulse.power[1] - pulse.power[2] );
 				//}
 				//else
 				//{

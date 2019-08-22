@@ -43,10 +43,10 @@ public:
 private:
 	bool SaveToJson(std::string path);
 	bool SaveToText(std::string path);
-	size_t Size() { return F; }
 	time_t m_GMTOffset;
 
 protected:
+	size_t Size() { return F; }
 	std::map<std::string, std::array<double, F> > m_sensorData;
 	tm m_baseTime;		//minimum time reading
 	tm m_maxTime;			//maximum time reading
@@ -62,7 +62,7 @@ protected:
 };
 ///////////////////
 
-class DayDataArray:public BaseDataArray<(24 * 12)>
+class DayDataArray:public BaseDataArray<(24 * 60)>
 {
 public:
 	DayDataArray(ReadingDataType readingDataType)

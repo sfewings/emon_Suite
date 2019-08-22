@@ -174,46 +174,83 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 	return false;
 }
 
-
 template<std::size_t F>
 bool BaseDataArray<F>::SaveToText(std::string path)
 {
 	std::ofstream ofs(path);
 	if (!ofs.bad())
 	{
+		ofs << "time";
+		for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
+		{
+			ofs << "," << it->first;
+		}
+		ofs << "\n";
+
+
 		std::string lastLine;
 		for (int i = GetIndex(m_baseTime); i <= GetIndex(m_maxTime); i++)
 		{
-			std::ostringstream line;
-			bool hasValues = false;
-			time_t t = mktime( &m_baseTime ) + ((time_t)i-GetIndex(m_baseTime)) * TimeStep();
-			t -=  (t+ m_GMTOffset) % TimeStep(); //remove the fraction of a TimeStep based on GMT time-base
+			time_t t = mktime(&m_baseTime) + ((time_t)i - GetIndex(m_baseTime)) * TimeStep();
+			t -= (t + m_GMTOffset) % TimeStep(); //remove the fraction of a TimeStep based on GMT time-base
 			tm time;
 			time = *localtime(&t);
-			//localtime_s(&time, &t);
-			ofs << "{\"time\":" << time.tm_year + 1900 << "-" << time.tm_mon + 1 << "-" << time.tm_mday << " ";
-			ofs << (time.tm_hour < 10 ? "0" : "") << time.tm_hour << ":"<< (time.tm_min<10?"0":"") <<time.tm_min << ":"<< (time.tm_sec < 10 ? "0" : "") << time.tm_sec ;
+			ofs << time.tm_year + 1900 << "-" << time.tm_mon + 1 << "-" << time.tm_mday << " ";
+			ofs << (time.tm_hour < 10 ? "0" : "") << time.tm_hour << ":" << (time.tm_min < 10 ? "0" : "") << time.tm_min << ":" << (time.tm_sec < 10 ? "0" : "") << time.tm_sec;
 			for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
 			{
-				if( it->second[i] != 0)
-					hasValues = true;
-				line << ",\"" << it->first << "\":" << it->second[i];
+				ofs << ",";
+				if (it->second[i] != -1)
+					ofs << it->second[i];
 			}
-			line << "},\n";
-			if (!hasValues && lastLine.length() != 0)
-				ofs << lastLine;
-			else
-			{
-				lastLine = line.str();
-				ofs << lastLine;
-			}
+			ofs << "\n";
 		}
 		ofs.close();
 		return true;
-	}  	
-	
+	}
+
 	return false;
 }
+
+//template<std::size_t F>
+//bool BaseDataArray<F>::SaveToText(std::string path)
+//{
+//	std::ofstream ofs(path);
+//	if (!ofs.bad())
+//	{
+//		std::string lastLine;
+//		for (int i = GetIndex(m_baseTime); i <= GetIndex(m_maxTime); i++)
+//		{
+//			std::ostringstream line;
+//			bool hasValues = false;
+//			time_t t = mktime( &m_baseTime ) + ((time_t)i-GetIndex(m_baseTime)) * TimeStep();
+//			t -=  (t+ m_GMTOffset) % TimeStep(); //remove the fraction of a TimeStep based on GMT time-base
+//			tm time;
+//			time = *localtime(&t);
+//			//localtime_s(&time, &t);
+//			ofs << "{\"time\":" << time.tm_year + 1900 << "-" << time.tm_mon + 1 << "-" << time.tm_mday << " ";
+//			ofs << (time.tm_hour < 10 ? "0" : "") << time.tm_hour << ":"<< (time.tm_min<10?"0":"") <<time.tm_min << ":"<< (time.tm_sec < 10 ? "0" : "") << time.tm_sec ;
+//			for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
+//			{
+//				if( it->second[i] != 0)
+//					hasValues = true;
+//				line << ",\"" << it->first << "\":" << it->second[i];
+//			}
+//			line << "},\n";
+//			if (!hasValues && lastLine.length() != 0)
+//				ofs << lastLine;
+//			else
+//			{
+//				lastLine = line.str();
+//				ofs << lastLine;
+//			}
+//		}
+//		ofs.close();
+//		return true;
+//	}  	
+//	
+//	return false;
+//}
 
 
 template<std::size_t F>
@@ -254,17 +291,19 @@ time_t DayDataArray::GetStartTime()
 
 int DayDataArray::GetIndex(tm time)
 {
-	const int recordingsPerHour = 12;
-	return time.tm_hour * recordingsPerHour + (int)(time.tm_min / 5);
+	const int recordingsPerHour = (int)Size() / 24;
+	const int minutesPerIndex = 24 * 60 / (int)Size();
+	return time.tm_hour * recordingsPerHour + (int)(time.tm_min / minutesPerIndex);
 }
 
 time_t DayDataArray::TimeStep()
 {
+	const int minutesPerIndex = 24 * 60 / (int)Size();
 	time_t t = time(NULL);
 	tm tm1, tm2;
 	tm1 = *localtime(&t);
 	tm2 = tm1;
-	tm2.tm_min += 5;
+	tm2.tm_min += minutesPerIndex;
 
 	time_t time1 = mktime(&tm1);
 	time_t time2 = mktime(&tm2);
