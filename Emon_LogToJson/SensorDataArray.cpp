@@ -158,7 +158,7 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 					if (!innerFirst)
 						ofs << ",";
 					innerFirst = false;
-					ofs << "{\"x\":" << t*1000 << ",\"y\":" << it->second[i] << "}";
+					ofs << "{\"x\":" << t*1000 << ",\"y\":" << it->second[i]* m_counterScaleFactor << "}";
 
 				}
 			}
@@ -174,6 +174,8 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 	return false;
 }
 
+
+//save toi .csv text format
 template<std::size_t F>
 bool BaseDataArray<F>::SaveToText(std::string path)
 {
@@ -201,7 +203,7 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 			{
 				ofs << ",";
 				if (it->second[i] != -1)
-					ofs << it->second[i];
+					ofs << it->second[i] * m_counterScaleFactor;
 			}
 			ofs << "\n";
 		}
@@ -212,6 +214,7 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 	return false;
 }
 
+//save to pree JSON txt format. Suitable for display in Flot charts. I think!
 //template<std::size_t F>
 //bool BaseDataArray<F>::SaveToText(std::string path)
 //{
@@ -234,7 +237,7 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 //			{
 //				if( it->second[i] != 0)
 //					hasValues = true;
-//				line << ",\"" << it->first << "\":" << it->second[i];
+//				line << ",\"" << it->first << "\":" << it->second[i]* m_counterScaleFactor;
 //			}
 //			line << "},\n";
 //			if (!hasValues && lastLine.length() != 0)

@@ -98,23 +98,20 @@ bool try_reconnect(mqtt::client& cli)
 }
 // --------------------------------------------------------------------------
 
-
-int g_count = 0;
-#define MAX_INPUT_FILES 365
-std::array<std::string, MAX_INPUT_FILES> g_paths;
-void getPaths(std::string rootPath)
+std::vector<std::string> getPaths(std::string rootPath)
 {
+	 std::vector<std::string> paths;
 	std::string ext(".TXT");
 	for (auto& p : fs::recursive_directory_iterator(rootPath) )
 	{
 		if (p.path().extension() == ext)
-			g_paths[g_count++] = p.path().string();
+			paths.push_back( p.path().string() );
 		std::cout << p << std::endl;
 	}
 	
-	std::sort(g_paths.begin(), g_paths.end());
+	std::sort(paths.begin(), paths.end());
 	
-	return;
+	return paths;
 }
 
 
@@ -154,15 +151,16 @@ int main(int argc, char** argv)
 
 
 
-	getPaths(inputFolder);
+	std::vector<std::string> paths = getPaths(inputFolder);
 
 	SensorReader sensorReader(outputFolder);
 
-	for (int i = 0; i < MAX_INPUT_FILES; i++)
+	for (auto it = begin(paths); it != end(paths); ++it)
 	{
-		if(g_paths[i].length() != 0)
-			sensorReader.AddFile(g_paths[i]);
+		if (it->length() != 0)
+			sensorReader.AddFile(*it);
 	}
+
 	sensorReader.SaveAll();
 
 

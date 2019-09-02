@@ -15,6 +15,7 @@ public:
 protected:
 	size_t GetTime(std::string line, tm &time);
 	unsigned short StringToNode(std::string line);
+	bool FilterTemperature(std::string sensorName, double temperature, double& smoothedTemperature);
 
 	SensorData m_temperatures;
 	SensorData m_power;
@@ -26,5 +27,6 @@ protected:
 	SensorData m_scale;
 
 	std::string m_rootPath;
+	std::map<std::string, double> m_temperatureMovingAverage;
 };
 

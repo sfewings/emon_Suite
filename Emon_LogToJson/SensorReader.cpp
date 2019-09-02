@@ -7,11 +7,14 @@
 #include <time.h>
 #include <iomanip>
 #include <sstream>
+#include <math.h>
 
 #include <experimental/filesystem>
 //#include <filesystem>
 #include <iostream>
 
+#define TEMPERATURE_DESPIKE 500.0				//Despike any temperature ereading greater than 5 celcius from the moving average
+#define TEMPERATURE_SMOOTHING_WINDOW 5.0	// the moving average for smoothing temperature values
 
 namespace fs = std::experimental::filesystem;
 
@@ -64,6 +67,8 @@ SensorReader::SensorReader(std::string rootPath):
 	fs::create_directory(rootPath + "/power");
 	fs::create_directory(rootPath + "/supplyV");
 	fs::create_directory(rootPath + "/scale");
+
+	m_rainFall.SetCounterScaleFactor(0.2); //rainfall is 0.2mm for every counter
 }
 
 void SensorReader::AddFile(std::string path)
@@ -123,6 +128,30 @@ size_t SensorReader::GetTime(std::string line, tm &time)
 	return pos;
 }
 
+bool SensorReader::FilterTemperature(std::string sensorName, double temperature, double& smoothedTemperature)
+{
+	bool useReading = false;
+	if (temperature > 0 && temperature / 100 < 100)	//filter out some noisy temperature values
+	{
+		//initialise. Hope the inital value is not bogus as all subsequent values will be despiked!
+		if (m_temperatureMovingAverage.find(sensorName) == m_temperatureMovingAverage.end())
+		{
+			m_temperatureMovingAverage[sensorName] = temperature;
+		}
+		//despike
+		if (fabs(m_temperatureMovingAverage[sensorName] - temperature) < TEMPERATURE_DESPIKE)
+		{
+			//smooth
+			smoothedTemperature = ((TEMPERATURE_SMOOTHING_WINDOW - 1) * m_temperatureMovingAverage[sensorName] + temperature) / TEMPERATURE_SMOOTHING_WINDOW;
+			m_temperatureMovingAverage[sensorName] = smoothedTemperature;
+			useReading = true;
+		}
+	}
+	return useReading;
+}
+
+
+
 unsigned short SensorReader::AddReading(std::string reading, tm time)
 {
 	unsigned short node = StringToNode(reading);
@@ -135,8 +164,11 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			{
 				if (rain.rainCount != 0)
 				{
-					m_temperatures.Add("Outside", time, rain.temperature / 100.0);
-					m_rainFall.Add("Rain", time, rain.rainCount * 0.2);
+					double smoothedTemperature;
+					if(FilterTemperature("Outside", rain.temperature, smoothedTemperature) )
+						m_temperatures.Add("Outside", time, smoothedTemperature / 100.0);
+
+					m_rainFall.Add("Rain", time, rain.rainCount);
 					if (rain.supplyV / 1000.0 < 5)
 						m_supplyV.Add("Rain Gauge", time, rain.supplyV / 1000.0);
 				}
@@ -180,8 +212,12 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			if (EmonSerial::ParseDispPayload((char*)reading.c_str(), &disp))
 			{
 				std::string sensor[4] = { "Kitchen", "Office", "unused", "Upstairs" };
-				if(disp.subnode < 4)
-					m_temperatures.Add(sensor[disp.subnode], time, disp.temperature/100.0);
+				if (disp.subnode < 4)
+				{
+					double smoothedTemperature;
+					if (FilterTemperature(sensor[disp.subnode], disp.temperature, smoothedTemperature))
+						m_temperatures.Add(sensor[disp.subnode], time, smoothedTemperature / 100.0);
+				}
 			}
 			break;
 		}
@@ -202,9 +238,10 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 				{
 					for (int i = 0; i < temp.numSensors; i++)
 					{
-						if (temp.temperature[i] > 0 && temp.temperature[i] / 100 < 70 )	//filter out some noisy temperature values
+						double smoothedTemperature;
+						if (FilterTemperature(sensor[temp.subnode][i], temp.temperature[i], smoothedTemperature))
 						{
-							m_temperatures.Add(sensor[temp.subnode][i], time, temp.temperature[i] / 100.0);
+							m_temperatures.Add(sensor[temp.subnode][i], time, smoothedTemperature / 100.0);
 						}
 					}
 					if(temp.supplyV / 1000.0 < 5)
@@ -248,7 +285,7 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			{
 				if (water.subnode < 2)
 				{
-					if (water.waterHeight < 2200)
+					if (water.waterHeight < 2200 && water.waterHeight > 0) //waterHeight == 0 is no sensor connected.
 						m_water.Add(sensor[water.subnode][0], time, water.waterHeight);
 					if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))) //didn't log correctly until 24Jul2019
 						m_waterUsage.Add(sensor[water.subnode][1], time, water.flowCount / 1000);

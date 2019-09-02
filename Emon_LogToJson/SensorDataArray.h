@@ -30,6 +30,7 @@ public:
 		// Request that mktime() looksup dst in timezone database
 		ptm->tm_isdst = -1;
 		gmt = mktime(ptm);
+		m_counterScaleFactor = 1.0;  //default. All counters represent 1 unit of measure
 
 		m_GMTOffset = rawtime - gmt;
 	};
@@ -39,6 +40,7 @@ public:
 	virtual int SaveToFile(std::string path);
 	void ResetReadingDataType(ReadingDataType readingDataType);
 	void Clear();
+	void SetCounterScaleFactor(double scaleFactor) { m_counterScaleFactor = scaleFactor; }
 
 private:
 	bool SaveToJson(std::string path);
@@ -51,6 +53,7 @@ protected:
 	tm m_baseTime;		//minimum time reading
 	tm m_maxTime;			//maximum time reading
 	ReadingDataType m_readingDataType;
+	double m_counterScaleFactor;		//for rain guage where each counter is 0.2mm of rain
 	std::map < std::string, long>		m_startCount;			//for eCounterTotal. the counter at start of readings
 	std::map < std::string, time_t> m_lastTime;				// for eRatePerSecond. the last second reading
 	std::map < std::string, int> m_lastIndex;					// for eCounterPeriod. the last index
@@ -125,6 +128,13 @@ public:
 	void ResetReadingDataType(ReadingDataType dayReadingDataType,
 		ReadingDataType monthReadingDataType,
 		ReadingDataType yearReadingDataType);
+	void SetCounterScaleFactor(double scaleFactor) 
+			{
+				m_day.SetCounterScaleFactor(scaleFactor);
+				m_month.SetCounterScaleFactor(scaleFactor);
+				m_year.SetCounterScaleFactor(scaleFactor);
+			}
+
 private:
 	std::string m_rootPath;
 	std::string m_dataName;
