@@ -5,8 +5,11 @@
 PayloadFactory::PayloadFactory()
 {
 	pBasePayload = NULL;
-	
-	m_MQTTClient.Initialise();
+}
+
+bool PayloadFactory::Initialise()
+{
+	return m_MQTTClient.Initialise();
 }
 
 

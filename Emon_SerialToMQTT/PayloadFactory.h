@@ -9,6 +9,8 @@ public:
 	PayloadFactory();
 	~PayloadFactory();
 
+	bool Initialise();
+
 	bool PublishPayload(char* string);
 
 	PayloadRelay* pBasePayload;		//everything is derived from PayloadRelay

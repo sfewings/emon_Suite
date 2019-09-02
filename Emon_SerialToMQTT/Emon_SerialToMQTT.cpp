@@ -79,9 +79,9 @@ private:
 int main(int argc, char** argv)
 {
 	InputParser input(argc, argv);
-	if (input.cmdOptionExists("-h"))
+	if (input.cmdOptionExists("-h") || !input.cmdOptionExists("-c") )
 	{
-		std::cout << "Emon_SerialToMQTT [-l logging folder]	[-c COM port #]" << std::endl;
+		std::cout << "Emon_SerialToMQTT -c COM port #[-l logging folder]" << std::endl;
 		return 0;
 	}
 
@@ -97,20 +97,22 @@ int main(int argc, char** argv)
 	if (comPort >= 0)
 	{
 		int n, bdrate = 9600;       /* 9600 baud */
-
-		PayloadFactory pf;
-
-
 		unsigned char buf[4096];
 
 		char mode[] = { '8','N','1',0 };
 
+		PayloadFactory pf;
+
+		if (!pf.Initialise())
+		{
+			return (1); //failed to initialise
+		}
 
 		if (RS232_OpenComport(comPort, bdrate, mode, 0))
 		{
-			printf("Can not open comport\n");
+			std::cout << "Can not open comport " << comPort+1 << std::endl;
 
-			return(0);
+			return(1);
 		}
 
 		while (1)
@@ -147,14 +149,13 @@ int main(int argc, char** argv)
 			}
 			std::cout << std::endl;
 
-	#ifdef _WIN32
+#ifdef _WIN32
 			Sleep(100);
-	#else
+#else
 			usleep(100000);  /* sleep for 100 milliSeconds */
-	#endif
+#endif
 		}
 	}
-
 	return(0);
 }
 
