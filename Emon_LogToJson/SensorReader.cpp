@@ -280,6 +280,7 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 				{"Rain water tank", "Hot water"},
 				{"unused", "Mains water"}
 			};
+			unsigned long scaleFactor[2] = { 1000, 1 };	//The hot water is 1000 pulse/litre while mains meter is 1ppl
 		PayloadWater water;
 			if (EmonSerial::ParseWaterPayload((char*)reading.c_str(), &water))
 			{
@@ -288,7 +289,7 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 					if (water.waterHeight < 2200 && water.waterHeight > 0) //waterHeight == 0 is no sensor connected.
 						m_water.Add(sensor[water.subnode][0], time, water.waterHeight);
 					if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))) //didn't log correctly until 24Jul2019
-						m_waterUsage.Add(sensor[water.subnode][1], time, water.flowCount / 1000);
+						m_waterUsage.Add(sensor[water.subnode][1], time, water.flowCount / scaleFactor[water.subnode]);
 				}
 			}
 			break;
