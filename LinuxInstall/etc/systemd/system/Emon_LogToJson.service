@@ -1,0 +1,13 @@
+#To install 	1. copy to /etc/systemd/system
+#		2. sudo systemctl enable Emon_LogToJson
+
+[Unit]
+Description=Emon service to start Emon_LogToJson in /share/Emon_LogToJson
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /share/Emon_LogToJson/Emon_LogToJson.sh
+After=network.target mosquitto
+
+[Install]
+WantedBy=multi-user.target

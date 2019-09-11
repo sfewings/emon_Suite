@@ -1,0 +1,15 @@
+#To install 	1. sudo copy to /etc/systemd/system
+#		2. sudo systemctl enable Emon_LogToJson
+
+[Unit]
+Description=Emon service to start Serial to MQTT in /share/Emon_SerialToMQTT 
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /share/Emon_SerialToMQTT/Emon_SerialToMQTT.sh
+After=network.target mosquitto
+Restart= on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
