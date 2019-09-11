@@ -191,17 +191,17 @@ bool PayloadFactory::PublishPayload(char* s)
 			char buf[100];
 			char topic[100];
 
-			sprintf(topic, "water/height/0");
+			sprintf(topic, "water/height/%d", water->subnode);
 			sprintf(buf, "%d", water->waterHeight);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 
-			sprintf(topic, "water/flowCount/0");
+			sprintf(topic, "water/flowCount/%d", water->subnode);
 			sprintf(buf, "%d", water->flowCount);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			
-			sprintf(topic, "water/flowRate/0");
+			sprintf(topic, "water/flowRate/%d", water->subnode);
 			sprintf(buf, "%d", water->flowRate);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
