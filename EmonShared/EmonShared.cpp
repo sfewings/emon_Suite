@@ -242,23 +242,59 @@ void EmonSerial::PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long ti
 {
 	PrintWaterPayload(Serial, pPayloadWater, timeSinceLast);
 }
+//
+//void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast)
+//{
+//	if (pPayloadWater == NULL)
+//	{
+//		stream.print(F("wtr2,subnode,waterHeight(mm),flowRate,flowCount|ms_since_last_packet"));
+//	}
+//	else
+//	{
+//		stream.print(F("wtr2,"));
+//		stream.print(pPayloadWater->subnode);
+//		stream.print(F(","));
+//		stream.print(pPayloadWater->waterHeight);
+//		stream.print(F(","));
+//		stream.print(pPayloadWater->flowRate);
+//		stream.print(F(","));
+//		stream.print(pPayloadWater->flowCount);
+//
+//		PrintRelay(stream, pPayloadWater);
+//
+//		if (timeSinceLast != 0)
+//		{
+//			stream.print(F("|"));
+//			stream.print(timeSinceLast);
+//		}
+//	}
+//	stream.println();
+//}
 
 void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast)
 {
 	if (pPayloadWater == NULL)
 	{
-		stream.print(F("wtr2,subnode,waterHeight(mm),flowRate,flowCount|ms_since_last_packet"));
+		stream.print(F("wtr3,subnode,supplyV, numSensors, flowCount[0..numSensors&0xF], waterHeight(mm)[0..numSensors&0xF0>>4]|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("wtr2,"));
+		stream.print(F("wtr3,"));
 		stream.print(pPayloadWater->subnode);
 		stream.print(F(","));
-		stream.print(pPayloadWater->waterHeight);
+		stream.print(pPayloadWater->supplyV);
 		stream.print(F(","));
-		stream.print(pPayloadWater->flowRate);
-		stream.print(F(","));
-		stream.print(pPayloadWater->flowCount);
+		stream.print(pPayloadWater->numSensors);
+		for (int i = 0; i < (pPayloadWater->numSensors & 0xF); i++)
+		{
+			stream.print(F(","));
+			stream.print(pPayloadWater->flowCount[i]);
+		}
+		for (int i = 0; i < (pPayloadWater->numSensors & 0xF0) >> 4; i++)
+		{
+			stream.print(F(","));
+			stream.print(pPayloadWater->waterHeight[i]);
+		}
 
 		PrintRelay(stream, pPayloadWater);
 
@@ -302,6 +338,41 @@ void EmonSerial::PrintScalePayload(Stream& stream, PayloadScale* pPayloadScale, 
 	stream.println();
 }
 #endif
+
+
+int EmonSerial::PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr)
+{
+	//pack the two arrays of readings into the end of the structure to save on bytes transmitted. if only 1 of each sensor, this saves 3*8 +3*4 bytes = 36bytes. We will only transmit 5+8+4=17bytes. 
+	byte* ptr2 = ptr;
+	memcpy(ptr, pPayloadWater, sizeof(PayloadWater));
+	ptr2 += offsetof(PayloadWater, flowCount);
+	ptr2 += sizeof(unsigned long) * (pPayloadWater->numSensors & 0xF);
+	for (int i = 0; i < (pPayloadWater->numSensors & 0xF0) >> 4; i++)
+	{
+		int height = pPayloadWater->waterHeight[i];
+		memcpy(ptr2, &height, sizeof(int));
+		ptr2 += sizeof(int);
+	}
+	return (int)(ptr2 - ptr);
+}
+
+void EmonSerial::UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater)
+{
+	byte* ptr2 = ptr;
+	memcpy(pPayloadWater, ptr, sizeof(PayloadWater));
+	ptr2 += offsetof(PayloadWater, flowCount);
+	ptr2 += sizeof(unsigned long) * (pPayloadWater->numSensors & 0xF);
+	for (int i = 0; i < (pPayloadWater->numSensors & 0xF0) >> 4; i++)
+	{
+		int height;
+		memcpy(&height, ptr2, sizeof(int));
+		pPayloadWater->waterHeight[i] = height;
+		ptr2 += sizeof(int);
+	}
+}
+
+
+
 //---------------Parse routines -------------------
 
 void EmonSerial::ParseRelay(PayloadRelay* pPayloadRelay, char* pch)
@@ -543,7 +614,8 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 	{
 		if (NULL == (pch = strtok(NULL, tok)))
 			return 0;
-		pPayloadWater->waterHeight = (int)atoi(pch);
+		pPayloadWater->numSensors = 0x1 << 4;
+		pPayloadWater->waterHeight[0] = (int)atoi(pch);
 
 		//pPayloadWater->sensorReading = 0;
 		for (int i = 0; i < 4; i++)
@@ -560,21 +632,42 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 			if (NULL == (pch = strtok(NULL, tok)))	return 0;
 			pPayloadWater->subnode = atoi(pch);
 		}
+		pPayloadWater->numSensors = 0x11; //1 height and one flow meter in versions 1&2
+
 		if (NULL == (pch = strtok(NULL, tok)))
 			return 0;
-		pPayloadWater->waterHeight = (int)atoi(pch);
+		pPayloadWater->waterHeight[0] = (int)atoi(pch);
 
 		if (NULL != (pch = strtok(NULL, tok)))
 		{
-			pPayloadWater->flowRate = (int)atoi(pch);
+			//pPayloadWater->flowRate = (int)atoi(pch);  //we no longer transmit flowrate
 
 			if (NULL != (pch = strtok(NULL, tok)))
-				pPayloadWater->flowCount = (int)atoi(pch);
+				pPayloadWater->flowCount[0] = (int)atoi(pch);
 		}
 
 		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 		{
 			ParseRelay(pPayloadWater, pch);
+		}
+	}
+	else if (0 == strcmp(pch, "wtr3"))
+	{
+		if (NULL == (pch = strtok(NULL, tok)))	return 0;
+		pPayloadWater->subnode = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok)))	return 0;
+		pPayloadWater->supplyV = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok)))	return 0;
+		pPayloadWater->numSensors = atoi(pch);
+		for (int i = 0; i < (pPayloadWater->numSensors & 0xF); i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok)))	return 0;
+			pPayloadWater->flowCount[i] = atol(pch);
+		}
+		for (int i = 0; i < (pPayloadWater->numSensors & 0xF0) >> 4; i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok)))	return 0;
+			pPayloadWater->waterHeight[i] = atoi(pch);
 		}
 	}
 	else

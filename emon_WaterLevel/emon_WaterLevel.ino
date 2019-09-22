@@ -171,8 +171,9 @@ void setup()
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
 	g_period = millis() - TIMEOUT_PERIOD;
-	g_waterPayload.flowRate = 0;
-	g_waterPayload.flowCount = g_flowCount;
+	//g_waterPayload.flowRate = 0;
+	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
+	g_waterPayload.flowCount[0] = g_flowCount;
 
 	pinMode(3, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
@@ -192,17 +193,17 @@ void loop ()
 	unsigned long flowCount = g_flowCount;
 	uint16_t	waterHeight = g_waterHeightSensor.readSensor();
 
-	bool activity = ( g_waterPayload.flowCount   != flowCount || 
-										g_waterPayload.waterHeight != waterHeight   );
+	bool activity = ( g_waterPayload.flowCount[0]   != flowCount || 
+										g_waterPayload.waterHeight[0] != waterHeight   );
 
 	if(activity)
 	{
 		writeEEPROM(0, flowCount);
 	}
 
-	g_waterPayload.flowCount = flowCount;
-	g_waterPayload.flowRate = FlowRateInLitresPerMinute();
-	g_waterPayload.waterHeight = waterHeight;
+	g_waterPayload.flowCount[0] = flowCount;
+	//g_waterPayload.flowRate = FlowRateInLitresPerMinute();
+	g_waterPayload.waterHeight[0] = waterHeight;
 
 	switch (g_waterHeightSensor.getStatus())
 	{

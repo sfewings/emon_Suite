@@ -32,6 +32,7 @@ typedef unsigned char byte;
 #define SCALE_NODE 19					  //node that contains a load-cell
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
+#define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
 
 #define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
 #define MAX_TEMPERATURE_SENSORS 4  //maximum number of temperature sensors on the temperature_JeeNode  
@@ -39,6 +40,7 @@ typedef unsigned char byte;
 #define HWS_PUMPS 3							//number of pumps from the hot water system
 
 #define FEWINGS_MONITOR_GROUP  211
+#define TESTING_MONITOR_GROUP	 210
 
 typedef struct RF12Init {
 	uint8_t node;					//Should be unique on network, node ID 30 reserved for base station
@@ -98,12 +100,22 @@ typedef struct PayloadBase: PayloadRelay {
 	time_t time; 
 }PayloadBase;
 
-typedef struct PayloadWater: PayloadRelay {
+//typedef struct PayloadWater: PayloadRelay {
+//	byte subnode;
+//	int waterHeight;
+//	int flowRate;			//water flowrate in l/min
+//	unsigned long flowCount;		//number of pulses since installation
+//} PayloadWater;
+
+#pragma pack(push, 1)
+typedef struct PayloadWater : PayloadRelay {
 	byte subnode;
-	int waterHeight;
-	int flowRate;			//water flowrate in l/min
-	unsigned long flowCount;		//number of pulses since installation
+	unsigned short supplyV;
+	byte numSensors;															//contains num flow meters in lower 4 bits, num height meters in upper 4 bits;
+	unsigned long flowCount[MAX_WATER_SENSORS];		//number of pulses since installation
+	int waterHeight[MAX_WATER_SENSORS];						//water height in mm
 } PayloadWater;
+#pragma pack(pop)
 
 typedef struct PayloadScale : PayloadRelay {
 	byte subnode;			//allow multiple scale nodes on the network
@@ -141,6 +153,8 @@ public:
 	static void PrintScalePayload(Stream& stream, PayloadScale* pPayloadWater, unsigned long timeSinceLast = 0);
 
 #endif
+	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
+	static void UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater);
 
 	static void ParseRelay(PayloadRelay* pPayloadRelay, char* pch);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);

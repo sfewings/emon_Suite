@@ -10,6 +10,9 @@
 #include <EmonEEPROM.h>
 
 #define GREEN_LED 9			// Green LED on emonTx
+#define HALL_EFFECT_PIN A0
+#define FLOW_INTERRUPT_PIN 3
+
 bool g_toggleLED = false;
 bool g_lastActivity = false;
 
@@ -39,7 +42,7 @@ volatile unsigned long	g_flowCount = 0;		//number of pulses in total since insta
 volatile unsigned long	g_lastTick = 0; 		//millis() value at last pulse
 volatile unsigned long	g_period = 0;				//ms between last two pulses
 
-RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, TESTING_MONITOR_GROUP, RF69_COMPAT };
 
 PayloadWater g_waterPayload;
 
@@ -53,7 +56,7 @@ unsigned long readEEPROM(int offset)
 
 	for (long l = 0; l < sizeof(unsigned long); l++)
 	{
-		*(pc + l) = EEPROM.read(EEPROM_BASE + offset + l);
+		*(pc + l) = EEPROM.read(EEPROM_BASE + offset*sizeof(unsigned long) + l);
 	}
 
 	return value;
@@ -65,7 +68,7 @@ void writeEEPROM(int offset, unsigned long value)
 
 	for (long l = 0; l < sizeof(unsigned long); l++)
 	{
-		EEPROM.write(EEPROM_BASE + offset + l, *(pc + l));
+		EEPROM.write(EEPROM_BASE + offset * sizeof(unsigned long) + l, *(pc + l));
 	}
 }
 
@@ -84,46 +87,13 @@ void interruptHandlerWaterFlow()
 	g_lastTick = tick;
 }
 
-unsigned short FlowRateInLitresPerMinute()
-{
-	unsigned long lastPeriod;
-	unsigned long thisPeriod;
-	unsigned long lastTick;
-	unsigned long tick = millis();
-	double periodfor1LitrePerMinute;	//ms petween puses that represent 1 litre/minute
-	double litresPerMinute;
 
-	uint8_t oldSREG = SREG;			// save interrupt register
-	cli();							// prevent interrupts while accessing the count	
-
-	lastPeriod = g_period;
-	lastTick = g_lastTick;
-
-	SREG = oldSREG;					// restore interrupts
-
-	if (tick < lastTick)
-		thisPeriod = tick + (lastTick - 0xFFFFFFFF);	//rollover occured
-	else
-		thisPeriod = tick - lastTick;
-
-	periodfor1LitrePerMinute = 1000.0 * 60.0 / PULSES_PER_LITRE;
-
-	if (thisPeriod < lastPeriod)
-		litresPerMinute = periodfor1LitrePerMinute / lastPeriod;		//report the watts for the last tick period
-	else if (thisPeriod >= TIMEOUT_PERIOD)
-		litresPerMinute = 0;									// report 0 instead of tappering off slowly towards 0 over time.
-	else
-		litresPerMinute = periodfor1LitrePerMinute / thisPeriod;		//report the litres as if the tick occured now 
-
-
-	return (unsigned short)litresPerMinute;
-}
 
 
 int ServiceHallEffectSensor(struct HallEffectStateType &state)
 {
 	int litresReturn = 0;
-	int value = analogRead(A0);
+	int value = analogRead(HALL_EFFECT_PIN);
 
 	//Calibration process
 	if (state.calibrationStep != eFinished)
@@ -273,52 +243,6 @@ int ServiceHallEffectSensor(struct HallEffectStateType &state)
 		}
 
 		state.lastSector = lThisSector;
-
-		//work out if we need to recalibrate the sensor. If the min or max is more than 10% of range outside of last calibration values
-		//if( litresReturn)
-		//	Serial.print((state.rising ? "^" : "|"));
-		//if (state.rising)
-		//{
-		//	//update rising/falling state
-		//	if (value >= state.maxValue)
-		//	{
-		//		state.maxValue = value;
-		//	}
-		//	else if (fabs(value - state.maxValue) > HALL_PEAK_THRESHOLD)		//changing from rising to falling
-		//	{
-		//		if (fabs(state.maxValue - state.maxCalibration) > (state.maxCalibration - state.minCalibration) /10)// no longer claibrated
-		//		{
-		//			state.calibrationStep = eStart;
-		//		}
-		//		else
-		//		{
-		//			state.rising = false;
-		//			state.maxValue = 0; //reset
-		//		}
-		//	}
-		//}
-		//else //falling
-		//{
-		//	//update rising/falling state
-		//	if (value <= state.minValue)
-		//	{
-		//		state.minValue = value;
-		//	}
-		//	else if (fabs(value - state.minValue) > HALL_PEAK_THRESHOLD)		//changing from falling to rising
-		//	{
-		//		if (fabs(state.minValue - state.minCalibration) > (state.maxCalibration - state.minCalibration) / 10)// no longer claibrated
-		//		{
-		//			state.calibrationStep = eStart;
-		//		}
-		//		else
-		//		{
-		//			state.rising = true;
-		//			state.minValue = 1024; //reset
-		//		}
-		//	}
-		//}
-		//if (litresReturn)
-		//	Serial.print((state.rising ? "^" : "|"));
 	}
 
 	if (state.calibrationStep != eFinished || litresReturn)
@@ -358,26 +282,47 @@ void setup()
 	g_waterPayload.subnode = eepromSettings.subnode;
 
 	//water flow rate setup
-	//writeEEPROM(0, 0);					//reset the flash
+	writeEEPROM(1, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
 	g_period = millis() - TIMEOUT_PERIOD;
-	g_waterPayload.flowRate = 0;
-	g_waterPayload.flowCount = g_flowCount;
-
+	g_waterPayload.numSensors = 2;
+	g_waterPayload.flowCount[0] = readEEPROM(0); 
+	g_flowCount = readEEPROM(1);
+	g_waterPayload.flowCount[1] = g_flowCount;
 
 	//Hall effect sensor AH3503
-	pinMode(A0, INPUT);
-	g_hallEffectState.calibrationStep = eStart;
-	g_hallEffectState.lastValue = analogRead(A0);
+	pinMode(HALL_EFFECT_PIN, INPUT);
+	
+	g_hallEffectState.minCalibration = 0;
+	g_hallEffectState.maxCalibration = 1024;
+	g_hallEffectState.calibrationStep = eFinished;
 
-//	pinMode(3, INPUT_PULLUP);
-//	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
+	//g_hallEffectState.calibrationStep = eStart;
+	g_hallEffectState.lastValue = analogRead(HALL_EFFECT_PIN);
+
+	pinMode(FLOW_INTERRUPT_PIN, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(FLOW_INTERRUPT_PIN), interruptHandlerWaterFlow, CHANGE);
 
 	delay(100);
 	
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
+
+long readVcc()
+{
+	long result;
+	// Read 1.1V reference against AVcc
+	ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+	delay(2); // Wait for Vref to settle
+	ADCSRA |= _BV(ADSC); // Convert
+	while (bit_is_set(ADCSRA, ADSC));
+	result = ADCL;
+	result |= ADCH << 8;
+	result = 1126400L / result; // Back-calculate AVcc in mV
+	return result;
+}
+
 
 //--------------------------------------------------------------------------------------------
 // Loop
@@ -390,20 +335,21 @@ void loop ()
 	}
 
 	int litres = ServiceHallEffectSensor(g_hallEffectState);
-	
-	g_flowCount += litres;
 
-	bool activity = ( litres != 0 );
+	bool activity = (litres != 0) || g_waterPayload.flowCount[1] != g_flowCount;
+
+	g_waterPayload.flowCount[0] += litres;
+	g_waterPayload.flowCount[1] = g_flowCount;
+	g_waterPayload.supplyV = readVcc();
+
 
 	if(activity)
 	{
 		digitalWrite(GREEN_LED, HIGH);
-		writeEEPROM(0, g_flowCount);
+		writeEEPROM(0, g_waterPayload.flowCount[0]);
+		writeEEPROM(1, g_waterPayload.flowCount[1]);
 	}
 
-	g_waterPayload.flowCount = g_flowCount;
-	g_waterPayload.flowRate = 0;// FlowRateInLitresPerMinute();
-	g_waterPayload.waterHeight = 0;
 
 	//don't transmit while calibrating
 	if (g_hallEffectState.calibrationStep == eFinished)
@@ -415,7 +361,9 @@ void loop ()
 			rf12_recvDone();
 		if (wait)
 		{
-			rf12_sendStart(0, &g_waterPayload, sizeof g_waterPayload);
+			PayloadWater packed;
+			int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
+			rf12_sendStart(0, &packed, size);
 			rf12_sendWait(0);
 			EmonSerial::PrintWaterPayload(&g_waterPayload);
 		}
