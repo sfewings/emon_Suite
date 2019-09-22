@@ -18,9 +18,9 @@ long g_lastScaleValue;
 long g_secondsSinceActivity;		//Increment for each time the weight is transmitted. When activity is encountered, this is reset to 0
 
 
-#define SCALE_FACTOR  19.55f
+//#define SCALE_FACTOR  19.55f    //calibration_factor = 19.55 for 4 load-cell 200kg rating
 
-Hx711 scale(A0, A1, SCALE_FACTOR); //calibration_factor = 19.55 for 4 load-cell 200kg rating
+Hx711 g_scale(A0, A1); 
 
 
 //--------------------------------------------------------------------------------------------------
@@ -46,6 +46,33 @@ long readVcc()
 	return result;
 }
 
+
+long readVcc_WhisperNode()
+{
+	//see https://bitbucket.org/talk2/whisper-node-avr/src/master/#markdown-header-buttons-and-leds
+	const uint8_t SAMPLES = 5;
+	const uint8_t MAX_VOLTAGE = 7282;
+	const uint8_t CONTROL_PIN = A0;
+	const uint8_t BAT_VOLTAGE_PIN = A6;
+
+	analogReference(INTERNAL);
+
+	// Turn on the MOSFET via control pin
+	pinMode(CONTROL_PIN, OUTPUT);
+	digitalWrite(CONTROL_PIN, HIGH);
+
+	// Read pin a couple of times and keep adding up.
+	uint16_t readings = 0;
+	for (uint8_t i = 0; i < SAMPLES; i++)
+	{
+		readings += analogRead(BAT_VOLTAGE_PIN);
+	}
+
+	// Turn off the MOSFET
+	digitalWrite(CONTROL_PIN, LOW);
+
+	return (MAX_VOLTAGE * (readings / SAMPLES) / 1023);
+}
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -61,8 +88,13 @@ void setup()
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	
 	g_scalePayload.subnode = eepromSettings.subnode;
-	
-	g_lastScaleValue = scale.getValue();
+	if (g_scalePayload.subnode == 0)
+		g_scale.setScale(19.55f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
+	else if(g_scalePayload.subnode == 1)
+		g_scale.setScale(415.43);		//calibration_factor = 415.43 for 5 kg load-cell rating
+
+
+	g_lastScaleValue = g_scale.getValue();
 	g_secondsSinceActivity = 0;
 
 	Serial.print("rf12_initialize:");
@@ -78,10 +110,11 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
-	if (abs(scale.getValue() - g_lastScaleValue) > 1000)
+	if (abs(g_scale.getValue() - g_lastScaleValue) > 1000)
 	{
 		g_secondsSinceActivity = 1;
-		g_lastScaleValue = scale.getValue();
+		g_lastScaleValue = g_scale.getValue();
+//		Serial.println(g_lastScaleValue);
 	}
 	else
 	{
@@ -98,8 +131,11 @@ void loop ()
 
 	if((g_secondsSinceActivity > 30 && g_secondsSinceActivity <=35) || g_secondsSinceActivity%600 == 0)	//transmit for the 5 seconds, 30 seconds after activity finishes. Then every 10 minutes.
 	{
-		g_scalePayload.grams = (long)scale.getGram();
-		g_scalePayload.supplyV = readVcc();
+		g_scalePayload.grams = (long)g_scale.getGram();
+		if (g_scalePayload.subnode == 0)
+			g_scalePayload.supplyV = readVcc();
+		else if (g_scalePayload.subnode == 1)
+			g_scalePayload.supplyV = readVcc(); // readVcc_WhisperNode();
 
 		rf12_sleep(RF12_WAKEUP);
 		int wait = 1000;
