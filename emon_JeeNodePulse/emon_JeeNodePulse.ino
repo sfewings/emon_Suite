@@ -1,6 +1,10 @@
 //--------------------------------------------------------------------------------------
 //Interrupt pulse counting on 4 input pins of a Jeenode
 
+
+#define RF69_COMPAT 1
+
+#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <Ports.h>
 #include <RF12.h>
 #include <avr/eeprom.h>
@@ -17,7 +21,7 @@
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
 
-RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, TESTING_MONITOR_GROUP };
 
 volatile unsigned long 	g_pulseCount[NUM_PINS]	= { 0,0,0,0 };	//pulses since recording started
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
@@ -123,7 +127,7 @@ void setup()
 	delay(10);
 
 	// RFM12B Initialize
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);	 
+	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);	 
 	EmonSerial::PrintRF12Init(rf12Init);
 	
 	delay(20);
@@ -134,10 +138,11 @@ void setup()
 		Serial.end();
 	}
 
-//for reset to 0.	for (int i = 0; i < NUM_PINS; i++)
-	//{
-	//	writeEEPROM(i * sizeof(unsigned long), 0);
-	//}
+//for reset to 0.	
+//	for (int i = 0; i < NUM_PINS; i++)
+//	{
+//		writeEEPROM(i * sizeof(unsigned long), 0);
+//	}
 
 	//initialise
 	for (int i = 0; i < NUM_PINS; i++)
