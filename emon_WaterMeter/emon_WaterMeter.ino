@@ -12,15 +12,14 @@
 #define GREEN_LED 9			// Green LED on emonTx
 #define HALL_EFFECT_PIN A0
 #define FLOW_INTERRUPT_PIN 3
+#define EEPROM_BASE 0x10	//where the water count is stored
+#define HALL_PEAK_THRESHOLD 3	//the minimum change in reading required to signal a change from rising to falling
 
 bool g_toggleLED = false;
 bool g_lastActivity = false;
 
-#define EEPROM_BASE 0x10	//where the water count is stored
-
-#define TIMEOUT_PERIOD 2000		//10 seconds in ms. don't report litres/min if no tick recieved in this period
-#define PULSES_PER_LITRE  1000
-#define HALL_PEAK_THRESHOLD 3	//the minimum change in reading required to signal a change from rising to falling
+//currently hard-coded flowCount[0] is water metre on hall effect A0 pin, flowCount[1] is bore pulse 
+const double PulsePerDeciLitre[2] = { 0.1, 26.0 };
 
 enum calibrationStep { eStart, eWaitingForPeak, eFirstPass, eSecondPass, eCalculate, eFinished };
 
@@ -37,12 +36,9 @@ typedef struct HallEffectStateType
 
 HallEffectStateType g_hallEffectState;
 
-
 volatile unsigned long	g_flowCount = 0;		//number of pulses in total since installation
-volatile unsigned long	g_lastTick = 0; 		//millis() value at last pulse
-volatile unsigned long	g_period = 0;				//ms between last two pulses
 
-RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, TESTING_MONITOR_GROUP, RF69_COMPAT };
+RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 PayloadWater g_waterPayload;
 
@@ -79,12 +75,6 @@ void interruptHandlerWaterFlow()
 	g_toggleLED = !g_toggleLED;
 
 	g_flowCount++;								//Update number of pulses, 1 pulse = 1 watt
-	unsigned long tick = millis();
-	if (tick < g_lastTick)
-		g_period = tick + (g_lastTick - 0xFFFFFFFF);	//rollover occured
-	else
-		g_period = tick - g_lastTick;
-	g_lastTick = tick;
 }
 
 
@@ -282,23 +272,21 @@ void setup()
 	g_waterPayload.subnode = eepromSettings.subnode;
 
 	//water flow rate setup
-	writeEEPROM(1, 0);					//reset the flash
-	g_flowCount = readEEPROM(0);	//read last reading from flash
+	//writeEEPROM(1, 0);					//reset the flash
 
-	g_period = millis() - TIMEOUT_PERIOD;
 	g_waterPayload.numSensors = 2;
 	g_waterPayload.flowCount[0] = readEEPROM(0); 
 	g_flowCount = readEEPROM(1);
-	g_waterPayload.flowCount[1] = g_flowCount;
+	g_waterPayload.flowCount[1] = (unsigned long)((double)g_flowCount / PulsePerDeciLitre[1]);
 
 	//Hall effect sensor AH3503
 	pinMode(HALL_EFFECT_PIN, INPUT);
 	
-	g_hallEffectState.minCalibration = 0;
-	g_hallEffectState.maxCalibration = 1024;
-	g_hallEffectState.calibrationStep = eFinished;
+	//g_hallEffectState.minCalibration = 0;
+	//g_hallEffectState.maxCalibration = 1024;
+	//g_hallEffectState.calibrationStep = eFinished;
 
-	//g_hallEffectState.calibrationStep = eStart;
+	g_hallEffectState.calibrationStep = eStart;
 	g_hallEffectState.lastValue = analogRead(HALL_EFFECT_PIN);
 
 	pinMode(FLOW_INTERRUPT_PIN, INPUT_PULLUP);
@@ -336,10 +324,10 @@ void loop ()
 
 	int litres = ServiceHallEffectSensor(g_hallEffectState);
 
-	bool activity = (litres != 0) || g_waterPayload.flowCount[1] != g_flowCount;
+	bool activity = (litres != 0) || g_waterPayload.flowCount[1] != (unsigned long)((double)g_flowCount / PulsePerDeciLitre[1]);
 
-	g_waterPayload.flowCount[0] += litres;
-	g_waterPayload.flowCount[1] = g_flowCount;
+	g_waterPayload.flowCount[0] += (unsigned long) ((double)litres/ PulsePerDeciLitre[0]);
+	g_waterPayload.flowCount[1] = (unsigned long)((double)g_flowCount/ PulsePerDeciLitre[1]);
 	g_waterPayload.supplyV = readVcc();
 
 
@@ -347,7 +335,7 @@ void loop ()
 	{
 		digitalWrite(GREEN_LED, HIGH);
 		writeEEPROM(0, g_waterPayload.flowCount[0]);
-		writeEEPROM(1, g_waterPayload.flowCount[1]);
+		writeEEPROM(1, g_flowCount);
 	}
 
 

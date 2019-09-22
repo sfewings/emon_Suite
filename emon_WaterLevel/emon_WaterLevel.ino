@@ -14,24 +14,6 @@
 #define GREEN_LED 9			// Green LED on emonTx
 bool g_toggleLED = false;
 
-#define ENABLE_LCD 0
-#if ENABLE_LCD
-#include <PortsLCD.h>
-
-LiquidCrystal lcd(A2, 4, 8, 7, 6, 5);
-
-static void lcdSerialReading(uint32_t reading)
-{
-	lcd.setCursor(0, 1);
-	for (int i = 3; i >= 0; i--)
-	{
-		lcd.print((reading >> (8 * i)) & 0xFF);
-		if (i)
-			lcd.print(",");
-	}
-}
-
-#endif
 
 SoftwareSerial g_sensorSerial(A1, A0);	//A1=rx, A0=tx
 
@@ -39,12 +21,11 @@ SoftwareSerial g_sensorSerial(A1, A0);	//A1=rx, A0=tx
 // If your sensor is connected to Serial, Serial1, Serial2, AltSoftSerial, etc. pass that object to the sensor constructor.
 DS1603L g_waterHeightSensor(g_sensorSerial);
 
-#define EEPROM_BASE 0x10	//where the water count is stored
+#define EEPROM_BASE 0x10			//where the water count is stored
 #define TIMEOUT_PERIOD 2000		//10 seconds in ms. don't report litres/min if no tick recieved in this period
-#define PULSES_PER_LITRE  1000
+#define PULSES_PER_DECILITRE  100
 
 volatile unsigned long	g_flowCount = 0;		//number of pulses in total since installation
-volatile unsigned long	g_lastTick = 0; 		//millis() value at last pulse
 volatile unsigned long	g_period = 0;				//ms between last two pulses
 
 RF12Init g_rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
@@ -82,47 +63,6 @@ void interruptHandlerWaterFlow()
 	g_toggleLED = !g_toggleLED;
 
 	g_flowCount++;								//Update number of pulses, 1 pulse = 1 watt
-	unsigned long tick = millis();
-	if (tick < g_lastTick)
-		g_period = tick + (g_lastTick - 0xFFFFFFFF);	//rollover occured
-	else
-		g_period = tick - g_lastTick;
-	g_lastTick = tick;
-}
-
-unsigned short FlowRateInLitresPerMinute()
-{
-	unsigned long lastPeriod;
-	unsigned long thisPeriod;
-	unsigned long lastTick;
-	unsigned long tick = millis();
-	double periodfor1LitrePerMinute;	//ms petween puses that represent 1 litre/minute
-	double litresPerMinute;
-
-	uint8_t oldSREG = SREG;			// save interrupt register
-	cli();							// prevent interrupts while accessing the count	
-
-	lastPeriod = g_period;
-	lastTick = g_lastTick;
-
-	SREG = oldSREG;					// restore interrupts
-
-	if (tick < lastTick)
-		thisPeriod = tick + (lastTick - 0xFFFFFFFF);	//rollover occured
-	else
-		thisPeriod = tick - lastTick;
-
-	periodfor1LitrePerMinute = 1000.0 * 60.0 / PULSES_PER_LITRE;
-
-	if (thisPeriod < lastPeriod)
-		litresPerMinute = periodfor1LitrePerMinute / lastPeriod;		//report the watts for the last tick period
-	else if (thisPeriod >= TIMEOUT_PERIOD)
-		litresPerMinute = 0;									// report 0 instead of tappering off slowly towards 0 over time.
-	else
-		litresPerMinute = periodfor1LitrePerMinute / thisPeriod;		//report the litres as if the tick occured now 
-
-
-	return (unsigned short)litresPerMinute;
 }
 
 
@@ -135,17 +75,6 @@ void setup()
 	digitalWrite(GREEN_LED, HIGH);		//LED has inverted logic. LOW is on, HIGH is off!
 
 	Serial.begin(9600);
-
-#if ENABLE_LCD
-	lcd.begin(16, 2);
-	lcd.setCursor(0, 0);
-
-	lcd.print(F("Water sensor"));
-	lcd.setCursor(0, 1);
-	lcd.print(F("Monitor 3.0"));
-	delay(1000);
-	lcd.clear();
-#endif
 
 	Serial.println(F("Water sensor start"));
 
@@ -170,10 +99,9 @@ void setup()
 	//writeEEPROM(0, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
-	g_period = millis() - TIMEOUT_PERIOD;
 	//g_waterPayload.flowRate = 0;
 	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
-	g_waterPayload.flowCount[0] = g_flowCount;
+	g_waterPayload.flowCount[0] = (unsigned long) ( g_flowCount/PULSES_PER_DECILITRE);
 
 	pinMode(3, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
@@ -190,7 +118,7 @@ void loop ()
 {
 	char s[16];
 
-	unsigned long flowCount = g_flowCount;
+	unsigned long flowCount = (unsigned long)(g_flowCount / PULSES_PER_DECILITRE);
 	uint16_t	waterHeight = g_waterHeightSensor.readSensor();
 
 	bool activity = ( g_waterPayload.flowCount[0]   != flowCount || 
@@ -198,11 +126,10 @@ void loop ()
 
 	if(activity)
 	{
-		writeEEPROM(0, flowCount);
+		writeEEPROM(0, g_flowCount);
 	}
 
 	g_waterPayload.flowCount[0] = flowCount;
-	//g_waterPayload.flowRate = FlowRateInLitresPerMinute();
 	g_waterPayload.waterHeight[0] = waterHeight;
 
 	switch (g_waterHeightSensor.getStatus())
@@ -221,19 +148,6 @@ void loop ()
 	}
 		
 	Serial.println(s);
-
-#if ENABLE_LCD
-	//toggle a "*" every read
-	static bool toggle = true;
-	lcd.setCursor(15, 1);
-	lcd.print((toggle = !toggle) ? "*" : " ");
-
-	lcd.setCursor(0, 0);
-	lcd.print(s);
-	lcd.setCursor(0, 1);
-	lcdSerialReading(waterHeightSensor.SerialData());
-	activity = true;	//loop every second
-#endif
 
 	rf12_sleep(RF12_WAKEUP);
 

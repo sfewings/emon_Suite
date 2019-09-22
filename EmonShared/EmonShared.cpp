@@ -2,6 +2,7 @@
 #ifdef __linux__
 	#include <cstring>
 	#include <cstdlib>
+	#include <stddef.h>	 //offsetof()
 #endif
 
 char tok[] = ":, | \r\r&";  //tokens used to separate 
@@ -604,6 +605,7 @@ int EmonSerial::ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS)
 
 int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 {
+	int returnVal = 0;
 	memset(pPayloadWater, 0, sizeof(PayloadWater));
 
 	char* pch = strtok(str, tok);
@@ -624,6 +626,7 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 				return 0;
 			//pPayloadWater->sensorReading = pPayloadWater->sensorReading << 8 & (byte)atoi(pch);
 		}
+		returnVal = 1;
 	}
 	else if (0 == strcmp(pch, "wtr1") || 0 == strcmp(pch, "wtr2"))
 	{
@@ -650,6 +653,7 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 		{
 			ParseRelay(pPayloadWater, pch);
 		}
+		returnVal = 2;
 	}
 	else if (0 == strcmp(pch, "wtr3"))
 	{
@@ -669,11 +673,10 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 			if (NULL == (pch = strtok(NULL, tok)))	return 0;
 			pPayloadWater->waterHeight[i] = atoi(pch);
 		}
+		returnVal = 3;
 	}
-	else
-		return 0; //couldn't find wtr, wtr1 or wtr2
 	
-	return 1;
+	return returnVal;
 }
 
 int EmonSerial::ParseScalePayload(char* str, PayloadScale* pPayloadScale)

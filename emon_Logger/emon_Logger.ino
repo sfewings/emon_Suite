@@ -3,7 +3,7 @@
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include <Time.h>
-#define RF69_COMPAT 1
+#define RF69_COMPAT 0
 
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
@@ -11,7 +11,7 @@
 #include <SD.h>
 #include <TimeLib.h>
 
-#define RTC_LIB
+#undef RTC_LIB
 
 #ifdef RTC_LIB
 #include <Wire.h>
@@ -24,7 +24,7 @@ const int GREEN_LED = 5;
 
 byte  currentDay = 0;
 
-RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, TESTING_MONITOR_GROUP };
+RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 #define MAX_FILENAME_LEN 15
 #define DATETIME_LEN 24
@@ -237,7 +237,15 @@ void loop ()
 
 			if (node_id == WATERLEVEL_NODE)
 			{
-				PRINT_AND_LOG(Water, Payload);
+				PayloadWater* pPayload = (PayloadWater*)rf12_data;
+				EmonSerial::UnpackWaterPayload((byte*) pPayload, pPayload);
+				EmonSerial::PrintWaterPayload(pPayload);
+				if(file) 
+				{
+					digitalWrite(GREEN_LED, HIGH);
+					file.print(dateTime);
+					EmonSerial::PrintWaterPayload(file, pPayload);
+				}
 			}
 
 			if (node_id == SCALE_NODE)

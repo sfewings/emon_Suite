@@ -190,21 +190,24 @@ bool PayloadFactory::PublishPayload(char* s)
 
 			char buf[100];
 			char topic[100];
-
-			sprintf(topic, "water/height/%d", water->subnode);
-			sprintf(buf, "%d", water->waterHeight);
-			m_MQTTClient.Publish(topic, buf);
-			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
-
-			sprintf(topic, "water/flowCount/%d", water->subnode);
-			sprintf(buf, "%d", water->flowCount);
-			m_MQTTClient.Publish(topic, buf);
-			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			for(int i=0; i<((water->numSensors & 0xF0)>>4);i++ )
+			{
+				sprintf(topic, "water/height/%d/%d", water->subnode,i);
+				sprintf(buf, "%d", water->waterHeight[i]);
+				m_MQTTClient.Publish(topic, buf);
+				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			}
+			for(int i=0; i<(water->numSensors & 0xF);i++ )
+			{
+				sprintf(topic, "water/flowCount/%d/%d", water->subnode,i);
+				sprintf(buf, "%d", water->flowCount[i]);
+				m_MQTTClient.Publish(topic, buf);
+				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			}
 			
-			sprintf(topic, "water/flowRate/%d", water->subnode);
-			sprintf(buf, "%d", water->flowRate);
+			sprintf(topic, "supplyV/water/%d", water->subnode);
+			sprintf(buf, "%d", water->supplyV);
 			m_MQTTClient.Publish(topic, buf);
-			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}
 	}
 	
@@ -213,8 +216,6 @@ bool PayloadFactory::PublishPayload(char* s)
 		char topic[10] = { "EmonLog" };
 
 		m_MQTTClient.Publish(topic ,(char*) copyOfPayload.c_str());
-
-
 	}
 
 	return parsed;

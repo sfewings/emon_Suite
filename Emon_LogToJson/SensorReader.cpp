@@ -277,19 +277,33 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		case WATERLEVEL_NODE:
 		{
 			std::string sensor[2][2] = {
-				{"Rain water tank", "Hot water"},
-				{"unused", "Mains water"}
+				{"Hot water", "unused"},
+				{"Mains water", "Bore"}
 			};
 			unsigned long scaleFactor[2] = { 1000, 1 };	//The hot water is 1000 pulse/litre while mains meter is 1ppl
-		PayloadWater water;
-			if (EmonSerial::ParseWaterPayload((char*)reading.c_str(), &water))
+			PayloadWater water;
+			int version = EmonSerial::ParseWaterPayload((char*)reading.c_str(), &water);
+			if (version)
 			{
 				if (water.subnode < 2)
 				{
-					if (water.waterHeight < 2200 && water.waterHeight > 0) //waterHeight == 0 is no sensor connected.
-						m_water.Add(sensor[water.subnode][0], time, water.waterHeight);
-					if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))) //didn't log correctly until 24Jul2019
-						m_waterUsage.Add(sensor[water.subnode][1], time, water.flowCount / scaleFactor[water.subnode]);
+					for(int i=0; i<((water.numSensors&0xF0)>>4);i++)
+					{
+						if (water.waterHeight[i] < 2200 && water.waterHeight[i] > 0) //waterHeight == 0 is no sensor connected.
+							m_water.Add("Rain water tank", time, water.waterHeight[i]);
+					}
+					for(int i=0; i<(water.numSensors & 0xF);i++)
+					{
+						if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))) //didn't log correctly until 24Jul2019
+						{
+							if( version < 3)
+								m_waterUsage.Add(sensor[water.subnode][i], time, water.flowCount[i] / scaleFactor[water.subnode]);
+							else
+								m_waterUsage.Add(sensor[water.subnode][i], time, water.flowCount[i] / 10);	//version 3 standardised all water flows to decilitres
+						}
+					}
+					if (water.supplyV / 1000.0 < 5)
+						m_supplyV.Add("w" + std::to_string(water.subnode), time, water.supplyV / 1000.0);
 				}
 			}
 			break;
@@ -297,11 +311,11 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		case SCALE_NODE:
 		{
 			PayloadScale scale;
-			std::string sensor[2] = { "Dog food", "unused" };
+			std::string sensor[5] = { "Dog food", "Compost", "Rubish", "Recycle", "Greenwaste" };
 
 			if (EmonSerial::ParseScalePayload((char*)reading.c_str(), &scale))
 			{
-				if (scale.subnode < 2)
+				if (scale.subnode < 5)
 				{
 					m_scale.Add(sensor[scale.subnode], time, scale.grams);
 					if (scale.supplyV / 1000.0 < 5)

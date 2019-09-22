@@ -1,8 +1,8 @@
 1. 	Install node-red, nginx, 
 2. 	Build paho_mqtt_c and paho.mqtt.cpp
 	
-3.	Build /share/Emon_LogToJson using /bin/sh /share/Emon_LogToJson.sh
-4.	Build /share/Emon_SerialToMQTT using /bin/sh /share/Emon_SerialToMQTT.sh
+3.	Build /share/Emon_LogToJson using /bin/sh GCC_Build.txt.sh from inside path /share/Emon_LogToJson/
+4.	Build /share/Emon_SerialToMQTT using /bin/sh GCC_Build.txt.sh in folder /share/Emon_SerialToMQTT/
 	
 
 1.	Enable Emon_LogToJson and Emon_SerialToMQTT

@@ -2,12 +2,14 @@
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
+#define RF69_COMPAT 0
+
 
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <EmonShared.h>
 
-const int GREEN_LED = 9;
+const int GREEN_LED = 9;  //Pin 9 on the Emon node.
 
 RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
@@ -94,7 +96,9 @@ void loop ()
 			}
 			if (node_id == WATERLEVEL_NODE)
 			{
-				SERIAL_OUT(Water, Payload);
+				PayloadWater* pPayload = (PayloadWater*)rf12_data;
+				EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
+				EmonSerial::PrintWaterPayload(pPayload);
 			}
 			if (node_id == SCALE_NODE)
 			{
