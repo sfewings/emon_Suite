@@ -3,7 +3,7 @@
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include <Time.h>
-#define RF69_COMPAT 0
+#define RF69_COMPAT 1
 
 //JeeLab libraires				http://github.com/jcw
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
@@ -11,7 +11,7 @@
 #include <SD.h>
 #include <TimeLib.h>
 
-#undef RTC_LIB
+#define RTC_LIB
 
 #ifdef RTC_LIB
 #include <Wire.h>
@@ -24,7 +24,7 @@ const int GREEN_LED = 5;
 
 byte  currentDay = 0;
 
-RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, TESTING_MONITOR_GROUP, RF69_COMPAT };
 
 #define MAX_FILENAME_LEN 15
 #define DATETIME_LEN 24

@@ -21,7 +21,7 @@
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
 
-RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, TESTING_MONITOR_GROUP };
+RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, TESTING_MONITOR_GROUP, RF69_COMPAT };
 
 volatile unsigned long 	g_pulseCount[NUM_PINS]	= { 0,0,0,0 };	//pulses since recording started
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
