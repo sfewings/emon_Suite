@@ -342,7 +342,7 @@ void setup()
 
 	for (int i = 0; i<MAX_SUBNODES; i++)
 	{
-		waterPayload[i].flowCount = waterStartOfToday[i] = 0;
+		waterPayload[i].flowCount[0] = waterStartOfToday[i] = 0;
 	}
 
 	lastUpdateTime = now();
@@ -502,7 +502,7 @@ void loop ()
 
 				if (waterStartOfToday[subnode] == 0)
 				{
-					waterStartOfToday[subnode] = waterPayload[subnode].flowCount;
+					waterStartOfToday[subnode] = waterPayload[subnode].flowCount[0];
 				}
 
 
@@ -672,8 +672,10 @@ void loop ()
 					usageHistory.resetValue(eDay, currentDay);
 
 					//reset daily hotwater usage
-					for(int i =0; i<MAX_SUBNODES;i++)
-						waterStartOfToday[i] = waterPayload[i].flowCount;
+					for (int i = 0; i < MAX_SUBNODES; i++)
+					{
+						waterStartOfToday[i] = waterPayload[i].flowCount[0];
+					}
 				}
 
 				currentHour = hour();
@@ -866,7 +868,7 @@ void loop ()
 			{
 				lcd.setCursor(0, 0);
 				lcd.print(F("Wtr Mtr:"));
-				lcdUint(9, 0, ((unsigned int)((waterPayload[1].flowCount - waterStartOfToday[1]))));
+				lcdUint(9, 0, ((unsigned int)((waterPayload[1].flowCount[0] - waterStartOfToday[1]))));
 				lcd.print(" l");
 				break;
 			}
@@ -875,11 +877,11 @@ void loop ()
 				lcd.setCursor(0, 0);
 				lcd.print(F("Rain Wtr:"));
 				lcd.setCursor(9, 0);
-				lcd.print(waterPayload[0].waterHeight);
+				lcd.print(waterPayload[0].waterHeight[0]);
 				lcd.print(" mm");
 				lcd.setCursor(0, 1);
 				lcd.print(F("Day hot:"));
-				lcdUint(9, 1, ((unsigned int)((waterPayload[0].flowCount - waterStartOfToday[0])/1000)));
+				lcdUint(9, 1, ((unsigned int)((waterPayload[0].flowCount[0] - waterStartOfToday[0])/1000)));
 				lcd.print(" l");
 				break;
 			}
