@@ -5,7 +5,7 @@
 #define RF69_COMPAT 1
 
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <eeprom.h>
+#include <EEPROM.h>
 #include <DS1603L.h>
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
@@ -156,8 +156,12 @@ void loop ()
 		rf12_recvDone();
 	if (wait)
 	{
-		rf12_sendStart(0, &g_waterPayload, sizeof g_waterPayload);
-		rf12_sendWait(0);
+    PayloadWater packed;
+    int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
+    rf12_sendStart(0, &packed, size);
+    rf12_sendWait(0);
+    memset(&g_waterPayload, 0, sizeof(g_waterPayload));
+    EmonSerial::UnpackWaterPayload((byte*) &packed, &g_waterPayload);
 		EmonSerial::PrintWaterPayload(&g_waterPayload);
 	}
 	else
