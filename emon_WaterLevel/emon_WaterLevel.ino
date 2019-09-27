@@ -2,7 +2,7 @@
 // emon WaterLevel
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-#define RF69_COMPAT 1
+#define RF69_COMPAT 0
 
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <eeprom.h>
@@ -14,7 +14,7 @@
 #define GREEN_LED 9			// Green LED on emonTx
 bool g_toggleLED = false;
 
-#define ENABLE_LCD 0
+#define ENABLE_LCD 1
 #if ENABLE_LCD
 #include <PortsLCD.h>
 
@@ -230,26 +230,26 @@ void loop ()
 	lcd.setCursor(0, 0);
 	lcd.print(s);
 	lcd.setCursor(0, 1);
-	lcdSerialReading(waterHeightSensor.SerialData());
+	lcdSerialReading(g_waterHeightSensor.SerialData());
 	activity = true;	//loop every second
 #endif
 
-	rf12_sleep(RF12_WAKEUP);
+	//rf12_sleep(RF12_WAKEUP);
 
-	int wait = 1000;
-	while (!rf12_canSend() && wait--)
-		rf12_recvDone();
-	if (wait)
-	{
-		rf12_sendStart(0, &g_waterPayload, sizeof g_waterPayload);
-		rf12_sendWait(0);
-		EmonSerial::PrintWaterPayload(&g_waterPayload);
-	}
-	else
-	{
-		Serial.println(F("RF12 waiting. No packet sent"));
-	}
-	rf12_sleep(RF12_SLEEP);
+	//int wait = 1000;
+	//while (!rf12_canSend() && wait--)
+	//	rf12_recvDone();
+	//if (wait)
+	//{
+	//	rf12_sendStart(0, &g_waterPayload, sizeof g_waterPayload);
+	//	rf12_sendWait(0);
+	//	EmonSerial::PrintWaterPayload(&g_waterPayload);
+	//}
+	//else
+	//{
+	//	Serial.println(F("RF12 waiting. No packet sent"));
+	//}
+	//rf12_sleep(RF12_SLEEP);
 
 	if (activity || g_previousActivity)
 		delay(1000);
