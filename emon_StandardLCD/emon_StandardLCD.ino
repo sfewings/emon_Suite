@@ -491,6 +491,7 @@ void loop ()
 			if (node_id == WATERLEVEL_NODE)
 			{
 				PayloadWater wpl = *(PayloadWater*)rf12_data;							// get emontx payload data
+				EmonSerial::UnpackWaterPayload((byte*)&wpl, &wpl);				// we are able to unpack this into the same structure!
 				byte subnode = wpl.subnode;
 				if (subnode >= MAX_SUBNODES)
 				{
