@@ -220,13 +220,16 @@ void loop()
 
 	EmonSerial::PrintTemperaturePayload(&temperaturePayload);
 	
-	delay(200);	//time for the serial buffer to empty
-
 	//turn the led on pin 5 (port 2) on for 1ms
 	pinMode(9, OUTPUT);
 	digitalWrite(9, 1);
 	delay(1);
 	digitalWrite(9, 0);
+
+	//see http://www.gammon.com.au/forum/?id=11428
+	while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
+		UCSR0A |= 1 << TXC0;  // mark transmission not complete
+	while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 
 	Sleepy::loseSomeTime(sleepDelay);
 }
@@ -253,7 +256,7 @@ long readVcc_WhisperNode()
 {
 	//see https://bitbucket.org/talk2/whisper-node-avr/src/master/#markdown-header-buttons-and-leds
 	const uint8_t SAMPLES = 5;
-	const uint8_t MAX_VOLTAGE = 7282;
+	const uint32_t MAX_VOLTAGE = 7282;
 	const uint8_t CONTROL_PIN = A0;
 	const uint8_t BAT_VOLTAGE_PIN = A6;
 
@@ -264,7 +267,7 @@ long readVcc_WhisperNode()
 	digitalWrite(CONTROL_PIN, HIGH);
 
 	// Read pin a couple of times and keep adding up.
-	uint16_t readings = 0;
+	uint32_t readings = 0;
 	for (uint8_t i = 0; i < SAMPLES; i++)
 	{
 		readings += analogRead(BAT_VOLTAGE_PIN);
