@@ -15,7 +15,7 @@
 #define EEPROM_BASE 0x10	//where the water count is stored
 #define HALL_PEAK_THRESHOLD 3	//the minimum change in reading required to signal a change from rising to falling
 
-bool g_toggleLED = false;
+//bool g_toggleLED = false;
 bool g_lastActivity = false;
 
 //currently hard-coded flowCount[0] is water metre on hall effect A0 pin, flowCount[1] is bore pulse 
@@ -71,8 +71,8 @@ void writeEEPROM(int offset, unsigned long value)
 
 void interruptHandlerWaterFlow()
 {
-	digitalWrite(GREEN_LED, g_toggleLED?HIGH:LOW);		//LED has inverted logic. LOW is on, HIGH is off!
-	g_toggleLED = !g_toggleLED;
+	//digitalWrite(GREEN_LED, g_toggleLED?HIGH:LOW);		//LED has inverted logic. LOW is on, HIGH is off!
+	//g_toggleLED = !g_toggleLED;
 
 	g_flowCount++;								//Update number of pulses, 1 pulse = 1 watt
 }
@@ -324,10 +324,15 @@ void loop ()
 
 	int litres = ServiceHallEffectSensor(g_hallEffectState);
 
-	bool activity = (litres != 0) || g_waterPayload.flowCount[1] != (unsigned long)((double)g_flowCount / PulsePerDeciLitre[1]);
+	uint8_t oldSREG = SREG;			// save interrupt register
+	cli();											// prevent interrupts while accessing the count	
+	unsigned long boreFlowCount = g_flowCount;
+	SREG = oldSREG;							// restore interrupts
+
+	bool activity = (litres != 0) || g_waterPayload.flowCount[1] != (unsigned long)((double)boreFlowCount / PulsePerDeciLitre[1]);
 
 	g_waterPayload.flowCount[0] += (unsigned long) ((double)litres/ PulsePerDeciLitre[0]);
-	g_waterPayload.flowCount[1] = (unsigned long)((double)g_flowCount/ PulsePerDeciLitre[1]);
+	g_waterPayload.flowCount[1] = (unsigned long)((double)boreFlowCount/ PulsePerDeciLitre[1]);
 	g_waterPayload.supplyV = readVcc();
 
 
@@ -335,9 +340,10 @@ void loop ()
 	{
 		digitalWrite(GREEN_LED, HIGH);
 		writeEEPROM(0, g_waterPayload.flowCount[0]);
-		writeEEPROM(1, g_flowCount);
+		writeEEPROM(1, boreFlowCount);
 	}
 
+	digitalWrite(GREEN_LED, LOW);
 
 	//don't transmit while calibrating
 	if (g_hallEffectState.calibrationStep == eFinished)
@@ -362,7 +368,6 @@ void loop ()
 		rf12_sleep(RF12_SLEEP);
 	}
 
-	digitalWrite(GREEN_LED, LOW);
 	
 	//see http://www.gammon.com.au/forum/?id=11428
 	while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
@@ -370,17 +375,22 @@ void loop ()
 	while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 
 
-
+	byte wakeNormally = 1;		//1 if woken by an interrupt rather than the sleep whatchdog timer
 	if (g_hallEffectState.calibrationStep != eFinished)
-		Sleepy::loseSomeTime(100);
+	{
+		wakeNormally = Sleepy::loseSomeTime(100);
+	}
 	else if (activity || g_lastActivity)
 	{
-		Sleepy::loseSomeTime(2000);
+		wakeNormally = Sleepy::loseSomeTime(2000);
 	}
 	else
 	{
-		Sleepy::loseSomeTime(10000);		//10 seconds. If water flows faster than 54l/min then we have a problem! 
+		wakeNormally = Sleepy::loseSomeTime(10000);		//10 seconds. If water flows faster than 54l/min then we have a problem! 
 	}
-
+	if (!wakeNormally)
+	{
+		delay(2000);		//teh bore sensor is interrupting. Just wait out 2 seconds of normal processor operation rather than mcu sleep
+	}
 	g_lastActivity = activity;
 }
