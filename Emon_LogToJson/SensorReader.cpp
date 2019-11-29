@@ -181,23 +181,11 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			if (EmonSerial::ParsePulsePayload((char*)reading.c_str(), &pulse))
 			{
 				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported" };
-				//if( time.tm_yday <180)
-				//{
-					for (int i = 0; i< PULSE_NUM_PINS; i++)
-					{
-							m_power.Add(sensor[i], time, pulse.power[i]);
-					}
-					if(pulse.power[1] > pulse.power[2])
-					m_power.Add("Exported", time, pulse.power[1] - pulse.power[2] );
-				//}
-				//else
-				//{
-				//	m_power.ResetReadingDataType(eReading, eCounterPeriod, eCounterPeriod);
-					//for (int i = 0; i < PULSE_NUM_PINS; i++)
-					//{
-					//	m_power.Add(sensor[i], time, pulse.pulse[i]);
-					//}
-				//}
+				for (int i = 0; i< PULSE_NUM_PINS; i++)
+				{
+						m_power.Add(sensor[i], time, pulse.power[i]);
+				}
+				m_power.Add("Exported", time, ((pulse.power[1] > pulse.power[2]) ? (pulse.power[1] - pulse.power[2]): 0.0));
 			}
 		break;
 		}
@@ -294,7 +282,8 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 					}
 					for(int i=0; i<(water.numSensors & 0xF);i++)
 					{
-						if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))) //didn't log correctly until 24Jul2019
+						if (water.flowCount != 0 && (time.tm_year > 119 || (time.tm_year >= 119 && time.tm_yday > 205))  //didn't log correctly until 24Jul2019
+							|| (water.subnode == 1 && i == 1 && time.tm_year == 119 && time.tm_yday > 283)) //bore didn't read correctly until 10Oct2019
 						{
 							if( version < 3)
 								m_waterUsage.Add(sensor[water.subnode][i], time, water.flowCount[i] / scaleFactor[water.subnode]);

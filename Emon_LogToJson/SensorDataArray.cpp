@@ -54,7 +54,8 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 		{
 			m_startCount[name] = (long)data;
 		}
-		m_sensorData[name][index] = data - m_startCount[name];
+		if(data >= m_startCount[name] )	//can't go backwards!
+			m_sensorData[name][index] = data - m_startCount[name];
 		break;
 	case eCounterPeriod:
 		if (m_lastIndex.find(name) == m_lastIndex.end())

@@ -102,7 +102,7 @@ std::vector<std::string> getPaths(std::string rootPath)
 {
 	 std::vector<std::string> paths;
 	std::string ext(".TXT");
-	for (auto& p : fs::recursive_directory_iterator(rootPath) )
+	for (auto& p : fs::directory_iterator(rootPath) )
 	{
 		if (p.path().extension() == ext)
 			paths.push_back( p.path().string() );
