@@ -93,16 +93,21 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 template<std::size_t F>
 inline int BaseDataArray<F>::SaveToFile(std::string path)
 {
-	char buf[2048];
+	bool jsonOk = false;
+	bool textOk = false;
 
-	sprintf(buf, "%s.json", path.c_str());
-	std::string jsonPath = buf;
-	bool jsonOk = SaveToJson(jsonPath);
+	if (m_sensorData.size())
+	{
+		char buf[2048];
 
-	sprintf(buf, "%s.txt", path.c_str());
-	std::string textPath = buf;
-	bool textOk = SaveToText(textPath);
-	
+		sprintf(buf, "%s.json", path.c_str());
+		std::string jsonPath = buf;
+		jsonOk = SaveToJson(jsonPath);
+
+		sprintf(buf, "%s.txt", path.c_str());
+		std::string textPath = buf;
+		textOk = SaveToText(textPath);
+	}
 	return jsonOk && textOk;
 }
 
