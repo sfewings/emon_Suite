@@ -73,6 +73,18 @@ long readVcc_WhisperNode()
 
 	return (MAX_VOLTAGE * (readings / SAMPLES) / 1023);
 }
+
+void SerialOut()
+{
+	Serial.print("g_secondsSinceActivity =");
+	Serial.print(g_secondsSinceActivity);
+	Serial.print(", g_lastScaleValue =");
+	Serial.print(g_lastScaleValue);
+	Serial.print("Scale reading: ");
+	Serial.print(g_scale.getGram());
+	Serial.println("g");
+}
+
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -97,6 +109,9 @@ void setup()
 	g_lastScaleValue = g_scale.getValue();
 	g_secondsSinceActivity = 0;
 
+	Serial.print("Scales calibrated, ");
+	SerialOut();
+	
 	Serial.print("rf12_initialize:");
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
@@ -110,24 +125,25 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
+	//Serial.print("Whisper voltage ");
+	//Serial.println(readVcc_WhisperNode());
+	//Serial.print("MCU voltage     ");
+	//Serial.println(readVcc());
+
 	if (abs(g_scale.getValue() - g_lastScaleValue) > 1000)
 	{
 		g_secondsSinceActivity = 1;
 		g_lastScaleValue = g_scale.getValue();
-//		Serial.println(g_lastScaleValue);
+		Serial.print("g_lastScaleValue =");
+		Serial.println(g_lastScaleValue);
+
 	}
 	else
 	{
 		g_secondsSinceActivity++;
 	}
 
-	//Serial.print("g_secondsSinceActivity ="); 
-	//Serial.print(g_secondsSinceActivity);
-	//Serial.print(", g_lastScaleValue =");
-	//Serial.print(g_lastScaleValue);
-	//Serial.print("Scale reading: ");
-	//Serial.println(scale.getGram());
-	//delay(100);
+	//SerialOut();
 
 	if((g_secondsSinceActivity > 30 && g_secondsSinceActivity <=35) || g_secondsSinceActivity%600 == 0)	//transmit for the 5 seconds, 30 seconds after activity finishes. Then every 10 minutes.
 	{
@@ -152,14 +168,13 @@ void loop ()
 			Serial.println(F("RF12 waiting. No packet sent"));
 		}
 		rf12_sleep(RF12_SLEEP);
-
-
-		//let serial buffer empty
-		//see http://www.gammon.com.au/forum/?id=11428
-		while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
-			UCSR0A |= 1 << TXC0;  // mark transmission not complete
-		while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 	}
+
+	//let serial buffer empty
+	//see http://www.gammon.com.au/forum/?id=11428
+	while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
+		UCSR0A |= 1 << TXC0;  // mark transmission not complete
+	while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 	
 	Sleepy::loseSomeTime(1000); 
 }
