@@ -25,7 +25,8 @@ Adafruit_ADS1115 ads1115;
 
 bool		refreshScreen = false;	//set true when time to completely redraw the screen
 volatile unsigned long	g_RGlastTick = 0;
-
+double g_mWH_total = 0;
+unsigned long  g_lastMillis;
 
 long readVcc()
 {
@@ -58,6 +59,30 @@ String DoubleString(String& str, int value)
 	return str;
 }
 
+char* ftoa(char* a, double f, int precision)
+{
+	long p[] = { 0,10,100,1000,10000,100000,1000000,10000000,100000000 };
+
+	char* ret = a;
+	long heiltal = (long)f;
+	itoa(heiltal, a, 10);
+	while (*a != '\0') a++;
+	*a++ = '.';
+	long desimal = abs((long)((f - heiltal) * p[precision]));
+	itoa(desimal, a, 10);
+	return ret;
+}
+
+//not working!
+//char* pad(char* a, int len)
+//{
+//	int l = strlen(a);
+//	for (int i = l; i < len; i++)
+//		a[i] = ' ';
+//	a[len + 1] = '\0';
+//}
+
+
 void interruptHandlerPushButton()
 {
 	unsigned long tick = millis();
@@ -71,7 +96,62 @@ void interruptHandlerPushButton()
 	if (period > 200)	//more than 50 ms to avoid switch bounce
 	{
 		refreshScreen = true;
+		g_mWH_total = 0;
 	}
+}
+
+
+#define PRINT_AND_LOG(NAME, PAYLOAD)\
+		Payload##NAME* pPayload = (Payload##NAME*)rf12_data; \
+		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
+
+int16_t Reading(uint8_t channel)
+{
+	const int32_t SAMPLES = 50;
+	int32_t s = 0;
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		int16_t r = ads1115.readADC_SingleEnded(channel);
+		s += r;
+		//Serial.print(r);
+		//Serial.print(", ");
+		//Serial.println(s);
+	}
+	return (int16_t) (s / SAMPLES);
+}
+
+double ReadingDifferential()
+{
+	const double factor[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
+	const int gainValue[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
+	const int32_t SAMPLES = 50;
+	int32_t s = 0;
+	int gain;
+
+	for (int g = 0; g < 6; g++ )
+	{
+		ads1115.setGain((adsGain_t)gainValue[g]);
+		int16_t adc2 = ads1115.readADC_Differential_2_3();
+		gain = g;
+		//Serial.print("AIN2: v shunt       "); Serial.print(g); Serial.print(","); Serial.print(adc2); Serial.print(","); Serial.println(adc2 * factor[g], 5);
+
+		if (abs(adc2) > 1000)
+			break;
+	}
+
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		int16_t r = ads1115.readADC_Differential_2_3();
+		s += r;
+	}
+
+	//reset to default
+	ads1115.setGain(GAIN_TWOTHIRDS);
+	//Serial.print("s="); Serial.print(s); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.println(factor[gain],6);
+	//double returnVal = ((double)((double)s / (double)SAMPLES)) * factor[gain];
+	//Serial.println(returnVal, 5);
+
+	return (s*factor[gain])/SAMPLES;
 }
 
 void setup()
@@ -99,55 +179,44 @@ void setup()
 	pinMode(A3, INPUT_PULLUP);
 	attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
 
+
+	refreshScreen = true;
+	g_mWH_total = 0.0;
+	g_lastMillis = millis();
+
+
 	delay(1000);
 
 }
 
-#define PRINT_AND_LOG(NAME, PAYLOAD)\
-		Payload##NAME* pPayload = (Payload##NAME*)rf12_data; \
-		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
-
-int16_t Reading(uint8_t channel)
-{
-	const int32_t SAMPLES = 50;
-	int32_t s = 0;
-	for (int i = 0; i < SAMPLES; i++)
-	{
-		int16_t r = ads1115.readADC_SingleEnded(channel);
-		s += r;
-		//Serial.print(r);
-		//Serial.print(", ");
-		//Serial.println(s);
-	}
-	return (int16_t) (s / SAMPLES);
-}
 
 void loop()
 {
 	int16_t adc0, adc1, adc2, adc3;
 	String str;
+	char floatStr[16];
+
+	//reset to default
+	ads1115.setGain(GAIN_TWOTHIRDS);
+
 
 	adc0 = Reading(0);
-	int16_t voltage = (int16_t)((adc0 * 0.187) *(100000+6800)/6800); // 6.144v range
+	int16_t voltage = (int16_t)((adc0 * 0.1875) *(100000+6800)/6800); // 6.144v range using a100K and 6.8K voltage diveder on 12v source
 
 	adc1 = Reading(1); // ads1115.readADC_SingleEnded(1);
-	int16_t v_current = (int16_t)((double)(adc1 - 11870) * 0.187); // 6.144v range
+	int16_t vcc_from_arduino = (int16_t)((adc1 * 0.1875) ); // 6.144v range
+	
+	double v_current = ReadingDifferential();
+	double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	double watts = voltage * amps/1000.0;
 
-	adc2 = ads1115.readADC_SingleEnded(2);
-	uint16_t vcc_from_arduino = (int16_t)((adc2 * 0.187) ); // 6.144v range
+	unsigned long now = millis();
+	unsigned long period = now - g_lastMillis;
+	g_lastMillis = now;
 
-	//double current = (double)(v_current - (vcc_from_arduino / 2.0)) / 6144 * 100.0;
-	double current = (double)(v_current) / 40;
+	g_mWH_total += watts * period / (60 * 60 * 1000.0);  
 
-	long vcc = readVcc();
-	//Serial.println("v external,v current,arduino voltage, current");
-	//Serial.print(voltage); Serial.print(",");
-	//Serial.print(vcc_from_arduino); Serial.print(",");
-	//Serial.print(v_current); Serial.print(",");
-	//Serial.print(current,3); Serial.print(",");
-	//Serial.println();
 
-	lcd.clear();
 	if (refreshScreen)
 	{
 		lcd.clear();
@@ -159,22 +228,32 @@ void loop()
 	lcd.setCursor(2, 0);
 	lcd.print(DoubleString(str, voltage));
 
-	//lcd.setCursor(0, 1);
-	//lcd.print(DoubleString(str, vcc_from_arduino/2));
-	//lcd.setCursor(6, 1);
-	//lcd.print(DoubleString(str, v_current));
+
+	//lcd.setCursor(8, 0);
+	//lcd.print("mV");
+	//lcd.setCursor(10, 0);
+	//lcd.print(v_current,5);
+
+	lcd.setCursor(8, 0);
+	lcd.print("A");
+	lcd.setCursor(10, 0);
+	lcd.print(amps, 3);
 
 	lcd.setCursor(0, 1);
-	lcd.print("A");
+	lcd.print("w");
 	lcd.setCursor(2, 1);
-	lcd.print(DoubleString(str, current*1000));
+	lcd.print(watts, 3);
+
+	lcd.setCursor(8, 1);
+	lcd.print("wH");
+	lcd.setCursor(10, 1);
+	lcd.print(g_mWH_total, 3);
 
 
 	adc3 = ads1115.readADC_SingleEnded(3);
 	Serial.print("AIN0: v external    "); Serial.print(adc0); Serial.print(","); Serial.println(voltage);
-	Serial.print("AIN1: current sense "); Serial.print(adc1); Serial.print(","); Serial.println(v_current);
-	Serial.print("AIN2: v arduino     "); Serial.print(adc2); Serial.print(","); Serial.println(vcc_from_arduino);
-	Serial.print("AIN3: "); Serial.println(adc3);
+	Serial.print("AIN1: v arduino     "); Serial.print(adc1); Serial.print(","); Serial.println(vcc_from_arduino);
+	Serial.print("AIN2: v shunt       "); Serial.print("----" ); Serial.print(","); Serial.println(v_current,5);
 	Serial.println(" ");
 
 	//--------------------------------------------------------------------------------------------

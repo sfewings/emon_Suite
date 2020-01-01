@@ -30,6 +30,7 @@ typedef unsigned char byte;
 #define EMON_LOGGER 17					//Logger node. Not a transmitter
 #define WATERLEVEL_NODE 18			//The water tank sensor
 #define SCALE_NODE 19					  //node that contains a load-cell
+#define CURRENT_NODE 20					//Node for sending battery current and voltage readings
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
