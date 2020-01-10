@@ -2,7 +2,8 @@
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-#define RF69_COMPAT 0
+#include <LowPower.h>
+#define RF69_COMPAT 1
 
 
 //JeeLab libraires				http://github.com/jcw
@@ -37,6 +38,7 @@ void setup ()
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
 	EmonSerial::PrintScalePayload(NULL);
+	EmonSerial::PrintBatteryPayload(NULL);
 
 	digitalWrite(GREEN_LED, LOW);
 }
@@ -103,6 +105,10 @@ void loop ()
 			if (node_id == SCALE_NODE)
 			{
 				SERIAL_OUT(Scale, Payload);
+			}
+			if (node_id == BATTERY_NODE)
+			{
+				SERIAL_OUT(Battery, Payload);
 			}
 		}
 		

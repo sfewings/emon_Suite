@@ -30,7 +30,7 @@ typedef unsigned char byte;
 #define EMON_LOGGER 17					//Logger node. Not a transmitter
 #define WATERLEVEL_NODE 18			//The water tank sensor
 #define SCALE_NODE 19					  //node that contains a load-cell
-#define CURRENT_NODE 20					//Node for sending battery current and voltage readings
+#define BATTERY_NODE 20					//Node for sending battery current and voltage readings
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
@@ -39,6 +39,9 @@ typedef unsigned char byte;
 #define MAX_TEMPERATURE_SENSORS 4  //maximum number of temperature sensors on the temperature_JeeNode  
 #define HWS_TEMPERATURES 7			//number of temperature readings from the hot water system
 #define HWS_PUMPS 3							//number of pumps from the hot water system
+
+#define BATTERY_SHUNTS	3				//number of battery banks in the system. Each with a shunt for measuring current in and out
+#define MAX_VOLTAGES		8				//number of voltage measurements made on the battery monitoring system
 
 #define FEWINGS_MONITOR_GROUP  211
 #define TESTING_MONITOR_GROUP	 210
@@ -101,13 +104,6 @@ typedef struct PayloadBase: PayloadRelay {
 	time_t time; 
 }PayloadBase;
 
-//typedef struct PayloadWater: PayloadRelay {
-//	byte subnode;
-//	int waterHeight;
-//	int flowRate;			//water flowrate in l/min
-//	unsigned long flowCount;		//number of pulses since installation
-//} PayloadWater;
-
 #pragma pack(push, 1)
 typedef struct PayloadWater : PayloadRelay {
 	byte subnode;
@@ -124,7 +120,13 @@ typedef struct PayloadScale : PayloadRelay {
 	unsigned long supplyV;									// unit supply voltage
 }PayloadScale;
 
-
+typedef struct PayloadBattery : PayloadRelay {
+	byte subnode;
+	int power[BATTERY_SHUNTS];										//w
+	unsigned long pulseIn[BATTERY_SHUNTS];				//wH
+	unsigned long pulseOut[BATTERY_SHUNTS];				//wH
+	short voltage[MAX_VOLTAGES];									//100th of v 
+}PayloadBattery;
 
 class EmonSerial{
 public:
@@ -139,8 +141,7 @@ public:
 	static void PrintHWSPayload(PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
 	static void PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 	static void PrintScalePayload(PayloadScale* pPayloadScale, unsigned long timeSinceLast = 0);
-
-	//static String PrintBasePayload(String &str, PayloadBase *pPayloadBase, unsigned long timeSinceLast = 0);
+	static void PrintBatteryPayload(PayloadBattery* pPayloadBattery, unsigned long timeSinceLast = 0);
 
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -152,6 +153,7 @@ public:
 	static void PrintHWSPayload(Stream& stream, PayloadHWS* pPayloadHWS, unsigned long timeSinceLast = 0);
 	static void PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 	static void PrintScalePayload(Stream& stream, PayloadScale* pPayloadWater, unsigned long timeSinceLast = 0);
+	static void PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBattery, unsigned long timeSinceLast = 0);
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
@@ -166,6 +168,7 @@ public:
 	static int ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS);
 	static int ParseWaterPayload(char* str, PayloadWater *pPayloadWater);
 	static int ParseScalePayload(char* str, PayloadScale* pPayloadScale);
+	static int ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery);
 };
 
 
