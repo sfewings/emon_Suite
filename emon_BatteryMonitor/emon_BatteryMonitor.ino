@@ -71,12 +71,16 @@ long readVcc()
 
 int16_t Reading(uint8_t ads, uint8_t channel)
 {
+	ads1115[ads].setGain(GAIN_TWOTHIRDS); //shouldn't be required!
 	int32_t s = 0;
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		int16_t r = ads1115[ads].readADC_SingleEnded(channel);
 		s += r;
+//		Serial.print(i); Serial.print(":"); Serial.print(r);Serial.print(",");
 	}
+//	Serial.println();
+//	Serial.print(ads); Serial.print(":"); Serial.print(channel); Serial.print(","); Serial.println( (int16_t)(s/SAMPLES));
 	return (int16_t) (s / SAMPLES);
 }
 
@@ -89,7 +93,7 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 	{
 		ads1115[ads].setGain((adsGain_t)GAIN_VALUE[g]);
 		int16_t reading;
-		if( channel = 0)
+		if( channel == 0)
 			reading = ads1115[ads].readADC_Differential_0_1();
 		else
 			reading = ads1115[ads].readADC_Differential_2_3();
@@ -103,7 +107,7 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		int16_t reading;
-		if (channel = 0)
+		if (channel == 0)
 			reading = ads1115[ads].readADC_Differential_0_1();
 		else
 			reading = ads1115[ads].readADC_Differential_2_3();
@@ -111,16 +115,20 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 	}
 
 	//reset to default
-	ads1115[ads].setGain(GAIN_TWOTHIRDS);
-	//Serial.print("s="); Serial.print(s); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.println(factor[gain],6);
-	//double returnVal = ((double)((double)s / (double)SAMPLES)) * factor[gain];
-	//Serial.println(returnVal, 5);
+	 ads1115[ads].setGain(GAIN_TWOTHIRDS);
+	
+	
+	Serial.print("s="); Serial.print(sum); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
+	double returnVal = ((double)((double)sum / (double)SAMPLES)) * FACTOR[gain];
+	Serial.print(" RetVal=");Serial.println(returnVal, 5);
 
 	return (sum * FACTOR[gain])/SAMPLES;
 }
 
 void setup()
 {
+	digitalWrite(LED_PIN, HIGH);
+
 	Serial.begin(9600);
 
 	Serial.println(F("Battery monitor sensor start"));
@@ -158,6 +166,7 @@ void setup()
 	g_lastMillis = millis();
 
 	delay(1000);
+	digitalWrite(LED_PIN, LOW);
 }
 
 
@@ -168,21 +177,38 @@ void loop()
 	char floatStr[16];
 
 	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
-	double railVoltage = Reading(0, 2) * 0.1875 * (10000 + 500) / 500;
+	uint16_t r = Reading(3, 0);
 
-	g_payloadBattery.voltage[0] = (short)(railVoltage * 100);
+	// Serial.print("Reading="); Serial.print(r);
+	// double v = (double)r *0.1875;
+	// Serial.print(",v="); Serial.print(v,4);
+	// v = v*(10000+1000)/1000;
+	// Serial.print(",v="); Serial.print(v,4);
+	// v = v/10;
+	// Serial.print(",v="); Serial.print(v,4);
+	// Serial.print(",s="); Serial.print((short)v);
+	// short rv = (short) v;
+	// Serial.print(",r="); Serial.print(rv);
+	
+	// Serial.println();
+
+	//double railVoltage = (double)Reading(0, 2) * 0.1875 * (10000 + 500) / 500 /10;
+	double railVoltage = ((short)(Reading(2, 3) * 0.1875 * (10000 + 500) / 500 / 10 ) * 2);
+
+	g_payloadBattery.voltage[0] = (short)(Reading(0, 2) * 0.1875 * (10000 + 500) / 500 / 10 );
 	//battery bank 1, mid point voltage, should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[1] = (short)(Reading(0, 3) * 0.1875 * (10000 + 1000) / 1000 * 100);
+	g_payloadBattery.voltage[1] = (short)(Reading(0, 3) * 0.1875 * (10000 + 1000) / 1000 / 10);
 	//battery bank 2, mid point voltage, series 1 (top row), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[2] = (short)(Reading(3, 0) * 0.1875 * (10000 + 1000) / 1000 * 100);
+	g_payloadBattery.voltage[2] = (short)(Reading(3, 0) * 0.1875 * (10000 + 1000) / 1000 / 10);
 	//battery bank 2, mid point voltage, series 2 (second down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[3] = (short)(Reading(1, 3) * 0.1875 * (10000 + 1000) / 1000 * 100);
+	g_payloadBattery.voltage[3] = (short)(Reading(2, 3) * 0.1875 * (10000 + 1000) / 1000 / 10);
 	//battery bank 2, mid point voltage, series 3 (third down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[4] = (short)(Reading(1, 2) * 0.1875 * (10000 + 1000) / 1000 * 100);
+	g_payloadBattery.voltage[4] = (short)(Reading(2, 2) * 0.1875 * (10000 + 1000) / 1000 / 10);
 	//battery bank 2, mid point voltage, series 4 (forth down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[5] = (short)(Reading(1, 1) * 0.1875 * (10000 + 1000) / 1000 * 100);
+	g_payloadBattery.voltage[5] = (short)(Reading(2, 1) * 0.1875 * (10000 + 1000) / 1000 / 10);
 	//battery bank 2, mid point voltage, series 5 (bottom row), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[6] = (short)(Reading(1, 0) * 0.1875 * (10000 + 1000) / 1000 * 100);
+	g_payloadBattery.voltage[6] = (short)(Reading(2, 0) * 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[7] = (short) readVcc();
 
 	unsigned long now = millis();
 	unsigned long period = now - g_lastMillis;
@@ -190,8 +216,8 @@ void loop()
 
 	double amps[BATTERY_SHUNTS];
 	amps[0] = ReadingDifferential(0, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-	amps[1] = ReadingDifferential(2, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-	amps[2] = ReadingDifferential(2, 1) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 90Amps for 100mV;
 
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
@@ -234,6 +260,13 @@ void loop()
 			Serial.println(F("RF12 waiting. No packet sent"));
 		}
 		rf12_sleep(RF12_SLEEP);
+
+		//write g_mWH_In and g_mWH_Out to eeprom
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			writeEEPROM(i, g_mWH_In[i]);
+			writeEEPROM(i, g_mWH_Out[i]);
+		}
 
 		digitalWrite(LED_PIN, LOW);
 	}
