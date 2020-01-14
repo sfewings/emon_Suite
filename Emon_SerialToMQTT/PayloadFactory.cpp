@@ -210,7 +210,47 @@ bool PayloadFactory::PublishPayload(char* s)
 			m_MQTTClient.Publish(topic, buf);
 		}
 	}
-	
+	else if (strncmp(s, "bat", 3) == 0)
+	{
+		PayloadBattery* bat = new PayloadBattery();
+		if (EmonSerial::ParseBatteryPayload(s, bat))
+		{
+			parsed = true;
+			pBasePayload = bat;
+
+			char buf[100];
+			char topic[100];
+			for (int i = 0; i < BATTERY_SHUNTS; i++)
+			{
+				sprintf(topic, "battery/power/%d", i);
+				sprintf(buf, "%d", bat->power[i]);
+				m_MQTTClient.Publish(topic, buf);
+				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			}
+			for (int i = 0; i < BATTERY_SHUNTS; i++)
+			{
+				sprintf(topic, "battery/pulseIn/%d", i);
+				sprintf(buf, "%d", bat->pulseIn[i]);
+				m_MQTTClient.Publish(topic, buf);
+				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			}
+			for (int i = 0; i < BATTERY_SHUNTS; i++)
+			{
+				sprintf(topic, "battery/pulseOut/%d", i);
+				sprintf(buf, "%d", bat->pulseOut[i]);
+				m_MQTTClient.Publish(topic, buf);
+				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			}
+			for (int i = 0; i < MAX_VOLTAGES; i++)
+			{
+				sprintf(topic, "battery/voltage/%d", i);
+				sprintf(buf, "%d", bat->voltage[i]);
+				m_MQTTClient.Publish(topic, buf);
+				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+			}
+		}
+	}
+
 	if (parsed)
 	{
 		char topic[10] = { "EmonLog" };

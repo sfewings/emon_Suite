@@ -3,7 +3,7 @@
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include <LowPower.h>
-#define RF69_COMPAT 1
+#define RF69_COMPAT 0
 
 
 //JeeLab libraires				http://github.com/jcw
@@ -12,7 +12,7 @@
 
 const int GREEN_LED = 9;  //Pin 9 on the Emon node.
 
-RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 //--------------------------------------------------------------------------------------------
 // Setup
@@ -65,6 +65,27 @@ void loop ()
 			Serial.print(rf12_crc);
 			Serial.print(F(",len:"));
 			Serial.println(rf12_hdr);
+		}
+
+	//read the time basePayload 
+		if (Serial.available())
+		{
+			char buf[100];
+			PayloadBase basePayload;
+			Serial.readBytesUntil('\0', buf, 100);
+			if (EmonSerial::ParseBasePayload(buf, &basePayload))
+			{
+				int wait = 1000;
+				while (!rf12_canSend() && wait--)
+					rf12_recvDone();
+				if (wait)
+				{
+					rf12_sendStart(0, &basePayload, sizeof basePayload);
+					rf12_sendWait(0);
+					Serial.println(F("BasePayload with time sent"));
+					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
+				}
+			}
 		}
 
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors

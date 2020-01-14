@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
-// emon WaterLevel
+// emon Currenet Meter
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #define RF69_COMPAT 1
@@ -17,7 +17,7 @@
 #include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
 
 
-RF12Init g_rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+RF12Init g_rf12Init = { EMON_CURRENT, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 hd44780_I2Cexp lcd; // declare lcd object: auto locate & config display for hd44780 chip
 

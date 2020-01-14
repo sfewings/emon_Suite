@@ -25,6 +25,8 @@ protected:
 	SensorData m_water;
 	SensorData m_waterUsage;
 	SensorData m_scale;
+	SensorData m_batteryCurrent;
+	SensorData m_batteryVoltage;
 
 	std::string m_rootPath;
 	std::map<std::string, double> m_temperatureMovingAverage;

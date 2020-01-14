@@ -46,7 +46,9 @@ SensorReader::SensorReader(std::string rootPath):
 	m_HWS("hws", rootPath, eReading, eReading, eReading),
 	m_water("water", rootPath, eReading, eReading, eReading),
 	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod),
-	m_scale("scale", rootPath,eReading, eReading, eReading)
+	m_scale("scale", rootPath, eReading, eReading, eReading),
+	m_batteryCurrent("batteryCurrent", rootPath, eCounterPeriod, eCounterPeriod, eCounterPeriod),
+	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading)
 {
 	m_rootPath = rootPath;
 	if (fs::is_directory(rootPath) && rootPath.length()> 5)
@@ -67,6 +69,8 @@ SensorReader::SensorReader(std::string rootPath):
 	fs::create_directory(rootPath + "/power");
 	fs::create_directory(rootPath + "/supplyV");
 	fs::create_directory(rootPath + "/scale");
+	fs::create_directory(rootPath + "/batteryCurrent");
+	fs::create_directory(rootPath + "/batteryVoltage");
 
 	m_rainFall.SetCounterScaleFactor(0.2); //rainfall is 0.2mm for every counter
 }
@@ -108,7 +112,8 @@ unsigned short SensorReader::StringToNode(std::string line)
 	if (line.compare(0, 3, "hws"  ) == 0) return HWS_JEENODE;
 	if (line.compare(0, 4, "rain" ) == 0) return RAIN_NODE;
 	if (line.compare(0, 3, "scl"  ) == 0) return SCALE_NODE;
-	if (line.compare(0, 3, "log"  ) == 0) return EMON_LOGGER;
+	if (line.compare(0, 3, "log") == 0) return EMON_LOGGER;
+	if (line.compare(0, 3, "bat") == 0) return BATTERY_NODE;
 	return 0;
 }
 
@@ -313,6 +318,31 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			}
 			break;
 		}
+		case BATTERY_NODE:
+		{
+			PayloadBattery bat;
+			if (EmonSerial::ParseBatteryPayload((char*)reading.c_str(), &bat))
+			{
+				unsigned long totalIn = 0;
+				unsigned long totalOut = 0;
+				for (int i = 0; i < BATTERY_SHUNTS; i++)
+				{
+					m_batteryCurrent.Add("Bank In " + std::to_string(i), time, bat.pulseIn[i]);
+					totalIn += bat.pulseIn[i];
+					m_batteryCurrent.Add("Bank Out " + std::to_string(i), time, bat.pulseOut[i]);
+					totalOut += bat.pulseOut[i];
+				}
+				m_batteryCurrent.Add("Total In", time, totalIn);
+				m_batteryCurrent.Add("Total Out", time, totalOut);
+
+				m_batteryVoltage.Add("Rail", time, bat.voltage[0]);
+				for (int i = 1; i < MAX_VOLTAGES; i++)
+				{
+					m_batteryVoltage.Add("Mid" + std::to_string(i), time, bat.voltage[i]);
+				}
+			}
+			break;
+		}
 		default: 
 			break;
 	}
@@ -329,6 +359,8 @@ void SensorReader::SaveAll()
 	m_water.Close(false);
 	m_waterUsage.Close(false);
 	m_scale.Close(false);
+	m_batteryCurrent.Close(false);
+	m_batteryVoltage.Close(false);
 }
 
 void SensorReader::Close()
@@ -341,4 +373,6 @@ void SensorReader::Close()
 	m_water.Close();
 	m_waterUsage.Close();
 	m_scale.Close();
+	m_batteryCurrent.Close();
+	m_batteryVoltage.Close();
 }

@@ -115,8 +115,13 @@ int main(int argc, char** argv)
 			return(1);
 		}
 
+		std::time_t lastSendTime = std::time(0);
+
 		while (1)
 		{
+			std::time_t t = std::time(0);   // get time now
+			std::tm now = *std::localtime(&t);
+
 			n = RS232_PollComportLine(comPort, buf, 4095);
 
 			if (n > 0)
@@ -128,8 +133,6 @@ int main(int argc, char** argv)
 					buf[n--] = 0;
 
 				std::string str = (char*)buf;
-				std::time_t t = std::time(0);   // get time now
-				std::tm now = *std::localtime(&t);
 				std::cout << str << std::endl;
 
 				if (pf.PublishPayload((char*)buf) &&
@@ -148,6 +151,24 @@ int main(int argc, char** argv)
 				}
 			}
 			std::cout << std::endl;
+
+			if (t - lastSendTime > 30) //Send current time update every 30 seconds
+			{
+				lastSendTime = t;
+
+				//calculate GMT offset to add to our local time. Not too sure why this works!
+				struct tm* ptm;
+				ptm = gmtime(&t);
+				// Request that mktime() looksup dst in timezone database
+				ptm->tm_isdst = -1;
+				time_t gmt = mktime(ptm);
+
+				char buf[100];
+				sprintf(buf, "base,%d", t + (t-gmt) );
+
+				RS232_SendBuf(comPort, (unsigned char*)buf, strlen((const char*) buf));
+				std::cout << "Sent time payload to emon_base - " << buf << std::endl;
+			}
 
 #ifdef _WIN32
 			Sleep(100);
