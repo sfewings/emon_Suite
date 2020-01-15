@@ -98,14 +98,17 @@ bool try_reconnect(mqtt::client& cli)
 }
 // --------------------------------------------------------------------------
 
-std::vector<std::string> getPaths(std::string rootPath)
+std::vector<std::string> getPaths(std::string rootPath, int reprocessFromYear)
 {
-	 std::vector<std::string> paths;
+	std::vector<std::string> paths;
 	std::string ext(".TXT");
 	for (auto& p : fs::directory_iterator(rootPath) )
 	{
 		if (p.path().extension() == ext)
-			paths.push_back( p.path().string() );
+		{
+			if( atoi(p.path().filename().string().substr(0,4).c_str() ) >= reprocessFromYear )
+				paths.push_back(p.path().string());
+		}
 		std::cout << p << std::endl;
 	}
 	
@@ -117,10 +120,12 @@ std::vector<std::string> getPaths(std::string rootPath)
 
 int main(int argc, char** argv)
 {
+	int reprocessFromYear = 0;
+
 	InputParser input(argc, argv);
 	if (input.cmdOptionExists("-h"))
 	{
-		std::cout << "Emon_LogToJson	[-i inputFolder] [-o OutputFolder] [-c COM port #] [-m MQTT server IP]" << std::endl;
+		std::cout << "Emon_LogToJson	[-i inputFolder] [-o OutputFolder] [-c COM port #] [-m MQTT server IP] [-y reprocess from year e.g.2020 or 'this' for this year, default is 0, all years]" << std::endl;
 		return 0;
 	}
 	std::string inputFolder = input.getCmdOption("-i");
@@ -148,12 +153,23 @@ int main(int argc, char** argv)
 	{
 		comPort = atoi(str.c_str()) -1;	//COM1 == comPort0
 	}
+	
+	str = input.getCmdOption("-y");
+	if (!str.empty())
+	{
+		if (str.compare("this") == 0)
+		{
+			std::time_t t = std::time(0);   // get time now
+			std::tm now = *std::localtime(&t);
+			reprocessFromYear = now.tm_year + 1900;
+		}
+		else
+			reprocessFromYear = atoi(str.c_str());	//COM1 == comPort0
+	}
 
+	std::vector<std::string> paths = getPaths(inputFolder, reprocessFromYear);
 
-
-	std::vector<std::string> paths = getPaths(inputFolder);
-
-	SensorReader sensorReader(outputFolder);
+	SensorReader sensorReader(outputFolder, reprocessFromYear == 0);
 
 	for (auto it = begin(paths); it != end(paths); ++it)
 	{

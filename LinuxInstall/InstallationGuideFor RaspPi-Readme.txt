@@ -3,7 +3,7 @@
 	
 3.	Build /share/Emon_LogToJson using /bin/sh GCC_Build.txt.sh from inside path /share/Emon_LogToJson/
 4.	Build /share/Emon_SerialToMQTT using /bin/sh GCC_Build.txt.sh in folder /share/Emon_SerialToMQTT/
-	
+5   To run manually, use the command lines in /share/Emon_LogToJson/Emon_LogToJson.sh and /share/Emon_SerialToMQTT/Emon_SerialToMQTT.sh
 
 1.	Enable Emon_LogToJson and Emon_SerialToMQTT
 	/etc/systemd/system/Emon_LogToJson.service

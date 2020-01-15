@@ -38,7 +38,7 @@ extern "C" char* strptime(const char* s,
 
 
 
-SensorReader::SensorReader(std::string rootPath):
+SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_temperatures("temp", rootPath, eReading, eReading, eReading),
 	m_power("power", rootPath, eReading, eRatePerSecond, eRatePerSecond),
 	m_rainFall("rain", rootPath, eCounterTotal, eCounterTotal, eCounterTotal),
@@ -51,7 +51,7 @@ SensorReader::SensorReader(std::string rootPath):
 	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading)
 {
 	m_rootPath = rootPath;
-	if (fs::is_directory(rootPath) && rootPath.length()> 5)
+	if (removeAll && fs::is_directory(rootPath) && rootPath.length()> 5 )
 	{
 		fs::remove_all(rootPath);
 		#ifdef __linux__
@@ -321,25 +321,31 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		case BATTERY_NODE:
 		{
 			PayloadBattery bat;
+			std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2 top", "Bank 2 row 2", "Bank 2 row 3", "Bank 2 row 4", "Bank 2 row 5", "CPU" };
+
 			if (EmonSerial::ParseBatteryPayload((char*)reading.c_str(), &bat))
 			{
 				unsigned long totalIn = 0;
 				unsigned long totalOut = 0;
 				for (int i = 0; i < BATTERY_SHUNTS; i++)
 				{
-					m_batteryCurrent.Add("Bank In " + std::to_string(i), time, bat.pulseIn[i]);
+					m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.pulseIn[i]);
 					totalIn += bat.pulseIn[i];
-					m_batteryCurrent.Add("Bank Out " + std::to_string(i), time, bat.pulseOut[i]);
+					m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.pulseOut[i]);
 					totalOut += bat.pulseOut[i];
 				}
 				m_batteryCurrent.Add("Total In", time, totalIn);
 				m_batteryCurrent.Add("Total Out", time, totalOut);
 
-				m_batteryVoltage.Add("Rail", time, bat.voltage[0]);
-				for (int i = 1; i < MAX_VOLTAGES; i++)
+				m_batteryVoltage.Add("Rail", time, bat.voltage[0]/100.0);
+				double midVoltage = bat.voltage[0] / 100.0 / 2.0;
+				for (int i = 1; i < MAX_VOLTAGES-1; i++)
 				{
-					m_batteryVoltage.Add("Mid" + std::to_string(i), time, bat.voltage[i]);
+					m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i]/100.0); //battery values are in 100th of a volt
 				}
+				//
+				if (bat.voltage[MAX_VOLTAGES - 1] / 1000.0 < 5)
+					m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES-1] / 1000.0);	//Arduino power supply is in mv
 			}
 			break;
 		}

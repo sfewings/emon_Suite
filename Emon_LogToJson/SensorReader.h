@@ -5,7 +5,7 @@
 class SensorReader
 {
 public:
-	SensorReader(std::string rootPath);
+	SensorReader(std::string rootPath, bool removeAll);
 
 	void AddFile(std::string path);
 	unsigned short AddReading(std::string reading, tm time);

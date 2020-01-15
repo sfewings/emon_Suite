@@ -4,7 +4,7 @@
 #include <sstream> 
 #include <cstring>
 #include <iostream>
-
+#include <float.h>  //DBL_MAX
 #include "SensorDataArray.h"
 
 
@@ -41,7 +41,7 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 	if (m_sensorData.find(name) == m_sensorData.end())
 	{
 		for (size_t l = 0; l < Size(); l++)
-			m_sensorData[name][l] = -1;
+			m_sensorData[name][l] = -DBL_MAX;
 	}
 
 	switch (m_readingDataType)
@@ -156,7 +156,7 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 			for (int i = GetIndex(m_baseTime); i <= GetIndex(m_maxTime); i++)
 //			for (int i = 0; i < Size(); i++)
 			{
-				if (it->second[i] != -1.0)	//skip outputs if no value has been set
+				if (it->second[i] != -DBL_MAX)	//skip outputs if no value has been set
 				{
 					long long t = mktime(&m_baseTime) + ((time_t)i - (time_t)GetIndex(m_baseTime)) * TimeStep();
 					t -= (t + m_GMTOffset) % TimeStep(); //remove the fraction of a TimeStep based on GMT time-base
@@ -208,7 +208,7 @@ bool BaseDataArray<F>::SaveToText(std::string path)
 			for (auto it = m_sensorData.begin(); it != m_sensorData.end(); ++it)
 			{
 				ofs << ",";
-				if (it->second[i] != -1)
+				if (it->second[i] != -DBL_MAX)
 					ofs << it->second[i] * m_counterScaleFactor;
 			}
 			ofs << "\n";
