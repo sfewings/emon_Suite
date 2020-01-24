@@ -1,56 +1,52 @@
-//#include <SoftwareSerial.h>
 #include <AltSoftSerial.h>
-
-unsigned long lastMillis=0;
-unsigned long lastMillis1=0;
-long previousMillis = 0;
+#include <EmonShared.h>
 
 
-//SoftwareSerial serialMPP(A1, A0);  //A1=rx, A0=tx
-AltSoftSerial serialMPP; //pin 9 = Tx, Pin 8 = Rx
-
-String QPIGS = "\x51\x50\x49\x47\x53\xB7\xA9\x0D";
-String QPIWS = "\x51\x50\x49\x57\x53\xB4\xDA\x0D";  
-String QDI = "\x51\x44\x49\x71\x1B\x0D";
-String QMOD = "\x51\x4D\x4F\x44\x49\xC1\x0D"; 
-String BAD_CRC = "\x51\x4D\x4F\x44\x49\xba\x0D"; 
-String QVFW =  "\x51\x56\x46\x57\x62\x99\x0D"; 
-String QVFW2 = "\x51\x56\x46\x57\x32\xC3\xF5\x0D"; 
-String POP02 = "\x50\x4F\x50\x30\x32\xE2\x0B\x0D";  //SBU priority
-String POP01 = "\x50\x4F\x50\x30\x32\xE2\xD2\x69";  //solar first
-String POP00 = "\x50\x4F\x50\x30\x30\xC2\x48\x0D";  //utility first
-String QID = "\x51\x49\x44\xD6\xEA\x0D";
-String QPI = "\x51\x50\x49\xBE\xAC\x0D";
-String QPI_NOCRC = "\x51\x50\x49\x0D";
+//SoftwareSerial Serial1(A1, A0);  //A1=rx, A0=tx
+//AltSoftSerial Serial1; //UNO pin 9 = Tx, Pin 8 = Rx Mega 1284 pin 14=Rx, pin 13 = Tx
 String P005GS = "\x5E\x50\x30\x30\x35\x47\x53\x58\x14\x0D"; //Query General status
 String P005PI = "\x5E\x50\x30\x30\x35\x50\x49\x71\x8B\x0D"; //Query Protocol version
-String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";     //Query Current time
+String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";      //Query Current time
 
+PayloadInverter payloadInverter;
+/*
+^P005GS<CRC><cr>: Query general status
+Response: ^D106AAAA,BBB,CCCC,DDD,EEEE,FFFF,GGG,HHH,III,JJJ,KKK,LLL,MMM,NNN,OOO,PPP,QQQQ,RRRR,SSSS,TTTT,U,V,W,X,Y,Z,a,b<CRC><cr>
+Data      Description               Remark
+    // AAAA      Grid voltage              A: 0~9, unit: 0.1V
+    // BBB       Grid frequency            B: 0~9, unit: 0.1Hz
+    // CCCC      AC output voltage         C: 0~9, unit: 0.1V
+    // DDD       AC output frequency       D: 0~9, unit: 0.1Hz
+    // EEEE      AC output apparent power  E: 0~9, unit: VA
+    // FFFF      AC output active power    F: 0~9, unit: W
+    // GGG       Output load percent       G: 0~9, unit: %
+    // HHH       Battery voltage           H: 0~9, unit: 0.1V
+    // III       Battery voltage from SCC  I: 0~9, unit: 0.1V
+    // JJJ       Battery voltage from SCC2 J: 0~9, unit: 0.1V
+    // KKK       Battery discharge current K: 0~9, unit: A
+    // LLL       Battery charging current  L: 0~9, unit: A
+    // MMM       Battery capacity          M: 0~9, unit: %
+    // NNN       Inverter heat sink temperature  N: 0~9, unit: oC
+    // OOO       MPPT1 charger temperature O: 0~9, unit: oC
+    // PPP       MPPT2 charger temperature P: 0~9, unit: oC
+    // QQQQ      PV1 Input power           Q: 0~9, unit: W
+    // RRRR      PV2 Input power           R: 0~9, unit: W
+    // SSSS      PV1 Input voltage         S: 0~9, unit: 0.1V
+    // TTTT      PV2 Input voltage         S: 0~9, unit: 0.1V
+    // U         Setting value configuration state 0: Nothing changed, 1: Something changed
+    // V         MPPT1 charger status      0: abnormal, 1: normal but not charged, 2: charging
+    // W         MPPT2 charger status      0: abnormal, 1: normal but not charged, 2: charging
+    // X         Load connection           0: disconnect, 1: connect
+    // Y         Battery power direction   0: donothing, 1: charge, 2: discharge
+    // Z         DC/AC power direction     0: donothing, 1: AC-DC, 2: DC-AC
+    // a         Line power direction      0: donothing, 1: input, 2: output
+    // b         Local parallel ID         a: 0~(parallel number - 1)
+*/
 
-
-float imp_volt;
-float imp_freq;
-float out_volt;
-float out_freq;
-int out_load_va;
-int out_load_w;
-int out_load_perc;
-float bat_volt;
-int chg_amp;
-int  batt_level_perc;
-float  pv_amp;
-float pv_volt;
-int disc_amp;
-int inv_temp;
-float  W_ftv;
-String stato;
-
-int readvalue;
 
 
 uint16_t cal_crc_half(uint8_t *pin, uint8_t len)
 {
-
      uint16_t crc;
 
      uint8_t da;
@@ -102,173 +98,7 @@ uint16_t cal_crc_half(uint8_t *pin, uint8_t len)
      return(crc);
 }
 
-
-
-void read_QPIGS()
-{
-  serialMPP.print(QPIGS);
-  
-  lastMillis = millis();
-  while(serialMPP.available() == 0 &&  millis()< lastMillis+1000) ///wait for answer or timeout
-  {
-  }
-  while (serialMPP.available())
-  {
-    char c = serialMPP.read();
-   // if( ( (byte) c ) < 32 )
-    {
-      Serial.print((byte)c);
-      Serial.print(",");
-    }
-//    else
-//    {
-//      Serial.print(c);
-//    }
-    
-  }
- // if (serialMPP.find("(")) 
-  //{
- //   Serial.println("provo a stampa dalla seriale 1");
- //   imp_volt = serialMPP.parseFloat();        //QPIGS.1 Grid voltage      
- //   imp_freq = serialMPP.parseFloat();        //QPIGS.2 Grid frequency
-
-  //  float out_volt;
-  //  float out_freq;
-  //  int out_load_va;
-  //  int out_load_w;
-  //  int out_load_perc;
-  //  float bat_volt;
-  //  int chg_amp;
-  //  int  batt_level_perc;
-  //  float  pv_amp;
-  //  float pv_volt;
-  //  int disc_amp;
-  //  int inv_temp;
-
-  //  int dummy;
-
-  //  out_volt = serialMPP.parseFloat();       //QPIGS.3 Out voltage  
- //   out_freq = serialMPP.parseFloat();       //QPIGS.4 Out frequency
- //   out_load_va = serialMPP.parseInt();     //QPIGS.5 AC output apparent power
- //   out_load_w = serialMPP.parseInt();      //QPIGS.6 AC output active power
- //   out_load_perc = serialMPP.parseInt();   //QPIGS.7 Output load percent 
-  //  dummy =serialMPP.parseInt();                             //  INP_nonso  skip
- //   bat_volt = serialMPP.parseFloat();    //QPIGS.9 Battery voltage 
- //   chg_amp = serialMPP.parseInt();     //QPIGS.10 Battery charging current
- //   batt_level_perc = serialMPP.parseInt(); //QPIGS.11 Battery capacity 
- //   inv_temp =serialMPP.parseInt();                             //skip
- //   root["INP_PV_amp"] =serialMPP.parseFloat();                             //skip
- //   root["INP_PV_amp2"] =serialMPP.parseFloat();     //QPIGS.14 PV Input voltage 
- //   root["INP_PV_VOLT121"] = serialMPP.parseFloat();                             //skip
- //   root["OUT_DISC_AMP"] = serialMPP.parseInt();    //QPIGS.16 Battery discharge current
-  //}
-};
-
-/*
-void read_QPIWS()
-{
-  String inData;
-  lastMillis = millis();
-  
-  //ledblink(MKR_LED, 500, 3);
-  serialMPP.print(QPIWS);
-//  while (serialMPP.available() == 0&&  millis()< lastMillis+1000)   ///wait for answer or timeout
-//  {
-//  }
-
-  inData= serialMPP.readStringUntil('\r');
-  Serial.println(inData);
-  
-  //while (serialMPP.available() > 0)
-  // {   
-  //    char recieved = serialMPP.read();
-  //
-  //      inData += recieved; 
-  //
-  //  }
-//  root["I_SETTING"] = inData.substring(1,30);
-};
-*/
-void read_QMOD()
-{
- // while (serialMPP.available() > 0)
- // {
- //   serialMPP.flush();
- //   byte a=serialMPP.read();
- //   Serial.print(".");
- //   Serial.print(a);
- // }
- 
-  serialMPP.print(QMOD);
-  
-  //Serial.print(QMOD);
-  
-  lastMillis = millis();
-  while(serialMPP.available() == 0 &&  millis()< lastMillis+1000) ///wait for answer or timeout
-  {
-    //Serial.print(serialMPP.available());  
-  }
-  
-  while (serialMPP.available() )   ///wait for answer or timeout
-  {
-    char c = serialMPP.read();
-    if( ( (byte) c ) < 32 )
-    {
-      Serial.print((byte)c);
-      Serial.print(",");
-    }
-    else
-      Serial.print(c);
-  }
-  
-//  String inData;
-//  inData= serialMPP.readStringUntil('\r');
-//  Serial.println(inData);
-  
-  //while (serialMPP.available() > 0)
-  // {   
-  //    char recieved = serialMPP.read();
-  //
-  //      inData += recieved; 
-  //
-  //  }
-  //root["MODE_MAINS"] = inData.substring(1,2);
-  //stato= inData.substring(1,2);
-}
-
-
-void read_from_Inverter(String & s)
-{
-  Serial.println( s );
-  serialMPP.print( s );
-
-  delay(500);
-  
-  lastMillis = millis();
-  while(serialMPP.available() == 0 &&  millis()< lastMillis+1000) ///wait for answer or timeout
-  {
-    //Serial.print(serialMPP.available());  
-  }
-  
-  while (serialMPP.available() )   ///wait for answer or timeout
-  {
-    char c = serialMPP.read();
-    if( ( (byte) c ) < 32 )
-    {
-      Serial.print("0x");
-      Serial.print((byte)c, HEX);
-      Serial.print(",");
-    }
-    else
-    {
-      Serial.print(c);
-    }
-    delay(1);
-  }
-  Serial.println();
-}
-
-void CalculateCmdString(char* c )
+void CreateCmdString(char* c )
 {
   Serial.print(strlen(c ) );
   Serial.print(", String ");
@@ -290,72 +120,121 @@ void CalculateCmdString(char* c )
 }
 
 
+bool ReadFromInverter(String & s)
+{
+  const uint8_t BUF_SIZE = 256;
+  char buf[BUF_SIZE];
+  size_t pos = 0;
+
+  Serial.println( s );
+  Serial1.print( s );
+
+  delay(200);
+  int wait = 0;
+  while(Serial1.available() == 0 &&  wait < 1000 ) ///wait for answer or timeout
+  {
+    wait++;
+    delay(1);
+  }
+  if( wait == 1000 ){
+    Serial.println("timeout");
+    return false; //timeout
+  }
+  //pos = Serial1.readBytesUntil(0x0D,buf, BUF_SIZE);
+  while (Serial1.available() )   ///wait for answer or timeout
+  {
+    char c = Serial1.read();
+    buf[pos++] = c;
+    if( pos == BUF_SIZE )
+      return false;  //overflow
+    if( c == 0x0d )
+      break;  //end of line
+    delay(1);
+    //As we are receiving at 2400 baud, each char takes 1/240 sec to receive. 
+    //We wait here to prevent the UART buffer being empty and the loop stop receiving.
+    // wait = 0;
+    // while(Serial1.available() == 0 &&  wait < 1000 ) ///wait for answer or timeout
+    // {
+    //   wait++;
+    //   delayMicroseconds(20);
+    // }
+  }
+
+  Serial.println(buf);
+ 
+  uint16_t crc = cal_crc_half(buf, pos-3);
+  if( (char)(crc << 8) != buf[pos-2] && (char)(crc) != buf[pos-3] )
+  {
+    // Serial.print(crc<<8,HEX);Serial.print(",")
+    // Serial.print((char)crc<<8,HEX);Serial.print(",")
+    // Serial.print(crc<<8,HEX);Serial.print(",")
+    // Serial.print(crc<<8,HEX);Serial.print(",")
+    Serial.print("Len=");Serial.println(pos);
+    Serial.println("CRC error");
+    return false; //CRC error
+  }
+
+ 
+
+  char* pch = buf;
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // AAAA      Grid voltage              A: 0~9, unit: 0.1V
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // BBB       Grid frequency            B: 0~9, unit: 0.1Hz
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // CCCC      AC output voltage         C: 0~9, unit: 0.1V
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // DDD       AC output frequency       D: 0~9, unit: 0.1Hz
+  if (NULL == (pch = strtok(NULL, ','))) return 0;  // EEEE      AC output apparent power  E: 0~9, unit: VA
+  payloadInverter.apparentPower = atoi(pch);
+  if (NULL == (pch = strtok(NULL, ','))) return 0;      // FFFF      AC output active power    F: 0~9, unit: W
+  payloadInverter.activePower = atoi(pch);
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // GGG       Output load percent       G: 0~9, unit: %
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // HHH       Battery voltage           H: 0~9, unit: 0.1V
+  payloadInverter.batteryVoltage = atoi(pch);
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // III       Battery voltage from SCC  I: 0~9, unit: 0.1V
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // JJJ       Battery voltage from SCC2 J: 0~9, unit: 0.1V
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // KKK       Battery discharge current K: 0~9, unit: A
+  payloadInverter.batteryDischarge = atoi(pch);
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // LLL       Battery charging current  L: 0~9, unit: A
+  payloadInverter.batteryCharging = atoi(pch);
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // MMM       Battery capacity          M: 0~9, unit: %
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // NNN       Inverter heat sink temperature  N: 0~9, unit: oC
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // OOO       MPPT1 charger temperature O: 0~9, unit: oC
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // PPP       MPPT2 charger temperature P: 0~9, unit: oC
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // QQQQ      PV1 Input power           Q: 0~9, unit: W
+  payloadInverter.pvInputPower = atoi(pch);
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // RRRR      PV2 Input power           R: 0~9, unit: W
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // SSSS      PV1 Input voltage         S: 0~9, unit: 0.1V
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // TTTT      PV2 Input voltage         S: 0~9, unit: 0.1V
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // U         Setting value configuration state 0: Nothing changed
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // V         MPPT1 charger status      0: abnormal, 1: normal but
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // W         MPPT2 charger status      0: abnormal, 1: normal but
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // X         Load connection           0: disconnect, 1: connect
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // Y         Battery power direction   0: donothing, 1: charge, 2
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // Z         DC/AC power direction     0: donothing, 1: AC-DC, 2:
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // a         Line power direction      0: donothing, 1: input, 2:
+  if (NULL == (pch = strtok(NULL, ','))) return 0;    // b         Local parallel ID         a: 0~(parallel number - 1)
+
+  EmonSerial::PrintInverterPayload(&payloadInverter);
+  
+  return true;
+}
+
 void setup()
 {  
   Serial.begin(9600);
-	serialMPP.begin(2400);
+	Serial1.begin(2400);
 
-  char qmod[] = {"QMOD"};
-  CalculateCmdString(qmod); 
-  char cmd[] = {"^P004T"};
-  CalculateCmdString(cmd); 
-  
+//  char qmod[] = {"QMOD"};
+//  CreateCmdString(qmod); 
+//  char cmd[] = {"^P004T"};
+//  CreateCmdString(cmd); 
 }
 
 void loop()
 {
-	unsigned long currentMillis = millis();
-	if(	currentMillis - previousMillis > 5000) 
-	{
 
-    //char qmod[] = {"QMOD"};
-    //uint16_t crc = cal_crc_half( qmod, 4);
-    //Serial.print(crc,HEX);
-    
-		previousMillis = currentMillis;  
- //   Serial.println("loop");
- 
-//    Serial.println("read_QMOD()");
-//    read_QMOD();
-//    Serial.println();
-//    delay(300);
+  if( ReadFromInverter( P005GS ) )
+  {
+    EmonSerial::PrintInverterPayload(&payloadInverter);
+  }
 
-    read_from_Inverter( P004T );
-
-    
-//    Serial.println("read_QPIGS()");
-//    read_QPIGS();
-//    Serial.println();
-	}
+  delay(2000);
 }
-  /*  
-    String x;
-     
-		root.printTo(x);
-    
-		Serial.println(x.c_str());  
-     
-    
-		imp_volt=root["INP_VOLT"];
-		imp_freq=root["INP_FREQ"] ;
-		out_volt=root["OUT_VOLT"];
-		out_freq=root["OUT_FREQ"];
-		out_load_va=root["OUT_LOAD_VA"];
-		out_load_w=root["OUT_LOAD_W"];
-		out_load_perc= root["OUT_LOAD_PERC"];
-		bat_volt=root["INP_BAT_VOLT"];
-		chg_amp=root["INP_CHG_AMP"];
-		batt_level_perc=root["BATT_LEVEL_PERC"];
-		pv_amp=root["INP_PV_amp"];
-		pv_volt=root["INP_PV_amp2"];
-		disc_amp=root["OUT_DISC_AMP"];
-		inv_temp=root["inv_temp"];
-		W_ftv=( pv_volt*pv_amp);
-		JsonObject& root = jsonBuffer.createObject();     
-     //} 
-}
-Serial.print("stato=");
-
-Serial.println(stato);
-}
-*/
