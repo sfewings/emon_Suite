@@ -18,7 +18,7 @@ RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_C
 
 const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
-const int32_t SAMPLES = 5;
+const int32_t SAMPLES = 10;
 const uint8_t LED_PIN = 9;
 const uint8_t SEND_PERIOD = 15;
 
@@ -143,6 +143,7 @@ void setup()
 	Serial.println("rf12_initialize");
 	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
 	EmonSerial::PrintRF12Init(g_rf12Init);
+	EmonSerial::PrintBatteryPayload(NULL);
 
 	for(int ads=0; ads<4;ads++)
 		ads1115[ads].begin();
@@ -195,15 +196,15 @@ void loop()
 	g_lastMillis = now;
 
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	amps[0] = ReadingDifferential(0, 0) * 150.0 / 90.0; //shunt is 150Amps for 90mV;
 	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 90Amps for 100mV;
 
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
-		g_payloadBattery.power[i] = railVoltage * amps[i] / 1000.0;
+		g_payloadBattery.power[i] = railVoltage * amps[i] / 100.0;  //convert mV to mW
 		if(g_payloadBattery.power[i] < 0)
-			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
+			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
 		else
 			g_mWH_In[i] += g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
 		//this will do the rounding to units of pulses
