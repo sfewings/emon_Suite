@@ -172,30 +172,10 @@ void setup()
 
 void loop()
 {
-	int16_t adc0, adc1, adc2, adc3;
-	String str;
-	char floatStr[16];
-
 	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
-	uint16_t r = Reading(3, 0);
+	double railVoltage = ((short)(Reading(0, 2) * 0.1875 * (10000 + 500) / 500 / 10 ));
 
-	// Serial.print("Reading="); Serial.print(r);
-	// double v = (double)r *0.1875;
-	// Serial.print(",v="); Serial.print(v,4);
-	// v = v*(10000+1000)/1000;
-	// Serial.print(",v="); Serial.print(v,4);
-	// v = v/10;
-	// Serial.print(",v="); Serial.print(v,4);
-	// Serial.print(",s="); Serial.print((short)v);
-	// short rv = (short) v;
-	// Serial.print(",r="); Serial.print(rv);
-	
-	// Serial.println();
-
-	//double railVoltage = (double)Reading(0, 2) * 0.1875 * (10000 + 500) / 500 /10;
-	double railVoltage = ((short)(Reading(2, 3) * 0.1875 * (10000 + 500) / 500 / 10 ) * 2);
-
-	g_payloadBattery.voltage[0] = (short)(Reading(0, 2) * 0.1875 * (10000 + 500) / 500 / 10 );
+	g_payloadBattery.voltage[0] = (short) railVoltage;
 	//battery bank 1, mid point voltage, should be around 24v. Voltage divider is 10k/1k ohms
 	g_payloadBattery.voltage[1] = (short)(Reading(0, 3) * 0.1875 * (10000 + 1000) / 1000 / 10);
 	//battery bank 2, mid point voltage, series 1 (top row), should be around 24v. Voltage divider is 10k/1k ohms
@@ -229,8 +209,6 @@ void loop()
 		//this will do the rounding to units of pulses
 		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
 		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
-
-		//todo: Store g_mWH_In and g_mWH_Out to eeprom
 	}
 	
 	EmonSerial::PrintBatteryPayload(&g_payloadBattery);
