@@ -82,9 +82,10 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 			time_t thisTime = mktime(&time);
 			time_t elapsed =  thisTime - m_lastTime[name];			//returns seconds since last reading
 			m_lastTime[name] = thisTime;
+			if (m_sensorData[name][index] == -DBL_MAX)
+				m_sensorData[name][index] = 0;	//first reading for this index
 			m_sensorData[name][index] += data/3600.0 * elapsed;		//convert rate per second to rate per hour
 		}
-
 		break;
 	}
 };

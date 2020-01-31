@@ -253,6 +253,11 @@ void loop ()
 				PRINT_AND_LOG(Scale, Payload);
 			}
 
+			if (node_id == BATTERY_NODE)
+			{
+				PRINT_AND_LOG(Battery, Payload);
+			}
+
 			if (file)
 				file.close();
 		}
