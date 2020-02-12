@@ -243,34 +243,6 @@ void EmonSerial::PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long ti
 {
 	PrintWaterPayload(Serial, pPayloadWater, timeSinceLast);
 }
-//
-//void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast)
-//{
-//	if (pPayloadWater == NULL)
-//	{
-//		stream.print(F("wtr2,subnode,waterHeight(mm),flowRate,flowCount|ms_since_last_packet"));
-//	}
-//	else
-//	{
-//		stream.print(F("wtr2,"));
-//		stream.print(pPayloadWater->subnode);
-//		stream.print(F(","));
-//		stream.print(pPayloadWater->waterHeight);
-//		stream.print(F(","));
-//		stream.print(pPayloadWater->flowRate);
-//		stream.print(F(","));
-//		stream.print(pPayloadWater->flowCount);
-//
-//		PrintRelay(stream, pPayloadWater);
-//
-//		if (timeSinceLast != 0)
-//		{
-//			stream.print(F("|"));
-//			stream.print(timeSinceLast);
-//		}
-//	}
-//	stream.println();
-//}
 
 void EmonSerial::PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast)
 {
@@ -329,6 +301,91 @@ void EmonSerial::PrintScalePayload(Stream& stream, PayloadScale* pPayloadScale, 
 		stream.print(pPayloadScale->supplyV);
 
 		PrintRelay(stream, pPayloadScale);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
+void EmonSerial::PrintBatteryPayload(PayloadBattery* pPayloadBattery, unsigned long timeSinceLast)
+{
+	PrintBatteryPayload(Serial, pPayloadBattery, timeSinceLast);
+}
+
+void EmonSerial::PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBattery, unsigned long timeSinceLast)
+{
+	if (pPayloadBattery == NULL)
+	{
+		stream.print(F("bat,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..7]|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("bat,"));
+		stream.print(pPayloadBattery->subnode);
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			stream.print(F(","));
+			stream.print(pPayloadBattery->power[i]);
+		}
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			stream.print(F(","));
+			stream.print(pPayloadBattery->pulseIn[i]);
+		}
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			stream.print(F(","));
+			stream.print(pPayloadBattery->pulseOut[i]);
+		}
+		for (int i = 0; i < MAX_VOLTAGES; i++)
+		{
+			stream.print(F(","));
+			stream.print(pPayloadBattery->voltage[i]);
+		}
+		PrintRelay(stream, pPayloadBattery);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
+void EmonSerial::PrintInverterPayload(PayloadInverter* pPayloadInverter, unsigned long timeSinceLast)
+{
+	PrintInverterPayload(Serial, pPayloadInverter, timeSinceLast);
+}
+
+void EmonSerial::PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadInverter, unsigned long timeSinceLast)
+{
+	if (pPayloadInverter == NULL)
+	{
+		stream.print(F("inv,subnode,activePower,apparentPower,batteryVoltage,batteryDischargeCurrent,batteryChargingCurrent,pvInputPower|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("inv,"));
+		stream.print(pPayloadInverter->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->activePower);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->apparentPower);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->batteryVoltage);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->batteryDischarge);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->batteryCharging);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->pvInputPower);
+
+		PrintRelay(stream, pPayloadInverter);
 
 		if (timeSinceLast != 0)
 		{
@@ -707,3 +764,82 @@ int EmonSerial::ParseScalePayload(char* str, PayloadScale* pPayloadScale)
 	return 1;
 }
 
+int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
+{
+	memset(pPayloadBattery, 0, sizeof(PayloadBattery));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 == strcmp(pch, "bat"))
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadBattery->subnode = atoi(pch);
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok))) return 0;
+			pPayloadBattery->power[i] = atoi(pch);
+		}
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok))) return 0;
+			pPayloadBattery->pulseIn[i] = atol(pch);
+		}
+		for (int i = 0; i < BATTERY_SHUNTS; i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok))) return 0;
+			pPayloadBattery->pulseOut[i] = atol(pch);
+		}
+		for (int i = 0; i < MAX_VOLTAGES; i++)
+		{
+			if (NULL == (pch = strtok(NULL, tok))) return 0;
+			pPayloadBattery->voltage[i] = atoi(pch);
+		}
+		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+		{
+			ParseRelay(pPayloadBattery, pch);
+		}
+	}
+	else
+		return 0;
+
+	return 1;
+}
+
+
+int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverter)
+{
+	memset(pPayloadInverter, 0, sizeof(PayloadInverter));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 == strcmp(pch, "inv"))
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->subnode = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->activePower = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->apparentPower = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->batteryVoltage = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->batteryDischarge = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->batteryCharging = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->pvInputPower = atoi(pch);
+
+		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+		{
+			ParseRelay(pPayloadInverter, pch);
+		}
+	}
+	else
+		return 0;
+
+	return 1;
+}
