@@ -21,16 +21,17 @@ typedef unsigned char byte;
 #endif
 
 //RF12 node ID allocation
-#define BASE_JEENODE 10					//Nanode with LAN and NTP time
-#define RAIN_NODE	12						//Rain gauge Jeenode with rainfall and outside temperature
-#define PULSE_JEENODE 13				//JeeNode with power pulse from main switch board
-#define DISPLAY_NODE 14					//Arduino with LCD display
-#define TEMPERATURE_JEENODE 15	//Jeenode with multiple DS180B temperature sensors 
-#define HWS_JEENODE 16					//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
-#define EMON_LOGGER 17					//Logger node. Not a transmitter
+#define BASE_JEENODE 10				//Nanode with LAN and NTP time
+#define RAIN_NODE	12				//Rain gauge Jeenode with rainfall and outside temperature
+#define PULSE_JEENODE 13			//JeeNode with power pulse from main switch board
+#define DISPLAY_NODE 14				//Arduino with LCD display
+#define TEMPERATURE_JEENODE 15		//Jeenode with multiple DS180B temperature sensors 
+#define HWS_JEENODE 16				//Jeenode to connect to Heattrap solar hot water system. http://heat-trap.com.au
+#define EMON_LOGGER 17				//Logger node. Not a transmitter
 #define WATERLEVEL_NODE 18			//The water tank sensor
-#define SCALE_NODE 19					  //node that contains a load-cell
-#define BATTERY_NODE 20					//Node for sending battery current and voltage readings
+#define SCALE_NODE 19				//node that contains a load-cell
+#define BATTERY_NODE 20				//Node for sending battery current and voltage readings
+#define INVERTER_NODE 21			//Node for sending MPP inverter readings
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
@@ -128,6 +129,16 @@ typedef struct PayloadBattery : PayloadRelay {
 	short voltage[MAX_VOLTAGES];									//100th of v 
 }PayloadBattery;
 
+typedef struct PayloadInverter : PayloadRelay {
+	byte subnode;                             // inverter number
+	unsigned short activePower;               // W
+	unsigned short apparentPower;             // VAR
+	unsigned short batteryVoltage;            // 0.1V
+	unsigned short batteryDischarge;          // A
+	unsigned short batteryCharging;           // A
+	unsigned short pvInputPower;              // W
+	uint8_t batteryCapacity;                  // %
+} PayloadInverter;
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -142,6 +153,7 @@ public:
 	static void PrintWaterPayload(PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 	static void PrintScalePayload(PayloadScale* pPayloadScale, unsigned long timeSinceLast = 0);
 	static void PrintBatteryPayload(PayloadBattery* pPayloadBattery, unsigned long timeSinceLast = 0);
+	static void PrintInverterPayload(PayloadInverter* pPayloadInverter, unsigned long timeSinceLast = 0);
 
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -154,6 +166,7 @@ public:
 	static void PrintWaterPayload(Stream& stream, PayloadWater* pPayloadWater, unsigned long timeSinceLast = 0);
 	static void PrintScalePayload(Stream& stream, PayloadScale* pPayloadWater, unsigned long timeSinceLast = 0);
 	static void PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBattery, unsigned long timeSinceLast = 0);
+	static void PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadInverter, unsigned long timeSinceLast = 0);
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
@@ -169,6 +182,7 @@ public:
 	static int ParseWaterPayload(char* str, PayloadWater *pPayloadWater);
 	static int ParseScalePayload(char* str, PayloadScale* pPayloadScale);
 	static int ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery);
+	static int ParseInverterPayload(char* str, PayloadInverter* pPayloadInverter);
 };
 
 

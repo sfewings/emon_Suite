@@ -1,49 +1,46 @@
+#define RF69_COMPAT 1
+
+//#define __MOTEINO_AVR_ATmega1284__
+#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <AltSoftSerial.h>
 #include <EmonShared.h>
 
+/*
+Note. To make the Jeelib RFM69 work witht he Moteino Mega 1284p two changes need to be made to the jeelib libraries
+1. The SPI pin assignement for __
+in RF69_avr.h add the following definition for SPI pins
+  #elif defined(__AVR_ATmega1284P__) //Moteino mega
 
-//SoftwareSerial Serial1(A1, A0);  //A1=rx, A0=tx
-//AltSoftSerial Serial1; //UNO pin 9 = Tx, Pin 8 = Rx Mega 1284 pin 14=Rx, pin 13 = Tx
+  #define SS_DDR      DDRB
+  #define SS_PORT     PORTB
+  #define SS_BIT      4     // PB4    D4
+
+  #define SPI_SS      4     // PB4    D4
+  #define SPI_MOSI    5     // PB5    D5
+  #define SPI_MISO    6     // PB6    D6
+  #define SPI_SCK     7     // PB7    D7
+
+  static void spiConfigPins () {
+      SS_PORT |= _BV(SS_BIT);
+      SS_DDR |= _BV(SS_BIT);
+      PORTB |= _BV(SPI_SS);
+      DDRB |= _BV(SPI_SS) | _BV(SPI_MOSI) | _BV(SPI_SCK);
+  }
+
+2. In RF69.cpp rf69_initialize change the interrupt from 0 to 2
+#if defined(__AVR_ATmega1284P__) //Moteino mega
+        attachInterrupt(2, RF69::interrupt_compat, RISING);
+#else
+        attachInterrupt(0, RF69::interrupt_compat, RISING);
+#endif
+*/
+RF12Init g_rf12Init = { INVERTER_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+
 String P005GS = "\x5E\x50\x30\x30\x35\x47\x53\x58\x14\x0D"; //Query General status
 String P005PI = "\x5E\x50\x30\x30\x35\x50\x49\x71\x8B\x0D"; //Query Protocol version
 String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";      //Query Current time
 
 PayloadInverter payloadInverter;
-/*
-^P005GS<CRC><cr>: Query general status
-Response: ^D106AAAA,BBB,CCCC,DDD,EEEE,FFFF,GGG,HHH,III,JJJ,KKK,LLL,MMM,NNN,OOO,PPP,QQQQ,RRRR,SSSS,TTTT,U,V,W,X,Y,Z,a,b<CRC><cr>
-Data      Description               Remark
-    // AAAA      Grid voltage              A: 0~9, unit: 0.1V
-    // BBB       Grid frequency            B: 0~9, unit: 0.1Hz
-    // CCCC      AC output voltage         C: 0~9, unit: 0.1V
-    // DDD       AC output frequency       D: 0~9, unit: 0.1Hz
-    // EEEE      AC output apparent power  E: 0~9, unit: VA
-    // FFFF      AC output active power    F: 0~9, unit: W
-    // GGG       Output load percent       G: 0~9, unit: %
-    // HHH       Battery voltage           H: 0~9, unit: 0.1V
-    // III       Battery voltage from SCC  I: 0~9, unit: 0.1V
-    // JJJ       Battery voltage from SCC2 J: 0~9, unit: 0.1V
-    // KKK       Battery discharge current K: 0~9, unit: A
-    // LLL       Battery charging current  L: 0~9, unit: A
-    // MMM       Battery capacity          M: 0~9, unit: %
-    // NNN       Inverter heat sink temperature  N: 0~9, unit: oC
-    // OOO       MPPT1 charger temperature O: 0~9, unit: oC
-    // PPP       MPPT2 charger temperature P: 0~9, unit: oC
-    // QQQQ      PV1 Input power           Q: 0~9, unit: W
-    // RRRR      PV2 Input power           R: 0~9, unit: W
-    // SSSS      PV1 Input voltage         S: 0~9, unit: 0.1V
-    // TTTT      PV2 Input voltage         S: 0~9, unit: 0.1V
-    // U         Setting value configuration state 0: Nothing changed, 1: Something changed
-    // V         MPPT1 charger status      0: abnormal, 1: normal but not charged, 2: charging
-    // W         MPPT2 charger status      0: abnormal, 1: normal but not charged, 2: charging
-    // X         Load connection           0: disconnect, 1: connect
-    // Y         Battery power direction   0: donothing, 1: charge, 2: discharge
-    // Z         DC/AC power direction     0: donothing, 1: AC-DC, 2: DC-AC
-    // a         Line power direction      0: donothing, 1: input, 2: output
-    // b         Local parallel ID         a: 0~(parallel number - 1)
-*/
-
-
 
 uint16_t cal_crc_half(uint8_t *pin, uint8_t len)
 {
@@ -133,7 +130,7 @@ int ReadFromInverter(String & s)
     Serial1.read();
   }
 
-  Serial.println( s );
+  Serial.print( s );
   Serial1.print( s );
 
   //delay(100);
@@ -153,7 +150,6 @@ int ReadFromInverter(String & s)
       if( c == 0x0d )
       {
         pos--;
-        Serial.println("EOL");
         break;  //end of line
       }
     }    
@@ -169,33 +165,28 @@ int ReadFromInverter(String & s)
     Serial.print(buffer);
   }
   
-  uint16_t crc = cal_crc_half(buffer, pos-3);
-  if( (char)(crc << 8) != buffer[pos-1] && (char)(crc) != buffer[pos-2] )
+  uint16_t crc = cal_crc_half(buffer, pos-2);
+  uint16_t check = (((uint16_t)buffer[pos-2]&0xFF)<<8) + (uint16_t)(buffer[pos-1]&0xFF); 
+  if(crc != check)
   {
-    Serial.print((char)(crc<<8),HEX);Serial.print(",");
-    Serial.print((char)crc,HEX);Serial.println();
-    Serial.print(buffer[pos-1],HEX);Serial.print(",");
-    Serial.print(buffer[pos-2],HEX);Serial.println();
-    Serial.print("Len=");Serial.println(pos);
-    Serial.println("CRC error");
-//    return false; //CRC error
+    Serial.print("CRC error: crc=");
+    Serial.print(crc,HEX); 
+    Serial.print(" check=");
+    Serial.println(check,HEX);
+    return false; //CRC error
   }
   char delimiter = ',';
   char first ='6';
   char* pch = strtok(buffer, &first);
-  if( pch == NULL )
-    Serial.println("buffer == NULL");
-
+  if(pch == NULL) return 0;
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // AAAA      Grid voltage              A: 0~9, unit: 0.1V
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // BBB       Grid frequency            B: 0~9, unit: 0.1Hz
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // CCCC      AC output voltage         C: 0~9, unit: 0.1V
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // DDD       AC output frequency       D: 0~9, unit: 0.1Hz
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;  // EEEE      AC output apparent power  E: 0~9, unit: VA
   payloadInverter.apparentPower = atoi(pch);
-  //Serial.print("  payloadInverter.apparentPower =");Serial.println(  payloadInverter.apparentPower );
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;      // FFFF      AC output active power    F: 0~9, unit: W
   payloadInverter.activePower = atoi(pch);
-  //Serial.print("  payloadInverter.activePower =");Serial.println(  payloadInverter.activePower );
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // GGG       Output load percent       G: 0~9, unit: %
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // HHH       Battery voltage           H: 0~9, unit: 0.1V
   payloadInverter.batteryVoltage = atoi(pch);
@@ -223,8 +214,6 @@ int ReadFromInverter(String & s)
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // a         Line power direction      0: donothing, 1: input, 2:
  // if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // b         Local parallel ID         a: 0~(parallel number - 1)
 
-  EmonSerial::PrintInverterPayload(&payloadInverter);
-  
   return true;
 }
 
@@ -232,8 +221,18 @@ void setup()
 {  
   Serial.begin(9600);
 	Serial1.begin(2400);
-  Serial.println("Reset");
-  delay(2000);
+
+  
+	Serial.println(F("MPP inverter sensor node start"));
+
+
+	Serial.println("rf12_initialize");
+	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
+	EmonSerial::PrintRF12Init(g_rf12Init);
+
+  EmonSerial::PrintInverterPayload(NULL);
+
+  delay(200);
 //  char qmod[] = {"QMOD"};
 //  CreateCmdString(qmod); 
 //  char cmd[] = {"^P004T"};
@@ -242,13 +241,26 @@ void setup()
 
 void loop()
 {
-  int retVal = ReadFromInverter( P005GS );
-
-  Serial.println( retVal );
-  //if( ReadFromInverter( P005GS ) )
+  if( ReadFromInverter( P005GS ) )
   {
+    rf12_sleep(RF12_WAKEUP);
+    int wait = 1000;
+    while (!rf12_canSend() && wait--)
+    {
+      rf12_recvDone();
+    }
+    if (wait)
+    {
+      rf12_sendStart(0, &payloadInverter, sizeof(payloadInverter));
+      rf12_sendWait(0);
+    }
+    else
+    {
+      Serial.println(F("RF12 waiting. No packet sent"));
+    }
+    rf12_sleep(RF12_SLEEP);
     EmonSerial::PrintInverterPayload(&payloadInverter);
   }
 
-  delay(2000);
+  delay(15000);
 }
