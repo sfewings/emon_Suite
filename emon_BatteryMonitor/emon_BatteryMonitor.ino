@@ -69,6 +69,23 @@ long readVcc()
 	return result;
 }
 
+int16_t median(int16_t* samples, int nSamples)
+{
+	for (int i = 1; i < nSamples; ++i)
+	{
+		int16_t j = samples[i];
+		int16_t k;
+		for (k = i - 1; (k >= 0) && (j < samples[k]); k--)
+		{
+			samples[k + 1] = samples[k];
+		}
+		samples[k + 1] = j;
+	}
+
+	return samples[nSamples / 2];
+}
+
+
 int16_t Reading(uint8_t ads, uint8_t channel)
 {
 	ads1115[ads].setGain(GAIN_TWOTHIRDS); //shouldn't be required!
@@ -88,6 +105,7 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 {
 	int32_t sum = 0;
 	int gain;
+	int16_t samples[SAMPLES];
 
 	for (int g = 0; g < 6; g++ )
 	{
@@ -108,10 +126,9 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 	{
 		int16_t reading;
 		if (channel == 0)
-			reading = ads1115[ads].readADC_Differential_0_1();
+			samples[i] = ads1115[ads].readADC_Differential_0_1();
 		else
-			reading = ads1115[ads].readADC_Differential_2_3();
-		sum += reading;
+			samples[i] = ads1115[ads].readADC_Differential_2_3();
 	}
 
 	//reset to default
@@ -119,10 +136,10 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 	
 	
 	Serial.print("s="); Serial.print(sum); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
-	double returnVal = ((double)((double)sum / (double)SAMPLES)) * FACTOR[gain];
+	double returnVal = median(samples, SAMPLES)*FACTOR[gain];
 	Serial.print(" RetVal=");Serial.println(returnVal, 5);
 
-	return (sum * FACTOR[gain])/SAMPLES;
+	return returnVal;
 }
 
 void setup()
