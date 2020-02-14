@@ -42,6 +42,8 @@ String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";      //Query Current time
 
 PayloadInverter payloadInverter;
 
+#define LED_PIN 15
+
 uint16_t cal_crc_half(uint8_t *pin, uint8_t len)
 {
      uint16_t crc;
@@ -222,6 +224,7 @@ void setup()
   Serial.begin(9600);
 	Serial1.begin(2400);
 
+  pinMode(LED_PIN, OUTPUT);
   
 	Serial.println(F("MPP inverter sensor node start"));
 
@@ -241,6 +244,7 @@ void setup()
 
 void loop()
 {
+  digitalWrite(LED_PIN, HIGH);
   if( ReadFromInverter( P005GS ) )
   {
     rf12_sleep(RF12_WAKEUP);
@@ -260,6 +264,8 @@ void loop()
     }
     rf12_sleep(RF12_SLEEP);
     EmonSerial::PrintInverterPayload(&payloadInverter);
+
+    digitalWrite(LED_PIN, LOW);
   }
 
   delay(15000);
