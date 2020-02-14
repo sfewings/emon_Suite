@@ -139,6 +139,7 @@ typedef struct PayloadInverter : PayloadRelay {
 	unsigned short pvInputPower;              // W
 	uint8_t batteryCapacity;                  // %
 } PayloadInverter;
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
