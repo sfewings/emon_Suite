@@ -324,31 +324,40 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		case BATTERY_NODE:
 		{
 			PayloadBattery bat;
-			std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2 top", "Bank 2 row 2", "Bank 2 row 3", "Bank 2 row 4", "Bank 2 row 5", "CPU" };
 
 			if (EmonSerial::ParseBatteryPayload((char*)reading.c_str(), &bat))
 			{
-				unsigned long totalIn = 0;
-				unsigned long totalOut = 0;
-				for (int i = 0; i < BATTERY_SHUNTS; i++)
+				if (bat.subnode == 0) //main battery monitoring unit
 				{
-					m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.pulseIn[i]);
-					totalIn += bat.pulseIn[i];
-					m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.pulseOut[i]);
-					totalOut += bat.pulseOut[i];
-				}
-				m_batteryCurrent.Add("Total In", time, totalIn);
-				m_batteryCurrent.Add("Total Out", time, totalOut);
+					std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2 top", "Bank 2 row 2", "Bank 2 row 3", "Bank 2 row 4", "Bank 2 row 5", "CPU" };
+					unsigned long totalIn = 0;
+					unsigned long totalOut = 0;
+					for (int i = 0; i < BATTERY_SHUNTS; i++)
+					{
+						m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.pulseIn[i]);
+						totalIn += bat.pulseIn[i];
+						m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.pulseOut[i]);
+						totalOut += bat.pulseOut[i];
+					}
+					m_batteryCurrent.Add("Total In", time, totalIn);
+					m_batteryCurrent.Add("Total Out", time, totalOut);
 
-				m_batteryVoltage.Add("Rail", time, bat.voltage[0]/100.0);
-				double midVoltage = bat.voltage[0] / 100.0 / 2.0;
-				for (int i = 1; i < MAX_VOLTAGES-1; i++)
-				{
-					m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i]/100.0); //battery values are in 100th of a volt
+					m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
+					double midVoltage = bat.voltage[0] / 100.0 / 2.0;
+					for (int i = 1; i < MAX_VOLTAGES - 1; i++)
+					{
+						m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt
+					}
 				}
-				//
+				else if( bat.subnode == 1 ) //wooden current measuring device with one current and one voltage
+				{
+					m_batteryCurrent.Add("Tester In", time, bat.pulseIn[0]);
+					m_batteryCurrent.Add("Tester Out", time, bat.pulseOut[0]);
+
+					m_batteryVoltage.Add("Tester", time, bat.voltage[0] / 100.0);
+				}
 				if (bat.voltage[MAX_VOLTAGES - 1] / 1000.0 < 5)
-					m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES-1] / 1000.0);	//Arduino power supply is in mv
+					m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES - 1] / 1000.0);	//Arduino power supply is in mv
 			}
 			break;
 		}
