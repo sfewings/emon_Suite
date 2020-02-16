@@ -48,7 +48,8 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod),
 	m_scale("scale", rootPath, eReading, eReading, eReading),
 	m_batteryCurrent("batteryCurrent", rootPath, eCounterPeriod, eCounterPeriod, eCounterPeriod),
-	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading)
+	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading),
+	m_inverter("inverter", rootPath, eReading, eReading, eReading)
 {
 	m_rootPath = rootPath;
 	if (removeAll && fs::is_directory(rootPath) && rootPath.length()> 5 )
@@ -71,6 +72,7 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	fs::create_directory(rootPath + "/scale");
 	fs::create_directory(rootPath + "/batteryCurrent");
 	fs::create_directory(rootPath + "/batteryVoltage");
+	fs::create_directory(rootPath + "/inverter");
 
 	m_rainFall.SetCounterScaleFactor(0.2); //rainfall is 0.2mm for every counter
 }
@@ -114,6 +116,7 @@ unsigned short SensorReader::StringToNode(std::string line)
 	if (line.compare(0, 3, "scl"  ) == 0) return SCALE_NODE;
 	if (line.compare(0, 3, "log") == 0) return EMON_LOGGER;
 	if (line.compare(0, 3, "bat") == 0) return BATTERY_NODE;
+	if (line.compare(0, 3, "inv") == 0) return INVERTER_NODE;
 	return 0;
 }
 
@@ -321,34 +324,59 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		case BATTERY_NODE:
 		{
 			PayloadBattery bat;
-			std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2 top", "Bank 2 row 2", "Bank 2 row 3", "Bank 2 row 4", "Bank 2 row 5", "CPU" };
 
 			if (EmonSerial::ParseBatteryPayload((char*)reading.c_str(), &bat))
 			{
-				unsigned long totalIn = 0;
-				unsigned long totalOut = 0;
-				for (int i = 0; i < BATTERY_SHUNTS; i++)
+				if (bat.subnode == 0) //main battery monitoring unit
 				{
-					m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.pulseIn[i]);
-					totalIn += bat.pulseIn[i];
-					m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.pulseOut[i]);
-					totalOut += bat.pulseOut[i];
-				}
-				m_batteryCurrent.Add("Total In", time, totalIn);
-				m_batteryCurrent.Add("Total Out", time, totalOut);
+					std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2 top", "Bank 2 row 2", "Bank 2 row 3", "Bank 2 row 4", "Bank 2 row 5", "CPU" };
+					unsigned long totalIn = 0;
+					unsigned long totalOut = 0;
+					for (int i = 0; i < BATTERY_SHUNTS; i++)
+					{
+						m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.pulseIn[i]);
+						totalIn += bat.pulseIn[i];
+						m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.pulseOut[i]);
+						totalOut += bat.pulseOut[i];
+					}
+					m_batteryCurrent.Add("Total In", time, totalIn);
+					m_batteryCurrent.Add("Total Out", time, totalOut);
 
-				m_batteryVoltage.Add("Rail", time, bat.voltage[0]/100.0);
-				double midVoltage = bat.voltage[0] / 100.0 / 2.0;
-				for (int i = 1; i < MAX_VOLTAGES-1; i++)
-				{
-					m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i]/100.0); //battery values are in 100th of a volt
+					m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
+					double midVoltage = bat.voltage[0] / 100.0 / 2.0;
+					for (int i = 1; i < MAX_VOLTAGES - 1; i++)
+					{
+						m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt
+					}
 				}
-				//
+				else if( bat.subnode == 1 ) //wooden current measuring device with one current and one voltage
+				{
+					m_batteryCurrent.Add("Tester In", time, bat.pulseIn[0]);
+					m_batteryCurrent.Add("Tester Out", time, bat.pulseOut[0]);
+
+					m_batteryVoltage.Add("Tester", time, bat.voltage[0] / 100.0);
+				}
 				if (bat.voltage[MAX_VOLTAGES - 1] / 1000.0 < 5)
-					m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES-1] / 1000.0);	//Arduino power supply is in mv
+					m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES - 1] / 1000.0);	//Arduino power supply is in mv
 			}
 			break;
 		}
+		case INVERTER_NODE:
+		{
+			PayloadInverter inv;
+			if (EmonSerial::ParseInverterPayload((char*)reading.c_str(), &inv))
+			{
+				m_power.Add("Inv" + std::to_string(inv.subnode + 1) + " Out", time, inv.activePower);
+				m_power.Add("Inv" + std::to_string(inv.subnode + 1) + " In", time, inv.pvInputPower);
+				m_batteryVoltage.Add("Inv" + std::to_string(inv.subnode + 1) + "Batt", time, inv.batteryVoltage/10.0);
+				
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat capacity", time, inv.batteryCapacity);
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat charging", time, inv.batteryCharging);
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat dicharge", time, inv.batteryDischarge);
+			}
+			break;
+		}
+
 		default: 
 			break;
 	}
@@ -367,6 +395,7 @@ void SensorReader::SaveAll()
 	m_scale.Close(false);
 	m_batteryCurrent.Close(false);
 	m_batteryVoltage.Close(false);
+	m_inverter.Close(false);
 }
 
 void SensorReader::Close()
@@ -381,4 +410,5 @@ void SensorReader::Close()
 	m_scale.Close();
 	m_batteryCurrent.Close();
 	m_batteryVoltage.Close();
+	m_inverter.Close();
 }

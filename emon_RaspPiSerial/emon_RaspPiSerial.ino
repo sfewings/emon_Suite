@@ -39,6 +39,7 @@ void setup ()
 	EmonSerial::PrintWaterPayload(NULL);
 	EmonSerial::PrintScalePayload(NULL);
 	EmonSerial::PrintBatteryPayload(NULL);
+	EmonSerial::PrintInverterPayload(NULL);
 
 	digitalWrite(GREEN_LED, LOW);
 }
@@ -130,6 +131,10 @@ void loop ()
 			if (node_id == BATTERY_NODE)
 			{
 				SERIAL_OUT(Battery, Payload);
+			}
+			if (node_id == INVERTER_NODE)
+			{
+				SERIAL_OUT(Inverter, Payload);
 			}
 		}
 		

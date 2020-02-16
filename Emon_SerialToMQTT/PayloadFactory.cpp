@@ -250,7 +250,48 @@ bool PayloadFactory::PublishPayload(char* s)
 			}
 		}
 	}
+	else if (strncmp(s, "inv", 3) == 0)
+	{
+		PayloadInverter* inv = new PayloadInverter();
+		if (EmonSerial::ParseInverterPayload(s, inv))
+		{
+			parsed = true;
+			pBasePayload = inv;
 
+			char buf[100];
+			char topic[100];
+
+			sprintf(topic, "inverter/power/%d", inv->subnode);
+			sprintf(buf, "%d", inv->activePower);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "inverter/power/%d", inv->subnode);
+			sprintf(buf, "%d", inv->pvInputPower);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "inverter/batteryCapacity/%d", inv->subnode);
+			sprintf(buf, "%d", inv->batteryCapacity);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "inverter/batteryCharging/%d", inv->subnode);
+			sprintf(buf, "%d", inv->batteryCharging);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "inverter/batteryDischarge/%d", inv->subnode);
+			sprintf(buf, "%d", inv->batteryDischarge);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "inverter/batteryVoltage/%d", inv->subnode);
+			sprintf(buf, "%d", inv->batteryVoltage);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+		}
+	}
 	if (parsed)
 	{
 		char topic[10] = { "EmonLog" };

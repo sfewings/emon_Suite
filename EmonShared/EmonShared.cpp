@@ -347,6 +347,51 @@ void EmonSerial::PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBat
 			stream.print(pPayloadBattery->voltage[i]);
 		}
 		PrintRelay(stream, pPayloadBattery);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
+void EmonSerial::PrintInverterPayload(PayloadInverter* pPayloadInverter, unsigned long timeSinceLast)
+{
+	PrintInverterPayload(Serial, pPayloadInverter, timeSinceLast);
+}
+
+void EmonSerial::PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadInverter, unsigned long timeSinceLast)
+{
+	if (pPayloadInverter == NULL)
+	{
+		stream.print(F("inv,subnode,activePower,apparentPower,batteryVoltage,batteryDischargeCurrent,batteryChargingCurrent,pvInputPower|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("inv,"));
+		stream.print(pPayloadInverter->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->activePower);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->apparentPower);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->batteryVoltage);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->batteryDischarge);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->batteryCharging);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->pvInputPower);
+
+		PrintRelay(stream, pPayloadInverter);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
 	}
 	stream.println();
 }
@@ -754,6 +799,43 @@ int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
 		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 		{
 			ParseRelay(pPayloadBattery, pch);
+		}
+	}
+	else
+		return 0;
+
+	return 1;
+}
+
+
+int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverter)
+{
+	memset(pPayloadInverter, 0, sizeof(PayloadInverter));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	if (0 == strcmp(pch, "inv"))
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->subnode = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->activePower = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->apparentPower = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->batteryVoltage = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->batteryDischarge = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->batteryCharging = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadInverter->pvInputPower = atoi(pch);
+
+		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+		{
+			ParseRelay(pPayloadInverter, pch);
 		}
 	}
 	else

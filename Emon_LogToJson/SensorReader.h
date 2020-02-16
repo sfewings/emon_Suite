@@ -27,6 +27,7 @@ protected:
 	SensorData m_scale;
 	SensorData m_batteryCurrent;
 	SensorData m_batteryVoltage;
+	SensorData m_inverter;
 
 	std::string m_rootPath;
 	std::map<std::string, double> m_temperatureMovingAverage;
