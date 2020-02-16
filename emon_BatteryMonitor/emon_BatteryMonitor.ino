@@ -18,9 +18,9 @@ RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_C
 
 const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
-const int32_t SAMPLES = 10;
+const int32_t SAMPLES = 30;
 const uint8_t LED_PIN = 9;
-const uint8_t SEND_PERIOD = 15;
+const unsigned long SEND_PERIOD = 15000;  //ms
 
 Adafruit_ADS1115 ads1115[4] { Adafruit_ADS1115(0x48), Adafruit_ADS1115(0x49), Adafruit_ADS1115(0x4A), Adafruit_ADS1115(0x4B) };
 
@@ -29,7 +29,7 @@ double g_mWH_In[BATTERY_SHUNTS] = { 0.0, 0.0, 0.0 };
 double g_mWH_Out[BATTERY_SHUNTS] = { 0.0, 0.0, 0.0 };
 unsigned long  g_lastMillis;
 PayloadBattery g_payloadBattery;
-uint8_t g_sendPeriod = 0;
+unsigned long g_lastSendTime;
 
 double readEEPROM(int offset)
 {
@@ -101,12 +101,11 @@ int16_t Reading(uint8_t ads, uint8_t channel)
 	return (int16_t) (s / SAMPLES);
 }
 
-double ReadingDifferential(uint8_t ads, uint8_t channel)
+double ReadingDifferential(uint8_t ads, uint8_t channel, bool returnMedian)
 {
 	int32_t sum = 0;
 	int gain;
 	int16_t samples[SAMPLES];
-
 	for (int g = 0; g < 6; g++ )
 	{
 		ads1115[ads].setGain((adsGain_t)GAIN_VALUE[g]);
@@ -122,6 +121,7 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 			break;
 	}
 
+	unsigned long ms = millis();
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		int16_t reading;
@@ -130,16 +130,34 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 		else
 			samples[i] = ads1115[ads].readADC_Differential_2_3();
 	}
+	
 
 	//reset to default
-	 ads1115[ads].setGain(GAIN_TWOTHIRDS);
-	
-	
+	ads1115[ads].setGain(GAIN_TWOTHIRDS);
+
+	// Serial.print("millis=");	
+	// Serial.println(millis()-ms);
+
+	double average = 0.0;
+	for(int i=0; i< SAMPLES;i++)
+	{
+		//Serial.println(samples[i],5);
+		average += samples[i];
+	}
+	average /=SAMPLES;
+	average *=FACTOR[gain];
+
 	Serial.print("s="); Serial.print(sum); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
 	double returnVal = median(samples, SAMPLES)*FACTOR[gain];
-	Serial.print(" RetVal=");Serial.println(returnVal, 5);
+	Serial.print(" median=");Serial.print(returnVal, 5);
+	Serial.print(" average=");Serial.println(average, 5);
 
-	return returnVal;
+	//for(int i=0; i< SAMPLES;i++)
+	//	Serial.println(samples[i],5);
+	if( returnMedian)
+		return returnVal;
+	else 
+		return average;
 }
 
 void setup()
@@ -182,6 +200,7 @@ void setup()
 	}
 
 	g_lastMillis = millis();
+	g_lastSendTime = millis();
 
 	delay(1000);
 	digitalWrite(LED_PIN, LOW);
@@ -213,13 +232,16 @@ void loop()
 	g_lastMillis = now;
 
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 0) * 150.0 / 90.0; //shunt is 150Amps for 90mV;
-	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 90Amps for 100mV;
+	amps[0] = ReadingDifferential(0, 0, true  ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
+	amps[1] = ReadingDifferential(0, 0, false ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
+	amps[2] = 0.0;
+//	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+//	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 90Amps for 100mV;
 
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
 		g_payloadBattery.power[i] = railVoltage * amps[i] / 100.0;  //convert mV to mW
+
 		if(g_payloadBattery.power[i] < 0)
 			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
 		else
@@ -227,6 +249,14 @@ void loop()
 		//this will do the rounding to units of pulses
 		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
 		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
+		Serial.print("shunt "); Serial.print(i); Serial.print(",");
+		Serial.print(railVoltage, 2); Serial.print(",");
+		Serial.print(amps[i]); Serial.print(",");
+		Serial.print(g_payloadBattery.power[i]); Serial.print(",");
+		Serial.print(g_mWH_Out[i]); Serial.print(",");
+		Serial.print(g_mWH_In[i]); Serial.print(",");
+		Serial.print(g_payloadBattery.pulseIn[i]); Serial.print(",");
+		Serial.print(g_payloadBattery.pulseOut[i]); Serial.println();
 	}
 	
 	EmonSerial::PrintBatteryPayload(&g_payloadBattery);
@@ -234,9 +264,9 @@ void loop()
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
-	if( ++g_sendPeriod == SEND_PERIOD)
+	if(millis() - g_lastSendTime > SEND_PERIOD)
 	{
-		g_sendPeriod = 0;
+		g_lastSendTime = millis();
 		digitalWrite(LED_PIN, HIGH);
 
 

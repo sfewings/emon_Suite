@@ -18,9 +18,9 @@
 
 const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
-const int32_t SAMPLES = 10;
+const int32_t SAMPLES = 30;
 const uint8_t LED_PIN = 9;
-const uint8_t SEND_PERIOD = 15;
+const unsigned long SEND_PERIOD = 15000;
 
 RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
@@ -35,7 +35,7 @@ PayloadBattery  g_payloadBattery;
 
 double g_mWH_In;
 double g_mWH_Out;
-uint8_t g_sendPeriod = 0;
+unsigned long g_lastSendTime;
 
 long readVcc()
 {
@@ -134,17 +134,16 @@ int16_t Reading(uint8_t channel)
 }
 
 
-double ReadingDifferential(uint8_t channel)
+double ReadingDifferential(uint8_t channel, bool returnMedian)
 {
 	int32_t sum = 0;
 	int gain;
 	int16_t samples[SAMPLES];
-
-	for (int g = 0; g < 6; g++)
+	for (int g = 0; g < 6; g++ )
 	{
 		ads1115.setGain((adsGain_t)GAIN_VALUE[g]);
 		int16_t reading;
-		if (channel == 0)
+		if( channel == 0)
 			reading = ads1115.readADC_Differential_0_1();
 		else
 			reading = ads1115.readADC_Differential_2_3();
@@ -155,6 +154,7 @@ double ReadingDifferential(uint8_t channel)
 			break;
 	}
 
+	unsigned long ms = millis();
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		int16_t reading;
@@ -163,16 +163,34 @@ double ReadingDifferential(uint8_t channel)
 		else
 			samples[i] = ads1115.readADC_Differential_2_3();
 	}
+	
 
 	//reset to default
 	ads1115.setGain(GAIN_TWOTHIRDS);
 
+	//Serial.print("millis=");	
+	//Serial.println(millis()-ms);
+
+	double average = 0.0;
+	for(int i=0; i< SAMPLES;i++)
+	{
+//		Serial.println(samples[i],5);
+		average += samples[i];
+	}
+	average /=SAMPLES;
+	average *=FACTOR[gain];
 
 	Serial.print("s="); Serial.print(sum); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
-	double returnVal = median(samples, SAMPLES) * FACTOR[gain];
-	Serial.print(" RetVal="); Serial.println(returnVal, 5);
+	double returnVal = median(samples, SAMPLES)*FACTOR[gain];
+	Serial.print(" median=");Serial.print(returnVal, 5);
+	Serial.print(" average=");Serial.println(average, 5);
 
-	return returnVal;
+	// for(int i=0; i< SAMPLES;i++)
+	// 	Serial.println(samples[i],5);
+	if( returnMedian)
+		return returnVal;
+	else 
+		return average;
 }
 
 void setup()
@@ -183,6 +201,7 @@ void setup()
 
 	// initialize LCD with number of columns and rows:
 	lcd.begin(16, 2);
+	lcd.print("Current meter");
 
 	Serial.println(F("Current meter sensor start"));
 
@@ -203,6 +222,7 @@ void setup()
 	g_lastMillis = millis();
 	g_mWH_In = 0.0;
 	g_mWH_Out = 0.0;
+	g_lastSendTime = millis();
 
 	memset(&g_payloadBattery, 0, sizeof(g_payloadBattery));
 	g_payloadBattery.subnode = 1;
@@ -222,14 +242,14 @@ void loop()
 	ads1115.setGain(GAIN_TWOTHIRDS);
 
 	adc0 = Reading(0);
-	int16_t voltage = (int16_t)((adc0 * 0.1875) *(100000+6800)/6800); // 6.144v range using a100K and 6.8K voltage diveder on 12v source
-	g_payloadBattery.voltage[0] = voltage;
+	int16_t voltage = (int16_t)((adc0 * 0.1875) *(100000+6800)/6800); // 6.144v range using a100K and 6.8K voltage divider on 12v source
+	g_payloadBattery.voltage[0] = voltage/10;  //convert mV to 100ths V
 
 	adc1 = Reading(1);
 	int16_t vcc_from_arduino = (int16_t)((adc1 * 0.1875) ); // 6.144v range
-	g_payloadBattery.voltage[1] = vcc_from_arduino;
+	g_payloadBattery.voltage[MAX_VOLTAGES-1] = vcc_from_arduino/10;	//we put the MCU voltage in teh last slot. In 100ths of volts
 
-	double v_current = ReadingDifferential(1);
+	double v_current = ReadingDifferential(1, true);
 	double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	//double watts = voltage * amps/1000.0;
 
@@ -237,7 +257,8 @@ void loop()
 	unsigned long period = now - g_lastMillis;
 	g_lastMillis = now;
 
-	g_payloadBattery.power[0] = voltage * amps / 100.0;  //convert mV to mW
+//	g_payloadBattery.power[0] = voltage * amps / 100.0;  //convert mV to mW
+	g_payloadBattery.power[0] = voltage * amps / 100.0 * 4;  //convert mV to mW . *4 for 4 12v batteries in series tests.
 	if (g_payloadBattery.power[0] < 0)
 		g_mWH_Out += -1.0 * g_payloadBattery.power[0] * period / (60 * 60 * 1000.0); //convert to wH
 	else
@@ -264,12 +285,12 @@ void loop()
 	lcd.print(amps, 3);
 
 	lcd.setCursor(0, 1);
-	lcd.print("wH");
+	lcd.print("In");
 	lcd.setCursor(2, 1);
 	lcd.print(g_mWH_In, 3);
 
 	lcd.setCursor(8, 1);
-	lcd.print("wH");
+	lcd.print("Ot");
 	lcd.setCursor(10, 1);
 	lcd.print(g_mWH_Out, 3);
 
@@ -284,9 +305,9 @@ void loop()
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
-	if (++g_sendPeriod == SEND_PERIOD)
+	if(g_lastSendTime - millis() > SEND_PERIOD)
 	{
-		g_sendPeriod = 0;
+		g_lastSendTime = millis();
 		digitalWrite(LED_PIN, HIGH);
 
 
