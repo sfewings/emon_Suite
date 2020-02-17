@@ -2,8 +2,9 @@
 
 //#define __MOTEINO_AVR_ATmega1284__
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <AltSoftSerial.h>
+#include <SoftwareSerial.h>
 #include <EmonShared.h>
+//#include <RF69_avr.h>
 
 /*
 Note. To make the Jeelib RFM69 work witht he Moteino Mega 1284p two changes need to be made to the jeelib libraries
@@ -40,7 +41,10 @@ String P005GS = "\x5E\x50\x30\x30\x35\x47\x53\x58\x14\x0D"; //Query General stat
 String P005PI = "\x5E\x50\x30\x30\x35\x50\x49\x71\x8B\x0D"; //Query Protocol version
 String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";      //Query Current time
 
+
 PayloadInverter payloadInverter;
+
+SoftwareSerial g_serialInverter2(14, 13);	//18,17); //A1=rx, A0=tx
 
 #define LED_PIN 15
 
@@ -119,7 +123,7 @@ void CreateCmdString(char* c )
 }
 
 
-int ReadFromInverter(String & s)
+int ReadFromInverter(Stream& stream, String & s)
 {
   const uint16_t BUF_SIZE = 255;
   char buffer[BUF_SIZE];
@@ -127,22 +131,22 @@ int ReadFromInverter(String & s)
 
   memset(buffer,0,BUF_SIZE);
 
-  while (Serial1.available() > 0 )   //Empty the input buffer
+  while (stream.available() > 0 )   //Empty the input buffer
   {
-    Serial1.read();
+    stream.read();
   }
 
   Serial.print( s );
-  Serial1.print( s );
+  stream.print( s );
 
   //delay(100);
   int wait = 0;
   unsigned long start = millis();
   while(millis() < start+1000 ) ///wait for answer or timeout
   {
-    while (Serial1.available() > 0 )   ///wait for answer or timeout
+    while (stream.available() > 0 )   ///wait for answer or timeout
     {
-      char c = Serial1.read();
+      char c = stream.read();
       buffer[pos++] = c;
       if( pos == BUF_SIZE )
       {
@@ -223,50 +227,71 @@ void setup()
 {  
   Serial.begin(9600);
 	Serial1.begin(2400);
+  g_serialInverter2.begin(2400);
 
   pinMode(LED_PIN, OUTPUT);
   
 	Serial.println(F("MPP inverter sensor node start"));
 
 
+	// Serial.print("SPI_SS   ");   Serial.println(SPI_SS   );
+	// Serial.print("SPI_MOSI ");   Serial.println(SPI_MOSI );
+	// Serial.print("SPI_MISO ");   Serial.println(SPI_MISO );
+	// Serial.print("SPI_SCK  ");   Serial.println(SPI_SCK  );
+
 	Serial.println("rf12_initialize");
+
 	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
 	EmonSerial::PrintRF12Init(g_rf12Init);
 
   EmonSerial::PrintInverterPayload(NULL);
 
-  delay(200);
+  delay(1000);
 //  char qmod[] = {"QMOD"};
 //  CreateCmdString(qmod); 
 //  char cmd[] = {"^P004T"};
 //  CreateCmdString(cmd); 
 }
 
+void SendPacket()
+{
+  rf12_sleep(RF12_WAKEUP);
+  int wait = 1000;
+  while (!rf12_canSend() && wait--)
+  {
+    rf12_recvDone();
+  }
+  if (wait)
+  {
+    rf12_sendStart(0, &payloadInverter, sizeof(payloadInverter));
+    rf12_sendWait(0);
+  }
+  else
+  {
+    Serial.println(F("RF12 waiting. No packet sent"));
+  }
+  rf12_sleep(RF12_SLEEP);
+  EmonSerial::PrintInverterPayload(&payloadInverter);
+}
+
 void loop()
 {
   digitalWrite(LED_PIN, HIGH);
-  if( ReadFromInverter( P005GS ) )
+  if( ReadFromInverter( Serial1, P005GS ) )
   {
-    rf12_sleep(RF12_WAKEUP);
-    int wait = 1000;
-    while (!rf12_canSend() && wait--)
-    {
-      rf12_recvDone();
-    }
-    if (wait)
-    {
-      rf12_sendStart(0, &payloadInverter, sizeof(payloadInverter));
-      rf12_sendWait(0);
-    }
-    else
-    {
-      Serial.println(F("RF12 waiting. No packet sent"));
-    }
-    rf12_sleep(RF12_SLEEP);
-    EmonSerial::PrintInverterPayload(&payloadInverter);
+    payloadInverter.subnode = 0;
+    SendPacket();
+  }
+  digitalWrite(LED_PIN, LOW);
+  delay(5000);
 
-    digitalWrite(LED_PIN, LOW);
+  digitalWrite(LED_PIN, HIGH);
+  if( ReadFromInverter( g_serialInverter2, P005GS ) )
+  {
+    payloadInverter.subnode = 1;
+    SendPacket();
   }
 
-  delay(15000);
+  digitalWrite(LED_PIN, LOW);
+  delay(5000);
 }
