@@ -101,11 +101,12 @@ int16_t Reading(uint8_t ads, uint8_t channel)
 	return (int16_t) (s / SAMPLES);
 }
 
-double ReadingDifferential(uint8_t ads, uint8_t channel, bool returnMedian)
+double ReadingDifferential(uint8_t ads, uint8_t channel)
 {
-	int32_t sum = 0;
+	double sum = 0;
 	int gain;
 	int16_t samples[SAMPLES];
+
 	for (int g = 0; g < 6; g++ )
 	{
 		ads1115[ads].setGain((adsGain_t)GAIN_VALUE[g]);
@@ -121,7 +122,6 @@ double ReadingDifferential(uint8_t ads, uint8_t channel, bool returnMedian)
 			break;
 	}
 
-	unsigned long ms = millis();
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		int16_t reading;
@@ -129,35 +129,30 @@ double ReadingDifferential(uint8_t ads, uint8_t channel, bool returnMedian)
 			samples[i] = ads1115[ads].readADC_Differential_0_1();
 		else
 			samples[i] = ads1115[ads].readADC_Differential_2_3();
+		sum += samples[i];
 	}
 	
-
 	//reset to default
 	ads1115[ads].setGain(GAIN_TWOTHIRDS);
 
-	// Serial.print("millis=");	
-	// Serial.println(millis()-ms);
 
-	double average = 0.0;
+	double _median = median(samples, SAMPLES)*FACTOR[gain];
+	double mean = sum/SAMPLES*FACTOR[gain];
+	double sumOfSquares = 0.0;
+	double stdDev;
+
 	for(int i=0; i< SAMPLES;i++)
 	{
-		//Serial.println(samples[i],5);
-		average += samples[i];
+		sumOfSquares += (samples[i]*FACTOR[gain] - mean) * (samples[i]*FACTOR[gain] - mean);
 	}
-	average /=SAMPLES;
-	average *=FACTOR[gain];
+	stdDev = sqrt( sumOfSquares/SAMPLES);
 
-	Serial.print("s="); Serial.print(sum); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
-	double returnVal = median(samples, SAMPLES)*FACTOR[gain];
-	Serial.print(" median=");Serial.print(returnVal, 5);
-	Serial.print(" average=");Serial.println(average, 5);
+	Serial.print("gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
+	Serial.print(" median=");Serial.print(_median, 5);
+	Serial.print(" mean=");Serial.print(mean, 5);
+	Serial.print(" stdDev=");Serial.println(stdDev, 5);
 
-	//for(int i=0; i< SAMPLES;i++)
-	//	Serial.println(samples[i],5);
-	if( returnMedian)
-		return returnVal;
-	else 
-		return average;
+	return _median;
 }
 
 void setup()
@@ -232,11 +227,9 @@ void loop()
 	g_lastMillis = now;
 
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 0, true  ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
-	amps[1] = ReadingDifferential(0, 0, false ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
-	amps[2] = 0.0;
-//	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-//	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 90Amps for 100mV;
+	amps[0] = ReadingDifferential(0, 0) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
+	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 50Amps for 75mV;
 
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
