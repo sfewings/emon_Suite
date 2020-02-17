@@ -4,7 +4,7 @@
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <SoftwareSerial.h>
 #include <EmonShared.h>
-//#include <RF69_avr.h>
+#include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
 
 /*
 Note. To make the Jeelib RFM69 work witht he Moteino Mega 1284p two changes need to be made to the jeelib libraries
@@ -233,6 +233,9 @@ void setup()
   
 	Serial.println(F("MPP inverter sensor node start"));
 
+  //check to make sure the correct SPI pins are assigned for use witht he Moteino Mega 1284P
+  if( SPI_SS !=  4 || SPI_MOSI != 5 || SPI_MISO != 6 || SPI_SCK != 7 )
+    Serial.println("Warning. The JLib code will not work with the Moteino Mega.");
 
 	// Serial.print("SPI_SS   ");   Serial.println(SPI_SS   );
 	// Serial.print("SPI_MOSI ");   Serial.println(SPI_MOSI );
@@ -277,21 +280,19 @@ void SendPacket()
 void loop()
 {
   digitalWrite(LED_PIN, HIGH);
+
   if( ReadFromInverter( Serial1, P005GS ) )
   {
     payloadInverter.subnode = 0;
     SendPacket();
   }
-  digitalWrite(LED_PIN, LOW);
-  delay(5000);
 
-  digitalWrite(LED_PIN, HIGH);
   if( ReadFromInverter( g_serialInverter2, P005GS ) )
   {
     payloadInverter.subnode = 1;
     SendPacket();
   }
-
   digitalWrite(LED_PIN, LOW);
-  delay(5000);
+  
+  delay(13000);
 }
