@@ -337,14 +337,14 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 					{
 						if (bat.power[i] < 0)
 						{
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, -1.0*bat.power[i]);
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, 0);
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.power[i]);
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, 0);
 							totalIn += -1.0* bat.power[i];
 						}
 						else
 						{
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, 0);
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.power[i]);
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, 0);
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.power[i]);
 							totalOut += bat.power[i];
 						}
 					}
@@ -362,15 +362,14 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 				{
 					if (bat.power[0] < 0)
 					{
-						m_batteryCurrent.Add("Tester In", time, -1.0 * bat.power[0]);
-						m_batteryCurrent.Add("Tester Out", time, 0);
+						m_batteryCurrent.Add("Tester Out", time, bat.power[0]);
+						m_batteryCurrent.Add("Tester In", time, 0);
 					}
 					else
 					{
-						m_batteryCurrent.Add("Tester In", time, 0);
-						m_batteryCurrent.Add("Tester Out", time, bat.power[0]);
+						m_batteryCurrent.Add("Tester Out", time, 0);
+						m_batteryCurrent.Add("Tester In", time, bat.power[0]);
 					}
-
 					m_batteryVoltage.Add("Tester", time, bat.voltage[0] / 100.0);
 				}
 				if (bat.voltage[MAX_VOLTAGES - 1] / 1000.0 < 5)
