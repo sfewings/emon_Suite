@@ -222,28 +222,28 @@ bool PayloadFactory::PublishPayload(char* s)
 			char topic[100];
 			for (int i = 0; i < BATTERY_SHUNTS; i++)
 			{
-				sprintf(topic, "battery/power/%d", i);
+				sprintf(topic, "battery/power/%d/%d", bat->subnode, i);
 				sprintf(buf, "%d", bat->power[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
 			for (int i = 0; i < BATTERY_SHUNTS; i++)
 			{
-				sprintf(topic, "battery/pulseIn/%d", i);
+				sprintf(topic, "battery/pulseIn/%d/%d", bat->subnode, i);
 				sprintf(buf, "%d", bat->pulseIn[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
 			for (int i = 0; i < BATTERY_SHUNTS; i++)
 			{
-				sprintf(topic, "battery/pulseOut/%d", i);
+				sprintf(topic, "battery/pulseOut/%d/%d", bat->subnode, i);
 				sprintf(buf, "%d", bat->pulseOut[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
 			for (int i = 0; i < MAX_VOLTAGES; i++)
 			{
-				sprintf(topic, "battery/voltage/%d", i);
+				sprintf(topic, "battery/voltage/%d/%d", bat->subnode, i);
 				sprintf(buf, "%d", bat->voltage[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;

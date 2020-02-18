@@ -47,7 +47,8 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_water("water", rootPath, eReading, eReading, eReading),
 	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod),
 	m_scale("scale", rootPath, eReading, eReading, eReading),
-	m_batteryCurrent("batteryCurrent", rootPath, eCounterPeriod, eCounterPeriod, eCounterPeriod),
+//	m_batteryCurrent("batteryCurrent", rootPath, eCounterPeriod, eCounterPeriod, eCounterPeriod),
+	m_batteryCurrent("batteryCurrent", rootPath, eReading, eRatePerSecond, eRatePerSecond),
 	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading),
 	m_inverter("inverter", rootPath, eReading, eReading, eReading)
 {
@@ -329,15 +330,23 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			{
 				if (bat.subnode == 0) //main battery monitoring unit
 				{
-					std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2 top", "Bank 2 row 2", "Bank 2 row 3", "Bank 2 row 4", "Bank 2 row 5", "CPU" };
-					unsigned long totalIn = 0;
-					unsigned long totalOut = 0;
+					std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2-1", "Bank 2-2", "Bank 2-3", "Bank 2-4", "Bank-row 5", "CPU" };
+					double totalIn = 0.0;
+					double totalOut = 0.0;
 					for (int i = 0; i < BATTERY_SHUNTS; i++)
 					{
-						m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.pulseIn[i]);
-						totalIn += bat.pulseIn[i];
-						m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.pulseOut[i]);
-						totalOut += bat.pulseOut[i];
+						if (bat.power[i] < 0)
+						{
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, -1.0*bat.power[i]);
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, 0);
+							totalIn += -1.0* bat.power[i];
+						}
+						else
+						{
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, 0);
+							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.power[i]);
+							totalOut += bat.power[i];
+						}
 					}
 					m_batteryCurrent.Add("Total In", time, totalIn);
 					m_batteryCurrent.Add("Total Out", time, totalOut);
@@ -351,8 +360,16 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 				}
 				else if( bat.subnode == 1 ) //wooden current measuring device with one current and one voltage
 				{
-					m_batteryCurrent.Add("Tester In", time, bat.pulseIn[0]);
-					m_batteryCurrent.Add("Tester Out", time, bat.pulseOut[0]);
+					if (bat.power[0] < 0)
+					{
+						m_batteryCurrent.Add("Tester In", time, -1.0 * bat.power[0]);
+						m_batteryCurrent.Add("Tester Out", time, 0);
+					}
+					else
+					{
+						m_batteryCurrent.Add("Tester In", time, 0);
+						m_batteryCurrent.Add("Tester Out", time, bat.power[0]);
+					}
 
 					m_batteryVoltage.Add("Tester", time, bat.voltage[0] / 100.0);
 				}

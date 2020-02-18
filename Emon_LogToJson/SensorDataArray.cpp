@@ -58,20 +58,24 @@ void BaseDataArray<F>::Add(std::string name, tm time, double data)
 			m_sensorData[name][index] = data - m_startCount[name];
 		break;
 	case eCounterPeriod:
+	{
+		int indexes = 1;
 		if (m_lastIndex.find(name) == m_lastIndex.end())
 		{
 			m_startCount[name] = (long)data;
 			m_lastCount[name] = (long)data;
 			m_lastIndex[name] = index;
 		}
-		else if(m_lastIndex[name] != index)
+		else if (m_lastIndex[name] != index)
 		{
 			m_startCount[name] = (long)m_lastCount[name];
+			indexes = index - m_lastIndex[name];
 			m_lastIndex[name] = index;
 		}
 		m_lastCount[name] = (long)data;
-		m_sensorData[name][index] = data - m_startCount[name];
+		m_sensorData[name][index] = (data - m_startCount[name]) /(double)indexes ;
 		break;
+	}
 	case eRatePerSecond:
 		if (m_lastTime.find(name) == m_lastTime.end() )
 		{
