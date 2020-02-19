@@ -20,7 +20,7 @@ const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 }
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
 const int32_t SAMPLES = 30;
 const uint8_t LED_PIN = 9;
-const unsigned long SEND_PERIOD = 15000;
+const unsigned long SEND_PERIOD = 15000;  //ms
 
 RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
@@ -134,11 +134,12 @@ int16_t Reading(uint8_t channel)
 }
 
 
-double ReadingDifferential(uint8_t channel, bool returnMedian)
+double ReadingDifferential(uint8_t channel )
 {
-	int32_t sum = 0;
+	double sum = 0;
 	int gain;
 	int16_t samples[SAMPLES];
+
 	for (int g = 0; g < 6; g++ )
 	{
 		ads1115.setGain((adsGain_t)GAIN_VALUE[g]);
@@ -154,7 +155,6 @@ double ReadingDifferential(uint8_t channel, bool returnMedian)
 			break;
 	}
 
-	unsigned long ms = millis();
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		int16_t reading;
@@ -162,35 +162,30 @@ double ReadingDifferential(uint8_t channel, bool returnMedian)
 			samples[i] = ads1115.readADC_Differential_0_1();
 		else
 			samples[i] = ads1115.readADC_Differential_2_3();
+		sum += samples[i];
 	}
 	
-
 	//reset to default
 	ads1115.setGain(GAIN_TWOTHIRDS);
 
-	//Serial.print("millis=");	
-	//Serial.println(millis()-ms);
 
-	double average = 0.0;
+	double _median = median(samples, SAMPLES)*FACTOR[gain];
+	double mean = sum/SAMPLES*FACTOR[gain];
+	double sumOfSquares = 0.0;
+	double stdDev;
+
 	for(int i=0; i< SAMPLES;i++)
 	{
-//		Serial.println(samples[i],5);
-		average += samples[i];
+		sumOfSquares += (samples[i]*FACTOR[gain] - mean) * (samples[i]*FACTOR[gain] - mean);
 	}
-	average /=SAMPLES;
-	average *=FACTOR[gain];
+	stdDev = sqrt( sumOfSquares/SAMPLES);
 
-	Serial.print("s="); Serial.print(sum); Serial.print(" gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
-	double returnVal = median(samples, SAMPLES)*FACTOR[gain];
-	Serial.print(" median=");Serial.print(returnVal, 5);
-	Serial.print(" average=");Serial.println(average, 5);
+	Serial.print("gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
+	Serial.print(" median=");Serial.print(_median, 5);
+	Serial.print(" mean=");Serial.print(mean, 5);
+	Serial.print(" stdDev=");Serial.println(stdDev, 5);
 
-	// for(int i=0; i< SAMPLES;i++)
-	// 	Serial.println(samples[i],5);
-	if( returnMedian)
-		return returnVal;
-	else 
-		return average;
+	return _median;
 }
 
 void setup()
@@ -249,7 +244,7 @@ void loop()
 	int16_t vcc_from_arduino = (int16_t)((adc1 * 0.1875) ); // 6.144v range
 	g_payloadBattery.voltage[MAX_VOLTAGES-1] = vcc_from_arduino/10;	//we put the MCU voltage in teh last slot. In 100ths of volts
 
-	double v_current = ReadingDifferential(1, true);
+	double v_current = ReadingDifferential(1);
 	double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	//double watts = voltage * amps/1000.0;
 
@@ -258,7 +253,7 @@ void loop()
 	g_lastMillis = now;
 
 //	g_payloadBattery.power[0] = voltage * amps / 100.0;  //convert mV to mW
-	g_payloadBattery.power[0] = voltage * amps / 100.0 * 4;  //convert mV to mW . *4 for 4 12v batteries in series tests.
+	g_payloadBattery.power[0] = voltage * amps / 100.0;// * 4;  //convert mV to mW . *4 for 4 12v batteries in series tests.
 	if (g_payloadBattery.power[0] < 0)
 		g_mWH_Out += -1.0 * g_payloadBattery.power[0] * period / (60 * 60 * 1000.0); //convert to wH
 	else
