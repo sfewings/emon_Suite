@@ -151,8 +151,12 @@ double ReadingDifferential(uint8_t ads, uint8_t channel)
 	Serial.print(" median=");Serial.print(_median, 5);
 	Serial.print(" mean=");Serial.print(mean, 5);
 	Serial.print(" stdDev=");Serial.println(stdDev, 5);
-
-	return _median;
+	//mean seems to be the best measure. StdDev on the 30 samples is quite high! 
+	//typical for 3 banks
+	//gain=5 factor=0.01 median=-5.36719 mean=-5.22786 stdDev=0.48221
+	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
+	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
+	return mean;  
 }
 
 void setup()
@@ -227,8 +231,8 @@ void loop()
 	g_lastMillis = now;
 
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 0) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
-	amps[1] = ReadingDifferential(1, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	amps[0] = ReadingDifferential(1, 0) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
+	amps[1] = ReadingDifferential(0, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	amps[2] = ReadingDifferential(1, 1) * 50.0 / 75.0; //shunt is 50Amps for 75mV;
 
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
