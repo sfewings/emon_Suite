@@ -31,5 +31,7 @@ protected:
 
 	std::string m_rootPath;
 	std::map<std::string, double> m_temperatureMovingAverage;
+	std::map<std::string, double > m_inverterCurrentIn;
+	std::map<std::string, double > m_inverterCurrentOut;
 };
 

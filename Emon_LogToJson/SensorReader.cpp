@@ -47,10 +47,9 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_water("water", rootPath, eReading, eReading, eReading),
 	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod),
 	m_scale("scale", rootPath, eReading, eReading, eReading),
-//	m_batteryCurrent("batteryCurrent", rootPath, eCounterPeriod, eCounterPeriod, eCounterPeriod),
-	m_batteryCurrent("batteryCurrent", rootPath, eReading, eRatePerSecond, eRatePerSecond),
+	m_batteryCurrent("batteryCurrent", rootPath, eReading, eReading, eReading),
 	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading),
-	m_inverter("inverter", rootPath, eReading, eReading, eReading)
+	m_inverter("inverter", rootPath, eReading, eRatePerSecond, eRatePerSecond)
 {
 	m_rootPath = rootPath;
 	if (removeAll && fs::is_directory(rootPath) && rootPath.length()> 5 )
@@ -330,22 +329,23 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			{
 				if (bat.subnode == 0) //main battery monitoring unit
 				{
-					std::string sensor[MAX_VOLTAGES] = { "Rail", "Bank 1 mid", "Bank 2-1", "Bank 2-2", "Bank 2-3", "Bank 2-4", "Bank-row 5", "CPU" };
+					std::string sensor[MAX_VOLTAGES]     = { "Rail", "Giant", "BBB-1", "BBB-2", "BBB-3", "BBB-4", "BBB-5", "CPU" };
+					std::string currents[BATTERY_SHUNTS] = { "BBB", "Giant", "Li-ion"};
 					double totalIn = 0.0;
 					double totalOut = 0.0;
 					for (int i = 0; i < BATTERY_SHUNTS; i++)
 					{
 						if (bat.power[i] < 0)
 						{
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, bat.power[i]);
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, 0);
-							totalIn += -1.0* bat.power[i];
+							m_batteryCurrent.Add(currents[i] + " Out", time, bat.power[i]);
+							m_batteryCurrent.Add(currents[i] + " In", time, 0);
+							totalOut += bat.power[i];
 						}
 						else
 						{
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " Out", time, 0);
-							m_batteryCurrent.Add("Bank" + std::to_string(i) + " In", time, bat.power[i]);
-							totalOut += bat.power[i];
+							m_batteryCurrent.Add(currents[i] + " Out", time, 0);
+							m_batteryCurrent.Add(currents[i] + " In", time, bat.power[i]);
+							totalIn += bat.power[i];
 						}
 					}
 					m_batteryCurrent.Add("Total In", time, totalIn);
@@ -388,7 +388,22 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 				
 				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat capacity", time, inv.batteryCapacity);
 				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat charging", time, inv.batteryCharging);
-				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat dicharge", time, inv.batteryDischarge);
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat dicharge", time, -inv.batteryDischarge);
+				m_inverterCurrentIn[std::to_string(inv.subnode + 1)] = inv.batteryCharging;
+				m_inverterCurrentOut[std::to_string(inv.subnode + 1)] = -inv.batteryDischarge;
+
+				double totalIn = 0.0;
+				double totalOut = 0.0;
+				for (auto it = m_inverterCurrentIn.begin(); it != m_inverterCurrentIn.end(); ++it)
+				{
+					totalIn += it->second;
+				}
+				for (auto it = m_inverterCurrentOut.begin(); it != m_inverterCurrentOut.end(); ++it)
+				{
+					totalOut += it->second;
+				}
+				m_inverter.Add("Total charging", time, totalIn);
+				m_inverter.Add("Total discharging", time, totalOut);
 			}
 			break;
 		}

@@ -203,6 +203,7 @@ int ReadFromInverter(Stream& stream, String & s)
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // LLL       Battery charging current  L: 0~9, unit: A
   payloadInverter.batteryCharging = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // MMM       Battery capacity          M: 0~9, unit: %
+	payloadInverter.batteryCapacity = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // NNN       Inverter heat sink temperature  N: 0~9, unit: oC
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // OOO       MPPT1 charger temperature O: 0~9, unit: oC
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // PPP       MPPT2 charger temperature P: 0~9, unit: oC
