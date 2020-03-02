@@ -13,7 +13,8 @@
 //#include <filesystem>
 #include <iostream>
 
-#define TEMPERATURE_DESPIKE 500.0				//Despike any temperature ereading greater than 5 celcius from the moving average
+#define TEMPERATURE_DESPIKE 2000.0				//Despike any temperature ereading greater than 20 celcius from the moving average
+																					// Note: If all reading are greater than the despike value then the moving average will never change!
 #define TEMPERATURE_SMOOTHING_WINDOW 5.0	// the moving average for smoothing temperature values
 
 namespace fs = std::experimental::filesystem;
@@ -225,11 +226,12 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			{
 				std::string sensor[4][4] = { 
 					{"Under roof", "Living room slab", "Living room", "Ceiling space"}, 
-					{"Garage", "Beer fridge", "unused", "unused"},
-					{"unused", "unused", "unused", "unused"},
-					{"unused", "unused", "unused", "unused"}
-			};
+					{"Garage", "Beer fridge", "BeerFridge 2", "unused1"},
+					{"unused2", "unused3", "unused4", "unused5"},
+					{"unused6", "unused7", "unused8", "unused9"}
+				};
 
+			
 				if (temp.subnode < 4)
 				{
 					for (int i = 0; i < temp.numSensors; i++)
