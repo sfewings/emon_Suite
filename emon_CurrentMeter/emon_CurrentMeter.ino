@@ -237,8 +237,8 @@ void loop()
 	ads1115.setGain(GAIN_TWOTHIRDS);
 
 	adc0 = Reading(0);
-	int16_t voltage = (int16_t)((adc0 * 0.1875) *(100000+6800)/6800); // 6.144v range using a100K and 6.8K voltage divider on 12v source
-	g_payloadBattery.voltage[0] = voltage/10;  //convert mV to 100ths V
+	int16_t mVolts = (int16_t)((adc0 * 0.1875) *(100000+6800)/6800); // 6.144v range using a100K and 6.8K voltage divider on 12v source
+	g_payloadBattery.voltage[0] = mVolts/10;  //convert mV to 100ths V
 
 	adc1 = Reading(1);
 	int16_t vcc_from_arduino = (int16_t)((adc1 * 0.1875) ); // 6.144v range
@@ -252,8 +252,8 @@ void loop()
 	unsigned long period = now - g_lastMillis;
 	g_lastMillis = now;
 
-//	g_payloadBattery.power[0] = voltage * amps / 100.0;  //convert mV to mW
-	g_payloadBattery.power[0] = voltage * amps / 100.0;// * 4;  //convert mV to mW . *4 for 4 12v batteries in series tests.
+//	g_payloadBattery.power[0] = mVolts * amps / 100.0;  //convert mV to mW
+	g_payloadBattery.power[0] = mVolts * amps / 1000.0 * 4;//convert mV* amps to W . *4 for 4 12v batteries in series tests.
 	if (g_payloadBattery.power[0] < 0)
 		g_mWH_Out += -1.0 * g_payloadBattery.power[0] * period / (60 * 60 * 1000.0); //convert to wH
 	else
@@ -272,7 +272,7 @@ void loop()
 	lcd.setCursor(0, 0);
 	lcd.print("V");
 	lcd.setCursor(2, 0);
-	lcd.print(DoubleString(str, voltage));
+	lcd.print(DoubleString(str, mVolts));
 
 	lcd.setCursor(8, 0);
 	lcd.print("A");
@@ -291,7 +291,7 @@ void loop()
 
 
 	adc3 = ads1115.readADC_SingleEnded(3);
-	Serial.print("AIN0: v external    "); Serial.print(adc0); Serial.print(","); Serial.println(voltage);
+	Serial.print("AIN0: v external    "); Serial.print(adc0); Serial.print(","); Serial.println(mVolts);
 	Serial.print("AIN1: v arduino     "); Serial.print(adc1); Serial.print(","); Serial.println(vcc_from_arduino);
 	Serial.print("AIN2: v shunt       "); Serial.print("----" ); Serial.print(","); Serial.println(v_current,5);
 	Serial.println(" ");
