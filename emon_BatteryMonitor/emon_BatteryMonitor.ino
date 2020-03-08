@@ -123,7 +123,7 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	Serial.print( stats.stdDev );
 	Serial.println();
 
-	return stats.mean;
+	return stats.median;  //median removes chance of spike reading influencing the tallies
 }
 
 double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel)
@@ -264,9 +264,9 @@ void loop()
 		g_payloadBattery.power[i] = railVoltage * amps[i] / 100.0;  //convert mV to mW
 
 		if(g_payloadBattery.power[i] < 0)
-			g_mWH_In[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
+			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
 		else
-			g_mWH_Out[i] += g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
+			g_mWH_In[i] += g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
 		//this will do the rounding to units of pulses
 		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
 		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
