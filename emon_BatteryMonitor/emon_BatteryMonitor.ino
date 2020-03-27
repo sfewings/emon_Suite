@@ -134,15 +134,21 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel)
 	for (int g = 0; g < 6; g++ )
 	{
 		ads1115[ads].setGain((adsGain_t)GAIN_VALUE[g]);
-		int16_t reading;
-		if( channel == 0)
-			reading = ads1115[ads].readADC_Differential_0_1();
-		else
-			reading = ads1115[ads].readADC_Differential_2_3();
+
+		for (int i = 0; i < SAMPLES; i++)
+		{
+			if( channel == 0)
+				samples[i] = ads1115[ads].readADC_Differential_0_1();
+			else
+				samples[i] = ads1115[ads].readADC_Differential_2_3();
+		}
 
 		gain = g;
-		//Serial.print("AIN2: v shunt       "); Serial.print(g); Serial.print(","); Serial.print(adc2); Serial.print(","); Serial.println(adc2 * factor[g], 5);
-		if (abs(reading) > 1000)
+
+		//appears to be some noisy values resulting in selecting a low gain value.
+		//use mean to try and filter out the noise at this stage.
+		stats_t stats = GetStats(samples, SAMPLES);
+		if (abs(stats.mean) > 1000)
 			break;
 	}
 
@@ -157,22 +163,33 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel)
 	//reset to default
 	ads1115[ads].setGain(GAIN_TWOTHIRDS);
 
+	//print before sorting!
+	Serial.print(F("current vals,"));
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		Serial.print(samples[i]);
+		Serial.print(",");
+	}
+	Serial.println();
+
+
 	stats_t stats = GetStats(samples, SAMPLES);
 
 	//Serial.println(F("current,shuntNum,gain,factor,median,mean,stdDev"));
 	Serial.print(F("current,"));
 	Serial.print(shuntNum);	Serial.print(F(",")); 
 	Serial.print(gain);		Serial.print(F(",")); 
-	Serial.print(FACTOR[gain]);	Serial.print(F(",")); 
 	Serial.print(stats.median);	Serial.print(F(",")); 
 	Serial.print(stats.mean);		Serial.print(F(",")); 
-	Serial.print(stats.stdDev); 
+	Serial.print(stats.stdDev);
 	Serial.println();
+
 	//mean seems to be the best measure. StdDev on the 30 samples is quite high! 
 	//typical for 3 banks
 	//gain=5 factor=0.01 median=-5.36719 mean=-5.22786 stdDev=0.48221
 	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
 	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
+	if( stats.stdDev)
 	return stats.mean;  
 }
 
@@ -271,16 +288,16 @@ void loop()
 		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
 		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
 
-		Serial.print("shunt,"); 
-		Serial.print(i); 							Serial.print(",");
-		Serial.print(railVoltage, 2); 				Serial.print(",");
-		Serial.print(amps[i]); 						Serial.print(",");
-		Serial.print(g_payloadBattery.power[i]); 	Serial.print(",");
-		Serial.print(g_mWH_Out[i]); 				Serial.print(",");
-		Serial.print(g_mWH_In[i]); 					Serial.print(",");
-		Serial.print(g_payloadBattery.pulseOut[i]); Serial.print(",");
-		Serial.print(g_payloadBattery.pulseIn[i]); 
-		Serial.println();
+		// Serial.print("shunt,"); 
+		// Serial.print(i); 							Serial.print(",");
+		// Serial.print(railVoltage, 2); 				Serial.print(",");
+		// Serial.print(amps[i]); 						Serial.print(",");
+		// Serial.print(g_payloadBattery.power[i]); 	Serial.print(",");
+		// Serial.print(g_mWH_Out[i]); 				Serial.print(",");
+		// Serial.print(g_mWH_In[i]); 					Serial.print(",");
+		// Serial.print(g_payloadBattery.pulseOut[i]); Serial.print(",");
+		// Serial.print(g_payloadBattery.pulseIn[i]); 
+		// Serial.println();
 	}
 
 	//write g_mWH_In and g_mWH_Out to eeprom
@@ -313,5 +330,9 @@ void loop()
 
 	digitalWrite(LED_PIN, LOW);
 
-	delay( SEND_PERIOD - (millis()- millisStart));
+	uint32_t millisTaken = millis()- millisStart; 
+	Serial.print( F("loop_ms,") );
+	Serial.println( millisTaken );
+	if( millisTaken < SEND_PERIOD )
+		delay( SEND_PERIOD - millisTaken);
 }
