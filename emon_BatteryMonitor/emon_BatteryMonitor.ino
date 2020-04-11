@@ -105,7 +105,7 @@ stats_t GetStats(double* samples, int nSamples)
 	return stats;
 }
 
-double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFactor)
+double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFactor, bool &noisyData )
 {
 	ads1115[ads].setGain(GAIN_TWOTHIRDS); //shouldn't be required!
 	double samples[SAMPLES];
@@ -123,10 +123,15 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	Serial.print( stats.stdDev );
 	Serial.println();
 
+	if(stats.stdDev > 1.0) 
+	{
+		noisyData = true;
+	}
+
 	return stats.median;  //median removes chance of spike reading influencing the tallies
 }
 
-double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel)
+double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool noisyData)
 {
 	int gain;
 	double samples[SAMPLES];
@@ -164,13 +169,13 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel)
 	ads1115[ads].setGain(GAIN_TWOTHIRDS);
 
 	//print before sorting!
-	Serial.print(F("current vals,"));
-	for (int i = 0; i < SAMPLES; i++)
-	{
-		Serial.print(samples[i]);
-		Serial.print(",");
-	}
-	Serial.println();
+	// Serial.print(F("current vals,"));
+	// for (int i = 0; i < SAMPLES; i++)
+	// {
+	// 	Serial.print(samples[i]);
+	// 	Serial.print(",");
+	// }
+	// Serial.println();
 
 
 	stats_t stats = GetStats(samples, SAMPLES);
@@ -189,8 +194,13 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel)
 	//gain=5 factor=0.01 median=-5.36719 mean=-5.22786 stdDev=0.48221
 	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
 	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
-	if( stats.stdDev)
-	return stats.mean;  
+
+	if(stats.stdDev > 1.0) 
+	{
+		noisyData = true;
+	}
+
+	return stats.mean;
 }
 
 void setup()
@@ -247,23 +257,25 @@ void setup()
 void loop()
 {
 	uint32_t millisStart = millis();
+	
+	bool noisyData = false;
 
 	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
-	double railVoltage = Reading(0, 0, 2, 0.1875 * (10000 + 500) / 500 / 10 );
+	double railVoltage = Reading(0, 0, 2, 0.1875 * (10000 + 500) / 500 / 10, noisyData );
 
 	g_payloadBattery.voltage[0] = (short) railVoltage;
 	//battery bank 1, mid point voltage, should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[1] = (short) Reading(1, 0, 3, 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[1] = (short) Reading(1, 0, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	//battery bank 2, mid point voltage, series 1 (top row), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[2] = (short) Reading(2, 3, 0, 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[2] = (short) Reading(2, 3, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	//battery bank 2, mid point voltage, series 2 (second down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[3] = (short) Reading(3, 2, 3, 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[3] = (short) Reading(3, 2, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	//battery bank 2, mid point voltage, series 3 (third down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[4] = (short) Reading(4, 2, 2, 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[4] = (short) Reading(4, 2, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	//battery bank 2, mid point voltage, series 4 (forth down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[5] = (short) Reading(5, 2, 1, 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[5] = (short) Reading(5, 2, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	//battery bank 2, mid point voltage, series 5 (bottom row), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[6] = (short) Reading(6, 2, 0, 0.1875 * (10000 + 1000) / 1000 / 10);
+	g_payloadBattery.voltage[6] = (short) Reading(6, 2, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	g_payloadBattery.voltage[7] = (short) readVcc();
 
 	unsigned long now = millis();
@@ -271,10 +283,19 @@ void loop()
 	g_lastMillis = now;
 
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 1, 0) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
-	amps[1] = ReadingDifferential(1, 0, 0) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-	amps[2] = ReadingDifferential(2, 1, 1) * 50.0 / 75.0; //shunt is 50Amps for 75mV;
+	amps[0] = ReadingDifferential(0, 1, 0, noisyData ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
+	amps[1] = ReadingDifferential(1, 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	amps[2] = ReadingDifferential(2, 1, 1, noisyData ) * 50.0 / 75.0; //shunt is 50Amps for 75mV;
 
+	if( noisyData)
+	{
+		Serial.println("High std dev on a reading. Noisy data. Exiting without sending.");
+		uint32_t millisTaken = millis()- millisStart; 
+		if( millisTaken < SEND_PERIOD )
+			delay( SEND_PERIOD - millisTaken);
+		return;
+	}
+	
 	//Serial.println(F("shunt,#,railv,amps,power,totalOut,totalIn,pulseOut,pulseIn"));
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
