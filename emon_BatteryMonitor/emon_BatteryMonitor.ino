@@ -278,10 +278,6 @@ void loop()
 	g_payloadBattery.voltage[6] = (short) Reading(6, 2, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
 	g_payloadBattery.voltage[7] = (short) readVcc();
 
-	unsigned long now = millis();
-	unsigned long period = now - g_lastMillis;
-	g_lastMillis = now;
-
 	double amps[BATTERY_SHUNTS];
 	amps[0] = ReadingDifferential(0, 1, 0, noisyData ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
 	amps[1] = ReadingDifferential(1, 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
@@ -295,7 +291,11 @@ void loop()
 			delay( SEND_PERIOD - millisTaken);
 		return;
 	}
-	
+
+	unsigned long now = millis();
+	unsigned long period = now - g_lastMillis;
+	g_lastMillis = now;
+
 	//Serial.println(F("shunt,#,railv,amps,power,totalOut,totalIn,pulseOut,pulseIn"));
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
