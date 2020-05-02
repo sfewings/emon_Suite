@@ -123,9 +123,17 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	Serial.print( stats.stdDev );
 	Serial.println();
 
-	if(stats.stdDev > 1.0) 
+	if(stats.stdDev > 7.0) 
 	{
 		noisyData = true;
+
+		Serial.print(F("voltage vals,"));
+		for (int i = 0; i < SAMPLES; i++)
+		{
+			Serial.print(samples[i]);
+			Serial.print(",");
+		}
+		Serial.println();
 	}
 
 	return stats.median;  //median removes chance of spike reading influencing the tallies
@@ -195,9 +203,16 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool 
 	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
 	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
 
-	if(stats.stdDev > 1.0) 
+	if(stats.stdDev > 3.0) 
 	{
 		noisyData = true;
+		Serial.print(F("current vals,"));
+		for (int i = 0; i < SAMPLES; i++)
+		{
+			Serial.print(samples[i]);
+			Serial.print(",");
+		}
+		Serial.println();
 	}
 
 	return stats.mean;

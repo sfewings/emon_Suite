@@ -5,7 +5,7 @@
 #include <util/crc16.h>	//cyclic redundancy check
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <eeprom.h>
+#include <EEPROM.h>
 #include <Time.h>			// needed for EmonShared
 #include <EmonShared.h>
 
