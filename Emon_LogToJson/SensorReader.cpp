@@ -48,7 +48,7 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_water("water", rootPath, eReading, eReading, eReading),
 	m_waterUsage("waterUsage", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod),
 	m_scale("scale", rootPath, eReading, eReading, eReading),
-	m_batteryCurrent("batteryCurrent", rootPath, eReading, eReading, eReading),
+	m_batteryCurrent("batteryCurrent", rootPath, eReading, eRatePerSecond, eRatePerSecond),
 	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading),
 	m_inverter("inverter", rootPath, eReading, eRatePerSecond, eRatePerSecond)
 {
@@ -331,7 +331,6 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			{
 				if (bat.subnode == 0) //main battery monitoring unit
 				{
-					std::string sensor[MAX_VOLTAGES]     = { "Rail", "Giant", "BBB-1", "BBB-2", "BBB-3", "BBB-4", "BBB-5", "CPU" };
 					std::string currents[BATTERY_SHUNTS] = { "BBB", "Giant", "Li-ion"};
 					double totalIn = 0.0;
 					double totalOut = 0.0;
@@ -355,9 +354,25 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 
 					m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
 					double midVoltage = bat.voltage[0] / 100.0 / 2.0;
-					for (int i = 1; i < MAX_VOLTAGES - 1; i++)
+
+					if (time.tm_year > 120 || (time.tm_year == 120 && time.tm_yday >= 122))  //changed the voltage takeoff points on 2May20
 					{
-						m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt
+						std::string sensor[MAX_VOLTAGES] = { "Rail", "Giant", "BBB-A", "BBB-B", "BBB-C", "BBB-4", "BBB-B2", "CPU" };
+						m_batteryVoltage.Add(sensor[1], time, midVoltage - bat.voltage[1] / 100.0);
+						m_batteryVoltage.Add(sensor[2], time, midVoltage/2 - bat.voltage[2] / 100.0);
+						m_batteryVoltage.Add(sensor[3], time, midVoltage - bat.voltage[3] / 100.0);
+						m_batteryVoltage.Add(sensor[4], time, midVoltage/2*3 - bat.voltage[4] / 100.0);
+						m_batteryVoltage.Add(sensor[5], time, midVoltage - bat.voltage[5] / 100.0);
+						//m_batteryVoltage.Add(sensor[6], time, midVoltage - bat.voltage[6] / 100.0);
+						//m_batteryVoltage.Add(sensor[7], time, midVoltage - bat.voltage[7] / 100.0);
+					}
+					else
+					{
+						std::string sensor[MAX_VOLTAGES] = { "Rail", "Giant", "BBB-1", "BBB-2", "BBB-3", "BBB-4", "BBB-5", "CPU" };
+						for (int i = 1; i < MAX_VOLTAGES - 1; i++)
+						{
+							m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt
+						}
 					}
 				}
 				else if( bat.subnode == 1 ) //wooden current measuring device with one current and one voltage
@@ -384,10 +399,10 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			PayloadInverter inv;
 			if (EmonSerial::ParseInverterPayload((char*)reading.c_str(), &inv))
 			{
-				m_power.Add("Inv" + std::to_string(inv.subnode + 1) + " Out", time, inv.activePower);
-				m_power.Add("Inv" + std::to_string(inv.subnode + 1) + " In", time, inv.pvInputPower);
-				m_batteryVoltage.Add("Inv" + std::to_string(inv.subnode + 1) + "Batt", time, inv.batteryVoltage/10.0);
-				
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + " Out", time, inv.activePower);
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + " In", time, inv.pvInputPower);
+				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Batt", time, inv.batteryVoltage/10.0);
+
 				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat capacity", time, inv.batteryCapacity);
 				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat charging", time, inv.batteryCharging);
 				m_inverter.Add("Inv" + std::to_string(inv.subnode + 1) + "Bat dicharge", time, -inv.batteryDischarge);

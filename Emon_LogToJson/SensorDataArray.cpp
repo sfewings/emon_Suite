@@ -119,7 +119,7 @@ inline int BaseDataArray<F>::SaveToFile(std::string path)
 template<std::size_t F>
 bool BaseDataArray<F>::SaveToJson(std::string path)
 {
-	std::ofstream ofs(path);
+	std::ofstream ofs(path, std::ios_base::out | std::ios_base::trunc);
 	if (!ofs.bad())
 	{
 		//[{"series":["Power","Solar","HWS"],"data":[[{"x":1562314758226,"y":0},{"x":1562314758226,"y":0}, ...],[...],[...]],"labels":[""]}]
@@ -190,7 +190,7 @@ bool BaseDataArray<F>::SaveToJson(std::string path)
 template<std::size_t F>
 bool BaseDataArray<F>::SaveToText(std::string path)
 {
-	std::ofstream ofs(path);
+	std::ofstream ofs(path, std::ios_base::out | std::ios_base::trunc);
 	if (!ofs.bad())
 	{
 		ofs << "time";
@@ -277,13 +277,6 @@ void  BaseDataArray<F>::Clear()
 	m_lastTime.clear();
 	m_lastIndex.clear();
 }
-
-template<std::size_t F>
-void BaseDataArray<F>::ResetReadingDataType(ReadingDataType readingDataType)
-{
-	m_readingDataType = readingDataType;
-}
-/////////////////////////
 
 int DayDataArray::SaveToFile(std::string path)
 {
@@ -464,11 +457,4 @@ void SensorData::Close(bool clear /*=true*/)
 	m_year.SaveToFile(path);
 	if (clear)
 		m_year.Clear();
-}
-
-void SensorData::ResetReadingDataType(ReadingDataType dayReadingDataType, ReadingDataType monthReadingDataType, ReadingDataType yearReadingDataType)
-{
-	m_day.ResetReadingDataType(dayReadingDataType);
-	m_month.ResetReadingDataType(monthReadingDataType);
-	m_year.ResetReadingDataType(yearReadingDataType);
 }

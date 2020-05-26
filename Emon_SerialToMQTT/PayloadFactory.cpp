@@ -261,7 +261,7 @@ bool PayloadFactory::PublishPayload(char* s)
 			char buf[100];
 			char topic[100];
 
-			sprintf(topic, "inverter/power/%d", inv->subnode);
+			sprintf(topic, "inverter/activePower/%d", inv->subnode);
 			sprintf(buf, "%d", inv->activePower);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;

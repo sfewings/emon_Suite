@@ -38,7 +38,6 @@ public:
 	void Add(std::string name, tm time, double data);
 	bool ContainsData() { return m_baseTime.tm_year != 0; }
 	virtual int SaveToFile(std::string path);
-	void ResetReadingDataType(ReadingDataType readingDataType);
 	void Clear();
 	void SetCounterScaleFactor(double scaleFactor) { m_counterScaleFactor = scaleFactor; }
 
@@ -125,9 +124,6 @@ public:
 
 	void Add(std::string name, tm time, double data);
 	void Close(bool clear = true);
-	void ResetReadingDataType(ReadingDataType dayReadingDataType,
-		ReadingDataType monthReadingDataType,
-		ReadingDataType yearReadingDataType);
 	void SetCounterScaleFactor(double scaleFactor) 
 			{
 				m_day.SetCounterScaleFactor(scaleFactor);
