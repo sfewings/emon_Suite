@@ -10,6 +10,8 @@
 *.opensdf
 *.suo
 *.vcxproj
+!Emon_LogToJson.vcxproj
+!Emon_SerialToMQTT.vcxproj
 *.filters
 *vmProgramSettingsCompile.xml
 *vmProgramSettingsWorking.xml
