@@ -77,30 +77,45 @@ long readVcc()
 
 stats_t GetStats(double* samples, int nSamples)
 {
+	const int SKIP_READINGS = 3;		//skip the first and last of the sorted sampels as these appear to be noisy!
 	stats_t stats;
-	double sum = samples[0];
+	double sum = 0;
 	double sumOfSquares = 0;
 
-	for (int i = 1; i < nSamples; ++i)
+	//sort the samples
+	for (int i = 0; i < nSamples-1; i++) 
+	{ 
+		bool swapped = false; 
+		for (int j = 0; j < nSamples-i-1; j++) 
+		{ 
+			if (samples[j] > samples[j+1]) 
+			{ 
+				double temp = samples[j];
+				samples[j]=samples[j+1];
+				samples[j+1] = temp;
+				swapped = true; 
+			} 
+		} 
+
+		// IF no two elements were swapped by inner loop, then break 
+		if (swapped == false) 
+			break; 
+	} 
+
+	//skip the top and bottom readings as there is quite a bit of noise
+	for (int i = SKIP_READINGS; i < nSamples-SKIP_READINGS; ++i)
 	{
-		double j = samples[i];
-		int16_t k;
-		sum += j;
-		for (k = i - 1; (k >= 0) && (j < samples[k]); k--)
-		{
-			samples[k + 1] = samples[k];
-		}
-		samples[k + 1] = j;
+		sum += samples[i];
 	}
 
-	stats.mean = sum/nSamples;
+	stats.mean = sum/(nSamples-2*SKIP_READINGS);
 	stats.median = samples[nSamples/2];
 
-	for(int i=0; i< SAMPLES;i++)
+	for(int i=SKIP_READINGS; i< nSamples-SKIP_READINGS;i++)
 	{
 		sumOfSquares += (samples[i] - stats.mean) * (samples[i] - stats.mean);
 	}
-	stats.stdDev = sqrt( sumOfSquares/nSamples);
+	stats.stdDev = sqrt( sumOfSquares/(nSamples-2*SKIP_READINGS));
 
 	return stats;
 }
@@ -139,7 +154,7 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	return stats.median;  //median removes chance of spike reading influencing the tallies
 }
 
-double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool noisyData)
+double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool &noisyData)
 {
 	int gain;
 	double samples[SAMPLES];
@@ -300,10 +315,12 @@ void loop()
 
 	if( noisyData)
 	{
+		digitalWrite(LED_PIN, HIGH);
 		Serial.println("High std dev on a reading. Noisy data. Exiting without sending.");
 		uint32_t millisTaken = millis()- millisStart; 
 		if( millisTaken < SEND_PERIOD )
 			delay( SEND_PERIOD - millisTaken);
+		digitalWrite(LED_PIN,LOW);	//LED will stay on for a few seconds when no data sent
 		return;
 	}
 
