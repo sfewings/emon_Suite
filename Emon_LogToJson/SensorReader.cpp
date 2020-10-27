@@ -327,49 +327,86 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 		{
 			PayloadBattery bat;
 
-			if (EmonSerial::ParseBatteryPayload((char*)reading.c_str(), &bat))
+			if (int version = EmonSerial::ParseBatteryPayload((char*)reading.c_str(), &bat))
 			{
 				if (bat.subnode == 0) //main battery monitoring unit
 				{
-					std::string currents[BATTERY_SHUNTS] = { "BBB", "Giant", "Li-ion"};
-					double totalIn = 0.0;
-					double totalOut = 0.0;
-					for (int i = 0; i < BATTERY_SHUNTS; i++)
+					if (version == 1)
 					{
-						if (bat.power[i] < 0)
+						std::string currents[BATTERY_SHUNTS] = { "BBB", "Giant", "Li-ion" };
+						double totalIn = 0.0;
+						double totalOut = 0.0;
+						for (int i = 0; i < BATTERY_SHUNTS; i++)
 						{
-							m_batteryCurrent.Add(currents[i] + " Out", time, bat.power[i]);
-							m_batteryCurrent.Add(currents[i] + " In", time, 0);
-							totalOut += bat.power[i];
+							if (bat.power[i] < 0)
+							{
+								m_batteryCurrent.Add(currents[i] + " Out", time, bat.power[i]);
+								m_batteryCurrent.Add(currents[i] + " In", time, 0);
+								totalOut += bat.power[i];
+							}
+							else
+							{
+								m_batteryCurrent.Add(currents[i] + " Out", time, 0);
+								m_batteryCurrent.Add(currents[i] + " In", time, bat.power[i]);
+								totalIn += bat.power[i];
+							}
+						}
+						m_batteryCurrent.Add("Total In", time, totalIn);
+						m_batteryCurrent.Add("Total Out", time, totalOut);
+
+						m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
+						double midVoltage = bat.voltage[0] / 100.0 / 2.0;
+
+						if (time.tm_year > 120 || (time.tm_year == 120 && time.tm_yday >= 122))  //changed the voltage takeoff points on 2May20
+						{
+							std::string sensor[8] = { "Rail", "Giant", "BBB-A", "BBB-B", "BBB-C", "BBB-4", "BBB-B2", "CPU" };
+							m_batteryVoltage.Add(sensor[1], time, midVoltage - bat.voltage[1] / 100.0);
+							m_batteryVoltage.Add(sensor[2], time, midVoltage / 2 - bat.voltage[2] / 100.0);
+							m_batteryVoltage.Add(sensor[3], time, midVoltage - bat.voltage[3] / 100.0);
+							m_batteryVoltage.Add(sensor[4], time, midVoltage / 2 * 3 - bat.voltage[4] / 100.0);
+							m_batteryVoltage.Add(sensor[5], time, midVoltage - bat.voltage[5] / 100.0);
+							//m_batteryVoltage.Add(sensor[6], time, midVoltage - bat.voltage[6] / 100.0);
+							//m_batteryVoltage.Add(sensor[7], time, midVoltage - bat.voltage[7] / 100.0);
 						}
 						else
 						{
-							m_batteryCurrent.Add(currents[i] + " Out", time, 0);
-							m_batteryCurrent.Add(currents[i] + " In", time, bat.power[i]);
-							totalIn += bat.power[i];
+							std::string sensor[8] = { "Rail", "Giant", "BBB-1", "BBB-2", "BBB-3", "BBB-4", "BBB-5", "CPU" };
+							for (int i = 1; i < 8 - 1; i++)
+							{
+								m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt
+							}
 						}
+						if (bat.voltage[8 - 1] / 1000.0 < 5)
+							m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[8 - 1] / 1000.0);	//Arduino power supply is in mv
 					}
-					m_batteryCurrent.Add("Total In", time, totalIn);
-					m_batteryCurrent.Add("Total Out", time, totalOut);
-
-					m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
-					double midVoltage = bat.voltage[0] / 100.0 / 2.0;
-
-					if (time.tm_year > 120 || (time.tm_year == 120 && time.tm_yday >= 122))  //changed the voltage takeoff points on 2May20
+					else  //version == 2
 					{
-						std::string sensor[MAX_VOLTAGES] = { "Rail", "Giant", "BBB-A", "BBB-B", "BBB-C", "BBB-4", "BBB-B2", "CPU" };
-						m_batteryVoltage.Add(sensor[1], time, midVoltage - bat.voltage[1] / 100.0);
-						m_batteryVoltage.Add(sensor[2], time, midVoltage/2 - bat.voltage[2] / 100.0);
-						m_batteryVoltage.Add(sensor[3], time, midVoltage - bat.voltage[3] / 100.0);
-						m_batteryVoltage.Add(sensor[4], time, midVoltage/2*3 - bat.voltage[4] / 100.0);
-						m_batteryVoltage.Add(sensor[5], time, midVoltage - bat.voltage[5] / 100.0);
-						//m_batteryVoltage.Add(sensor[6], time, midVoltage - bat.voltage[6] / 100.0);
-						//m_batteryVoltage.Add(sensor[7], time, midVoltage - bat.voltage[7] / 100.0);
-					}
-					else
-					{
-						std::string sensor[MAX_VOLTAGES] = { "Rail", "Giant", "BBB-1", "BBB-2", "BBB-3", "BBB-4", "BBB-5", "CPU" };
-						for (int i = 1; i < MAX_VOLTAGES - 1; i++)
+						std::string currents[BATTERY_SHUNTS] = { "Bank 2", "Bank 1", "Unused" };
+						double totalIn = 0.0;
+						double totalOut = 0.0;
+						for (int i = 0; i < BATTERY_SHUNTS; i++)
+						{
+							if (bat.power[i] < 0)
+							{
+								m_batteryCurrent.Add(currents[i] + " Out", time, bat.power[i]);
+								m_batteryCurrent.Add(currents[i] + " In", time, 0);
+								totalOut += bat.power[i];
+							}
+							else
+							{
+								m_batteryCurrent.Add(currents[i] + " Out", time, 0);
+								m_batteryCurrent.Add(currents[i] + " In", time, bat.power[i]);
+								totalIn += bat.power[i];
+							}
+						}
+						m_batteryCurrent.Add("Total In", time, totalIn);
+						m_batteryCurrent.Add("Total Out", time, totalOut);
+
+						m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
+						double midVoltage = bat.voltage[0] / 100.0 / 2.0;
+
+						std::string sensor[MAX_VOLTAGES] = { "Rail","B2-4","B2-3","B2-2","B2-1","B1-4","B1-3","B1-2","B1-1"};
+						for (int i = 1; i < MAX_VOLTAGES; i++)
 						{
 							m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt
 						}
@@ -388,9 +425,9 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 						m_batteryCurrent.Add("Tester In", time, bat.power[0]);
 					}
 					m_batteryVoltage.Add("Tester", time, bat.voltage[0] / 100.0);
+					if (bat.voltage[MAX_VOLTAGES - 1] / 1000.0 < 5)
+						m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES - 1] / 1000.0);	//Arduino power supply is in mv
 				}
-				if (bat.voltage[MAX_VOLTAGES - 1] / 1000.0 < 5)
-					m_supplyV.Add("b" + std::to_string(bat.subnode), time, bat.voltage[MAX_VOLTAGES - 1] / 1000.0);	//Arduino power supply is in mv
 			}
 			break;
 		}

@@ -77,10 +77,14 @@ long readVcc()
 
 stats_t GetStats(double* samples, int nSamples)
 {
-	const int SKIP_READINGS = 3;		//skip the first and last of the sorted sampels as these appear to be noisy!
+	const int SKIP_READINGS = 10;		//skip the first and last of the sorted sampels as these appear to be noisy!
 	stats_t stats;
 	double sum = 0;
 	double sumOfSquares = 0;
+  double samplesCopy[SAMPLES];
+
+  for(int i=0;i<nSamples;i++)
+    samplesCopy[i] = samples[i];
 
 	//sort the samples
 	for (int i = 0; i < nSamples-1; i++) 
@@ -88,11 +92,11 @@ stats_t GetStats(double* samples, int nSamples)
 		bool swapped = false; 
 		for (int j = 0; j < nSamples-i-1; j++) 
 		{ 
-			if (samples[j] > samples[j+1]) 
+			if (samplesCopy[j] > samplesCopy[j+1]) 
 			{ 
-				double temp = samples[j];
-				samples[j]=samples[j+1];
-				samples[j+1] = temp;
+				double temp = samplesCopy[j];
+				samplesCopy[j]=samplesCopy[j+1];
+				samplesCopy[j+1] = temp;
 				swapped = true; 
 			} 
 		} 
@@ -105,15 +109,15 @@ stats_t GetStats(double* samples, int nSamples)
 	//skip the top and bottom readings as there is quite a bit of noise
 	for (int i = SKIP_READINGS; i < nSamples-SKIP_READINGS; ++i)
 	{
-		sum += samples[i];
+		sum += samplesCopy[i];
 	}
 
 	stats.mean = sum/(nSamples-2*SKIP_READINGS);
-	stats.median = samples[nSamples/2];
+	stats.median = samplesCopy[nSamples/2];
 
 	for(int i=SKIP_READINGS; i< nSamples-SKIP_READINGS;i++)
 	{
-		sumOfSquares += (samples[i] - stats.mean) * (samples[i] - stats.mean);
+		sumOfSquares += (samplesCopy[i] - stats.mean) * (samplesCopy[i] - stats.mean);
 	}
 	stats.stdDev = sqrt( sumOfSquares/(nSamples-2*SKIP_READINGS));
 
@@ -218,7 +222,7 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool 
 	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
 	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
 
-	if(stats.stdDev > 3.0) 
+	if(stats.stdDev > 4.0) //3.0
 	{
 		noisyData = true;
 		Serial.print(F("current vals,"));
@@ -294,19 +298,15 @@ void loop()
 	double railVoltage = Reading(0, 0, 2, 0.1875 * (10000 + 500) / 500 / 10, noisyData );
 
 	g_payloadBattery.voltage[0] = (short) railVoltage;
-	//battery bank 1, mid point voltage, should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[1] = (short) Reading(1, 0, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
-	//battery bank 2, mid point voltage, series 1 (top row), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[2] = (short) Reading(2, 3, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
-	//battery bank 2, mid point voltage, series 2 (second down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[3] = (short) Reading(3, 2, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
-	//battery bank 2, mid point voltage, series 3 (third down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[4] = (short) Reading(4, 2, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
-	//battery bank 2, mid point voltage, series 4 (forth down), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[5] = (short) Reading(5, 2, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
-	//battery bank 2, mid point voltage, series 5 (bottom row), should be around 24v. Voltage divider is 10k/1k ohms
-	g_payloadBattery.voltage[6] = (short) Reading(6, 2, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );
-	g_payloadBattery.voltage[7] = (short) readVcc();
+  //All the rest are 10k/1k voltage divider to measure ~24v
+	g_payloadBattery.voltage[1] = (short) Reading(1, 2, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 1 - row 4 (bottom)
+	g_payloadBattery.voltage[2] = (short) Reading(2, 2, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 1 - row 3
+	g_payloadBattery.voltage[3] = (short) Reading(3, 2, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 1 - row 2
+	g_payloadBattery.voltage[4] = (short) Reading(4, 2, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 1 - row 1 (top)
+	g_payloadBattery.voltage[5] = (short) Reading(5, 3, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 4 (bottom)
+	g_payloadBattery.voltage[6] = (short) Reading(6, 3, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 3
+  g_payloadBattery.voltage[7] = (short) Reading(7, 3, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 2
+  g_payloadBattery.voltage[8] = (short) Reading(8, 3, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 1 (top)
 
 	double amps[BATTERY_SHUNTS];
 	amps[0] = ReadingDifferential(0, 1, 0, noisyData ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;

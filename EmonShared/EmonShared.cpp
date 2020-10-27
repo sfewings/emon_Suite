@@ -320,11 +320,11 @@ void EmonSerial::PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBat
 {
 	if (pPayloadBattery == NULL)
 	{
-		stream.print(F("bat,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..7]|ms_since_last_packet"));
+		stream.print(F("bat2,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..7]|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("bat,"));
+		stream.print(F("bat2,"));
 		stream.print(pPayloadBattery->subnode);
 		for (int i = 0; i < BATTERY_SHUNTS; i++)
 		{
@@ -774,8 +774,12 @@ int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
 	if (pch == NULL)
 		return 0;	//can't find anything
 
-	if (0 == strcmp(pch, "bat"))
+	if (0 == strcmp(pch, "bat") || 0 == strcmp(pch, "bat2"))
 	{
+		int maxVoltages = 8;
+		if( 0 == strcmp(pch, "bat2"))
+			maxVoltages = 9; //MAX_VOLTAGES;
+
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadBattery->subnode = atoi(pch);
 		for (int i = 0; i < BATTERY_SHUNTS; i++)
@@ -793,7 +797,7 @@ int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadBattery->pulseOut[i] = atol(pch);
 		}
-		for (int i = 0; i < MAX_VOLTAGES; i++)
+		for (int i = 0; i < maxVoltages; i++)
 		{
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadBattery->voltage[i] = atoi(pch);
@@ -802,11 +806,12 @@ int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
 		{
 			ParseRelay(pPayloadBattery, pch);
 		}
+
+		return maxVoltages-7;	//version 1 had 8 voltages, version 2 had 9. Return 1 or 2 for version number
 	}
 	else
 		return 0;
 
-	return 1;
 }
 
 

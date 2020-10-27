@@ -42,7 +42,7 @@ typedef unsigned char byte;
 #define HWS_PUMPS 3							//number of pumps from the hot water system
 
 #define BATTERY_SHUNTS	3				//number of battery banks in the system. Each with a shunt for measuring current in and out
-#define MAX_VOLTAGES		8				//number of voltage measurements made on the battery monitoring system
+#define MAX_VOLTAGES		9				//number of voltage measurements made on the battery monitoring system
 
 #define FEWINGS_MONITOR_GROUP  211
 #define TESTING_MONITOR_GROUP	 210
