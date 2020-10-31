@@ -405,7 +405,7 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 						m_batteryVoltage.Add("Rail", time, bat.voltage[0] / 100.0);
 						double midVoltage = bat.voltage[0] / 100.0 / 2.0;
 
-						std::string sensor[MAX_VOLTAGES] = { "Rail","B2-4","B2-3","B2-2","B2-1","B1-4","B1-3","B1-2","B1-1"};
+						std::string sensor[MAX_VOLTAGES] = { "Rail","B1-4","B1-3","B1-2","B1-1","B2-4","B2-3","B2-2","B2-1"};
 						for (int i = 1; i < MAX_VOLTAGES; i++)
 						{
 							m_batteryVoltage.Add(sensor[i], time, midVoltage - bat.voltage[i] / 100.0); //battery values are in 100th of a volt

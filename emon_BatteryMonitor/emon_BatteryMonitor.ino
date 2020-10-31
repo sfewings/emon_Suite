@@ -4,6 +4,8 @@
 
 #define RF69_COMPAT 1
 
+#include <avr/wdt.h>    //watchdog timer
+
 #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <EEPROM.h>
 #include <EmonShared.h>
@@ -20,7 +22,7 @@ const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 }
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
 const int32_t SAMPLES = 30;
 const uint8_t LED_PIN = 9;
-const unsigned long SEND_PERIOD = 5000;  //ms
+const unsigned long SEND_PERIOD = 10000;  //ms
 
 Adafruit_ADS1115 ads1115[4] { Adafruit_ADS1115(0x48), Adafruit_ADS1115(0x49), Adafruit_ADS1115(0x4A), Adafruit_ADS1115(0x4B) };
 
@@ -283,6 +285,10 @@ void setup()
 	g_lastMillis = millis();
 	//g_lastSendTime = millis();
 
+  
+  Serial.println(F("Watchdog timer set for 8 seconds"));
+  wdt_enable(WDTO_8S);
+  
 	delay(1000);
 	digitalWrite(LED_PIN, LOW);
 }
@@ -290,6 +296,8 @@ void setup()
 
 void loop()
 {
+  wdt_reset();
+
 	uint32_t millisStart = millis();
 	
 	bool noisyData = false;
@@ -307,17 +315,22 @@ void loop()
 	g_payloadBattery.voltage[6] = (short) Reading(6, 3, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 3
   g_payloadBattery.voltage[7] = (short) Reading(7, 3, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 2
   g_payloadBattery.voltage[8] = (short) Reading(8, 3, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 1 (top)
-
+  wdt_reset();
+  
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 1, 0, noisyData ) * 150.0 / 50.0; //shunt is 150Amps for 90mV;
-	amps[1] = ReadingDifferential(1, 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-	amps[2] = ReadingDifferential(2, 1, 1, noisyData ) * 50.0 / 75.0; //shunt is 50Amps for 75mV;
+	amps[0] = ReadingDifferential(0, 1, 0, noisyData ) * 150.0 / 50.0; //shunt is 150Amps for 90mV; Bank 2
+  wdt_reset();
+	amps[1] = ReadingDifferential(1, 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV; Bank 1
+  wdt_reset();
+	amps[2] = ReadingDifferential(2, 1, 1, noisyData ) * 50.0 / 75.0; //shunt is 50Amps for 75mV;  Li ion
+  wdt_reset();
 
 	if( noisyData)
 	{
 		digitalWrite(LED_PIN, HIGH);
 		Serial.println("High std dev on a reading. Noisy data. Exiting without sending.");
 		uint32_t millisTaken = millis()- millisStart; 
+    wdt_reset();
 		if( millisTaken < SEND_PERIOD )
 			delay( SEND_PERIOD - millisTaken);
 		digitalWrite(LED_PIN,LOW);	//LED will stay on for a few seconds when no data sent
@@ -386,6 +399,7 @@ void loop()
 	uint32_t millisTaken = millis()- millisStart; 
 	Serial.print( F("loop_ms,") );
 	Serial.println( millisTaken );
+  wdt_reset();
 	if( millisTaken < SEND_PERIOD )
 		delay( SEND_PERIOD - millisTaken);
 }
