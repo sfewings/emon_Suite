@@ -325,7 +325,7 @@ void loop()
 	amps[2] = ReadingDifferential(2, 1, 1, noisyData ) * 50.0 / 75.0; //shunt is 50Amps for 75mV;  Li ion
   wdt_reset();
 
-	if( noisyData)
+	if( noisyData || railVoltage > 10000)
 	{
 		digitalWrite(LED_PIN, HIGH);
 		Serial.println("High std dev on a reading. Noisy data. Exiting without sending.");
