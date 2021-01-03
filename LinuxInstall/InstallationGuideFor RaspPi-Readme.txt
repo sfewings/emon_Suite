@@ -34,4 +34,7 @@
 	30 * * * * /usr/bin/curl --insecure -d "u=steve&p=5yufdsHyf6" https://mike.fewings.org/dyndns.php >> /share/log/curl_cron.log 2>&1
 	Note that it logs each execution in the file /share/log/curl_cron.log
 	
+6. Update NodeRed GIT repo from RaspPi
+	
+	
 	

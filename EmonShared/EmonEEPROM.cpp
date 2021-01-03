@@ -1,6 +1,13 @@
-#include <EEPROM.h>
-#include <util/crc16.h>
-#include <util/parity.h>
+#ifdef ARDUINO_ARCH_AVR
+	#include <EEPROM.h>
+	#include <util/crc16.h>
+	#include <util/parity.h>
+#else  //#eldef ARDUINO_ARCH_SAMD
+	// Include EEPROM-like API for FlashStorage
+	#include <FlashAsEEPROM.h>
+	#include "crc16.h"
+	#include "parity.h"
+#endif
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
 
@@ -112,5 +119,10 @@ void EmonEEPROM::WriteEEPROMSettings(EEPROMSettings & settings)
 	{
 		EEPROM.write(EEPROM_SETTINGS_BASE + l, *(pc + l));
 	}
+
+#ifndef ARDUINO_ARCH_AVR
+	EEPROM.commit();
+#endif
+
 }
 

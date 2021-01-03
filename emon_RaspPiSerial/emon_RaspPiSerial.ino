@@ -1,19 +1,24 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
 //-------------------------------------------------------------------------------------------------------------------------------------------------
+#undef USE_JEELIB
 
-#include <LowPower.h>
-#define RF69_COMPAT 0
+#ifdef USE_JEELIB
+	#define RF69_COMPAT 0
 
+	//JeeLab libraires				http://github.com/jcw
+	#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
+	RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+#else
+	#include <SPI.h>
+	#include <RH_RF69.h>
+	// Singleton instance of the radio driver
+	RH_RF69 rf69;
+	#define RFM69_RST     4
+#endif
 
-//JeeLab libraires				http://github.com/jcw
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <EmonShared.h>
-
 const int GREEN_LED = 9;  //Pin 9 on the Emon node.
-
-RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
-
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -25,10 +30,31 @@ void setup ()
 	
 	delay(1000);
 	Serial.println(F("Fewings Serial output for RaspberryPi"));
-
+#ifdef USE_JEELIB
 	Serial.println(F("rf12_initialize"));
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
+#else
+	pinMode(RFM69_RST, OUTPUT);
+	digitalWrite(RFM69_RST, LOW);
+	delay(1);
+	digitalWrite(RFM69_RST, HIGH);
+	delay(10);
+	digitalWrite(RFM69_RST, LOW);
+	delay(10);
+
+
+	if (!rf69.init())
+		Serial.println("rf69 init failed");
+	if (!rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	Serial.println("RF69 initialise node: 10 Freq: 915MHz");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	rf69.setEncryptionKey(key);
+	//rf69.setHeaderId(BASE_JEENODE);
+#endif
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
@@ -40,19 +66,22 @@ void setup ()
 	EmonSerial::PrintScalePayload(NULL);
 	EmonSerial::PrintBatteryPayload(NULL);
 	EmonSerial::PrintInverterPayload(NULL);
+	EmonSerial::PrintBeehivePayload(NULL);
 
 	digitalWrite(GREEN_LED, LOW);
 }
 
 #define SERIAL_OUT(NAME, PAYLOAD)\
-		Payload##NAME* pPayload = (Payload##NAME*)rf12_data; \
+		Payload##NAME* pPayload = (Payload##NAME*)data; \
 		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
-
-
 
 
 void loop () 
 {
+	volatile uint8_t *data = NULL;
+	int node_id = 0;
+
+#ifdef USE_JEELIB
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
@@ -91,8 +120,27 @@ void loop ()
 
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
-			int node_id = (rf12_hdr & 0x1F);
-			int subnode = 0;
+			node_id = (rf12_hdr & 0x1F);
+			data = rf12_data;
+#else
+	if (rf69.available())
+	{
+		digitalWrite(GREEN_LED, HIGH);
+		// Should be a message for us now   
+		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+		uint8_t len = sizeof(buf);
+		if (rf69.recv(buf, &len))
+		{
+			//RH_RF69::printBuffer("Received: ", buf, len);
+			//Serial.print("Got request: ");
+			//Serial.print((char*)buf);
+			Serial.print("RSSI: ");
+			Serial.println(rf69.lastRssi(), DEC);
+
+
+			node_id = rf69.headerId();
+			data = buf;
+#endif
 
 			if (node_id == BASE_JEENODE)		
 			{
@@ -120,7 +168,7 @@ void loop ()
 			}
 			if (node_id == WATERLEVEL_NODE)
 			{
-				PayloadWater* pPayload = (PayloadWater*)rf12_data;
+				PayloadWater* pPayload = (PayloadWater*)data;
 				EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
 				EmonSerial::PrintWaterPayload(pPayload);
 			}
@@ -136,8 +184,11 @@ void loop ()
 			{
 				SERIAL_OUT(Inverter, Payload);
 			}
+			if (node_id == BEEHIVEMONITOR_NODE)
+			{
+				SERIAL_OUT(Beehive, Payload);
+			}
 		}
-		
 
 		digitalWrite(GREEN_LED, LOW);
 	}

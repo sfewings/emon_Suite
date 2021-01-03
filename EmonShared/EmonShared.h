@@ -32,6 +32,7 @@ typedef unsigned char byte;
 #define SCALE_NODE 19				//node that contains a load-cell
 #define BATTERY_NODE 20				//Node for sending battery current and voltage readings
 #define INVERTER_NODE 21			//Node for sending MPP inverter readings
+#define BEEHIVEMONITOR_NODE 22			//Node for monitoring beehives
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
@@ -140,6 +141,20 @@ typedef struct PayloadInverter : PayloadRelay {
 	uint8_t batteryCapacity;                  // %
 } PayloadInverter;
 
+#pragma pack(push, 1)
+typedef struct PayloadBeehive : PayloadRelay {
+	byte subnode;                           // 
+	unsigned short beeInRate;				//beesin per minute
+	unsigned short beeOutRate;				//bees out per minute
+	unsigned long beesIn;					//beesIn
+	unsigned long beesOut;					//beesOut
+	short temperatureIn;					//Temperature inside the hive
+	short temperatureOut;					//temperature outside the hive
+	long grams;								//current scale reading
+	unsigned long supplyV;					// unit supply voltage
+} PayloadBeehive;
+#pragma pack(pop)
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -155,6 +170,7 @@ public:
 	static void PrintScalePayload(PayloadScale* pPayloadScale, unsigned long timeSinceLast = 0);
 	static void PrintBatteryPayload(PayloadBattery* pPayloadBattery, unsigned long timeSinceLast = 0);
 	static void PrintInverterPayload(PayloadInverter* pPayloadInverter, unsigned long timeSinceLast = 0);
+	static void PrintBeehivePayload(PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast = 0);
 
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -168,6 +184,7 @@ public:
 	static void PrintScalePayload(Stream& stream, PayloadScale* pPayloadWater, unsigned long timeSinceLast = 0);
 	static void PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBattery, unsigned long timeSinceLast = 0);
 	static void PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadInverter, unsigned long timeSinceLast = 0);
+	static void PrintBeehivePayload(Stream& stream, PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast = 0);
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
@@ -184,6 +201,7 @@ public:
 	static int ParseScalePayload(char* str, PayloadScale* pPayloadScale);
 	static int ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery);
 	static int ParseInverterPayload(char* str, PayloadInverter* pPayloadInverter);
+	static int ParseBeehivePayload(char* str, PayloadBeehive* pPayloadBeehive);
 };
 
 
