@@ -50,7 +50,8 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_scale("scale", rootPath, eReading, eReading, eReading),
 	m_batteryCurrent("batteryCurrent", rootPath, eReading, eRatePerSecond, eRatePerSecond),
 	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading),
-	m_inverter("inverter", rootPath, eReading, eRatePerSecond, eRatePerSecond)
+	m_inverter("inverter", rootPath, eReading, eRatePerSecond, eRatePerSecond),
+	m_beehive("beehive", rootPath, eReading, eRatePerSecond, eRatePerSecond)
 {
 	m_rootPath = rootPath;
 	if (removeAll && fs::is_directory(rootPath) && rootPath.length()> 5 )
@@ -74,6 +75,7 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	fs::create_directory(rootPath + "/batteryCurrent");
 	fs::create_directory(rootPath + "/batteryVoltage");
 	fs::create_directory(rootPath + "/inverter");
+	fs::create_directory(rootPath + "/beehive");
 
 	m_rainFall.SetCounterScaleFactor(0.2); //rainfall is 0.2mm for every counter
 }
@@ -458,6 +460,27 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 				}
 				m_inverter.Add("Total charging", time, totalIn);
 				m_inverter.Add("Total discharging", time, totalOut);
+			}
+			break;
+		}
+		case BEEHIVEMONITOR_NODE:
+		{
+			PayloadBeehive beehive;
+			if (EmonSerial::ParseBeehivePayload((char*)reading.c_str(), &beehive))
+			{
+				m_beehive.Add("Bee" + std::to_string(beehive.subnode + 1) + " Out", time, beehive.beeOutRate);
+				m_beehive.Add("Bee" + std::to_string(beehive.subnode + 1) + " In", time, beehive.beeInRate);
+
+				double smoothedTemperature;
+
+				if (FilterTemperature("Beehive"+std::to_string(beehive.subnode + 1)+" Inside", beehive.temperatureIn, smoothedTemperature))
+					m_temperatures.Add("Beehive" + std::to_string(beehive.subnode + 1) + " Inside", time, smoothedTemperature / 100.0);
+
+				if (FilterTemperature("Beehive" + std::to_string(beehive.subnode + 1) + " Outside", beehive.temperatureOut, smoothedTemperature))
+					m_temperatures.Add("Beehive" + std::to_string(beehive.subnode + 1) + "Outside", time, smoothedTemperature / 100.0);
+
+				if (beehive.supplyV / 1000.0 < 5)
+					m_supplyV.Add("Beehive" + std::to_string(beehive.subnode + 1), time, beehive.supplyV / 1000.0);
 			}
 			break;
 		}
