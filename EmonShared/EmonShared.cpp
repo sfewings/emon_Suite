@@ -86,7 +86,7 @@ void EmonSerial::PrintBasePayload(Stream& stream, PayloadBase *pPayloadBase, uns
 	else
 	{
 		stream.print(F("base,"));
-		stream.print(pPayloadBase->time);
+		stream.print((unsigned long)pPayloadBase->time);
 
 		PrintRelay(stream, pPayloadBase);
 
@@ -388,6 +388,50 @@ void EmonSerial::PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadI
 		stream.print(pPayloadInverter->batteryCapacity);
 
 		PrintRelay(stream, pPayloadInverter);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
+
+void EmonSerial::PrintBeehivePayload(PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast)
+{
+	PrintBeehivePayload(Serial, pPayloadBeehive, timeSinceLast);
+}
+
+void EmonSerial::PrintBeehivePayload(Stream& stream, PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast)
+{
+	if (pPayloadBeehive == NULL)
+	{
+		stream.print(F("bee,subnode,beeInRate,beeOutRate,beesIn,beesOut,tempIn,tempOut,hiveWeight,supplyV|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("bee,"));
+		stream.print(pPayloadBeehive->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->beeInRate);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->beeOutRate);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->beesIn);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->beesOut);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->temperatureIn);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->temperatureOut);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->grams);
+		stream.print(F(","));
+		stream.print(pPayloadBeehive->supplyV);
+
+		PrintRelay(stream, pPayloadBeehive);
 
 		if (timeSinceLast != 0)
 		{
@@ -823,12 +867,12 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 	if (pch == NULL)
 		return 0;	//can't find anything
 
-	int ver = 0;
+	int version = 0;
 	if (0 == strcmp(pch, "inv"))
-		ver = 1;
+		version = 1;
 	else if (0 == strcmp(pch, "inv2"))
-		ver = 2;
-	if (ver )
+		version = 2;
+	if (version )
 	{
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadInverter->subnode = atoi(pch);
@@ -844,7 +888,7 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 		pPayloadInverter->batteryCharging = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadInverter->pvInputPower = atoi(pch);
-		if (ver == 2)
+		if (version == 2)
 		{
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadInverter->batteryCapacity = atoi(pch);
@@ -858,5 +902,43 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 	else
 		return 0;
 
-	return 1;
+	return version;
+}
+
+
+int EmonSerial::ParseBeehivePayload(char* str, PayloadBeehive* pPayloadBeehive)
+{
+	memset(pPayloadBeehive, 0, sizeof(PayloadBeehive));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "bee"))
+		version = 1;
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->beeInRate = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->beeOutRate = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->beesIn = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->beesOut = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->temperatureIn = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->temperatureOut = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->grams = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadBeehive->supplyV = atoi(pch);
+
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadBeehive, pch);
+	}
+	return version;
 }
