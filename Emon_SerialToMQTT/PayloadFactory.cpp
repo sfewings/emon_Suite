@@ -292,6 +292,54 @@ bool PayloadFactory::PublishPayload(char* s)
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}
 	}
+	else if (strncmp(s, "bee", 3) == 0)
+	{
+		PayloadBeehive* beehive = new PayloadBeehive();
+		if (EmonSerial::ParseBeehivePayload(s, beehive))
+		{
+			parsed = true;
+			pBasePayload = beehive;
+
+			char buf[100];
+			char topic[100];
+
+			sprintf(topic, "beehive/beeInRate/%d", beehive->subnode);
+			sprintf(buf, "%d", beehive->beeInRate);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "beehive/beeOutRate/%d", beehive->beeOutRate);
+			sprintf(buf, "%d", beehive->beeOutRate);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "beehive/beesIn/%d", beehive->subnode);
+			sprintf(buf, "%d", beehive->beesIn);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "beehive/beesOut/%d", beehive->subnode);
+			sprintf(buf, "%d", beehive->beesOut);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "temperature/beehiveInside/%d/0", beehive->subnode);
+			sprintf(buf, "%d.%02d", beehive->temperatureIn / 100, beehive->temperatureIn % 100);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "temperature/beehiveOutside/%d/0", beehive->subnode);
+			sprintf(buf, "%d.%02d", beehive->temperatureOut / 100, beehive->temperatureOut % 100);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "supplyV/beehive/%d", beehive->subnode);
+			sprintf(buf, "%d", beehive->supplyV);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+		}
+	}
+
 	if (parsed)
 	{
 		char topic[10] = { "EmonLog" };
