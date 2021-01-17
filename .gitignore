@@ -28,4 +28,7 @@
 **/x64/
 **/Release/
 Emon_SerialToMQTT_Thingsboard/*
+#stop the build images being added to git
+./Emon_SerialToMQTT/Emon_SerialToMQTT
+./Emon_LogToJson/Emon_LogToJson
 
