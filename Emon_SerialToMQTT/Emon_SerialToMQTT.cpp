@@ -20,6 +20,8 @@ compile with the command: gcc demo_rx.c rs232.c -Wall -Wextra -o2 -o test_rx
 #include <Windows.h>
 #else
 #include <unistd.h>
+#include <unistd.h>
+#include <limits.h>
 #endif
 
 #include <iostream>
@@ -78,6 +80,17 @@ private:
 
 int main(int argc, char** argv)
 {
+	std::string serverAddress { "tcp://192.168.1.111:1883" };
+	std::string clientID{ "emon_publish" };
+
+	#ifdef _WIN32
+	#else
+		char hostname[HOST_NAME_MAX];
+		gethostname(hostname, HOST_NAME_MAX);
+		clientID += "_";
+		clientID += hostname;
+	#endif
+
 	InputParser input(argc, argv);
 	if (input.cmdOptionExists("-h") || !input.cmdOptionExists("-c") )
 	{
@@ -101,7 +114,10 @@ int main(int argc, char** argv)
 
 		char mode[] = { '8','N','1',0 };
 
-		PayloadFactory pf;
+		
+		std::cout << "MQTT server     : "<< serverAddress <<std::endl;
+		std::cout << "MQTT client name: "<< clientID <<std::endl;
+		PayloadFactory pf(serverAddress, clientID);
 
 		if (!pf.Initialise())
 		{

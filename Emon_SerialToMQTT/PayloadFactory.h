@@ -6,7 +6,7 @@
 class PayloadFactory
 {
 public:
-	PayloadFactory();
+	PayloadFactory(std::string serverAddress, std::string clientID);
 	~PayloadFactory();
 
 	bool Initialise();

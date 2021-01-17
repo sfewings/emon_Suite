@@ -9,17 +9,15 @@
 #include "EmonMQTTClient.h"
 //#include "..\..\Libraries\paho.mqtt.c-win64\include\MQTTClient.h"
 
-
-const std::string SERVER_ADDRESS{ "tcp://192.168.1.111:1883" };
-const std::string CLIENT_ID{ "emon_publish_cpp" };
-const std::string TOPIC{ "hello" };
+//const std::string TOPIC{ "hello" };
 
 const int QOS = 1;
 
 
-EmonMQTTClient::EmonMQTTClient():
-	m_client(SERVER_ADDRESS, CLIENT_ID, NULL)
+EmonMQTTClient::EmonMQTTClient(std::string serverAddress, std::string clientID):
+	m_client(serverAddress, clientID, NULL)
 {
+	
 }
 
 EmonMQTTClient::~EmonMQTTClient()

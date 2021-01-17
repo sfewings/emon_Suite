@@ -2,7 +2,8 @@
 #include "EmonMQTTClient.h"
 
 
-PayloadFactory::PayloadFactory()
+PayloadFactory::PayloadFactory(std::string serverAddress, std::string clientID):
+	m_MQTTClient(serverAddress, clientID)
 {
 	pBasePayload = NULL;
 }
@@ -50,6 +51,10 @@ bool PayloadFactory::PublishPayload(char* s)
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
+			
+			sprintf(topic, "supplyV/temp/%d", temp->subnode);
+			sprintf(buf, "%d", temp->supplyV);
+			m_MQTTClient.Publish(topic, buf);			
 		}
 	}
 	else if (strncmp(s, "pulse", 5) == 0)

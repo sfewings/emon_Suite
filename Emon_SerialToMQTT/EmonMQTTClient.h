@@ -26,7 +26,7 @@ public:
 class EmonMQTTClient
 {
 public:
-	EmonMQTTClient();
+	EmonMQTTClient(std::string serverAddress, std::string clientID);
 	~EmonMQTTClient();
 
 	bool Initialise();
