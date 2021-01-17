@@ -31,4 +31,7 @@ Emon_SerialToMQTT_Thingsboard/*
 Analyse_python/input/*.txt
 Analyse_python/output/*.txt
 Analyse_python/pandas/
+#stop the build images being added to git
+./Emon_SerialToMQTT/Emon_SerialToMQTT
+./Emon_LogToJson/Emon_LogToJson
 
