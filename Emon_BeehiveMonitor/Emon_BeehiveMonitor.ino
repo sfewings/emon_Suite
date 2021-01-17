@@ -41,6 +41,7 @@ const int startGate = 0;  //useful for testing
 const int endGate = 24;   //useful for testing
 const int debeebounce = 30;
 const int outputDelay = 15000;  //prints bee counts every 15 seconds
+const int numberOfBanks = 6;    // number of switch banks
 unsigned long lastOutput = 0;
 unsigned long currentTime = 0;
 
@@ -141,6 +142,7 @@ void setup()
 
   g_scale.setScale(-22.43f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
 
+
   g_dallasOneWire.begin();
   long 	numberOfSensors = g_dallasOneWire.getDeviceCount();
   for(int i =0; i < numberOfSensors;i++)
@@ -156,7 +158,6 @@ void setup()
 
   pinMode(CS, OUTPUT);
   digitalWrite(CS, HIGH);
-
 
   SPI.begin();
   SPI.beginTransaction(SPISettings(3000000, MSBFIRST, SPI_MODE2));
@@ -190,22 +191,10 @@ void setup()
   
 }
 
-byte switchBank1;
-byte oldSwitchBank1; 
-byte switchBank2;
-byte oldSwitchBank2; 
-byte switchBank3;
-byte oldSwitchBank3; 
-byte switchBank4;
-byte oldSwitchBank4; 
-byte switchBank5;
-byte oldSwitchBank5; 
-byte switchBank6;
-byte oldSwitchBank6; 
-byte switchBank7;
-byte oldSwitchBank7; 
-byte switchBank8;
-byte oldSwitchBank8; 
+
+byte switchBank[numberOfBanks];
+byte oldSwitchBank[numberOfBanks];
+
 
 void loop ()
 {
@@ -218,7 +207,6 @@ void loop ()
   digitalWrite (LATCH, LOW);    // pulse the parallel load latch
   delayMicroseconds(3);
   digitalWrite (LATCH, HIGH);
-
   delayMicroseconds(3);
   
   digitalWrite(POWER_GATES_1, LOW);
@@ -227,91 +215,32 @@ void loop ()
   //Reading 24 bits at 1Mhz should take about 24 microseconds,
   //reading 24 bits at 3Mhz should take about 8us
   //reading 48 bits at 3Mhz should take abotu 16us
-  switchBank1 = SPI.transfer (0); //8
-  switchBank2 = SPI.transfer (0); //16
-  switchBank3 = SPI.transfer (0); //24
-  switchBank4 = SPI.transfer (0); //32
-  switchBank5 = SPI.transfer (0); //40
-  switchBank6 = SPI.transfer (0); //48  
-  
- 
-  
-  if(switchBank1 != oldSwitchBank1 || switchBank2 != oldSwitchBank2 || switchBank3 != oldSwitchBank3 || switchBank4 != oldSwitchBank4 || switchBank5 != oldSwitchBank5 || switchBank6 != oldSwitchBank6)
+  bool change = false;
+  for(int i =0; i < numberOfBanks;i++)
   {
-    //convert bytes to gate values
+    switchBank[i] = SPI.transfer (0);
+    if( switchBank[i] != oldSwitchBank[i])
+      change = true;
+  }
+
+  if( change )
+  {
     int gate = 0;
-    for(int i = 0; i < 8; i++)
+    for(int i =0; i < numberOfBanks;i++)
     {
-      if((switchBank1 >> i) & 1)
-          outSensorReading[gate] = HIGH;
-      else outSensorReading[gate] = LOW;
-      i++;
-      if((switchBank1 >> i) & 1)
-          inSensorReading[gate] = HIGH;
-      else inSensorReading[gate] = LOW;       
-      gate++;  
+      for(int j = 0; j < 8; j++)
+      {
+        if((switchBank[i] >> j) & 1)
+            outSensorReading[gate] = HIGH;
+        else outSensorReading[gate] = LOW;
+        j++;
+        if((switchBank[i] >> j) & 1)
+            inSensorReading[gate] = HIGH;
+        else inSensorReading[gate] = LOW;       
+        gate++;  
+      }
+      oldSwitchBank[i] = switchBank[i];
     }
-    for(int i = 0; i < 8; i++)
-    {
-      if((switchBank2 >> i) & 1)
-          outSensorReading[gate] = HIGH;
-      else outSensorReading[gate] = LOW;
-      i++;
-      if((switchBank2 >> i) & 1)
-          inSensorReading[gate] = HIGH;
-      else inSensorReading[gate] = LOW;      
-      gate++;  
-    }
-    for(int i = 0; i < 8; i++)
-    {
-      if((switchBank3 >> i) & 1)
-          outSensorReading[gate] = HIGH;
-      else outSensorReading[gate] = LOW;
-      i++;
-      if((switchBank3 >> i) & 1)
-          inSensorReading[gate] = HIGH;
-      else inSensorReading[gate] = LOW;       
-      gate++;  
-    }
-    for(int i = 0; i < 8; i++)
-    {
-      if((switchBank4 >> i) & 1)
-          outSensorReading[gate] = HIGH;
-      else outSensorReading[gate] = LOW;
-      i++;
-      if((switchBank4 >> i) & 1)
-          inSensorReading[gate] = HIGH;
-      else inSensorReading[gate] = LOW;       
-      gate++;  
-    }
-    for(int i = 0; i < 8; i++)
-    {
-      if((switchBank5 >> i) & 1)
-          outSensorReading[gate] = HIGH;
-      else outSensorReading[gate] = LOW;
-      i++;
-      if((switchBank5 >> i) & 1)
-          inSensorReading[gate] = HIGH;
-      else inSensorReading[gate] = LOW;       
-      gate++;  
-    }
-    for(int i = 0; i < 8; i++)
-    {
-      if((switchBank6 >> i) & 1)
-          outSensorReading[gate] = HIGH;
-      else outSensorReading[gate] = LOW;
-      i++;
-      if((switchBank6 >> i) & 1)
-          inSensorReading[gate] = HIGH;
-      else inSensorReading[gate] = LOW;      
-      gate++;  
-    }  
-    oldSwitchBank1 = switchBank1;
-    oldSwitchBank2 = switchBank2;
-    oldSwitchBank3 = switchBank3;
-    oldSwitchBank4 = switchBank4;
-    oldSwitchBank5 = switchBank5;
-    oldSwitchBank6 = switchBank6;
   }
 
   for (int i = startGate; i < endGate; i++) 
@@ -332,31 +261,19 @@ void loop ()
       checkStateIn[i] = 0;
       lastInSensorReading[i] = inSensorReading[i];
       inSensorTime[i] = currentTime;
-      //Serial.print(i);
-      //Serial.print(", ");
-      //Serial.println(inSensorReading[i]);
     } 
     if(outSensorReading[i] != lastOutSensorReading[i])  //change of state on OUT sensor
     { 
       checkStateOut[i] = 0;
       lastOutSensorReading[i] = outSensorReading[i];
       outSensorTime[i] = currentTime;
-      //Serial.print(i);
-      //Serial.print(", ");
-      //Serial.println(outSensorReading[i]);
     }       
     if(currentTime - inSensorTime[i] > debeebounce && checkStateIn[i] == 0)  //debounce IN sensor
     {
       checkStateIn[i] = 1; //passed debounce         
-      //Serial.print(i);
-      //Serial.print(", IN sensor - high_or_low: ");
-      //Serial.println(inSensorReading[i]);
       if(inSensorReading[i] == HIGH) //a bee just entered the sensor
       {
         startInReadingTime[i] = currentTime;
-        //Serial.print(i);
-        //Serial.print(", I ,");
-        //Serial.println(currentTime);
       }
       if(inSensorReading[i] == LOW)  //a bee just exits the sensor; that is, it was HIGH, now it is LOW (empty)
       {  
@@ -383,15 +300,9 @@ void loop ()
     if(currentTime - outSensorTime[i] > debeebounce && checkStateOut[i] == 0)  //debounce OUT sensor
     {
       checkStateOut[i] = 1; //passed debounce         
-      //Serial.print(i);
-      //Serial.print(", IN sensor - high_or_low: ");
-      //Serial.println(outSensorReading[i]);
       if(outSensorReading[i] == HIGH) //a bee just entered the sensor
       {
         startOutReadingTime[i] = currentTime;
-        //Serial.print(i);
-        //Serial.print(", O ,");
-        //Serial.println(currentTime);
       }
       if(outSensorReading[i] == LOW)  //a bee just exits the sensor; that is, it was HIGH, now it is LOW (empty)
       {  
@@ -420,8 +331,7 @@ void loop ()
   delay (15);   // debounce
 
   if (currentTime - lastOutput > outputDelay) 
-    {
-    //Serial.println("sending data");
+  {
     sendData(inTotal, outTotal); 
     lastOutput = currentTime; 
     inTotal = 0;
@@ -432,51 +342,35 @@ void loop ()
 
 void sendData(unsigned long beesIn, unsigned long beesOut)
 {
-  unsigned long tStart = millis();
-  unsigned long t = millis();
+  unsigned long tStart, t;
+  tStart = t = millis();
 
   g_payload.grams = g_scale.getGram();
-  Serial.print("scale time:\t"); 
-  Serial.println((millis()-t)); 
-  t = millis();
+  Serial.print("scale time:\t"); Serial.println((millis()-t)); t = millis();
 
   g_dallasOneWire.requestTemperatures();
   g_payload.temperatureIn = g_dallasOneWire.getTempCByIndex(0)*100;
   g_payload.temperatureOut = g_dallasOneWire.getTempCByIndex(1)*100;
-  Serial.print("temp time: \t");
-  Serial.println((millis()-t)); 
-  t = millis();
+  Serial.print("temp time: \t"); Serial.println((millis()-t)); t = millis();
   
+  float measuredvbat = analogRead(VBATPIN);
+  measuredvbat *= 2;    // we divided by 2, so multiply back
+  measuredvbat *= 3.3;  // Multiply by 3.3V, our reference voltage
+  measuredvbat /= 1024; // convert to voltage
+  Serial.print("vRead time:\t");  Serial.println((millis()-t)); t = millis();
+
 
   g_payload.beeInRate=beesIn/((double)outputDelay/60000.0);
   g_payload.beeOutRate=beesOut/((double)outputDelay/60000.0);
   g_payload.beesIn += beesIn;
   g_payload.beesOut += beesOut;
-
-  float measuredvbat = analogRead(VBATPIN);
-  measuredvbat *= 2;    // we divided by 2, so multiply back
-  measuredvbat *= 3.3;  // Multiply by 3.3V, our reference voltage
-  measuredvbat /= 1024; // convert to voltage
   g_payload.supplyV = (unsigned long) (measuredvbat*1000);  //transmit as mV
-  
-  // Serial.print("VBat: " );
-  // Serial.println( measuredvbat );
-  
-
-  Serial.print("rf69 init: \t");
-  Serial.println((millis()-t)); 
-  t = millis();
-
 
   g_rf69.send((const uint8_t*) &g_payload, sizeof(g_payload));
-  
-  
   g_rf69.waitPacketSent();
-  //digitalWrite(CS, HIGH);
 
-  Serial.print("send time: \t");
-  Serial.println((millis()-t)); 
-  t = millis();
+  Serial.print("send time: \t"); Serial.println((millis()-t)); t = millis();
+
 
   Serial.print("total time:\t"); Serial.println((millis()-tStart));
 
