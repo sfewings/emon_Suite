@@ -338,6 +338,11 @@ bool PayloadFactory::PublishPayload(char* s)
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 
+			sprintf(topic, "scales/beehive/%d", beehive->subnode);
+			sprintf(buf, "%d", beehive->grams);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
 			sprintf(topic, "supplyV/beehive/%d", beehive->subnode);
 			sprintf(buf, "%d", beehive->supplyV);
 			m_MQTTClient.Publish(topic, buf);
