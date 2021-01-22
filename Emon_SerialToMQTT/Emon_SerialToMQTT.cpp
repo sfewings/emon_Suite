@@ -76,6 +76,35 @@ private:
 	std::vector <std::string> tokens;
 };
 
+int PublishAndLogPacket(PayloadFactory& pf, std::tm now, unsigned char* buf, int len, std::string loggingFolder, bool publishOriginalPacket)
+{
+	std::string str = (char*)buf;
+	std::cout << str << std::endl;
+
+	bool logPacket = true;
+
+	if( publishOriginalPacket )
+	{
+		logPacket = pf.PublishPayload((char*)buf );
+	}
+
+	if( logPacket && !loggingFolder.empty() )
+	{
+		//log the reading to a log file
+		std::string fullPath = string_format("%s/%04d%02d%02d.TXT", loggingFolder.c_str(), now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
+		std::ofstream f(fullPath, std::ios::app);
+		if (!f.bad())
+		{
+			std::string line = string_format("%02d/%02d/%02d %02d:%02d:%02d,%s", now.tm_mday, now.tm_mon + 1, now.tm_year + 1900, now.tm_hour, now.tm_min, now.tm_sec, str.c_str());
+			f << line << std::endl;
+		}
+		std::cout << " logged" << std::endl;
+	}
+	std::cout << std::endl;
+	
+	return true;
+}
+
 
 
 int main(int argc, char** argv)
@@ -92,22 +121,30 @@ int main(int argc, char** argv)
 	#endif
 
 	InputParser input(argc, argv);
-	if (input.cmdOptionExists("-h") || !input.cmdOptionExists("-c") )
+	if (input.cmdOptionExists("-h") || !(input.cmdOptionExists("-c") || input.cmdOptionExists("-c2")  ))
 	{
-		std::cout << "Emon_SerialToMQTT -c COM port #[-l logging folder]" << std::endl;
+		std::cout << "Emon_SerialToMQTT -c COM port #[-l logging folder] [-c2 COM port2 #]" << std::endl;
 		return 0;
 	}
 
 	std::string loggingFolder = input.getCmdOption("-l");
 
 	int comPort = -1;
+	int comPort2 = -1;
+
 	std::string comPortStr = input.getCmdOption("-c");
 	if (!comPortStr.empty())
 	{
 		comPort = atoi(comPortStr.c_str()) -1;	//COM1 == comPort0
 	}
+	
+	comPortStr = input.getCmdOption("-c2");
+	if (!comPortStr.empty())
+	{
+		comPort2 = atoi(comPortStr.c_str()) -1;	//COM1 == comPort0
+	}
 
-	if (comPort >= 0)
+	if (comPort >= 0 || comPort2 >= 0)
 	{
 		int n, bdrate = 9600;       /* 9600 baud */
 		unsigned char buf[4096];
@@ -124,11 +161,32 @@ int main(int argc, char** argv)
 			return (1); //failed to initialise
 		}
 
-		if (RS232_OpenComport(comPort, bdrate, mode, 0))
+		if (comPort >=0 )
 		{
-			std::cout << "Can not open comport " << comPort+1 << std::endl;
+			if( RS232_OpenComport(comPort, bdrate, mode, 0))
+			{
+				std::cout << "Can not open comport " << comPort+1 << std::endl;
 
-			return(1);
+				return(1);
+			}
+			else
+			{
+				std::cout << "Opened comport " << comPort+1 << std::endl;
+			}
+		}
+
+		if (comPort2 >=0 )
+		{
+			if( RS232_OpenComport(comPort2, bdrate, mode, 0))
+			{
+				std::cout << "Can not open comport " << comPort2+1 << std::endl;
+
+				return(1);
+			}
+			else
+			{
+				std::cout << "Opened comport " << comPort2+1 << std::endl;
+			}
 		}
 
 		std::time_t lastSendTime = std::time(0);
@@ -138,36 +196,36 @@ int main(int argc, char** argv)
 			std::time_t t = std::time(0);   // get time now
 			std::tm now = *std::localtime(&t);
 
-			n = RS232_PollComportLine(comPort, buf, 4095);
-
-			if (n > 0)
+			if (comPort >=0 )
 			{
-				buf[n] = 0;   /* always put a "null" at the end of a string! */
+				n = RS232_PollComportLine(comPort, buf, 4095);
+				if( n>0 )
+				{
+					buf[n] = 0;   /* always put a "null" at the end of a string! */
 
 					//replace trailing chars with \0. Remove \r\n
-				while (n && buf[n] < 32)
-					buf[n--] = 0;
+					while (n && buf[n] < 32)
+						buf[n--] = 0;
 
-				std::string str = (char*)buf;
-				std::cout << str << std::endl;
-
-				if (pf.PublishPayload((char*)buf) &&
-					!loggingFolder.empty())
-				{
-
-					//log the reading to a log file
-					std::string fullPath = string_format("%s/%04d%02d%02d.TXT", loggingFolder.c_str(), now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
-					std::ofstream f(fullPath, std::ios::app);
-					if (!f.bad())
-					{
-						std::string line = string_format("%02d/%02d/%02d %02d:%02d:%02d,%s", now.tm_mday, now.tm_mon + 1, now.tm_year + 1900, now.tm_hour, now.tm_min, now.tm_sec, str.c_str());
-						f << line << std::endl;
-					}
-					std::cout << " logged" << std::endl;
+					PublishAndLogPacket(pf, now, buf, n, loggingFolder, true);
 				}
 			}
-			std::cout << std::endl;
 
+			if (comPort2 >=0 )
+			{
+				n = RS232_PollComportLine(comPort2, buf, 4095);
+				if( n>0 )
+				{
+					buf[n] = 0;   /* always put a "null" at the end of a string! */
+
+					//replace trailing chars with \0. Remove \r\n
+					while (n && buf[n] < 32)
+						buf[n--] = 0;
+					//Jeenode network is on comPort2 and we don't want to MQTT publish that
+					PublishAndLogPacket(pf, now, buf, n, loggingFolder, false);
+				}
+			}
+			
 			if (t - lastSendTime > 30) //Send current time update every 30 seconds
 			{
 				lastSendTime = t;

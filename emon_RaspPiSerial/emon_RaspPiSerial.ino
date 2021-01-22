@@ -1,10 +1,12 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-#undef USE_JEELIB
+#define USE_JEELIB
+
+#include <EmonShared.h>
 
 #ifdef USE_JEELIB
-	#define RF69_COMPAT 0
+	#define RF69_COMPAT 1
 
 	//JeeLab libraires				http://github.com/jcw
 	#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
@@ -17,7 +19,7 @@
 	#define RFM69_RST     4
 #endif
 
-#include <EmonShared.h>
+
 const int GREEN_LED = 9;  //Pin 9 on the Emon node.
 //--------------------------------------------------------------------------------------------
 // Setup

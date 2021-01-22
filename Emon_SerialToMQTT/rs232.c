@@ -31,6 +31,7 @@
 /* For more info and how to use this library, visit: http://www.teuniz.net/RS-232/ */
 
 #include "rs232.h"
+#include <sys/time.h>
 
 
 #if defined(__linux__) || defined(__FreeBSD__)   /* Linux & FreeBSD */
@@ -286,6 +287,12 @@ int RS232_PollComport(int comport_number, unsigned char *buf, int size)
 int RS232_PollComportLine(int comport_number, unsigned char* buf, int size)
 {
 	int n=0;
+
+  struct timeval lastCharTime, now;
+  double secs = 0;
+
+  gettimeofday(&lastCharTime, NULL);
+  //std::time_t t = std::time(0);   // get time now
 	do
 	{
     int nRead = read(Cport[comport_number], buf+n, 1);
@@ -293,11 +300,19 @@ int RS232_PollComportLine(int comport_number, unsigned char* buf, int size)
     {
       if(errno == EAGAIN)  return 0;
     }
-
-		n += nRead;
-		if (n >= size)
-			return n;
-	} while (buf[n-1] != '\n');
+    else if(nRead > 0)
+    {
+      gettimeofday(&lastCharTime, NULL);
+      n += nRead;
+      if (n >= size)
+        return n;
+    }
+    gettimeofday(&now, NULL);
+    secs = (double)(now.tv_usec - lastCharTime.tv_usec) / 1000000 + (double)(now.tv_sec - lastCharTime.tv_sec);
+    //char msg[256];
+    //sprintf(msg,"sec %.3f\n",secs);
+    //perror(msg);
+	} while (buf[n-1] != '\n' && secs<0.1 );
 
 	return(n);
 }
