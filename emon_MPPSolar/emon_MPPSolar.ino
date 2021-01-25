@@ -1,10 +1,16 @@
 #define RF69_COMPAT 1
 
-//#define __MOTEINO_AVR_ATmega1284__
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <SoftwareSerial.h>
-#include <EmonShared.h>
-#include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
+//#define USE_JEELIB
+
+
+#ifdef USE_JEELIB
+  //#define __MOTEINO_AVR_ATmega1284__
+
+
+  #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
+  #include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
+
+RF12Init g_rf12Init = { INVERTER_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 /*
 Note. To make the Jeelib RFM69 work witht he Moteino Mega 1284p two changes need to be made to the jeelib libraries
@@ -35,14 +41,23 @@ in RF69_avr.h add the following definition for SPI pins
         attachInterrupt(0, RF69::interrupt_compat, RISING);
 #endif
 */
-RF12Init g_rf12Init = { INVERTER_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+#else
+	#include <SPI.h>
+	#include <RH_RF69.h>
+	// Singleton instance of the radio driver
+	RH_RF69 g_rf69(4, 2);
+#endif
+
+#include <SoftwareSerial.h>
+#include <EmonShared.h>
+
 
 String P005GS = "\x5E\x50\x30\x30\x35\x47\x53\x58\x14\x0D"; //Query General status
 String P005PI = "\x5E\x50\x30\x30\x35\x50\x49\x71\x8B\x0D"; //Query Protocol version
 String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";      //Query Current time
 
 
-PayloadInverter payloadInverter;
+PayloadInverter g_payloadInverter;
 
 SoftwareSerial g_serialInverter2(14, 13);	//18,17); //A1=rx, A0=tx
 
@@ -190,25 +205,25 @@ int ReadFromInverter(Stream& stream, String & s)
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // CCCC      AC output voltage         C: 0~9, unit: 0.1V
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // DDD       AC output frequency       D: 0~9, unit: 0.1Hz
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;  // EEEE      AC output apparent power  E: 0~9, unit: VA
-  payloadInverter.apparentPower = atoi(pch);
+  g_payloadInverter.apparentPower = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;      // FFFF      AC output active power    F: 0~9, unit: W
-  payloadInverter.activePower = atoi(pch);
+  g_payloadInverter.activePower = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // GGG       Output load percent       G: 0~9, unit: %
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // HHH       Battery voltage           H: 0~9, unit: 0.1V
-  payloadInverter.batteryVoltage = atoi(pch);
+  g_payloadInverter.batteryVoltage = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // III       Battery voltage from SCC  I: 0~9, unit: 0.1V
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // JJJ       Battery voltage from SCC2 J: 0~9, unit: 0.1V
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // KKK       Battery discharge current K: 0~9, unit: A
-  payloadInverter.batteryDischarge = atoi(pch);
+  g_payloadInverter.batteryDischarge = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // LLL       Battery charging current  L: 0~9, unit: A
-  payloadInverter.batteryCharging = atoi(pch);
+  g_payloadInverter.batteryCharging = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // MMM       Battery capacity          M: 0~9, unit: %
-	payloadInverter.batteryCapacity = atoi(pch);
+	g_payloadInverter.batteryCapacity = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // NNN       Inverter heat sink temperature  N: 0~9, unit: oC
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // OOO       MPPT1 charger temperature O: 0~9, unit: oC
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // PPP       MPPT2 charger temperature P: 0~9, unit: oC
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // QQQQ      PV1 Input power           Q: 0~9, unit: W
-  payloadInverter.pvInputPower = atoi(pch);
+  g_payloadInverter.pvInputPower = atoi(pch);
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // RRRR      PV2 Input power           R: 0~9, unit: W
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // SSSS      PV1 Input voltage         S: 0~9, unit: 0.1V
   if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // TTTT      PV2 Input voltage         S: 0~9, unit: 0.1V
@@ -234,6 +249,7 @@ void setup()
   
 	Serial.println(F("MPP inverter sensor node start"));
 
+#ifdef USE_JEELIB
   //check to make sure the correct SPI pins are assigned for use witht he Moteino Mega 1284P
   if( SPI_SS !=  4 || SPI_MOSI != 5 || SPI_MISO != 6 || SPI_SCK != 7 )
     Serial.println("Warning. The JLib code will not work with the Moteino Mega.");
@@ -247,7 +263,20 @@ void setup()
 
 	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
 	EmonSerial::PrintRF12Init(g_rf12Init);
+#else
 
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	Serial.println("RF69 initialise node: 10 Freq: 915MHz");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(INVERTER_NODE);
+
+#endif
   EmonSerial::PrintInverterPayload(NULL);
 
   delay(1000);
@@ -259,6 +288,7 @@ void setup()
 
 void SendPacket()
 {
+#ifdef USE_JEELIB
   rf12_sleep(RF12_WAKEUP);
   int wait = 1000;
   while (!rf12_canSend() && wait--)
@@ -267,7 +297,7 @@ void SendPacket()
   }
   if (wait)
   {
-    rf12_sendStart(0, &payloadInverter, sizeof(payloadInverter));
+    rf12_sendStart(0, &g_payloadInverter, sizeof(g_payloadInverter));
     rf12_sendWait(0);
   }
   else
@@ -275,7 +305,11 @@ void SendPacket()
     Serial.println(F("RF12 waiting. No packet sent"));
   }
   rf12_sleep(RF12_SLEEP);
-  EmonSerial::PrintInverterPayload(&payloadInverter);
+#else
+  g_rf69.send((const uint8_t*) &g_payloadInverter, sizeof(g_payloadInverter));
+  g_rf69.waitPacketSent();
+#endif
+  EmonSerial::PrintInverterPayload(&g_payloadInverter);
 }
 
 void loop()
@@ -284,13 +318,13 @@ void loop()
 
   if( ReadFromInverter( Serial1, P005GS ) )
   {
-    payloadInverter.subnode = 0;
+    g_payloadInverter.subnode = 0;
     SendPacket();
   }
 
   if( ReadFromInverter( g_serialInverter2, P005GS ) )
   {
-    payloadInverter.subnode = 1;
+    g_payloadInverter.subnode = 1;
     SendPacket();
   }
   digitalWrite(LED_PIN, LOW);
