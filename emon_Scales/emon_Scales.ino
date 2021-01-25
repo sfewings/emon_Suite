@@ -1,17 +1,26 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 // emon WaterLevel
 //-------------------------------------------------------------------------------------------------------------------------------------------------
+#undef USE_JEELIB
 
-#define RF69_COMPAT 1
+#include <JeeLib.h>			// needed for Sleepy, ports and RFM12 - used for RFM12B wireless
 
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <eeprom.h>
+#ifdef USE_JEELIB
+	#define RF69_COMPAT 1
+
+	RF12Init rf12Init = { SCALE_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+#else
+	#include <SPI.h>
+	#include <RH_RF69.h>
+	// Singleton instance of the radio driver
+	RH_RF69 g_rf69;
+#endif
+
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
 #include <hx711.h>
 
 
-RF12Init rf12Init = { SCALE_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 PayloadScale g_scalePayload;
 long g_lastScaleValue;
@@ -111,10 +120,27 @@ void setup()
 
 	Serial.print("Scales calibrated, ");
 	SerialOut();
-	
+#ifdef USE_JEELIB	
 	Serial.print("rf12_initialize:");
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
+#else
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(SCALE_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(SCALE_NODE);
+	Serial.println(" Freq: 915MHz");
+#endif
+
 	EmonSerial::PrintScalePayload(NULL);
 
 	delay(100);
@@ -153,6 +179,7 @@ void loop ()
 		else if (g_scalePayload.subnode == 1)
 			g_scalePayload.supplyV = readVcc_WhisperNode();
 
+#ifdef USE_JEELIB
 		rf12_sleep(RF12_WAKEUP);
 		int wait = 1000;
 		while (!rf12_canSend() && wait--)
@@ -168,6 +195,20 @@ void loop ()
 			Serial.println(F("RF12 waiting. No packet sent"));
 		}
 		rf12_sleep(RF12_SLEEP);
+#else
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+		g_rf69.send((const uint8_t*) &g_scalePayload, sizeof(g_scalePayload));
+		if( g_rf69.waitPacketSent() )
+		{
+			EmonSerial::PrintScalePayload(&g_scalePayload);
+		}
+		else
+		{
+			Serial.println(F("No packet sent"));
+		}
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
+
 	}
 
 	//let serial buffer empty
