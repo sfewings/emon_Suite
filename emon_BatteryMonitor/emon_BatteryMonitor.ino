@@ -1,12 +1,24 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 // emon BatteryMonitor
 //-------------------------------------------------------------------------------------------------------------------------------------------------
+//#define USE_JEELIB
 
-#define RF69_COMPAT 1
+
+#ifdef USE_JEELIB
+  #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
+  #include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
+
+  #define RF69_COMPAT 1
+	RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+#else
+	#include <SPI.h>
+	#include <RH_RF69.h>
+	// Singleton instance of the radio driver
+	RH_RF69 g_rf69;
+#endif
 
 #include <avr/wdt.h>    //watchdog timer
 
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <EEPROM.h>
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
@@ -16,7 +28,6 @@
 
 #define EEPROM_BASE 0x10	//where the wH readings are stored in EEPROM
 
-RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
@@ -144,7 +155,7 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	Serial.print( stats.stdDev );
 	Serial.println();
 
-	if(stats.stdDev > 7.0) 
+	if(stats.stdDev > 30.0) //30 = 0.3v
 	{
 		noisyData = true;
 
@@ -224,9 +235,9 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool 
 	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
 	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
 
-	if(stats.stdDev > 4.0) //3.0
+	if(stats.stdDev > 4.0) //4.0
 	{
-		noisyData = true;
+		//noisyData = true;
 		Serial.print(F("current vals,"));
 		for (int i = 0; i < SAMPLES; i++)
 		{
@@ -254,9 +265,27 @@ void setup()
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	g_payloadBattery.subnode = eepromSettings.subnode;
 
+#ifdef USE_JLIB
 	Serial.println("rf12_initialize");
 	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
 	EmonSerial::PrintRF12Init(g_rf12Init);
+#else
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(BATTERY_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(BATTERY_NODE);
+	Serial.println(" Freq: 915MHz");
+#endif
+
 	EmonSerial::PrintBatteryPayload(NULL);
 
 	Serial.println(F("reading,readingNum,median,mean,stdDev"));
@@ -313,8 +342,8 @@ void loop()
 	g_payloadBattery.voltage[4] = (short) Reading(4, 2, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 1 - row 1 (top)
 	g_payloadBattery.voltage[5] = (short) Reading(5, 3, 0, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 4 (bottom)
 	g_payloadBattery.voltage[6] = (short) Reading(6, 3, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 3
-  g_payloadBattery.voltage[7] = (short) Reading(7, 3, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 2
-  g_payloadBattery.voltage[8] = (short) Reading(8, 3, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 1 (top)
+    g_payloadBattery.voltage[7] = (short) Reading(7, 3, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 2
+    g_payloadBattery.voltage[8] = (short) Reading(8, 3, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 1 (top)
   wdt_reset();
   
 	double amps[BATTERY_SHUNTS];
@@ -374,10 +403,8 @@ void loop()
 	}
 	
 	//Send packet 
-	EmonSerial::PrintBatteryPayload(&g_payloadBattery);
-
 	digitalWrite(LED_PIN, HIGH);
-
+#ifdef USE_JEELIB
 	rf12_sleep(RF12_WAKEUP);
 	int wait = 1000;
 	while (!rf12_canSend() && wait--)
@@ -386,6 +413,7 @@ void loop()
 	{
 		rf12_sendStart(0, &g_payloadBattery, sizeof g_payloadBattery);
 		rf12_sendWait(0);
+		EmonSerial::PrintBatteryPayload(&g_payloadBattery);
 		Serial.println(F("Sent"));
 	}
 	else
@@ -393,7 +421,19 @@ void loop()
 		Serial.println(F("RF12 waiting. No packet sent"));
 	}
 	rf12_sleep(RF12_SLEEP);
-
+#else
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+	g_rf69.send((const uint8_t*) &g_payloadBattery, sizeof(g_payloadBattery));
+	if( g_rf69.waitPacketSent() )
+	{
+		EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+	}
+	else
+	{
+		Serial.println(F("No packet sent"));
+	}
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 	digitalWrite(LED_PIN, LOW);
 
 	uint32_t millisTaken = millis()- millisStart; 
