@@ -1,7 +1,7 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-#define USE_JEELIB
+#undef USE_JEELIB
 
 #include <EmonShared.h>
 
@@ -69,6 +69,7 @@ void setup ()
 	EmonSerial::PrintBatteryPayload(NULL);
 	EmonSerial::PrintInverterPayload(NULL);
 	EmonSerial::PrintBeehivePayload(NULL);
+	EmonSerial::PrintAirQualityPayload(NULL);
 
 	digitalWrite(GREEN_LED, LOW);
 }
@@ -189,6 +190,10 @@ void loop ()
 			if (node_id == BEEHIVEMONITOR_NODE)
 			{
 				SERIAL_OUT(Beehive, Payload);
+			}
+			if (node_id == AIRQUALITY_NODE)
+			{
+				SERIAL_OUT(AirQuality, Payload);
 			}
 		}
 
