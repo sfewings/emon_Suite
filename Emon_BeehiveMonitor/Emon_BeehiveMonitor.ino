@@ -29,7 +29,7 @@
 #define ONE_WIRE 18
 
 RH_RF69 g_rf69(CS,INTERRUPT);      // pins for Adafruit Feather M0 board
-Hx711 g_scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
+//Hx711 g_scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
 OneWire oneWire(ONE_WIRE);     // pin 10 for DS18b20 temperature sensors
 DallasTemperature g_dallasOneWire(&oneWire);
 
@@ -123,12 +123,12 @@ void setup()
   pinMode(LED, OUTPUT);    
 
   Blink(LED, 50, 3);
-  Serial.begin(9600);
 
+  Serial.begin(9600);
   delay(500);
- 
- 	EmonSerial::PrintBeehivePayload(NULL);
-  
+
+	EmonSerial::PrintBeehivePayload(NULL);
+
   //initialise payload fields
   g_payload.relay = 0;
   g_payload.subnode = 0;
@@ -140,7 +140,7 @@ void setup()
   g_payload.supplyV = 0;
 
 
-  g_scale.setScale(-22.43f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
+  //g_scale.setScale(-22.43f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
 
 
   g_dallasOneWire.begin();
@@ -344,15 +344,23 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
 {
   unsigned long tStart, t;
   tStart = t = millis();
-
-  g_payload.grams = g_scale.getGram();
-  Serial.print("scale time:\t"); Serial.println((millis()-t)); t = millis();
+  Serial.println("Send data. Reading temperatures");
 
   g_dallasOneWire.requestTemperatures();
   g_payload.temperatureIn = g_dallasOneWire.getTempCByIndex(0)*100;
   g_payload.temperatureOut = g_dallasOneWire.getTempCByIndex(1)*100;
   Serial.print("temp time: \t"); Serial.println((millis()-t)); t = millis();
-  
+ 
+
+   Hx711 scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
+   scale.setScale(-22.43f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
+   scale.setOffset( 8388608 );  //with no weight on beehive.
+   g_payload.grams = scale.getGram();
+//pinMode(SCL, INPUT);
+	pinMode(SDA, OUTPUT);
+
+  Serial.print("scale time:\t"); Serial.println((millis()-t)); t = millis();
+ 
   float measuredvbat = analogRead(VBATPIN);
   measuredvbat *= 2;    // we divided by 2, so multiply back
   measuredvbat *= 3.3;  // Multiply by 3.3V, our reference voltage
@@ -365,6 +373,7 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   g_payload.beesIn += beesIn;
   g_payload.beesOut += beesOut;
   g_payload.supplyV = (unsigned long) (measuredvbat*1000);  //transmit as mV
+
 
   g_rf69.send((const uint8_t*) &g_payload, sizeof(g_payload));
   g_rf69.waitPacketSent();
