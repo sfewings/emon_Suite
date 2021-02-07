@@ -349,6 +349,48 @@ bool PayloadFactory::PublishPayload(char* s)
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 		}
 	}
+	else if (strncmp(s, "air", 3) == 0)
+	{
+		PayloadAirQuality* airQuality = new PayloadAirQuality();
+		if (EmonSerial::ParseAirQualityPayload(s, airQuality))
+		{
+			parsed = true;
+			pBasePayload = airQuality;
+
+			char buf[100];
+			char topic[100];
+
+			sprintf(topic, "airQuality/pm0p3/%d", airQuality->subnode);
+			sprintf(buf, "%d", airQuality->pm0p3);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "airQuality/pm0p5/%d", airQuality->subnode);
+			sprintf(buf, "%d", airQuality->pm0p5);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "airQuality/pm1p0/%d", airQuality->subnode);
+			sprintf(buf, "%d", airQuality->pm1p0);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "airQuality/pm2p5/%d", airQuality->subnode);
+			sprintf(buf, "%d", airQuality->pm2p5);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "airQuality/pm5p0/%d", airQuality->subnode);
+			sprintf(buf, "%d", airQuality->pm5p0);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+
+			sprintf(topic, "airQuality/pm10p0/%d", airQuality->subnode);
+			sprintf(buf, "%d", airQuality->pm10p0);
+			m_MQTTClient.Publish(topic, buf);
+			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
+		}
+	}
 
 	if (parsed)
 	{
