@@ -1009,7 +1009,6 @@ int EmonSerial::ParseAirQualityPayload(char* str, PayloadAirQuality* pPayloadAir
 	pPayloadAirQuality->pm5p0 = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadAirQuality->pm10p0 = atoi(pch);
-	if (NULL == (pch = strtok(NULL, tok))) return 0;
 
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
