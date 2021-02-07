@@ -153,7 +153,7 @@ void loop()
         >= ((g_pms_report_period * 1000) - (g_pms_warmup_period * 1000)))
     {
       // It's time to wake up the sensor
-      Serial.println("Waking up sensor");
+      //Serial.println("Waking up sensor");
       pms.wakeUp();
       g_pms_state_start = time_now;
       g_pms_state = PMS_STATE_WAKING_UP;
@@ -211,15 +211,15 @@ void loop()
 
         g_pms_ppd_readings_taken = true;
       }
-      Serial.println("Sleeping sensor");
+      //Serial.println("Sleeping sensor");
       pms.sleep();
 
       // Calculate AQI values for the various reporting standards
-      calculateUkAqi();
+      //calculateUkAqi();
 
       // Report the new values
       //reportToMqtt();
-      reportToSerial();
+      //reportToSerial();
       if( g_pms_ppd_readings_taken )
       {
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
