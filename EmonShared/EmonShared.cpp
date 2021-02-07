@@ -441,6 +441,46 @@ void EmonSerial::PrintBeehivePayload(Stream& stream, PayloadBeehive* pPayloadBee
 	}
 	stream.println();
 }
+
+
+void EmonSerial::PrintAirQualityPayload(PayloadAirQuality* pPayloadAirQuality, unsigned long timeSinceLast)
+{
+	PrintAirQualityPayload(Serial, pPayloadAirQuality, timeSinceLast);
+}
+
+void EmonSerial::PrintAirQualityPayload(Stream& stream, PayloadAirQuality* pPayloadAirQuality, unsigned long timeSinceLast)
+{
+	if (pPayloadAirQuality == NULL)
+	{
+		stream.print(F("air,subnode,particlePerDecilitre-pm0.3,pm0.5,pm1.0,pm2.5,pm5.0,pm10.0|ms_since_last_packet"));
+	}
+	else
+	{
+		stream.print(F("air,"));
+		stream.print(pPayloadAirQuality->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadAirQuality->pm0p3);
+		stream.print(F(","));
+		stream.print(pPayloadAirQuality->pm0p5);
+		stream.print(F(","));
+		stream.print(pPayloadAirQuality->pm1p0);
+		stream.print(F(","));
+		stream.print(pPayloadAirQuality->pm2p5);
+		stream.print(F(","));
+		stream.print(pPayloadAirQuality->pm5p0);
+		stream.print(F(","));
+		stream.print(pPayloadAirQuality->pm10p0);
+
+		PrintRelay(stream, pPayloadAirQuality);
+
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
 #endif
 
 
@@ -939,6 +979,41 @@ int EmonSerial::ParseBeehivePayload(char* str, PayloadBeehive* pPayloadBeehive)
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadBeehive, pch);
+	}
+	return version;
+}
+
+
+int EmonSerial::ParseAirQualityPayload(char* str, PayloadAirQuality* pPayloadAirQuality)
+{
+	memset(pPayloadAirQuality, 0, sizeof(PayloadAirQuality));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "air"))
+		version = 1;
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->pm0p3 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->pm0p5 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->pm1p0 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->pm2p5 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->pm5p0 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAirQuality->pm10p0 = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadAirQuality, pch);
 	}
 	return version;
 }
