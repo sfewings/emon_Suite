@@ -28,4 +28,7 @@
 **/x64/
 **/Release/
 Emon_SerialToMQTT_Thingsboard/*
+Analyse_python/input/*.txt
+Analyse_python/output/*.txt
+Analyse_python/pandas/
 
