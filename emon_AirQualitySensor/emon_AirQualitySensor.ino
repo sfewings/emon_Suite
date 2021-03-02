@@ -32,6 +32,7 @@ uint32_t    g_pms_report_period   = 120;             // Seconds between reports
 #define     PMS_TX_PIN              A6               // Tx to PMS (== PMS Rx)
 #define     PMS_BAUD_RATE         9600               // PMS5003 uses 9600bps
 #define     LED                     13               // Built-in LED pin
+#define     PMS_SET_PIN             A7               //The set pin for PMS unit. High is on, Low is off
 
 /*--------------------------- Libraries ----------------------------------*/
 #include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
@@ -110,7 +111,10 @@ void setup()
   Serial.println(VERSION);
 	EmonSerial::PrintAirQualityPayload(NULL);
 
+
   // Open a connection to the PMS and put it into passive mode
+  pinMode(PMS_SET_PIN, OUTPUT);
+  digitalWrite(PMS_SET_PIN,HIGH);
   pmsSerial.begin(PMS_BAUD_RATE);   // Connection for PMS5003
   pms.passiveMode();                // Tell PMS to stop sending data automatically
   delay(100);
@@ -153,7 +157,10 @@ void loop()
         >= ((g_pms_report_period * 1000) - (g_pms_warmup_period * 1000)))
     {
       // It's time to wake up the sensor
-      //Serial.println("Waking up sensor");
+      Serial.println("Waking up sensor");
+      digitalWrite(PMS_SET_PIN,HIGH);
+      delay(5);
+
       pms.wakeUp();
       g_pms_state_start = time_now;
       g_pms_state = PMS_STATE_WAKING_UP;
@@ -175,6 +182,7 @@ void loop()
   if (PMS_STATE_READY == g_pms_state)
   {
     //pms.requestRead();
+    Serial.println("Reading sensor");
     if (pms.readUntil(g_data))  // Use a blocking road to make sure we get values
     {
       g_pm1p0_sp_value   = g_data.PM_SP_UG_1_0;
@@ -211,8 +219,9 @@ void loop()
 
         g_pms_ppd_readings_taken = true;
       }
-      //Serial.println("Sleeping sensor");
+      Serial.println("Sleeping sensor");
       pms.sleep();
+      digitalWrite(PMS_SET_PIN,LOW);
 
       // Calculate AQI values for the various reporting standards
       //calculateUkAqi();
