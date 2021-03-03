@@ -4,11 +4,11 @@
 #include <Adafruit_ADS1015.h>
 #include <Time.h>
 
-#define SEND_PERIOD  2000
+#define SEND_PERIOD  10000
 
 const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
-const int32_t SAMPLES = 30;
+const int32_t SAMPLES = 100;
 const uint8_t LED_PIN = 9;
 
 Adafruit_ADS1115 g_ads1115(0x48); //, 0x48,  Adafruit_ADS1115(0x49), Adafruit_ADS1115(0x4A), Adafruit_ADS1115(0x4B) };
@@ -37,7 +37,7 @@ long readVcc()
 
 stats_t GetStats(double* samples, int nSamples)
 {
-	const int SKIP_READINGS = 10;		//skip the first and last of the sorted sampels as these appear to be noisy!
+	const int SKIP_READINGS = 0;		//skip the first and last of the sorted sampels as these appear to be noisy!
 	stats_t stats;
 	double sum = 0;
 	double sumOfSquares = 0;
@@ -86,17 +86,23 @@ stats_t GetStats(double* samples, int nSamples)
 
 double Reading(uint8_t channel, double scaleFactor, bool &noisyData )
 {
-	g_ads1115.setGain(GAIN_TWOTHIRDS); //shouldn't be required!
+	g_ads1115.setGain(GAIN_ONE); //shouldn't be required!
 	double samples[SAMPLES];
 
+//  uint32_t millisStart = millis();
 	for (int i = 0; i < SAMPLES; i++)
 	{
 		samples[i] = g_ads1115.readADC_SingleEnded(channel)*scaleFactor; 
 	}
+
+//	uint32_t millisTaken = millis()- millisStart; 
+//	Serial.print( F("100 sample in ms,") );
+//	Serial.println( millisTaken );
+
 	stats_t stats = GetStats(samples, SAMPLES);
 
-	Serial.print(F("Voltage channel,"));
-	Serial.print( channel);		Serial.print(F(","));
+	//Serial.print(F("Voltage channel,"));
+	//Serial.print( channel);		Serial.print(F(","));
 	Serial.print( stats.median,0 );	Serial.print(F(",")); 
 	Serial.print( stats.mean,0 );		Serial.print(F(",")); 
 	Serial.print( stats.stdDev );
@@ -204,6 +210,8 @@ void setup()
 	Serial.begin(9600);
 
 	Serial.println(F("Fazcorp_ADS1115_devboard start"));
+	Serial.println(F("median,mean,stdDev"));
+	
 
 
 	//Serial.println(F("reading,readingNum,median,mean,stdDev"));
@@ -229,9 +237,9 @@ void loop()
 	//double currentDiffertial = ReadingDifferential(0, noisyData ); // * 150.0 / 50.0; //shunt is 150Amps for 90mV; Bank 2
 	double voltage;
 	voltage = Reading(0, 1, noisyData );	
-	voltage = Reading(1, 1, noisyData );
-	voltage = Reading(2, 1, noisyData );
-	voltage = Reading(3, 1, noisyData );
+	//voltage = Reading(1, 1, noisyData );
+	//voltage = Reading(2, 1, noisyData );
+	//voltage = Reading(3, 1, noisyData );
 	//double currentSingle = Reading( 3, 1,  noisyData);
 
 	//if( noisyData )
@@ -242,8 +250,8 @@ void loop()
 	digitalWrite(LED_PIN, LOW);
 
 	uint32_t millisTaken = millis()- millisStart; 
-	Serial.print( F("loop_ms,") );
-	Serial.println( millisTaken );
+	//Serial.print( F("loop_ms,") );
+	//Serial.println( millisTaken );
 
 	if( millisTaken < SEND_PERIOD )
 		delay( SEND_PERIOD - millisTaken);
