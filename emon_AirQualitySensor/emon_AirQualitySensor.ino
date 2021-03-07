@@ -228,7 +228,7 @@ void loop()
 
       // Report the new values
       //reportToMqtt();
-      //reportToSerial();
+      reportToSerial();
       if( g_pms_ppd_readings_taken )
       {
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
@@ -313,5 +313,9 @@ void reportToSerial()
     /* Report UK AQI value */
     Serial.print("UKAQI:");
     Serial.println(String(g_uk_aqi_value));
+  }
+  else
+  {
+    Serial.println("No valid reading taken");
   }
 }
