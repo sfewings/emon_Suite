@@ -4,7 +4,7 @@
 #include <Adafruit_ADS1015.h>
 #include <Time.h>
 
-#define SEND_PERIOD  10000
+#define SEND_PERIOD  1000
 
 const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 };
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
@@ -86,7 +86,7 @@ stats_t GetStats(double* samples, int nSamples)
 
 double Reading(uint8_t channel, double scaleFactor, bool &noisyData )
 {
-	g_ads1115.setGain(GAIN_ONE); //shouldn't be required!
+	g_ads1115.setGain(GAIN_TWOTHIRDS); //shouldn't be required!
 	double samples[SAMPLES];
 
 //  uint32_t millisStart = millis();
@@ -102,7 +102,7 @@ double Reading(uint8_t channel, double scaleFactor, bool &noisyData )
 	stats_t stats = GetStats(samples, SAMPLES);
 
 	//Serial.print(F("Voltage channel,"));
-	//Serial.print( channel);		Serial.print(F(","));
+	Serial.print( channel);		Serial.print(F(","));
 	Serial.print( stats.median,0 );	Serial.print(F(",")); 
 	Serial.print( stats.mean,0 );		Serial.print(F(",")); 
 	Serial.print( stats.stdDev );
@@ -236,7 +236,7 @@ void loop()
 	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
 	//double currentDiffertial = ReadingDifferential(0, noisyData ); // * 150.0 / 50.0; //shunt is 150Amps for 90mV; Bank 2
 	double voltage;
-	voltage = Reading(0, 1, noisyData );	
+	voltage = Reading(0, 0.1875, noisyData );	
 	//voltage = Reading(1, 1, noisyData );
 	//voltage = Reading(2, 1, noisyData );
 	//voltage = Reading(3, 1, noisyData );
