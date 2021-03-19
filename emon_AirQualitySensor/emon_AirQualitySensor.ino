@@ -25,7 +25,7 @@
 /*--------------------------- Configuration ------------------------------*/
 /* Particulate Matter Sensor */
 uint32_t    g_pms_warmup_period   =  30;             // Seconds to warm up PMS before reading
-uint32_t    g_pms_report_period   = 120;             // Seconds between reports
+uint32_t    g_pms_report_period   = 300;             // Seconds between reports
 
 /* ----------------- Hardware-specific config ---------------------- */
 #define     PMS_RX_PIN              A5               // Rx from PMS (== PMS Tx)
@@ -41,6 +41,9 @@ uint32_t    g_pms_report_period   = 120;             // Seconds between reports
 //Radiohead RF_69 support
 #include <SPI.h>
 #include <RH_RF69.h>
+//watchdog timer
+#include <avr/wdt.h>
+
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
 #define   PMS_STATE_ASLEEP        0   // Low power mode, laser and fan off
@@ -137,7 +140,9 @@ void setup()
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   g_rf69.setEncryptionKey(key);
-  
+
+  Serial.println(F("Watchdog timer set for 8 seconds"));
+  wdt_enable(WDTO_8S);  
 }
 
 /**
@@ -145,6 +150,8 @@ void setup()
 */
 void loop()
 {
+  //reset the watchdog timer
+  wdt_reset();
 /**
   Update particulate matter sensor values
 */
@@ -157,7 +164,7 @@ void loop()
         >= ((g_pms_report_period * 1000) - (g_pms_warmup_period * 1000)))
     {
       // It's time to wake up the sensor
-      Serial.println("Waking up sensor");
+      //Serial.println("Waking up sensor");
       digitalWrite(PMS_SET_PIN,HIGH);
       delay(5);
 
@@ -182,7 +189,7 @@ void loop()
   if (PMS_STATE_READY == g_pms_state)
   {
     //pms.requestRead();
-    Serial.println("Reading sensor");
+    //Serial.println("Reading sensor");
     if (pms.readUntil(g_data))  // Use a blocking road to make sure we get values
     {
       g_pm1p0_sp_value   = g_data.PM_SP_UG_1_0;
@@ -219,7 +226,7 @@ void loop()
 
         g_pms_ppd_readings_taken = true;
       }
-      Serial.println("Sleeping sensor");
+      //Serial.println("Sleeping sensor");
       pms.sleep();
       digitalWrite(PMS_SET_PIN,LOW);
 
@@ -231,8 +238,11 @@ void loop()
       reportToSerial();
       if( g_pms_ppd_readings_taken )
       {
+        //Serial.println(F("g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);"));
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+        //Serial.println(F("g_rf69.send();"));
         g_rf69.send((const uint8_t*) &g_payloadAirQuality, sizeof(g_payloadAirQuality));
+        //Serial.println(F("g_rf69.waitPacketSent();"));
         if( g_rf69.waitPacketSent() )
         {
           EmonSerial::PrintAirQualityPayload(&g_payloadAirQuality);
@@ -241,6 +251,7 @@ void loop()
         {
           Serial.println(F("No packet sent"));
         }
+        //Serial.println(F("g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);"));
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
       }
 
