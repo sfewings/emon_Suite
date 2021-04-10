@@ -28,10 +28,11 @@ DallasTemperature temperatureSensor(&oneWire);
 
 RF12Init rf12Init = { RAIN_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
-#define INTERRUPT_IR			1	// ATmega 168 and 328 - interrupt 0 = pin 2, 1 = pin 3
-#define RAIN_GAUGE_PIN		3
-
-#define EEPROM_BASE 0x10
+#define INTERRUPT_IR				1	// ATmega 168 and 328 - interrupt 0 = pin 2, 1 = pin 3
+#define RAIN_GAUGE_PIN				3
+#define MINUTES_BETWEEN_TRANSMIT  	5
+#define VOLTAGE_MEASURE_PIN 		A2
+#define EEPROM_BASE 				0x10
 
 
 volatile unsigned long	g_rainCount;			//The count from the rain gauge
@@ -136,7 +137,7 @@ void loop()
 	uint8_t oldSREG = SREG;			// save interrupt register
 	cli();							// prevent interrupts while accessing the count	
 
-	bool doTransmit = g_transmitCount < 5 || (++g_minuteCount == 5);
+	bool doTransmit = g_transmitCount < 5 || (++g_minuteCount == MINUTES_BETWEEN_TRANSMIT);
 
 	if (doTransmit)
 	{
@@ -152,6 +153,13 @@ void loop()
 	{
 		temperatureSensor.requestTemperatures();
 		rainPayload.temperature = temperatureSensor.getTempCByIndex(0) * 100;
+		//rainPayload.supplyV = readVcc();
+
+		//voltage divider is 60k and 100k. Jeenode reference voltage is 3.3v. AD range is 1024
+		//voltage divider current draw is 29 uA
+		float measuredvbat = analogRead(VOLTAGE_MEASURE_PIN);
+		measuredvbat = (measuredvbat/1024.0 * 3.3) * (100000.0+68000.0)/100000.0;
+		rainPayload.supplyV =(unsigned long) (measuredvbat*100);//sent in 100th volts
 
 
 		rf12_sleep(RF12_WAKEUP);
@@ -160,8 +168,6 @@ void loop()
 		{
 			writeEEPROM(0, rainPayload.rainCount);
 		}
-
-		rainPayload.supplyV = readVcc();
 
 		while (!rf12_canSend())
 			rf12_recvDone();
