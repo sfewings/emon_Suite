@@ -159,7 +159,7 @@ void loop()
 		//voltage divider current draw is 29 uA
 		float measuredvbat = analogRead(VOLTAGE_MEASURE_PIN);
 		measuredvbat = (measuredvbat/1024.0 * 3.3) * (100000.0+68000.0)/100000.0;
-		rainPayload.supplyV =(unsigned long) (measuredvbat*100);//sent in 100th volts
+		rainPayload.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 
 
 		rf12_sleep(RF12_WAKEUP);
