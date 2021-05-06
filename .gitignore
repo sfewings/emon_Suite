@@ -32,3 +32,6 @@ Analyse_python/input/*.txt
 Analyse_python/output/*.txt
 Analyse_python/pandas/
 
+#python built modules
+*.so
+
