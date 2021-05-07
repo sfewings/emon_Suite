@@ -19,7 +19,9 @@
 	
 5. clone paho_mqtt_c and paho.mqtt.cpp from github
 	cd ~/share/libs
-	git clone git@github.com:eclipse/paho.mqtt.c.git
+	git clone git@github.com:eclipse/paho.mqtt.c.git  
+		or 
+	git clone https://github.com/eclipse/paho.mqtt.c.git
 	git clone https://github.com/eclipse/paho.mqtt.cpp.git
 	
 6. 	install c and c++ build environment
@@ -30,6 +32,12 @@
 	apt-get install doxygen graphviz
 
 7. Build paho_mqtt_c
+	cd paho.mqtt.c
+	make
+	sudo make install
+
+	    or
+	
 	cd paho.mqtt.c
 	use cmake to build the makefiles in folder "build"
 	 cmake -B build
@@ -89,5 +97,24 @@
 	
 18. Update NodeRed GIT repo from RaspPi
 	
-	
+
+19. Including InfluxDB library for C++ (Not used for emon_suite)
+	Read instructuons at https://github.com/offa/influxdb-cxx
+	prerequisits 
+	  curl:- git clone https://github.com/curl/curl.git
+			cmake .
+			sudo make install
+	  boost:- sudo apt-get install libboost1.67-all
+	  Catch2:- git clone https://github.com/catchorg/Catch2
+  			cd Catch2/
+  			mkdir build && cd build
+			cmake ..
+  			make
+  			sudo make install
+
+	git clone https://github.com/offa/influxdb-cxx.git
+	cd influxdb-cxx
+	mkdir build && cd build
+	cmake ..	
+	open cmake GUI and turn off INFLUXCXX_SYSTEMTEST and INFLUXCXX_TESTING to avoid requireing Catch2, trompeloeil and other testing frameworks
 	
