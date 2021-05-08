@@ -35,3 +35,6 @@ Analyse_python/pandas/
 ./Emon_SerialToMQTT/Emon_SerialToMQTT
 ./Emon_LogToJson/Emon_LogToJson
 
+#python built modules
+*.so
+
