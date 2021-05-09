@@ -1,4 +1,6 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+
 #define __linux__
 #define MQTT_LIB
 
@@ -9,18 +11,159 @@ namespace py = pybind11;
 PYBIND11_MODULE(emonSuite, m) {
     m.doc() = "pybind11 plugin for EmonSuite"; // optional module docstring
 
-    py::class_<PayloadRelay> payloadRelay(m, "PayloadRelay");
-    payloadRelay.def_readwrite("relay", &PayloadRelay::relay);
+    //CONSTANTS
+    m.attr("MAX_SUBNODES")              = py::int_(MAX_SUBNODES);       //Maximum number of disp and temp nodes supported
+    m.attr("MAX_WATER_SENSORS")         = py::int_(MAX_WATER_SENSORS); 	//Maximum number of water pulse and water height metres
+    m.attr("PULSE_NUM_PINS")            = py::int_(PULSE_NUM_PINS); 	//number of pins and hence, readings on the pulse Jeenode
+    m.attr("MAX_TEMPERATURE_SENSORS")   = py::int_(MAX_TEMPERATURE_SENSORS); 	//maximum number of temperature sensors on the temperature_JeeNode  
+    m.attr("HWS_TEMPERATURES")          = py::int_(HWS_TEMPERATURES); 	//number of temperature readings from the hot water system
+    m.attr("HWS_PUMPS")                 = py::int_(HWS_PUMPS);          //number of pumps from the hot water system
+    m.attr("BATTERY_SHUNTS")            = py::int_(BATTERY_SHUNTS); 	//number of battery banks in the system. Each with a shunt for measuring current in and out
+    m.attr("MAX_VOLTAGES")              = py::int_(MAX_VOLTAGES);   	//number of voltage measurements made on the battery monitoring system
 
+    //Relay base payload
+    py::class_<PayloadRelay> payloadRelay(m, "PayloadRelay");
+    payloadRelay.def_readwrite("relay", &PayloadRelay::relay, "OR of all the relay units that have transmitted this packet. 0=original node transmit");
+
+    //PayloadRain
     py::class_<PayloadRain, PayloadRelay> payloadRain(m, "PayloadRain");
     payloadRain.def(py::init<>());
-    payloadRain.def_readwrite("rainCount", &PayloadRain::rainCount);                //The count from the rain gauge
-    payloadRain.def_readwrite("transmitCount", &PayloadRain::transmitCount);        //Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0 
-    payloadRain.def_readwrite("temperature", &PayloadRain::temperature);        //temperature in 100ths of degrees
-    payloadRain.def_readwrite("supplyV", &PayloadRain::supplyV);
+    payloadRain.def_readwrite("rainCount", &PayloadRain::rainCount, "The count from the rain gauge" );
+    payloadRain.def_readwrite("transmitCount", &PayloadRain::transmitCount, "Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0");
+    payloadRain.def_readwrite("temperature", &PayloadRain::temperature, "temperature in 100ths of degrees");
+    payloadRain.def_readwrite("supplyV", &PayloadRain::supplyV, "supply voltage in mV");
 
+    //PayloadDisp
+    py::class_<PayloadDisp, PayloadRelay> payloadDisp(m, "PayloadDisp");
+    payloadDisp.def(py::init<>());
+    payloadDisp.def_readwrite("subnode", &PayloadDisp::subnode, "allow multiple Display nodes on the network" );
+    payloadDisp.def_readwrite("temperature", &PayloadDisp::temperature, "temperature in 100ths of degrees");
+
+    //PayloadTemperature
+    py::class_<PayloadTemperature, PayloadRelay> payloadTemp(m, "PayloadTemperature");
+    payloadTemp.def(py::init<>());
+    payloadTemp.def_readwrite("subnode", &PayloadTemperature::subnode, "allow multiple temperature nodes on the network");
+    payloadTemp.def_readwrite("supplyV", &PayloadTemperature::supplyV, "supplyV in mV" );
+    payloadTemp.def_readwrite("numSensors", &PayloadTemperature::numSensors, "number of temperature sensor readings" );
+    payloadTemp.def_property("temperature", [](PayloadTemperature &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<int>::format());
+            return pybind11::array(dtype, { MAX_TEMPERATURE_SENSORS }, { sizeof(int) }, payload.temperature, nullptr);
+            }, [](PayloadTemperature& payload) {});	//temperature in 100th of degrees
+
+    //PayloadHWS
+    py::class_<PayloadHWS, PayloadRelay> payloadHWS(m, "PayloadHWS");
+    payloadHWS.def(py::init<>());
+	payloadHWS.def_property("temperature", [](PayloadHWS &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<byte>::format());
+            return pybind11::array(dtype, { HWS_TEMPERATURES }, { sizeof(byte) }, payload.temperature, nullptr);
+            }, [](PayloadHWS& payload) {});	//temperature in 100th of degrees
+	payloadHWS.def_property("pump", [](PayloadHWS &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<bool>::format());
+            return pybind11::array(dtype, { HWS_PUMPS }, { sizeof(bool) }, payload.pump, nullptr);
+            }, [](PayloadHWS& payload) {});	//temperature in 100th of degrees
+
+    //PayloadBase
+    py::class_<PayloadBase, PayloadRelay> payloadBase(m, "PayloadBase");
+    payloadBase.def(py::init<>());
+    payloadBase.def_readwrite("time", &PayloadBase::time, "time");
+
+    //PayloadWater
+    py::class_<PayloadWater, PayloadRelay> payloadWater(m, "PayloadWater");
+    payloadWater.def(py::init<>());
+    payloadWater.def_readwrite("subnode", &PayloadWater::subnode, "allow multiple water nodes on the network");
+    payloadWater.def_readwrite("supplyV", &PayloadWater::supplyV, "supplyV in mV" );
+    payloadWater.def("numFlowSensors",[](const PayloadWater &payload) { return payload.numSensors & 0xF; }); 
+    payloadWater.def("numHeightSensors",[](const PayloadWater &payload) { return (payload.numSensors & 0xF0) >> 4; }); 
+    payloadWater.def_property("flowCount", [](PayloadWater &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<unsigned long>::format());
+            return pybind11::array(dtype, { MAX_WATER_SENSORS }, { sizeof(unsigned long) }, payload.flowCount, nullptr);
+            }, [](PayloadWater& payload) {});	//flowcount readings
+    payloadWater.def_property("waterHeight", [](PayloadWater &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<int>::format());
+            return pybind11::array(dtype, { MAX_WATER_SENSORS }, { sizeof(int) }, payload.waterHeight, nullptr);
+            }, [](PayloadWater& payload) {});	//waterHeight readings
+
+    //PayloadScale
+    py::class_<PayloadScale, PayloadRelay> payloadScale(m, "PayloadScale");
+    payloadScale.def(py::init<>());
+    payloadScale.def_readwrite("subnode", &PayloadScale::subnode, "allow multiple scale nodes on the network");
+    payloadScale.def_readwrite("supplyV", &PayloadScale::supplyV, "supplyV in mV" );
+    payloadScale.def_readwrite("grams", &PayloadScale::grams, "grams" );
+
+    //PayloadBattery
+    py::class_<PayloadBattery, PayloadRelay> payloadBattery(m, "PayloadBattery");
+    payloadBattery.def(py::init<>());
+    payloadBattery.def_readwrite("subnode", &PayloadBattery::subnode, "allow multiple Battery nodes on the network");
+    payloadBattery.def_property("power", [](PayloadBattery &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<int>::format());
+            return pybind11::array(dtype, { BATTERY_SHUNTS }, { sizeof(int) }, payload.power, nullptr);
+            }, [](PayloadBattery& payload) {});	//power in watts -ve and posititive
+    payloadBattery.def_property("pulseIn", [](PayloadBattery &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<unsigned long>::format());
+            return pybind11::array(dtype, { BATTERY_SHUNTS }, { sizeof(unsigned long) }, payload.pulseIn, nullptr);
+            }, [](PayloadBattery& payload) {});	//total pulse in, watt hours
+    payloadBattery.def_property("pulseOut", [](PayloadBattery &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<unsigned long>::format());
+            return pybind11::array(dtype, { BATTERY_SHUNTS }, { sizeof(unsigned long) }, payload.pulseOut, nullptr);
+            }, [](PayloadBattery& payload) {});	//total pulse in, watt hours
+    payloadBattery.def_property("voltage", [](PayloadBattery &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<short>::format());
+            return pybind11::array(dtype, { BATTERY_SHUNTS }, { sizeof(short) }, payload.voltage, nullptr);
+            }, [](PayloadBattery& payload) {});	//total pulse out, watt hours
+
+
+    //PayloadInverter
+    py::class_<PayloadInverter, PayloadRelay> payloadInverter(m, "PayloadInverter");
+    payloadInverter.def(py::init<>());
+    payloadInverter.def_readwrite("subnode", &PayloadInverter::subnode     , "allow multiple Inverter nodes on the network");
+    payloadInverter.def_readwrite("activePower", &PayloadInverter::activePower     , "watts");
+    payloadInverter.def_readwrite("apparentPower", &PayloadInverter::apparentPower   , "VAR");
+    payloadInverter.def_readwrite("batteryVoltage", &PayloadInverter::batteryVoltage  , "0.1v");
+    payloadInverter.def_readwrite("batteryDischarge", &PayloadInverter::batteryDischarge, "A");
+    payloadInverter.def_readwrite("batteryCharging", &PayloadInverter::batteryCharging , "A");
+    payloadInverter.def_readwrite("pvInputPower", &PayloadInverter::pvInputPower    , "watts");
+    payloadInverter.def_readwrite("batteryCapacity", &PayloadInverter::batteryCapacity , "percentage");
+
+    //PayloadBeehive
+    py::class_<PayloadBeehive, PayloadRelay> payloadBeehive(m, "PayloadBeehive");
+    payloadBeehive.def(py::init<>());
+    payloadBeehive.def_readwrite("subnode", &PayloadBeehive::subnode, "allow multiple Beehive nodes on the network");
+    payloadBeehive.def_readwrite("beeInRate", &PayloadBeehive::beeInRate, "bees in per minute");
+    payloadBeehive.def_readwrite("beeOutRate", &PayloadBeehive::beeOutRate, "bees out per minute");
+    payloadBeehive.def_readwrite("beesIn", &PayloadBeehive::beesIn, "total bees in");
+    payloadBeehive.def_readwrite("beesOut", &PayloadBeehive::beesOut, "A");
+    payloadBeehive.def_readwrite("temperatureIn", &PayloadBeehive::temperatureIn, "Temperature inside the hive");
+    payloadBeehive.def_readwrite("temperatureOut", &PayloadBeehive::temperatureOut, "Temperature outside the hive");
+    payloadBeehive.def_readwrite("grams", &PayloadBeehive::grams, "current scale reading");
+    payloadBeehive.def_readwrite("supplyV", &PayloadBeehive::supplyV, "unit supply voltage");
+
+
+    //PayloadAirQuality
+    py::class_<PayloadAirQuality, PayloadRelay> payloadAirQuality(m, "PayloadAirQuality");
+    payloadAirQuality.def(py::init<>());
+    payloadAirQuality.def_readwrite("subnode", &PayloadAirQuality::subnode, "allow multiple AirQuality nodes on the network");
+    payloadAirQuality.def_readwrite("pm0p3", &PayloadAirQuality::pm0p3, "Particles Per Deciliter pm0.3 reading");
+    payloadAirQuality.def_readwrite("pm0p5", &PayloadAirQuality::pm0p5, "Particles Per Deciliter pm0.5 reading");
+    payloadAirQuality.def_readwrite("pm1p0", &PayloadAirQuality::pm1p0, "Particles Per Deciliter pm1.0 reading");
+    payloadAirQuality.def_readwrite("pm2p5", &PayloadAirQuality::pm2p5, "Particles Per Deciliter pm2.5 reading");
+    payloadAirQuality.def_readwrite("pm5p0", &PayloadAirQuality::pm5p0, "Particles Per Deciliter pm5.0 reading");
+    payloadAirQuality.def_readwrite("pm10p0", &PayloadAirQuality::pm10p0, "Particles Per Deciliter pm10.0 reading");
+
+
+    //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
-    emonSerial.def_static("ParseRainPayload", &EmonSerial::ParseRainPayload, py::return_value_policy::take_ownership, "Parses from string to RainPayload   ");
+    emonSerial.def_static("ParseRainPayload", &EmonSerial::ParseRainPayload, "Parses from string to RainPayload",py::arg("string"), py::arg("PayloadRain"));
+    emonSerial.def_static("ParseTemperaturePayload", &EmonSerial::ParseTemperaturePayload, "Parses from string to PayloadTemperature",py::arg("string"), py::arg("PayloadTemperature"));
+    emonSerial.def_static("ParseDispPayload", &EmonSerial::ParseDispPayload, "Parses from string to PayloadDisp",py::arg("string"), py::arg("PayloadDisp"));
+    emonSerial.def_static("ParseHWSPayload", &EmonSerial::ParseHWSPayload, "Parses from string to PayloadHWS",py::arg("string"), py::arg("PayloadHWS"));
+    emonSerial.def_static("ParseBasePayload", &EmonSerial::ParseBasePayload, "Parses from string to PayloadBase",py::arg("string"), py::arg("PayloadBase"));
+    emonSerial.def_static("ParsePulsePayload", &EmonSerial::ParsePulsePayload, "Parses from string to PayloadPulse",py::arg("string"), py::arg("PayloadPulse"));
+    emonSerial.def_static("ParseWaterPayload", &EmonSerial::ParseWaterPayload, "Parses from string to PayloadWater",py::arg("string"), py::arg("PayloadWater"));
+    emonSerial.def_static("ParseScalePayload", &EmonSerial::ParseScalePayload, "Parses from string to PayloadScale",py::arg("string"), py::arg("PayloadScale"));
+    emonSerial.def_static("ParseBatteryPayload", &EmonSerial::ParseBatteryPayload, "Parses from string to PayloadBattery",py::arg("string"), py::arg("PayloadBattery"));
+    emonSerial.def_static("ParseBeehivePayload", &EmonSerial::ParseBeehivePayload, "Parses from string to PayloadBeehive",py::arg("string"), py::arg("PayloadBeehive"));
+    emonSerial.def_static("ParseInverterPayload", &EmonSerial::ParseInverterPayload, "Parses from string to PayloadInverter",py::arg("string"), py::arg("PayloadInverter"));
+    emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
 }
 
 
