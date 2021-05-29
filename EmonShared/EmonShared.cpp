@@ -320,7 +320,7 @@ void EmonSerial::PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBat
 {
 	if (pPayloadBattery == NULL)
 	{
-		stream.print(F("bat2,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..7]|ms_since_last_packet"));
+		stream.print(F("bat2,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..8]|ms_since_last_packet"));
 	}
 	else
 	{

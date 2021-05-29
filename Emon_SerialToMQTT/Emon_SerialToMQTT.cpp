@@ -222,7 +222,7 @@ int main(int argc, char** argv)
 					while (n && buf[n] < 32)
 						buf[n--] = 0;
 					//Jeenode network is on comPort2 and we don't want to MQTT publish that
-					PublishAndLogPacket(pf, now, buf, n, loggingFolder, false);
+					PublishAndLogPacket(pf, now, buf, n, loggingFolder, true);
 				}
 			}
 			
@@ -240,8 +240,16 @@ int main(int argc, char** argv)
 				char buf[100];
 				sprintf(buf, "base,%d", t + (t-gmt) );
 
-				RS232_SendBuf(comPort, (unsigned char*)buf, strlen((const char*) buf));
-				std::cout << "Sent time payload to emon_base - " << buf << std::endl;
+				if (comPort >=0 )
+				{
+					RS232_SendBuf(comPort, (unsigned char*)buf, strlen((const char*) buf));
+					std::cout << "Sent time payload to emon_base - " << buf << std::endl;
+				}
+				if (comPort >=2 )
+				{
+					RS232_SendBuf(comPort2, (unsigned char*)buf, strlen((const char*) buf));
+					std::cout << "Sent time payload to emon_base - " << buf << std::endl;
+				}
 			}
 
 #ifdef _WIN32
