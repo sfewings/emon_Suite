@@ -1,0 +1,2 @@
+# InfluxDB requirements
+influxdb-client[ciso]

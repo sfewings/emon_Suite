@@ -39,6 +39,20 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadDisp.def_readwrite("subnode", &PayloadDisp::subnode, "allow multiple Display nodes on the network" );
     payloadDisp.def_readwrite("temperature", &PayloadDisp::temperature, "temperature in 100ths of degrees");
 
+    //PayloadPulse
+    py::class_<PayloadPulse, PayloadRelay> payloadPulse(m, "PayloadPulse");
+    payloadPulse.def(py::init<>());
+    payloadPulse.def_property("power", [](PayloadPulse &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<int>::format());
+            return pybind11::array(dtype, { PULSE_NUM_PINS }, { sizeof(int) }, payload.power, nullptr);
+            }, [](PayloadPulse& payload) {});	//current power reading
+    payloadPulse.def_property("pulse", [](PayloadPulse &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<unsigned long>::format());
+            return pybind11::array(dtype, { PULSE_NUM_PINS }, { sizeof(unsigned long) }, payload.pulse, nullptr);
+            }, [](PayloadPulse& payload) {});	//cummulative pulse reading
+    payloadPulse.def_readwrite("supplyV", &PayloadPulse::supplyV, "unit supply milli voltage");
+
+
     //PayloadTemperature
     py::class_<PayloadTemperature, PayloadRelay> payloadTemp(m, "PayloadTemperature");
     payloadTemp.def(py::init<>());
@@ -72,8 +86,8 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadWater.def(py::init<>());
     payloadWater.def_readwrite("subnode", &PayloadWater::subnode, "allow multiple water nodes on the network");
     payloadWater.def_readwrite("supplyV", &PayloadWater::supplyV, "supplyV in mV" );
-    payloadWater.def("numFlowSensors",[](const PayloadWater &payload) { return payload.numSensors & 0xF; }); 
-    payloadWater.def("numHeightSensors",[](const PayloadWater &payload) { return (payload.numSensors & 0xF0) >> 4; }); 
+    payloadWater.def_property("numFlowSensors", [](PayloadWater &payload){ return (unsigned int)(payload.numSensors & 0xF); }, [](PayloadWater& payload) {}); 
+    payloadWater.def_property("numHeightSensors",[](PayloadWater &payload){ return (unsigned int)((payload.numSensors & 0xF0) >> 4); }, [](PayloadWater& payload) {}); 
     payloadWater.def_property("flowCount", [](PayloadWater &payload)->pybind11::array {
             auto dtype = pybind11::dtype(pybind11::format_descriptor<unsigned long>::format());
             return pybind11::array(dtype, { MAX_WATER_SENSORS }, { sizeof(unsigned long) }, payload.flowCount, nullptr);
@@ -108,7 +122,7 @@ PYBIND11_MODULE(emonSuite, m) {
             }, [](PayloadBattery& payload) {});	//total pulse in, watt hours
     payloadBattery.def_property("voltage", [](PayloadBattery &payload)->pybind11::array {
             auto dtype = pybind11::dtype(pybind11::format_descriptor<short>::format());
-            return pybind11::array(dtype, { BATTERY_SHUNTS }, { sizeof(short) }, payload.voltage, nullptr);
+            return pybind11::array(dtype, { MAX_VOLTAGES }, { sizeof(short) }, payload.voltage, nullptr);
             }, [](PayloadBattery& payload) {});	//total pulse out, watt hours
 
 
