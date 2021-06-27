@@ -1,10 +1,20 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 // emon Currenet Meter
 //-------------------------------------------------------------------------------------------------------------------------------------------------
+#undef  USE_JEELIB
+#ifdef USE_JEELIB
+  	#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
+  	#include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
 
-#define RF69_COMPAT 1
+  	#define RF69_COMPAT 1
+	RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+#else
+	#include <SPI.h>
+	#include <RH_RF69.h>
+	// Singleton instance of the radio driver
+	RH_RF69 g_rf69;
+#endif
 
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <EEPROM.h>
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
@@ -21,8 +31,6 @@ const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_
 const int32_t SAMPLES = 30;
 const uint8_t LED_PIN = 9;
 const unsigned long SEND_PERIOD = 15000;  //ms
-
-RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 hd44780_I2Cexp lcd; // declare lcd object: auto locate & config display for hd44780 chip
 
@@ -200,10 +208,26 @@ void setup()
 
 	Serial.println(F("Current meter sensor start"));
 
+#ifdef USE_JLIB
 	Serial.println("rf12_initialize");
 	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
 	EmonSerial::PrintRF12Init(g_rf12Init);
+#else
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(BATTERY_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
+	Serial.print("RF69 initialise node: ");
+	Serial.print(BATTERY_NODE);
+	Serial.println(" Freq: 915MHz");
+#endif
 
 	Serial.println("Getting single-ended readings from AIN0..3");
 	Serial.println("ADC Range: +/- 6.144V (1 bit = 3mV)");
@@ -305,7 +329,7 @@ void loop()
 		g_lastSendTime = millis();
 		digitalWrite(LED_PIN, HIGH);
 
-
+#ifdef USE_JEELIB
 		rf12_sleep(RF12_WAKEUP);
 		int wait = 1000;
 		while (!rf12_canSend() && wait--)
@@ -314,15 +338,27 @@ void loop()
 		{
 			rf12_sendStart(0, &g_payloadBattery, sizeof g_payloadBattery);
 			rf12_sendWait(0);
-			Serial.print(F("Sending:"));
 			EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+			Serial.println(F("Sent"));
 		}
 		else
 		{
 			Serial.println(F("RF12 waiting. No packet sent"));
 		}
 		rf12_sleep(RF12_SLEEP);
-
+#else
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+		g_rf69.send((const uint8_t*) &g_payloadBattery, sizeof(g_payloadBattery));
+		if( g_rf69.waitPacketSent() )
+		{
+			EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+		}
+		else
+		{
+			Serial.println(F("No packet sent"));
+		}
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 		digitalWrite(LED_PIN, LOW);
 	}
 	delay(1000);

@@ -38,6 +38,7 @@ uint32_t    g_pms_report_period   = 300;             // Seconds between reports
 #include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 #include <EmonShared.h>
+#include <EmonEEPROM.h>
 //Radiohead RF_69 support
 #include <SPI.h>
 #include <RH_RF69.h>
@@ -73,6 +74,8 @@ uint8_t   g_uk_aqi_value        = 0;  // Air Quality Index value using UK report
 uint16_t  g_us_aqi_value        = 0;  // Air Quality Index value using US reporting system
 
 RH_RF69 g_rf69;
+
+EEPROMSettings  eepromSettings;
 
 /* -------------------------- Resources ----------------------------------*/
 #include "aqi.h"                         // Air Quality Index calculations
@@ -114,6 +117,10 @@ void setup()
   Serial.println(VERSION);
 	EmonSerial::PrintAirQualityPayload(NULL);
 
+  //set the subnode from teh eeprom settings
+	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
+	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
+  g_payloadAirQuality.subnode = eepromSettings.subnode;
 
   // Open a connection to the PMS and put it into passive mode
   pinMode(PMS_SET_PIN, OUTPUT);
