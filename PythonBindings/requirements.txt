@@ -1,2 +1,5 @@
 # InfluxDB requirements
 influxdb-client[ciso]
+paho-mqtt
+pyyaml
+pytz

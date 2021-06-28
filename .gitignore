@@ -37,4 +37,9 @@ Analyse_python/pandas/
 
 #python built modules
 *.so
+venv/
+.eggs/
+build/
+pyemonlib.egg-info/
+__pycache__/
 
