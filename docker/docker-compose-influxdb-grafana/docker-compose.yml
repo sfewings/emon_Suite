@@ -36,6 +36,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_PANELS_ENABLE_ALPHA=true
 volumes:
   influxdb-storage:
   chronograf-storage:

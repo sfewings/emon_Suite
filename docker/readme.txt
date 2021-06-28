@@ -14,6 +14,7 @@ docker run -p 8086:8086 -v influxdb:/var/lib/influxdb influxdb:1.8
 docker-compose
 ==============
 docker-compose up -d
+docker-compose down
 
 To execute within docker container
 ==================================
@@ -26,4 +27,4 @@ To delete influx database and create another
 ============================================
 1. influx
 2. DROP DATABASE sensors
-3. 
+3. CREATE DATABASE sensors
