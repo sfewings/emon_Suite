@@ -7,9 +7,9 @@ temp:
     t3: Ceiling space
   1:
     name: Fridge temperatures
-    t0: Fridge
-    t1: On top of fridge
-    t2: Freezer
+    t0: On top of fridge
+    t1: Freezer
+    t2: Fridge
   2:
     name: inside
     t0: sensor 1
@@ -84,9 +84,25 @@ bat:
     v6: B2-3
     v7: B2-2
     v8: B2-1 
+  1:
+    name: Battery Tester
+    s0: Test battery
+    s1: Unused
+    s2: Unused
+    v0: Battery
+    v1: Unused
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Arduino
 air:
   0:
     name: Kitchen
+  1:
+    name: Garage
 inv: #inverters
   0:
     name: Inverter 1
