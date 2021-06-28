@@ -4,7 +4,7 @@ setup(
     name='pyemonlib',
     packages=find_packages(include=['pyemonlib']),
     version='0.1.0',
-    description='EMon Python library',
+    description='Emon Python library',
     author='Me',
     license='MIT',
     install_requires=['influxdb-client[ciso]','paho-mqtt','pyyaml'],
