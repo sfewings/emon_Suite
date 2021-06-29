@@ -1,25 +1,19 @@
-#include <JeeLib.h>
-//Temperature support - OneWire Dallas temperature sensor
+//Heattrap solar system serial reader, parser and transmit of HWS packet
+//https://heat-trap.com.au/
 
-#include <Ports.h>
-#include <RF12.h>
-#include <avr/eeprom.h>
-#include <util/crc16.h>		//cyclic redundancy check
+//Radiohead RF_69 support
+#include <SPI.h>
+#include <RH_RF69.h>
+
 #include <time.h>					//required for EmonShared.h
 #include <EmonShared.h>
 
-PayloadHWS hwsPayload;
+RH_RF69 g_rf69;
+PayloadHWS g_hwsPayload;
 
-#define ENABLE_SERIAL 1
-
-RF12Init rf12Init = { HWS_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
-
-
-//--------------------------------------------------------------------------------------------
-// RFM12B Setup
-//--------------------------------------------------------------------------------------------
 void LED_On(int ms)
 {
+	//Connect LED to Jeenode port 2. On Arduino pin 5
 	pinMode(5, OUTPUT);
 	digitalWrite(5, 1);
 	delay(ms);
@@ -32,21 +26,26 @@ void setup()
 
 	delay(500);
 
-	Serial.println(F("Fewings Jeenode Heattrap solar HWS node for emon network"));
+	Serial.println(F("Fewings Heattrap solar HWS node for emon network"));
 
 	LED_On(500);
-	// Data wire JeeNode port,	Arduino pin,		RF12 Group
-	//				1				4				20
-	//				2				5				21
-	//				3				6				22
-	//				4				7				23
 
 	EmonSerial::PrintHWSPayload(NULL);
 
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
-	rf12_sleep(RF12_SLEEP);
+	if (!g_rf69.init())
+		Serial.println("g_rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("setFrequency failed");
+	g_rf69.setHeaderId(HWS_JEENODE);
 
-	EmonSerial::PrintRF12Init(rf12Init);
+	// If you are using a high power g_rf69 eg RFM69HW, you *must* set a Tx power with the
+	// ishighpowermodule flag set like this:
+	//g_rf69.setTxPower(14, true);
+
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
 }
 
 void loop()
@@ -65,32 +64,30 @@ void loop()
 			for (int i = 0; i < HWS_TEMPERATURES - 1; i++)
 			{
 				pch = strtok(NULL, tok);
-				hwsPayload.temperature[i] = (byte)atoi(pch);
+				g_hwsPayload.temperature[i] = (byte)atoi(pch);
 			}
 			pch = strtok(NULL, tok);	//swallow the "PCB"
 			pch = strtok(NULL, tok);
-			hwsPayload.temperature[HWS_TEMPERATURES - 1] = (byte)atoi(pch);
+			g_hwsPayload.temperature[HWS_TEMPERATURES - 1] = (byte)atoi(pch);
 			pch = strtok(NULL, tok);	//swallow the "PUMPS 1-4"
 			for (int i = 0; i < HWS_PUMPS; i++)
 			{
 				pch = strtok(NULL, tok);
-				hwsPayload.pump[i] = strcmp(pch, " OFF ");
+				g_hwsPayload.pump[i] = strcmp(pch, " OFF ");
 			}
 
 			//transmit
-			rf12_sleep(RF12_WAKEUP);
-			int wait = 1000;
-			while (!rf12_canSend() && --wait)
-				rf12_recvDone();
-			if (wait)
+			g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+			g_rf69.send((const uint8_t*) &g_hwsPayload, sizeof(PayloadHWS));
+			if( g_rf69.waitPacketSent() )
 			{
-				rf12_sendStart(0, &hwsPayload, sizeof(PayloadHWS));
-
-				rf12_sendWait(0);
+				EmonSerial::PrintHWSPayload(&g_hwsPayload);
 			}
-			rf12_sleep(RF12_SLEEP);
-
-			EmonSerial::PrintHWSPayload(&hwsPayload);
+			else
+			{
+				Serial.println(F("No packet sent"));
+			}
+			g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
 			//turn the led on pin 5 (port 2) on for 20ms
 			LED_On(100);
