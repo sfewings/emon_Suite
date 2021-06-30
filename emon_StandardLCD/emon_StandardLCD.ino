@@ -11,12 +11,7 @@
 // 2010-05-28 <jcw@equi4.com> http://opensource.org/licenses/mit-license.php
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-#define DEBUG
 
-//JeeLab libraires				http://github.com/jcw
-#define RF69_COMPAT 0
-
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <PortsLCD.h>
 #include <TimeLib.h>
 #include <OneWire.h>
@@ -28,6 +23,22 @@
 #include <EmonEEPROM.h>
 
 #include "EEPROMHist.h"
+
+#define  USE_JEELIB
+#ifdef USE_JEELIB
+
+	//JeeLab libraires				http://github.com/jcw
+	#define RF69_COMPAT 1
+
+	#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
+	RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+#else
+	#include <SPI.h>
+	#include <RH_RF69.h>
+	// Singleton instance of the radio driver
+	RH_RF69 g_rf69;
+#endif
+
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
 
@@ -60,7 +71,7 @@ PayloadDisp dispPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
 
 
-RF12Init rf12Init = { DISPLAY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+
 EEPROMSettings  eepromSettings;
 
 int thisHour;
@@ -265,6 +276,38 @@ String TimeSpanString(String& str, time_t timeSpan)
 	return str;
 }
 
+
+//--------------------------------------------------------------------
+// Calculate power and energy variables
+//--------------------------------------------------------------------
+void power_calculations_pulse()
+{
+	//--------------------------------------------------
+	// kWh calculation
+	//--------------------------------------------------
+	unsigned long lwhtime = whtime;
+	whtime = millis();
+	double whInc = pulsePayload.power[1] * ((whtime - lwhtime) / 3600000.0);  //solar comes in on pin 2
+	wh_gen = wh_gen + whInc;
+	whInc = pulsePayload.power[2] *((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
+	wh_consuming = wh_consuming + whInc;
+}
+
+void PrintAddress(uint8_t deviceAddress[8])
+{
+	Serial.print("{ ");
+	for (uint8_t i = 0; i < 8; i++)
+	{
+		// zero pad the address if necessary
+		Serial.print("0x");
+		if (deviceAddress[i] < 16) Serial.print("0");
+		Serial.print(deviceAddress[i], HEX);
+		if (i<7) Serial.print(", ");
+	}
+	Serial.print(" }");
+}
+
+
 // Push button interrupt routine
 void interruptHandlerPushButton()
 {
@@ -320,9 +363,26 @@ void setup()
 		dispPayload[eepromSettings.subnode].subnode = eepromSettings.subnode;
 	}
 
+#ifdef USE_JEELIB
 	Serial.println("rf12_initialize");
 	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
 	EmonSerial::PrintRF12Init(rf12Init);
+#else
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(DISPLAY_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(DISPLAY_NODE);
+	Serial.println(" Freq: 915MHz");
+#endif
 
 
 	//initialise the day and month total histories from EEPROM memory
@@ -408,7 +468,12 @@ void loop ()
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
-	
+	volatile uint8_t *data = NULL;
+	uint8_t buf[66];
+	int node_id= -1;
+	byte len = 0;
+
+#ifdef USE_JEELIB
 	if (rf12_recvDone())
 	{
 		if (rf12_crc)
@@ -420,185 +485,229 @@ void loop ()
 		}
 		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
 		{
-			int node_id = (rf12_hdr & 0x1F);
+			node_id = (rf12_hdr & 0x1F);
 			//store the incoming buffer for a resend
-			uint8_t buf[66];
-			byte len = rf12_len;
+			len = rf12_len;
 			memcpy(buf, (const void*)rf12_data, len);
+		}
+	}
+#else
+	if (g_rf69.available())
+	{
+		//digitalWrite(GREEN_LED, HIGH);
+		// Should be a message for us now   
+		//uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+		len = RH_RF69_MAX_MESSAGE_LEN;  //ASSERT( len <= sizeof(buf));
+		if (g_rf69.recv(buf, &len))
+		{
+			//RH_RF69::printBuffer("Received: ", buf, len);
+			//Serial.print("Got request: ");
+			//Serial.print((char*)buf);
+			Serial.print("RSSI: ");
+			Serial.println(g_rf69.lastRssi(), DEC);
+			node_id = g_rf69.headerId();
+		}
+	}
+#endif
 
-			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
+	if( node_id != -1)
+	{
+		if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
+		{
+			pulsePayload = *(PayloadPulse*)buf;							// get payload data
+
+			EmonSerial::PrintPulsePayload(&pulsePayload, (now() - lastReceived[ePulse]));				// print data to serial
+
+			txReceived[ePulse]++;
+			lastReceived[ePulse] = now();				// set time of last update to now
+
+			power_calculations_pulse();							// do the power calculations
+		}
+		if (node_id == TEMPERATURE_JEENODE)
+		{
+			PayloadTemperature tpl = *((PayloadTemperature*)buf);
+			byte subnode = tpl.subnode;
+			if (subnode >= MAX_SUBNODES)
 			{
-				pulsePayload = *(PayloadPulse*)rf12_data;							// get payload data
-
-				EmonSerial::PrintPulsePayload(&pulsePayload, (now() - lastReceived[ePulse]));				// print data to serial
-
-				txReceived[ePulse]++;
-				lastReceived[ePulse] = now();				// set time of last update to now
-
-				power_calculations_pulse();							// do the power calculations
+				Serial.print(F("Invalid temperature subnode. Exiting"));
+				return;
 			}
-			if (node_id == TEMPERATURE_JEENODE)
+			memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
+			EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0+subnode]));				// print data to serial
+
+			txReceived[eTemp0 + subnode]++;
+			lastReceived[eTemp0 + subnode] = now();				// set time of last update to now
+			//we don't use any of the temperatures from the temperature sensor
+			//temperature[eWater] = emon2Payload.temperature;
+		}
+
+		if (node_id == HWS_JEENODE)
+		{
+			PayloadHWS hwsPayload = *(PayloadHWS*)buf;							// get emontx payload data
+
+			EmonSerial::PrintHWSPayload(&hwsPayload, (now() - lastReceived[eHWS]));				// print data to serial
+
+			txReceived[eHWS]++;
+			lastReceived[eHWS] = now();				// set time of last update to now
+
+			temperature[eWaterTemp] = 100* (int)hwsPayload.temperature[2];  //T3 . Multiply by 100 as temperature[] are in 100ths of degree
+		}
+
+		if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
+		{
+			rainPayload = *(PayloadRain*)buf;	// get emonbase payload data
+			
+			EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[eRain]));			 // print data to serial
+			lastReceived[eRain] = now();
+			txReceived[eRain]++;
+
+			temperature[eOutside] = rainPayload.temperature;
+
+			//if outside temperature on LCD is not correct, uncomment the lines below. Not sure why!
+			//Serial.print("temperature[eOutside] = ");
+			//Serial.println(temperature[eOutside]);
+
+
+			if (rainStartOfToday == 0)
 			{
-				PayloadTemperature tpl = *((PayloadTemperature*)rf12_data);
-				byte subnode = tpl.subnode;
-				if (subnode >= MAX_SUBNODES)
+				rainStartOfToday = rainPayload.rainCount;
+			}
+		}
+
+		if (node_id == WATERLEVEL_NODE)
+		{
+			PayloadWater wpl = *(PayloadWater*)buf;							// get emontx payload data
+			EmonSerial::UnpackWaterPayload((byte*)&wpl, &wpl);				// we are able to unpack this into the same structure!
+			byte subnode = wpl.subnode;
+			if (subnode >= MAX_SUBNODES)
+			{
+				Serial.print(F("Invalid water subnode. Exiting"));
+				return;
+			}
+			memcpy(&waterPayload[subnode], &wpl, sizeof(PayloadWater));
+			EmonSerial::PrintWaterPayload(&waterPayload[subnode], (now() - lastReceived[eWaterNode0 + subnode]));				// print data to serial
+
+			if (waterStartOfToday[subnode] == 0)
+			{
+				waterStartOfToday[subnode] = waterPayload[subnode].flowCount[0];
+			}
+
+
+			txReceived[eWaterNode0 + subnode]++;
+			lastReceived[eWaterNode0 + subnode] = now();				// set time of last update to now
+		}
+
+		if (node_id == SCALE_NODE)
+		{
+			scalePayload = *(PayloadScale*)buf;							// get emontx payload data
+
+			EmonSerial::PrintScalePayload(&scalePayload, (now() - lastReceived[eScale]));				// print data to serial
+
+			txReceived[eScale]++;
+			lastReceived[eScale] = now();				// set time of last update to now
+		}
+
+		if (node_id == DISPLAY_NODE)
+		{
+			PayloadDisp dp = *(PayloadDisp*)buf;							// get emontx payload data
+
+			byte subnode = dp.subnode;
+			if (subnode >= MAX_SUBNODES)
+			{
+				Serial.print(F("Invalid display subnode. Exiting"));
+				return;
+			}
+			memcpy(&dispPayload[subnode], &dp, sizeof(PayloadDisp));
+			EmonSerial::PrintDispPayload(&dispPayload[subnode]);			 // print data to serial
+
+			txReceived[eDisp0 + subnode]++;
+			lastReceived[eDisp0 + subnode] = now();				// set time of last update to now
+		}
+
+		if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
+		{
+			basePayload = *((PayloadBase*)buf);
+			EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[eBase]));			 // print data to serial
+			txReceived[eBase]++;
+			lastReceived[eBase] = now();
+
+			setTime(basePayload.time);
+			if (startTime == 0)
+			{
+				startTime = basePayload.time;
+				//time has been updated from the base
+				currentHour = hour();
+				currentDay = day() - 1;        //note day() base 1, currentDay base 0
+				currentMonth = month() - 1;    //note month() base 1, currentMonth base 0
+				currentRainDay = currentDay;    //note the rainDay and rainMonth change at 9am!
+				currentRainMonth = currentMonth;
+				if (currentHour < 9 && currentDay > 0)
 				{
-					Serial.print(F("Invalid temperature subnode. Exiting"));
-					return;
+					//correct if turned on before 9am! n.b don't wory if the month is wrong!
+					currentRainDay = day() - 2;
 				}
-				memcpy(&temperaturePayload[subnode], &tpl, sizeof(PayloadTemperature));
-				EmonSerial::PrintTemperaturePayload(&temperaturePayload[subnode], (now() - lastReceived[eTemp0+subnode]));				// print data to serial
 
-				txReceived[eTemp0 + subnode]++;
-				lastReceived[eTemp0 + subnode] = now();				// set time of last update to now
-				//we don't use any of the temperatures from the temperature sensor
-				//temperature[eWater] = emon2Payload.temperature;
+				//reset the timers as the time has changed
+				average_update = now();
+				slow_update = now();
 			}
+			lastUpdateTime = basePayload.time;
+		}
 
-			if (node_id == HWS_JEENODE)
+		//resend the incoming packets of rain, temperature and HWS systems. These are at the outer extents fo the house
+		if (eepromSettings.relayNumber )
+		{
+			PayloadRelay* pRelayPayload = (PayloadRelay*)buf;
+			//check if we havn't already relayed this packet!
+			if ((pRelayPayload->relay & (1 << (eepromSettings.relayNumber-1))) == 0)
 			{
-				PayloadHWS hwsPayload = *(PayloadHWS*)rf12_data;							// get emontx payload data
-
-				EmonSerial::PrintHWSPayload(&hwsPayload, (now() - lastReceived[eHWS]));				// print data to serial
-
-				txReceived[eHWS]++;
-				lastReceived[eHWS] = now();				// set time of last update to now
-
-				temperature[eWaterTemp] = 100* (int)hwsPayload.temperature[2];  //T3 . Multiply by 100 as temperature[] are in 100ths of degree
-			}
-
-			if (node_id == RAIN_NODE)						// ==== RainGauge Jeenode ====
-			{
-				rainPayload = *(PayloadRain*)rf12_data;	// get emonbase payload data
-				
-				EmonSerial::PrintRainPayload(&rainPayload, (now() - lastReceived[eRain]));			 // print data to serial
-				lastReceived[eRain] = now();
-				txReceived[eRain]++;
-
-				temperature[eOutside] = rainPayload.temperature;
-
-				//if outside temperature on LCD is not correct, uncomment the lines below. Not sure why!
-				//Serial.print("temperature[eOutside] = ");
-				//Serial.println(temperature[eOutside]);
-
-
-				if (rainStartOfToday == 0)
+				//check that the node is one we are listed to relay
+				if (((long)1 << node_id) & eepromSettings.relayNodes)
 				{
-					rainStartOfToday = rainPayload.rainCount;
-				}
-			}
+					delay(10);
+#ifdef USE_JEELIB
+					// switch the outgoing node to the incoming node ID.
+					uint8_t ret = rf12_initialize(node_id, rf12Init.freq, rf12Init.group);
+					Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
+					//set the bit in the relay byte to our relayNumber ID
+					pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
+					int wait = 1000;
 
-			if (node_id == WATERLEVEL_NODE)
-			{
-				PayloadWater wpl = *(PayloadWater*)rf12_data;							// get emontx payload data
-				EmonSerial::UnpackWaterPayload((byte*)&wpl, &wpl);				// we are able to unpack this into the same structure!
-				byte subnode = wpl.subnode;
-				if (subnode >= MAX_SUBNODES)
-				{
-					Serial.print(F("Invalid water subnode. Exiting"));
-					return;
-				}
-				memcpy(&waterPayload[subnode], &wpl, sizeof(PayloadWater));
-				EmonSerial::PrintWaterPayload(&waterPayload[subnode], (now() - lastReceived[eWaterNode0 + subnode]));				// print data to serial
-
-				if (waterStartOfToday[subnode] == 0)
-				{
-					waterStartOfToday[subnode] = waterPayload[subnode].flowCount[0];
-				}
-
-
-				txReceived[eWaterNode0 + subnode]++;
-				lastReceived[eWaterNode0 + subnode] = now();				// set time of last update to now
-			}
-
-			if (node_id == SCALE_NODE)
-			{
-				scalePayload = *(PayloadScale*)rf12_data;							// get emontx payload data
-
-				EmonSerial::PrintScalePayload(&scalePayload, (now() - lastReceived[eScale]));				// print data to serial
-
-				txReceived[eScale]++;
-				lastReceived[eScale] = now();				// set time of last update to now
-			}
-
-			if (node_id == DISPLAY_NODE)
-			{
-				PayloadDisp dp = *(PayloadDisp*)rf12_data;							// get emontx payload data
-
-				byte subnode = dp.subnode;
-				if (subnode >= MAX_SUBNODES)
-				{
-					Serial.print(F("Invalid display subnode. Exiting"));
-					return;
-				}
-				memcpy(&dispPayload[subnode], &dp, sizeof(PayloadDisp));
-				EmonSerial::PrintDispPayload(&dispPayload[subnode]);			 // print data to serial
-
-				txReceived[eDisp0 + subnode]++;
-				lastReceived[eDisp0 + subnode] = now();				// set time of last update to now
-			}
-
-			if ( node_id == BASE_JEENODE )						// jeenode base Receives the time
-			{
-				basePayload = *((PayloadBase*)rf12_data);
-				EmonSerial::PrintBasePayload(&basePayload, (now() - lastReceived[eBase]));			 // print data to serial
-				txReceived[eBase]++;
-				lastReceived[eBase] = now();
-
-				setTime(basePayload.time);
-				if (startTime == 0)
-				{
-					startTime = basePayload.time;
-					//time has been updated from the base
-					currentHour = hour();
-					currentDay = day() - 1;        //note day() base 1, currentDay base 0
-					currentMonth = month() - 1;    //note month() base 1, currentMonth base 0
-					currentRainDay = currentDay;    //note the rainDay and rainMonth change at 9am!
-					currentRainMonth = currentMonth;
-					if (currentHour < 9 && currentDay > 0)
+					while (!rf12_canSend() && --wait)
+						rf12_recvDone();
+					if (wait)
 					{
-						//correct if turned on before 9am! n.b don't wory if the month is wrong!
-						currentRainDay = day() - 2;
+						rf12_sendStart(0, buf, len);
+						rf12_sendWait(0);
 					}
+					//reset our node ID
+					ret = rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
+#else
+					// switch the outgoing node to the incoming node ID.
+					g_rf69.setHeaderId(node_id);
+					Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
+					//set the bit in the relay byte to our relayNumber ID
+					pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
+					int wait = 1000;
 
-					//reset the timers as the time has changed
-					average_update = now();
-					slow_update = now();
-				}
-				lastUpdateTime = basePayload.time;
-			}
-
-			//resend the incoming packets of rain, temperature and HWS systems. These are at the outer extents fo the house
-			if (eepromSettings.relayNumber )
-			{
-				PayloadRelay* pRelayPayload = (PayloadRelay*)buf;
-				//check if we havn't already relayed this packet!
-				if ((pRelayPayload->relay & (1 << (eepromSettings.relayNumber-1))) == 0)
-				{
-					//check that the node is one we are listed to relay
-					if (((long)1 << node_id) & eepromSettings.relayNodes)
+					g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+					g_rf69.send((const uint8_t*) buf, len);
+					if( g_rf69.waitPacketSent() )
 					{
-						delay(10);
-						// switch the outgoing node to the incoming node ID.
-						uint8_t ret = rf12_initialize(node_id, rf12Init.freq, rf12Init.group);
-						Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
-						//set the bit in the relay byte to our relayNumber ID
-						pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
-						int wait = 1000;
-
-						while (!rf12_canSend() && --wait)
-							rf12_recvDone();
-						if (wait)
-						{
-							rf12_sendStart(0, buf, len);
-							rf12_sendWait(0);
-						}
-						//reset our node ID
-						ret = rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
+						Serial.println("Packet Resent");
 					}
+					else
+					{
+						Serial.println(F("No packet sent"));
+					}
+					g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+					//reset our node ID
+					g_rf69.setHeaderId(DISPLAY_NODE);
+#endif
 				}
 			}
 		}
+	
 	}
 	
 
@@ -688,6 +797,7 @@ void loop ()
 		}
 		if (numberOfTemperatureSensors)
 		{
+#ifdef USE_JEELIB
 			int wait = 1000;
 			while (!rf12_canSend() && --wait)
 				;
@@ -700,6 +810,19 @@ void loop ()
 				rf12_sendWait(0);
 				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
 			}
+#else
+			g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+			g_rf69.send((const uint8_t*) &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
+			if( g_rf69.waitPacketSent() )
+			{
+				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
+			}
+			else
+			{
+				Serial.println(F("No packet sent"));
+			}
+			g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 		}
 	}
 	//--------------------------------------------------------------------
@@ -1016,34 +1139,4 @@ void loop ()
 	}
 } //end loop
 //--------------------------------------------------------------------------------------------
-
-//--------------------------------------------------------------------
-// Calculate power and energy variables
-//--------------------------------------------------------------------
-void power_calculations_pulse()
-{
-	//--------------------------------------------------
-	// kWh calculation
-	//--------------------------------------------------
-	unsigned long lwhtime = whtime;
-	whtime = millis();
-	double whInc = pulsePayload.power[1] * ((whtime - lwhtime) / 3600000.0);  //solar comes in on pin 2
-	wh_gen = wh_gen + whInc;
-	whInc = pulsePayload.power[2] *((whtime - lwhtime) / 3600000.0);					//main power comes in on pin 3
-	wh_consuming = wh_consuming + whInc;
-}
-
-void PrintAddress(uint8_t deviceAddress[8])
-{
-	Serial.print("{ ");
-	for (uint8_t i = 0; i < 8; i++)
-	{
-		// zero pad the address if necessary
-		Serial.print("0x");
-		if (deviceAddress[i] < 16) Serial.print("0");
-		Serial.print(deviceAddress[i], HEX);
-		if (i<7) Serial.print(", ");
-	}
-	Serial.print(" }");
-}
 
