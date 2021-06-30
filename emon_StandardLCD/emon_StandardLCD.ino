@@ -24,7 +24,7 @@
 
 #include "EEPROMHist.h"
 
-#define  USE_JEELIB
+#undef  USE_JEELIB
 #ifdef USE_JEELIB
 
 	//JeeLab libraires				http://github.com/jcw
@@ -43,7 +43,7 @@
 LiquidCrystal lcd(A2,4, 8,7,6,5);
 
 
-EEPROMHistory   usageHistory;
+//EEPROMHistory   usageHistory;
 
 //--------------------------------------------------------------------------------------------
 // Power variables
@@ -75,16 +75,15 @@ PayloadTemperature temperaturePayload[MAX_SUBNODES];
 EEPROMSettings  eepromSettings;
 
 int thisHour;
-time_t					startTime = 0;
+time_t			startTime = 0;
 byte            currentHour = 0;
 byte            currentDay = 0;
-byte						currentRainDay = 0;
+byte			currentRainDay = 0;
 byte            currentMonth = 0;
-byte						currentRainMonth = 0;
+byte			currentRainMonth = 0;
 
 
 unsigned long rainStartOfToday;
-unsigned long waterStartOfToday[MAX_SUBNODES];
 
 time_t	lastUpdateTime;
 bool		refreshScreen = false;	//set true when time to completely redraw the screen
@@ -97,14 +96,7 @@ typedef enum {
 	eCurrentPower,
 	eTotalPower,
 	eCurrentTemperatures,
-	eMaxTemperatures,
-	eMinTemperatures,
 	eRainFall,
-	eRainFallTotals,
-	eRoomTemperatures,
-	eWaterUseTotal,
-	eWaterUseHot,
-	eScaleReadings,
 	eDateTimeNow,
 	eDateTimeStartRunning,
 	eDiagnosisRainBase,
@@ -377,19 +369,11 @@ void setup()
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(DISPLAY_NODE);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
 	Serial.print("RF69 initialise node: ");
 	Serial.print(DISPLAY_NODE);
 	Serial.println(" Freq: 915MHz");
 #endif
-
-
-	//initialise the day and month total histories from EEPROM memory
-	short usesEEPROMto = usageHistory.init(0);
-	Serial.print("EEPROM init:");
-	Serial.println(usesEEPROMto, DEC);
-	lcd.print(".");
 
 
 	for (int i = 0; i< MAX_NODES; i++)
@@ -399,11 +383,6 @@ void setup()
 	}
 
 	rainPayload.rainCount = rainStartOfToday = 0;
-
-	for (int i = 0; i<MAX_SUBNODES; i++)
-	{
-		waterPayload[i].flowCount[0] = waterStartOfToday[i] = 0;
-	}
 
 	lastUpdateTime = now();
 
@@ -494,18 +473,14 @@ void loop ()
 #else
 	if (g_rf69.available())
 	{
-		//digitalWrite(GREEN_LED, HIGH);
-		// Should be a message for us now   
-		//uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
 		len = RH_RF69_MAX_MESSAGE_LEN;  //ASSERT( len <= sizeof(buf));
 		if (g_rf69.recv(buf, &len))
 		{
-			//RH_RF69::printBuffer("Received: ", buf, len);
-			//Serial.print("Got request: ");
-			//Serial.print((char*)buf);
-			Serial.print("RSSI: ");
-			Serial.println(g_rf69.lastRssi(), DEC);
 			node_id = g_rf69.headerId();
+			Serial.print("RSSI: ");
+			Serial.print(g_rf69.lastRssi(), DEC);
+			Serial.print(", node: ");
+			Serial.println(node_id);
 		}
 	}
 #endif
@@ -586,12 +561,6 @@ void loop ()
 			}
 			memcpy(&waterPayload[subnode], &wpl, sizeof(PayloadWater));
 			EmonSerial::PrintWaterPayload(&waterPayload[subnode], (now() - lastReceived[eWaterNode0 + subnode]));				// print data to serial
-
-			if (waterStartOfToday[subnode] == 0)
-			{
-				waterStartOfToday[subnode] = waterPayload[subnode].flowCount[0];
-			}
-
 
 			txReceived[eWaterNode0 + subnode]++;
 			lastReceived[eWaterNode0 + subnode] = now();				// set time of last update to now
@@ -690,7 +659,7 @@ void loop ()
 					pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
 					int wait = 1000;
 
-					g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+					//g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 					g_rf69.send((const uint8_t*) buf, len);
 					if( g_rf69.waitPacketSent() )
 					{
@@ -700,7 +669,7 @@ void loop ()
 					{
 						Serial.println(F("No packet sent"));
 					}
-					g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+					//g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 					//reset our node ID
 					g_rf69.setHeaderId(DISPLAY_NODE);
 #endif
@@ -727,70 +696,29 @@ void loop ()
 	{
 		average_update = time;
 
-		usageHistory.addMonitoredValues(temperature, 0);
-
 		//update 24hr tallies
 		if ((timeStatus() == timeSet))
 		{
-			//usageHistory.addValue(eHour, currentHour, wattsConsumed, (unsigned short)wattsGenerated);
-
 			if (hour() != currentHour)
 			{
-				unsigned short consumed, generated;
-				//we only store the hour totals every hour. THen add it to the current hour and to the current day
-				usageHistory.getTotalTo(eHour, currentHour, &consumed, &generated);
-				usageHistory.addValue(eHour, currentHour, wh_consuming - consumed, wh_gen - generated);
-				usageHistory.addValue(eDay, currentDay, wh_consuming - consumed, wh_gen - generated);
-
 				//rainfall is measured from 9am
 				if (hour() == 9)
 				{
-					usageHistory.addRainfall(eDay, currentRainDay, rainPayload.rainCount - rainStartOfToday);
-					usageHistory.addRainfall(eMonth, currentRainMonth, rainPayload.rainCount - rainStartOfToday);
-
 					rainStartOfToday = rainPayload.rainCount;
-
-					if (month() - 1 != currentRainMonth)
-					{
-						currentRainMonth = month() - 1;
-						usageHistory.resetRainfall(eMonth, currentRainMonth);
-					}
-					currentRainDay = day() - 1;
-					usageHistory.resetRainfall(eDay, currentRainDay);
 				}
 
 
 				if (day() - 1 != currentDay)
 				{
-					usageHistory.resetMonitoredValues();
-
 					//reset daily totals
 					wh_gen = 0;
 					wh_consuming = 0;
 					whtime = millis();
 
-					usageHistory.getValue(eDay, currentDay, &consumed, &generated);
-					usageHistory.addValue(eMonth, currentMonth, consumed, generated);
-
-					if (month() - 1 != currentMonth)
-					{
-						currentMonth = month() - 1;
-						usageHistory.resetValue(eMonth, currentMonth);
-					}
-
 					currentDay = day() - 1;
-					usageHistory.resetValue(eDay, currentDay);
-
-					//reset daily hotwater usage
-					for (int i = 0; i < MAX_SUBNODES; i++)
-					{
-						waterStartOfToday[i] = waterPayload[i].flowCount[0];
-					}
 				}
 
 				currentHour = hour();
-				usageHistory.resetValue(eHour, currentHour);
-
 			}
 
 			refreshScreen = true;	//every 60 seconds
@@ -811,7 +739,7 @@ void loop ()
 				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
 			}
 #else
-			g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+			// g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 			g_rf69.send((const uint8_t*) &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
 			if( g_rf69.waitPacketSent() )
 			{
@@ -821,7 +749,7 @@ void loop ()
 			{
 				Serial.println(F("No packet sent"));
 			}
-			g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+			// g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 #endif
 		}
 	}
@@ -914,49 +842,7 @@ void loop ()
 
 				break;
 			}
-			case eMinTemperatures:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Min: Wtr In  Out"));
-				//print temperatures
-				lcd.setCursor(0, 1);
 
-				int minTemp[3];
-				usageHistory.getMonitoredValues(eValueStatisticMin, minTemp, NULL);
-				//water temperatre
-				lcd.print(TemperatureString(str, minTemp[eWaterTemp]));
-
-				//inside temperature
-				lcd.setCursor(6, 1);
-				lcd.print(TemperatureString(str, minTemp[eInside]));
-
-				//outside temperature
-				lcd.setCursor(12, 1);
-				lcd.print(TemperatureString(str, minTemp[eOutside]));
-				break;
-			}
-			case eMaxTemperatures:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Max: Wtr In  Out"));
-				//print temperatures
-				lcd.setCursor(0, 1);
-
-				int maxTemp[3];
-				usageHistory.getMonitoredValues(eValueStatisticMax, maxTemp, NULL);
-
-				//water temperatre
-				lcd.print(TemperatureString(str, maxTemp[eWaterTemp]));
-
-				//inside temperature
-				lcd.setCursor(6, 1);
-				lcd.print(TemperatureString(str, maxTemp[eInside]));
-
-				//outside temperature
-				lcd.setCursor(12, 1);
-				lcd.print(TemperatureString(str, maxTemp[eOutside]));
-				break;
-			}
 			case eRainFall:
 			{
 				lcd.setCursor(0, 0);
@@ -966,80 +852,6 @@ void loop ()
 				lcd.print(F("mm"));
 
 				lcdSupplyV(1, rainPayload.supplyV);
-				//lcd.setCursor(0, 1);
-				//lcd.print(F("Supply V  : "));
-				//lcd.setCursor(11, 1);
-				//lcd.print(TemperatureString(str, rainPayload.supplyV/10));
-				break;
-			}
-			case eRoomTemperatures:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Rm Temp:"));
-				lcd.setCursor(11, 0);
-				//3 is room temperature
-				lcd.print(TemperatureString(str, temperaturePayload[0].temperature[3]));
-
-				lcdSupplyV(1, temperaturePayload[0].supplyV);
-
-				//lcd.setCursor(0, 1);
-				//lcd.print(F("Supply V  : "));
-				//lcd.setCursor(11, 1);
-				//lcd.print(TemperatureString(str, temperaturePayload[0].supplyV / 10));
-				break;
-			}
-			case eWaterUseTotal:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Wtr Mtr:"));
-				lcdUint(9, 0, ((unsigned int)((waterPayload[1].flowCount[0] - waterStartOfToday[1]))));
-				lcd.print(" l");
-				break;
-			}
-			case eWaterUseHot:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Rain Wtr:"));
-				lcd.setCursor(9, 0);
-				lcd.print(waterPayload[0].waterHeight[0]);
-				lcd.print(" mm");
-				lcd.setCursor(0, 1);
-				lcd.print(F("Day hot:"));
-				lcdUint(9, 1, ((unsigned int)((waterPayload[0].flowCount[0] - waterStartOfToday[0])/1000)));
-				lcd.print(" l");
-				break;
-			}
-			case eScaleReadings:
-			{
-				lcd.setCursor(0, 0);
-				lcd.print(F("Gram"));
-				lcdLong(4, 0, scalePayload.grams);
-				lcdSupplyV(1, scalePayload.supplyV);
-
-				//lcd.setCursor(0, 1);
-				//lcd.print(F("Supply V  : "));
-				//lcd.setCursor(11, 1);
-				//lcd.print(TemperatureString(str, scalePayload.supplyV / 10));
-				break;
-			}
-			case eRainFallTotals:
-			{
-				unsigned short totalRain = rainPayload.rainCount - rainStartOfToday;
-
-				lcd.setCursor(0, 0);
-				lcd.print(F("Day  Month Year"));
-				lcd.setCursor(0, 1);
-
-				lcd.print(RainString(str, totalRain));
-				
-				totalRain += usageHistory.getRainfallTo(eDay, currentRainDay);
-				lcd.setCursor(5, 1);
-				lcd.print(RainString(str, totalRain));
-
-				totalRain = rainPayload.rainCount - rainStartOfToday;
-				totalRain += usageHistory.getRainfallTo(eMonth, currentRainMonth);
-				lcd.setCursor(10, 1);
-				lcd.print(RainString(str, totalRain ));
 				break;
 			}
 			case eDateTimeStartRunning:
@@ -1137,6 +949,4 @@ void loop ()
 			}
 		}
 	}
-} //end loop
-//--------------------------------------------------------------------------------------------
-
+}
