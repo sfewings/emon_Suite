@@ -164,7 +164,7 @@ void loop ()
 			}
 
 
-			node_id = rf69.headerId();
+			node_id = g_rf69.headerId();
 			data = buf;
 #endif
 
