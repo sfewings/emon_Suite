@@ -712,7 +712,7 @@ void loop ()
 					whtime = millis();
 
 					currentDay = day() - 1;
-					cocoHasBeenFed = false;
+					dogHasBeenFed = false;
 				}
 
 				currentHour = hour();
@@ -779,7 +779,7 @@ void loop ()
 				lcdUint(5, 0, (unsigned int)pulsePayload.power[1]);
 
 				lcd.setCursor(0,0);
-				lcd.print( txReceived[ePulse]%2 ? "*" : (dogHasBeenFed ? "+" : " "); //toggle "*" every time a pulseNodeTx received. Every second
+				lcd.print( txReceived[ePulse]%2 ? "*" : (dogHasBeenFed ? "+" : " ")); //toggle "*" every time a pulseNodeTx received. Every second
 
 				if (rainPayload.rainCount - rainStartOfToday != 0)
 				{
