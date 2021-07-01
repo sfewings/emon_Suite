@@ -140,30 +140,6 @@ void loop ()
 			Serial.print("RSSI: ");
 			Serial.println(g_rf69.lastRssi(), DEC);
 
-
-
-			//read the time basePayload 
-			if (Serial.available())
-			{
-				char sendBuf[100];
-				PayloadBase basePayload;
-				Serial.readBytesUntil('\0', sendBuf, 100);
-				if (EmonSerial::ParseBasePayload(sendBuf, &basePayload))
-				{
-					g_rf69.send((const uint8_t*) &basePayload, sizeof(basePayload));
-					if( g_rf69.waitPacketSent() )
-					{
-						Serial.println(F("BasePayload with time sent"));
-						EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
-					}
-					else
-					{
-						Serial.println(F("No packet sent"));
-					}
-				}
-			}
-
-
 			node_id = g_rf69.headerId();
 			data = buf;
 #endif
@@ -219,6 +195,30 @@ void loop ()
 				SERIAL_OUT(AirQuality, Payload);
 			}
 		}
+
+#ifdef USE_JEELIB
+#else
+		//read the time basePayload 
+		if (Serial.available())
+		{
+			char sendBuf[100];
+			PayloadBase basePayload;
+			Serial.readBytesUntil('\0', sendBuf, 100);
+			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload))
+			{
+				g_rf69.send((const uint8_t*) &basePayload, sizeof(basePayload));
+				if( g_rf69.waitPacketSent() )
+				{
+					Serial.println(F("BasePayload with time sent"));
+					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
+				}
+				else
+				{
+					Serial.println(F("No packet sent"));
+				}
+			}
+		}
+#endif
 
 		digitalWrite(GREEN_LED, LOW);
 	}
