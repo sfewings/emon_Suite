@@ -22,8 +22,6 @@
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
 
-#include "EEPROMHist.h"
-
 #undef  USE_JEELIB
 #ifdef USE_JEELIB
 
@@ -41,9 +39,6 @@
 
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
-
-
-//EEPROMHistory   usageHistory;
 
 //--------------------------------------------------------------------------------------------
 // Power variables
@@ -71,23 +66,21 @@ PayloadDisp dispPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
 
 
-
 EEPROMSettings  eepromSettings;
 
-int thisHour;
-time_t			startTime = 0;
-byte            currentHour = 0;
-byte            currentDay = 0;
-byte			currentRainDay = 0;
-byte            currentMonth = 0;
-byte			currentRainMonth = 0;
-
+int 	thisHour;
+time_t	startTime = 0;
+byte    currentHour = 0;
+byte    currentDay = 0;
+byte	currentRainDay = 0;
 
 unsigned long rainStartOfToday;
 
-time_t	lastUpdateTime;
+time_t		lastUpdateTime;
 bool		refreshScreen = false;	//set true when time to completely redraw the screen
 
+bool		dogHasBeenFed = false;
+long 		lastDogFoodReading = 0;
 //---------------------------------------------------------------------------------------------------
 // Push button support. On pin A3
 //---------------------------------------------------------------------------------------------------
@@ -477,10 +470,10 @@ void loop ()
 		if (g_rf69.recv(buf, &len))
 		{
 			node_id = g_rf69.headerId();
-			Serial.print("RSSI: ");
-			Serial.print(g_rf69.lastRssi(), DEC);
-			Serial.print(", node: ");
-			Serial.println(node_id);
+			//Serial.print("RSSI: ");
+			//Serial.print(g_rf69.lastRssi(), DEC);
+			//Serial.print(", node: ");
+			//Serial.println(node_id);
 		}
 	}
 #endif
@@ -570,8 +563,14 @@ void loop ()
 		{
 			scalePayload = *(PayloadScale*)buf;							// get emontx payload data
 
+			if( scalePayload.subnode == 0 )
+			{
+				if(lastDogFoodReading - scalePayload.grams > 150 )
+					dogHasBeenFed = true;	//more than 150gram drop in dog food scales
+				lastDogFoodReading = scalePayload.grams;	
+			}
+			
 			EmonSerial::PrintScalePayload(&scalePayload, (now() - lastReceived[eScale]));				// print data to serial
-
 			txReceived[eScale]++;
 			lastReceived[eScale] = now();				// set time of last update to now
 		}
@@ -607,9 +606,8 @@ void loop ()
 				//time has been updated from the base
 				currentHour = hour();
 				currentDay = day() - 1;        //note day() base 1, currentDay base 0
-				currentMonth = month() - 1;    //note month() base 1, currentMonth base 0
 				currentRainDay = currentDay;    //note the rainDay and rainMonth change at 9am!
-				currentRainMonth = currentMonth;
+				dogHasBeenFed = false;
 				if (currentHour < 9 && currentDay > 0)
 				{
 					//correct if turned on before 9am! n.b don't wory if the month is wrong!
@@ -659,7 +657,6 @@ void loop ()
 					pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
 					int wait = 1000;
 
-					//g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 					g_rf69.send((const uint8_t*) buf, len);
 					if( g_rf69.waitPacketSent() )
 					{
@@ -669,7 +666,6 @@ void loop ()
 					{
 						Serial.println(F("No packet sent"));
 					}
-					//g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 					//reset our node ID
 					g_rf69.setHeaderId(DISPLAY_NODE);
 #endif
@@ -716,6 +712,7 @@ void loop ()
 					whtime = millis();
 
 					currentDay = day() - 1;
+					cocoHasBeenFed = false;
 				}
 
 				currentHour = hour();
@@ -739,7 +736,6 @@ void loop ()
 				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
 			}
 #else
-			// g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 			g_rf69.send((const uint8_t*) &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
 			if( g_rf69.waitPacketSent() )
 			{
@@ -749,7 +745,6 @@ void loop ()
 			{
 				Serial.println(F("No packet sent"));
 			}
-			// g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 #endif
 		}
 	}
@@ -784,7 +779,7 @@ void loop ()
 				lcdUint(5, 0, (unsigned int)pulsePayload.power[1]);
 
 				lcd.setCursor(0,0);
-				lcd.print( txReceived[ePulse]%2 ? "*" : " "); //toggle "*" every time a pulseNodeTx received. Every second
+				lcd.print( txReceived[ePulse]%2 ? "*" : (dogHasBeenFed ? "+" : " "); //toggle "*" every time a pulseNodeTx received. Every second
 
 				if (rainPayload.rainCount - rainStartOfToday != 0)
 				{
