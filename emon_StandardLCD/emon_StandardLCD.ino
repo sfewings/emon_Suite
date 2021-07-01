@@ -327,7 +327,7 @@ void setup()
 
 	lcd.print(F("Fewings Power"));
 	lcd.setCursor(0, 1);
-	lcd.print(F("Monitor 3.0"));
+	lcd.print(F("Monitor 4.0"));
 
 	Serial.println(F("Fewings emon LCD monitor - gen and use"));
 
