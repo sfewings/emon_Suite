@@ -15,7 +15,7 @@
 	#include <SPI.h>
 	#include <RH_RF69.h>
 	// Singleton instance of the radio driver
-	RH_RF69 rf69;
+	RH_RF69 g_rf69;
 	#define RFM69_RST     4
 #endif
 
@@ -46,16 +46,16 @@ void setup ()
 	delay(10);
 
 
-	if (!rf69.init())
+	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(915.0))
 		Serial.println("rf69 setFrequency failed");
 	Serial.println("RF69 initialise node: 10 Freq: 915MHz");
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	rf69.setEncryptionKey(key);
-	//rf69.setHeaderId(BASE_JEENODE);
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(BASE_JEENODE);
 #endif
 
 	EmonSerial::PrintRainPayload(NULL);
@@ -126,22 +126,21 @@ void loop ()
 			node_id = (rf12_hdr & 0x1F);
 			data = rf12_data;
 #else
-	if (rf69.available())
+	if (g_rf69.available())
 	{
 		digitalWrite(GREEN_LED, HIGH);
 		// Should be a message for us now   
 		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
 		uint8_t len = sizeof(buf);
-		if (rf69.recv(buf, &len))
+		if (g_rf69.recv(buf, &len))
 		{
 			//RH_RF69::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
 			Serial.print("RSSI: ");
-			Serial.println(rf69.lastRssi(), DEC);
+			Serial.println(g_rf69.lastRssi(), DEC);
 
-
-			node_id = rf69.headerId();
+			node_id = g_rf69.headerId();
 			data = buf;
 #endif
 
@@ -196,6 +195,30 @@ void loop ()
 				SERIAL_OUT(AirQuality, Payload);
 			}
 		}
+
+#ifdef USE_JEELIB
+#else
+		//read the time basePayload 
+		if (Serial.available())
+		{
+			char sendBuf[100];
+			PayloadBase basePayload;
+			Serial.readBytesUntil('\0', sendBuf, 100);
+			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload))
+			{
+				g_rf69.send((const uint8_t*) &basePayload, sizeof(basePayload));
+				if( g_rf69.waitPacketSent() )
+				{
+					Serial.println(F("BasePayload with time sent"));
+					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
+				}
+				else
+				{
+					Serial.println(F("No packet sent"));
+				}
+			}
+		}
+#endif
 
 		digitalWrite(GREEN_LED, LOW);
 	}

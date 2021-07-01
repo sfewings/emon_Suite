@@ -245,7 +245,7 @@ int main(int argc, char** argv)
 					RS232_SendBuf(comPort, (unsigned char*)buf, strlen((const char*) buf));
 					std::cout << "Sent time payload to emon_base - " << buf << std::endl;
 				}
-				if (comPort >=2 )
+				if (comPort2 >=0 )
 				{
 					RS232_SendBuf(comPort2, (unsigned char*)buf, strlen((const char*) buf));
 					std::cout << "Sent time payload to emon_base - " << buf << std::endl;
