@@ -736,6 +736,9 @@ void loop ()
 				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
 			}
 #else
+			//send the temperature every 60 seconds
+			dispPayload[eepromSettings.subnode].temperature = temperature[eInside];
+			
 			g_rf69.send((const uint8_t*) &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
 			if( g_rf69.waitPacketSent() )
 			{
