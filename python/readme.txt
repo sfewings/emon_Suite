@@ -24,7 +24,8 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
     > python setup.py bdist_wheel
 4. Copy the wheel from dist and install
     > pip install ./dist/pyemonlib-0.1.0-py3-none-any.whl
-
+    or
+    > pip3 uninstall -y pyemonlib && pip3 install ./dist/pyemonlib-0.1.0-py3-none-any.whl
 To create and enable python environment
 =======================================
 1. Create environment named venv 

@@ -10,11 +10,14 @@ from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 
 class emon_influx:
-    def __init__(self, url="http://localhost:8086", settingsPath="./emon_config.yml"):
+    def __init__(self, url="http://localhost:8086", settingsPath="./emon_config.yml",batchProcess=True):
         self.bucket = "sensors"
         self.client = InfluxDBClient(url, token="my-token", org="my-org")
-        #self.write_api = client.write_api(write_options=WriteOptions(batch_size=50_000, flush_interval=10_000))
-        self.write_api = self.client.write_api(write_options=WriteOptions(batch_size=50, flush_interval=10))
+        if(batchProcess):
+            self.write_api = self.client.write_api(write_options=WriteOptions(batch_size=50_000, flush_interval=10_000))
+        else:
+            self.write_api = self.client.write_api(write_options=WriteOptions(batch_size=50, flush_interval=10))
+        self.lineNumber = -1
 
         settingsFile = open(settingsPath, 'r')
         self.settings = yaml.full_load(settingsFile)
@@ -33,6 +36,14 @@ class emon_influx:
             'other': self.otherMessage
         }
 
+    def __del__(self):
+        self.client.close()
+    
+    def printException(self, exceptionSource, reading, ex):
+        if( self.lineNumber == -1):
+            print(f"{exceptionSource} {reading} - {ex}")
+        else:
+            print(f"{exceptionSource}:{self.lineNumber}, {reading} - {ex}")
 
     def rainMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadRain()
@@ -40,7 +51,7 @@ class emon_influx:
             try:
                 p = Point("rain").tag("sensor", "rain")\
                                 .tag("sensorName", nodeSettings[0]['name'])\
-                                .field("value", payload.rainCount*nodeSettings[0]['mmPerPulse']*nodeSettings[0]["mmPerPulse"]).time(time)  #each pulse is 0.2mm
+                                .field("value", payload.rainCount*nodeSettings[0]['mmPerPulse']).time(time)  #each pulse is 0.2mm
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("temperature").tag("sensor", "temperature")\
                                         .tag("sensorGroup","rain gauge")\
@@ -52,7 +63,7 @@ class emon_influx:
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"rainException {reading} - {ex}")
+                self.printException("rainException", reading, ex)
 
     def temperatureMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadTemperature()
@@ -70,7 +81,7 @@ class emon_influx:
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"temperatureException {reading} - {ex}")
+                self.printException("temperatureException", reading, ex)
 
     def pulseMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadPulse()
@@ -89,7 +100,7 @@ class emon_influx:
                                 #.field("value", payload.pulse[sensor]*nodeSettings[0][f"p{sensor}_wPerPulse"]/1).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"pulseException {reading} - {ex}")
+                self.printException("pulseException", reading, ex)
 
     def dispMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadDisp()
@@ -101,7 +112,7 @@ class emon_influx:
                                         .field("value", payload.temperature/100).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"dispException {reading} - {ex}")
+                self.printException("dispException", reading, ex)
 
     def HWSMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadHWS()
@@ -120,7 +131,7 @@ class emon_influx:
                                     .field("value", payload.pump[sensor]/1).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"HWSException {reading} - {ex}")
+                self.printException("HWSException", reading, ex)
 
     def waterMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadWater()
@@ -144,7 +155,7 @@ class emon_influx:
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"waterException {reading} - {ex}")
+                self.printException("waterException", reading, ex)
 
     def scaleMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadScale()
@@ -161,7 +172,7 @@ class emon_influx:
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"scaleException {reading} - {ex}")
+                self.printException("scaleException", reading, ex)
 
     def batteryMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadBattery()
@@ -201,7 +212,7 @@ class emon_influx:
                                             .field("value", voltage/1).time(time)
                         self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"batteryException {reading} - {ex}")
+                self.printException("batteryException", reading, ex)
 
     def inverterMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadInverter()
@@ -243,7 +254,7 @@ class emon_influx:
                                     .field("value",payload.batteryCapacity/1).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"inverterException {reading} - {ex}")
+                self.printException("inverterException", reading, ex)
 
     def beeMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadBeehive()
@@ -285,7 +296,7 @@ class emon_influx:
                                     .field("value",payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"beehiveException {reading} - {ex}")
+                self.printException("beehiveException", reading, ex)
 
     def airMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadAirQuality()
@@ -322,7 +333,7 @@ class emon_influx:
                                 .field("value",payload.pm10p0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
             except Exception as ex:
-                print(f"airQualityException {reading} - {ex}")
+                self.printException("airQualityException", reading, ex)
 
     def otherMessage(self, time, reading, nodeSettings ):
         print(reading)
@@ -330,7 +341,7 @@ class emon_influx:
 
     def process_line(self, command, time, line ):
         if(command in self.dispatch.keys()):
-            self.dispatch[command](self, time, line, self.settings[command])
+            self.dispatch[command](time, line, self.settings[command])
 
 
     def process_file(self, path):
@@ -339,14 +350,17 @@ class emon_influx:
             local = pytz.timezone("Australia/Perth")
             f = open(path, "r")
             num_lines = sum(1 for line in f)
-            lineNum = 0
+            self.lineNumber = 0
             currentPercent = 0
             f.seek(0)
             for line in f:
                 try:
-                    dateAndNode = line.split(',',2)
+                    self.lineNumber = self.lineNumber+1
+                    dateAndNode = line.split(',',3)
                     node = dateAndNode[1].rstrip('0123456789')
                     time = datetime.datetime.now()
+                    if("rain" in dateAndNode[2]):
+                        continue    # skip rain,rain,txCount,temperature,supplyV|ms_since_last_pkt 
                     if( " AM" in dateAndNode[0] or" PM" in dateAndNode[0]  ):
                         time = datetime.datetime.strptime(dateAndNode[0], "%d/%m/%Y %I:%M:%S %p")
                     else:
@@ -354,12 +368,11 @@ class emon_influx:
                     local_dt = local.localize(time, is_dst=None)
                     utc_dt = local_dt.astimezone(pytz.utc)                
                     self.process_line( node, utc_dt, line[len(dateAndNode[0])+1: ])
-                    lineNum = lineNum+1
-                    if(int(lineNum/num_lines*100)>currentPercent):
-                        currentPercent = int(lineNum/num_lines*100)
+                    if(int(self.lineNumber/num_lines*100)>currentPercent):
+                        currentPercent = int(self.lineNumber/num_lines*100)
                         print( f"{currentPercent}%", end='\r' )
                 except Exception as ex:
-                    print(f"Exception in process_file {line} - {ex}")
+                    print(f"Exception in process_file {line}:{self.lineNumber} - {ex}")
         except Exception as ex:
             print(f"Exception in process_file - {ex}")
         
