@@ -3,11 +3,8 @@ import datetime
 import argparse
 from pyemonlib import emon_influx
 
-#ei = emon_influx.emon_influx(settingsPath="/share/emon_Suite/PythonBindings/emon_config.yml")
-#ei.process_files("/share/Input_all")
-
 def process_file(path):
-    ei = emon_influx.emon_influx(settingsPath="/share/emon_Suite/PythonBindings/emon_config.yml")
+    ei = emon_influx.emon_influx(settingsPath="/share/emon_Suite/python/emon_config.yml")
     ei.process_file(path)
 
 

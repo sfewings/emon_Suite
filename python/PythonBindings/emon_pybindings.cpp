@@ -4,7 +4,7 @@
 #define __linux__
 #define MQTT_LIB
 
-#include "../EmonShared/EmonShared.cpp"
+#include "../../EmonShared/EmonShared.cpp"
 
 namespace py = pybind11;
 

@@ -11,5 +11,5 @@ setup(
     setup_requires=['pytest-runner'],
     tests_require=['pytest==4.4.1', 'cython', 'numpy', 'pytz'],
     test_suite='tests',
-    package_data={'': ['emonSuite.cpython-37m-arm-linux-gnueabihf.so']},
+    package_data={'': ['emonSuite.cpython-37m-arm-linux-gnueabihf.so']}
 )

@@ -30,10 +30,10 @@ def subscribe_mqtt( mqttServer, emonInflux ):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Subscribe to MQTT emon messages and parse to Influx")
-    parser.add_argument("--MQTT", help= "IP address of MQTT server", default="192.168.1.111")
+    parser.add_argument("-m", "--MQTT", help= "IP address of MQTT server", default="localhost")
     args = parser.parse_args()
     mqttServer = str(args.MQTT)
 
-    emonInflux = emon_influx.emon_influx(settingsPath="/share/emon_Suite/PythonBindings/emon_config.yml", batchProcess=False)
+    emonInflux = emon_influx.emon_influx(settingsPath="/share/emon_Suite/python/emon_config.yml", batchProcess=False)
 
     subscribe_mqtt(mqttServer, emonInflux)

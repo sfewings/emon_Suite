@@ -45,11 +45,23 @@ class emon_influx:
         else:
             print(f"{exceptionSource}:{self.lineNumber}, {reading} - {ex}")
 
+    def publishRSSI(self, time, sensorName, reading):
+        vals = reading.split(':')
+        if('|' in vals[0]):         #reading has a relay value. Add the relay node to the sensor name
+            sensorName = sensorName +'-'+vals[0].split('|')[1]
+        p = Point("rssi").tag("sensor", f"rssi/{sensorName}")\
+                        .tag("sensorGroup","RSSI")\
+                        .tag("sensorName", sensorName)\
+                        .field("value", int(vals[1])).time(time)  #each pulse is 0.2mm
+        self.write_api.write(bucket=self.bucket, record=p)
+        
+
     def rainMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadRain()
         if( emonSuite.EmonSerial.ParseRainPayload(reading,payload) ):
             try:
                 p = Point("rain").tag("sensor", "rain")\
+                                .tag("sensorGroup","rain gauge")\
                                 .tag("sensorName", nodeSettings[0]['name'])\
                                 .field("value", payload.rainCount*nodeSettings[0]['mmPerPulse']).time(time)  #each pulse is 0.2mm
                 self.write_api.write(bucket=self.bucket, record=p)
@@ -62,6 +74,9 @@ class emon_influx:
                                     .tag("sensorName", nodeSettings[0]['name'])\
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[0]['name'], reading )
+
             except Exception as ex:
                 self.printException("rainException", reading, ex)
 
@@ -80,6 +95,9 @@ class emon_influx:
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+
             except Exception as ex:
                 self.printException("temperatureException", reading, ex)
 
@@ -99,6 +117,8 @@ class emon_influx:
                                     .field("value", payload.pulse[sensor]/1).time(time)
                                 #.field("value", payload.pulse[sensor]*nodeSettings[0][f"p{sensor}_wPerPulse"]/1).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[0]['name'], reading )
             except Exception as ex:
                 self.printException("pulseException", reading, ex)
 
@@ -111,6 +131,8 @@ class emon_influx:
                                         .tag("sensorName", (nodeSettings[payload.subnode]["name"])) \
                                         .field("value", payload.temperature/100).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("dispException", reading, ex)
 
@@ -130,6 +152,8 @@ class emon_influx:
                                     .tag("sensorName",nodeSettings[0][f"p{sensor}"])\
                                     .field("value", payload.pump[sensor]/1).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[0]['name'], reading )
             except Exception as ex:
                 self.printException("HWSException", reading, ex)
 
@@ -154,6 +178,8 @@ class emon_influx:
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("waterException", reading, ex)
 
@@ -171,6 +197,8 @@ class emon_influx:
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
                                     .field("value", payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("scaleException", reading, ex)
 
@@ -211,6 +239,8 @@ class emon_influx:
                                             .tag("sensorName",nodeSettings[payload.subnode][f"v{sensor}"])\
                                             .field("value", voltage/1).time(time)
                         self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("batteryException", reading, ex)
 
@@ -253,6 +283,8 @@ class emon_influx:
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
                                     .field("value",payload.batteryCapacity/1).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("inverterException", reading, ex)
 
@@ -295,6 +327,8 @@ class emon_influx:
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
                                     .field("value",payload.supplyV/1000).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("beehiveException", reading, ex)
 
@@ -332,6 +366,8 @@ class emon_influx:
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - 10.0")\
                                 .field("value",payload.pm10p0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("airQualityException", reading, ex)
 
