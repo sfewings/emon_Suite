@@ -2,6 +2,7 @@ version: '2'
 services:
   influxdb:
     image: arm32v7/influxdb:latest
+    container_name: influx
     ports:
       - '8086:8086'
     volumes:
@@ -26,6 +27,7 @@ services:
       - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana1
     ports:
       - '3000:3000'
     volumes:
@@ -37,7 +39,21 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_PANELS_ENABLE_ALPHA=true
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mqtt
+    ports:
+      - 1883:1883
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/logs
+      - ./mosquitto-config:/mosquitto/config
+    restart: unless-stopped
+
 volumes:
   influxdb-storage:
   chronograf-storage:
   grafana-storage:
+  mosquitto-data:
+  mosquitto-logs:
+  mosquitto-conf:
