@@ -82,6 +82,7 @@ void setup ()
 void loop () 
 {
 	volatile uint8_t *data = NULL;
+	uint8_t len = 0;
 	int node_id = 0;
 
 #ifdef USE_JEELIB
@@ -125,13 +126,15 @@ void loop ()
 		{
 			node_id = (rf12_hdr & 0x1F);
 			data = rf12_data;
+			len = rf12_hdr;		//Note. Need to test that this is the same size as sizeof(PayloadXXXX)
 #else
 	if (g_rf69.available())
 	{
 		digitalWrite(GREEN_LED, HIGH);
 		// Should be a message for us now   
 		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
-		uint8_t len = sizeof(buf);
+		memset(buf, 0, RH_RF69_MAX_MESSAGE_LEN);
+		len = sizeof(buf);
 		if (g_rf69.recv(buf, &len))
 		{
 			//RH_RF69::printBuffer("Received: ", buf, len);
@@ -143,54 +146,53 @@ void loop ()
 			node_id = g_rf69.headerId();
 			data = buf;
 #endif
-
-			if (node_id == BASE_JEENODE)		
+			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
 			{
 				SERIAL_OUT(Base, Payload);
 			}
-			if (node_id == PULSE_JEENODE)
+			if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse))
 			{
 				SERIAL_OUT(Pulse, Payload);
 			}
-			if (node_id == TEMPERATURE_JEENODE)
+			if (node_id == TEMPERATURE_JEENODE && len == sizeof(PayloadTemperature))
 			{
 				SERIAL_OUT(Temperature, Payload);
 			}
-			if (node_id == HWS_JEENODE )
+			if (node_id == HWS_JEENODE  && len == sizeof(PayloadHWS))
 			{
 				SERIAL_OUT(HWS, Payload);
 			}
-			if (node_id == RAIN_NODE)				
+			if (node_id == RAIN_NODE  && len == sizeof(PayloadRain))
 			{
 				SERIAL_OUT(Rain, Payload);
 			}
-			if (node_id == DISPLAY_NODE)
+			if (node_id == DISPLAY_NODE && len == sizeof(PayloadDisp))
 			{
 				SERIAL_OUT(Disp, Payload);
 			}
-			if (node_id == WATERLEVEL_NODE)
+			if (node_id == WATERLEVEL_NODE  && len == sizeof(PayloadWater))
 			{
 				PayloadWater* pPayload = (PayloadWater*)data;
 				EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
 				EmonSerial::PrintWaterPayload(pPayload);
 			}
-			if (node_id == SCALE_NODE)
+			if (node_id == SCALE_NODE  && len == sizeof(PayloadScale))
 			{
 				SERIAL_OUT(Scale, Payload);
 			}
-			if (node_id == BATTERY_NODE)
+			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery))
 			{
 				SERIAL_OUT(Battery, Payload);
 			}
-			if (node_id == INVERTER_NODE)
+			if (node_id == INVERTER_NODE  && len == sizeof(PayloadInverter))
 			{
 				SERIAL_OUT(Inverter, Payload);
 			}
-			if (node_id == BEEHIVEMONITOR_NODE)
+			if (node_id == BEEHIVEMONITOR_NODE  && len == sizeof(PayloadBeehive) )
 			{
 				SERIAL_OUT(Beehive, Payload);
 			}
-			if (node_id == AIRQUALITY_NODE)
+			if (node_id == AIRQUALITY_NODE  && len == sizeof(PayloadAirQuality))
 			{
 				SERIAL_OUT(AirQuality, Payload);
 			}
