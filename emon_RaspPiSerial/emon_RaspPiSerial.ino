@@ -170,11 +170,14 @@ void loop ()
 			{
 				SERIAL_OUT(Disp, Payload);
 			}
-			if (node_id == WATERLEVEL_NODE  && len == sizeof(PayloadWater))
+			if (node_id == WATERLEVEL_NODE)
 			{
 				PayloadWater* pPayload = (PayloadWater*)data;
-				EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
-				EmonSerial::PrintWaterPayload(pPayload);
+				int packedSize = EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
+				if( len == packedSize)
+				{
+					EmonSerial::PrintWaterPayload(pPayload);
+				}
 			}
 			if (node_id == SCALE_NODE  && len == sizeof(PayloadScale))
 			{

@@ -201,7 +201,7 @@ public:
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
-	static void UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater);
+	static int UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater);
 
 	static void ParseRelay(PayloadRelay* pPayloadRelay, char* pch);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);
