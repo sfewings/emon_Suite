@@ -2,12 +2,15 @@
 // emon WaterLevel
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
-#define RF69_COMPAT 0
-
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <eeprom.h>
+#include <JeeLib.h>			// still required for sleepy::
+#include <EEPROM.h>
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
+
+#include <SPI.h>
+#include <RH_RF69.h>
+
+RH_RF69 g_rf69;
 
 #define GREEN_LED 9			// Green LED on emonTx
 #define HALL_EFFECT_PIN A0
@@ -15,7 +18,6 @@
 #define EEPROM_BASE 0x10	//where the water count is stored
 #define HALL_PEAK_THRESHOLD 3	//the minimum change in reading required to signal a change from rising to falling
 
-//bool g_toggleLED = false;
 bool g_lastActivity = false;
 
 //currently hard-coded flowCount[0] is water metre on hall effect A0 pin, flowCount[1] is bore pulse 
@@ -37,8 +39,6 @@ typedef struct HallEffectStateType
 HallEffectStateType g_hallEffectState;
 
 volatile unsigned long	g_flowCount = 0;		//number of pulses in total since installation
-
-RF12Init rf12Init = { WATERLEVEL_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
 
 PayloadWater g_waterPayload;
 
@@ -259,9 +259,20 @@ void setup()
 	digitalWrite(GREEN_LED, HIGH);		//LED has inverted logic. LOW is on, HIGH is off!
 
 
-	Serial.println("rf12_initialize");
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
-	EmonSerial::PrintRF12Init(rf12Init);
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(WATERLEVEL_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(WATERLEVEL_NODE);
+	Serial.println(" Freq: 915MHz");
 
 
 	//initialise the EEPROMSettings for relay and node number
@@ -291,6 +302,8 @@ void setup()
 
 	pinMode(FLOW_INTERRUPT_PIN, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(FLOW_INTERRUPT_PIN), interruptHandlerWaterFlow, CHANGE);
+
+	EmonSerial::PrintWaterPayload(NULL);
 
 	delay(100);
 	
@@ -348,24 +361,19 @@ void loop ()
 	//don't transmit while calibrating
 	if (g_hallEffectState.calibrationStep == eFinished)
 	{
-		rf12_sleep(RF12_WAKEUP);
-
-		int wait = 1000;
-		while (!rf12_canSend() && wait--)
-			rf12_recvDone();
-		if (wait)
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+		PayloadWater packed;
+		int len = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
+		g_rf69.send((const uint8_t*) &packed, len);
+		if( g_rf69.waitPacketSent() )
 		{
-			PayloadWater packed;
-			int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
-			rf12_sendStart(0, &packed, size);
-			rf12_sendWait(0);
 			EmonSerial::PrintWaterPayload(&g_waterPayload);
 		}
 		else
 		{
-			Serial.println(F("RF12 waiting. No packet sent"));
+			Serial.println(F("No packet sent"));
 		}
-		rf12_sleep(RF12_SLEEP);
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 	}
 
 	
