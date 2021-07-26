@@ -26,12 +26,15 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
     > pip install ./dist/pyemonlib-0.1.0-py3-none-any.whl
     or
     > pip3 uninstall -y pyemonlib && pip3 install ./dist/pyemonlib-0.1.0-py3-none-any.whl
+
 To create and enable python environment
 =======================================
 1. Create environment named venv 
-    python3 -m venv venv
+   > python3 -m venv venv
 2. Activate the environment
-    source venv/bin/activate
+   > source venv/bin/activate
+3. Deactivate the environment
+   > deactivate
 
 To drop the sensor database from influx and create a new one
 ============================================================

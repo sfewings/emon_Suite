@@ -48,6 +48,9 @@ class emon_influx:
     def publishRSSI(self, time, sensorName, reading):
         vals = reading.split(':')
         if('|' in vals[0]):         #reading has a relay value. Add the relay node to the sensor name
+            relay = vals[0].split('|')[1]   # get the relay string e.g."00001010"
+            if(relay.count("1")>1):
+                return              #don't publish RSSI values that have more than 1 relay. As we don't know which relay node the RSSI represents
             sensorName = sensorName +'-'+vals[0].split('|')[1]
         p = Point("rssi").tag("sensor", f"rssi/{sensorName}")\
                         .tag("sensorGroup","RSSI")\
@@ -132,7 +135,7 @@ class emon_influx:
                                         .field("value", payload.temperature/100).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
-                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" display", reading )
             except Exception as ex:
                 self.printException("dispException", reading, ex)
 
@@ -367,7 +370,7 @@ class emon_influx:
                                 .field("value",payload.pm10p0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
-                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" air", reading )
             except Exception as ex:
                 self.printException("airQualityException", reading, ex)
 
