@@ -3,13 +3,15 @@
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include <Time.h>
-#define RF69_COMPAT 0
-
-//JeeLab libraires				http://github.com/jcw
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
 #include <EmonShared.h>
 #include <SD.h>
 #include <TimeLib.h>
+
+#include <SPI.h>
+#include <RH_RF69.h>
+// Singleton instance of the radio driver
+RH_RF69 g_rf69;
+#define RFM69_RST     4
 
 #undef RTC_LIB
 
@@ -23,8 +25,6 @@ const int RED_LED=6;
 const int GREEN_LED = 5;
 
 byte  currentDay = 0;
-
-RF12Init rf12Init = { EMON_LOGGER, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 
 #define MAX_FILENAME_LEN 15
 #define DATETIME_LEN 24
@@ -55,9 +55,25 @@ void setup ()
 	delay(1000);
 	Serial.println(F("Fewings emon Logger. Logging emon packets to SD card"));
 
-	Serial.println(F("rf12_initialize"));
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
-	EmonSerial::PrintRF12Init(rf12Init);
+	pinMode(RFM69_RST, OUTPUT);
+	digitalWrite(RFM69_RST, LOW);
+	delay(1);
+	digitalWrite(RFM69_RST, HIGH);
+	delay(10);
+	digitalWrite(RFM69_RST, LOW);
+	delay(10);
+
+
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	Serial.println("RF69 initialise node: 10 Freq: 915MHz");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(BASE_JEENODE);
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
@@ -67,6 +83,10 @@ void setup ()
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
 	EmonSerial::PrintScalePayload(NULL);
+	EmonSerial::PrintBatteryPayload(NULL);
+	EmonSerial::PrintInverterPayload(NULL);
+	EmonSerial::PrintBeehivePayload(NULL);
+	EmonSerial::PrintAirQualityPayload(NULL);
 
 	SdFile::dateTimeCallback(dateTime);
 
@@ -159,7 +179,7 @@ void setup ()
 }
 
 #define PRINT_AND_LOG(NAME, PAYLOAD)\
-		Payload##NAME* pPayload = (Payload##NAME*)rf12_data; \
+		Payload##NAME* pPayload = (Payload##NAME*)data; \
 		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
 		if(file) {\
 			digitalWrite(GREEN_LED, HIGH);\
@@ -174,22 +194,28 @@ void loop ()
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
-	if (rf12_recvDone())
+	if (g_rf69.available())
 	{
+		volatile uint8_t *data = NULL;
+		uint8_t len = 0;
+		int node_id = 0;
+		
 		digitalWrite(RED_LED, HIGH);
-
-		if (rf12_crc)
+		// Should be a message for us now   
+		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+		memset(buf, 0, RH_RF69_MAX_MESSAGE_LEN);
+		len = sizeof(buf);
+		if (g_rf69.recv(buf, &len))
 		{
-			Serial.print(F("rcv crc err:"));
-			Serial.print(rf12_crc);
-			Serial.print(F(",len:"));
-			Serial.println(rf12_hdr);
-		}
+			//RH_RF69::printBuffer("Received: ", buf, len);
+			//Serial.print("Got request: ");
+			//Serial.print((char*)buf);
+			Serial.print("RSSI: ");
+			Serial.println(g_rf69.lastRssi(), DEC);
 
-		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
-		{
-			int node_id = (rf12_hdr & 0x1F);
-			int subnode = 0;
+			node_id = g_rf69.headerId();
+			data = buf;
+
 			File file = File();
 			char dateTime[DATETIME_LEN];
 
@@ -205,57 +231,72 @@ void loop ()
 			}
 
 
-			if (node_id == BASE_JEENODE)						// jeenode base Receives the time
+			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
 			{
 				PRINT_AND_LOG(Base, Payload);
 				setTime(pPayload->time);
 				currentDay = day();		//will indicate time is set
 			}
 
-			if (node_id == PULSE_JEENODE)						// === PULSE NODE ====
+			if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse))						// === PULSE NODE ====
 			{
 				PRINT_AND_LOG(Pulse, Payload);
 			}
-			if (node_id == TEMPERATURE_JEENODE)
+			if (node_id == TEMPERATURE_JEENODE && len == sizeof(PayloadTemperature))
 			{
 				PRINT_AND_LOG(Temperature, Payload);
 			}
-			if (node_id == HWS_JEENODE )
+			if (node_id == HWS_JEENODE && len == sizeof(PayloadHWS))
 			{
 				PRINT_AND_LOG(HWS, Payload);
 			}
 
-			if (node_id == RAIN_NODE)				
+			if (node_id == RAIN_NODE && len == sizeof(PayloadRain))				
 			{
 				PRINT_AND_LOG(Rain, Payload);
 			}
 
-			if (node_id == DISPLAY_NODE)
+			if (node_id == DISPLAY_NODE && len == sizeof(PayloadDisp))
 			{
 				PRINT_AND_LOG(Disp, Payload);
 			}
 
 			if (node_id == WATERLEVEL_NODE)
 			{
-				PayloadWater* pPayload = (PayloadWater*)rf12_data;
-				EmonSerial::UnpackWaterPayload((byte*) pPayload, pPayload);
-				EmonSerial::PrintWaterPayload(pPayload);
-				if(file) 
+				PayloadWater* pPayload = (PayloadWater*)data;
+				int packedSize = EmonSerial::UnpackWaterPayload((byte*) pPayload, pPayload);
+				if( packedSize == len) 
 				{
-					digitalWrite(GREEN_LED, HIGH);
-					file.print(dateTime);
-					EmonSerial::PrintWaterPayload(file, pPayload);
+					EmonSerial::PrintWaterPayload(pPayload);
+					if(file) 
+					{
+						digitalWrite(GREEN_LED, HIGH);
+						file.print(dateTime);
+						EmonSerial::PrintWaterPayload(file, pPayload);
+					}
 				}
 			}
 
-			if (node_id == SCALE_NODE)
+			if (node_id == SCALE_NODE && len == sizeof(PayloadScale))
 			{
 				PRINT_AND_LOG(Scale, Payload);
 			}
 
-			if (node_id == BATTERY_NODE)
+			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery))
 			{
 				PRINT_AND_LOG(Battery, Payload);
+			}
+			if (node_id == INVERTER_NODE  && len == sizeof(PayloadInverter))
+			{
+				PRINT_AND_LOG(Inverter, Payload);
+			}
+			if (node_id == BEEHIVEMONITOR_NODE  && len == sizeof(PayloadBeehive) )
+			{
+				PRINT_AND_LOG(Beehive, Payload);
+			}
+			if (node_id == AIRQUALITY_NODE  && len == sizeof(PayloadAirQuality))
+			{
+				PRINT_AND_LOG(AirQuality, Payload);
 			}
 
 			if (file)
