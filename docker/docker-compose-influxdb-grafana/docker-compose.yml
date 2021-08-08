@@ -39,6 +39,7 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_PANELS_ENABLE_ALPHA=true
+      - GF_SERVER_ROOT_URL=https://shannstainable.fewings.org/grafana
   mosquitto:
     image: eclipse-mosquitto
     container_name: mqtt
