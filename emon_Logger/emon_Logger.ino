@@ -182,7 +182,6 @@ void setup ()
 		Payload##NAME* pPayload = (Payload##NAME*)data; \
 		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
 		if(file) {\
-			digitalWrite(GREEN_LED, HIGH);\
 			file.print(dateTime);\
 			EmonSerial::Print##NAME##PAYLOAD(file, pPayload); \
 		}\
@@ -199,8 +198,9 @@ void loop ()
 		volatile uint8_t *data = NULL;
 		uint8_t len = 0;
 		int node_id = 0;
-		
-		digitalWrite(RED_LED, HIGH);
+		int led = RED_LED;
+
+		//digitalWrite(RED_LED, HIGH);
 		// Should be a message for us now   
 		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
 		memset(buf, 0, RH_RF69_MAX_MESSAGE_LEN);
@@ -218,18 +218,18 @@ void loop ()
 
 			File file = File();
 			char dateTime[DATETIME_LEN];
-
+			
 			if (currentDay != 0)  //the time has been set!
 			{
 				char fileName[MAX_FILENAME_LEN];
 				//yyyy-mm-dd.txt
 				snprintf_P(fileName, MAX_FILENAME_LEN, PSTR("%04d%02d%02d.txt"), year(), month(), day());
-
+				if( SD.exists(fileName))
+					led = GREEN_LED;  //note. THis doesn't work. If the card is ejected this still returns true!
 				file = SD.open(fileName, FILE_WRITE);
-
 				GetDateTimeStr(dateTime);
 			}
-
+			digitalWrite(led, HIGH);
 
 			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
 			{
@@ -270,7 +270,6 @@ void loop ()
 					EmonSerial::PrintWaterPayload(pPayload);
 					if(file) 
 					{
-						digitalWrite(GREEN_LED, HIGH);
 						file.print(dateTime);
 						EmonSerial::PrintWaterPayload(file, pPayload);
 					}
