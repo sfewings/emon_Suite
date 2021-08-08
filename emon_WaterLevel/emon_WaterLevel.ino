@@ -7,6 +7,8 @@
 #include <EmonEEPROM.h>
 #include <SoftwareSerial.h>
 #include <RH_RF69.h>
+#include <avr/wdt.h>    //watchdog timer
+
 
 #define GREEN_LED 9			// Green LED on emonTx
 bool g_toggleLED = false;
@@ -132,8 +134,9 @@ void setup()
 	pinMode(3, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
 
-	delay(100);
-	
+  	Serial.println(F("Watchdog timer set for 8 seconds"));
+  	wdt_enable(WDTO_8S);
+  	delay(100);	
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
 
@@ -142,6 +145,8 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
+	wdt_reset();
+
 	char s[16];
 
 	unsigned long flowCount = (unsigned long)(g_flowCount / PULSES_PER_DECILITRE);
@@ -174,6 +179,7 @@ void loop ()
 		break;
 	}
 	Serial.println(s);
+	EmonSerial::PrintWaterPayload(&g_waterPayload);
 
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 	PayloadWater packed;
@@ -182,9 +188,9 @@ void loop ()
 	if( g_rf69.waitPacketSent() )
 	{
 		//unpack and print. To make sure we sent correctly
-		memset(&g_waterPayload, 0, sizeof(g_waterPayload));
-		EmonSerial::UnpackWaterPayload((byte*) &packed, &g_waterPayload);
-		EmonSerial::PrintWaterPayload(&g_waterPayload);
+//		memset(&g_waterPayload, 0, sizeof(g_waterPayload));
+//		EmonSerial::UnpackWaterPayload((byte*) &packed, &g_waterPayload);
+//		EmonSerial::PrintWaterPayload(&g_waterPayload);
 	}
 	else
 	{
@@ -192,10 +198,18 @@ void loop ()
 	}
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-
+	int waitMS;
+	Serial.println(activity);
 	if (activity || g_previousActivity)
-		delay(1000);
+		waitMS = 1000;  //keep sending if there is water movement
 	else
-		delay(30000);
+		waitMS = 30000; //wait 30 seconds before sending a new update
+	while(waitMS >= 0)
+	{
+		delay(1000);
+		waitMS = waitMS - 1000;
+		Serial.println(waitMS);
+		wdt_reset();
+	}
 	g_previousActivity = activity;
 }
