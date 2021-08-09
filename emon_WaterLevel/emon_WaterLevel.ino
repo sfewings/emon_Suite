@@ -7,7 +7,7 @@
 #include <EmonEEPROM.h>
 #include <SoftwareSerial.h>
 #include <RH_RF69.h>
-//#include <avr/wdt.h>    //watchdog timer
+#include <avr/wdt.h>    //watchdog timer
 
 
 #define GREEN_LED 9			// Green LED on emonTx
@@ -127,7 +127,6 @@ void setup()
 	//writeEEPROM(0, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
-	//g_waterPayload.flowRate = 0;
 	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
 	g_waterPayload.flowCount[0] = (unsigned long) ( g_flowCount/PULSES_PER_DECILITRE);
 
@@ -135,7 +134,7 @@ void setup()
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
 
   	Serial.println(F("Watchdog timer set for 8 seconds"));
-  //wdt_enable(WDTO_8S);
+  	wdt_enable(WDTO_8S);
   	delay(100);	
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
@@ -145,7 +144,7 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
-	//wdt_reset();
+	wdt_reset();
 
 	char s[16];
 
@@ -162,7 +161,7 @@ void loop ()
 
 	g_waterPayload.supplyV = readVcc();
 	g_waterPayload.flowCount[0] = flowCount;
-	g_waterPayload.waterHeight[0] = 960;//waterHeight;
+	g_waterPayload.waterHeight[0] = waterHeight;
 
 	switch (g_waterHeightSensor.getStatus())
 	{
@@ -179,13 +178,11 @@ void loop ()
 		break;
 	}
 	Serial.println(s);
-	EmonSerial::PrintWaterPayload(&g_waterPayload);
 
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 	PayloadWater packed;
 	int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
-	bool sendOK = g_rf69.send((const uint8_t*) &packed, size);
-	Serial.println(sendOK);
+	g_rf69.send((const uint8_t*) &packed, size);
 	if( g_rf69.waitPacketSent() )
 	{
 		//unpack and print. To make sure we sent correctly
@@ -203,13 +200,12 @@ void loop ()
 	if (activity || g_previousActivity)
 		waitMS = 1000;  //keep sending if there is water movement
 	else
-		waitMS = 3000; //wait 30 seconds before sending a new update
+		waitMS = 30000; //wait 30 seconds before sending a new update
 	while(waitMS >= 0)
 	{
 		delay(1000);
-		Serial.println(waitMS);
 		waitMS = waitMS - 1000;
-		//wdt_reset();
+		wdt_reset();
 	}
 	g_previousActivity = activity;
 }
