@@ -495,7 +495,7 @@ int EmonSerial::PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr)
 		return 0;	//not permitted!
 	ptr2 += offsetof(PayloadWater, flowCount);
 	ptr2 += sizeof(unsigned long) * numFlowCount;
-	for (int i = 0; i < numHeight >> 4; i++)
+	for (int i = 0; i < numHeight; i++)
 	{
 		int height = pPayloadWater->waterHeight[i];
 		memcpy(ptr2, &height, sizeof(int));

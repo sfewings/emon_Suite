@@ -7,6 +7,8 @@
 #include <EmonEEPROM.h>
 #include <SoftwareSerial.h>
 #include <RH_RF69.h>
+#include <avr/wdt.h>    //watchdog timer
+
 
 #define GREEN_LED 9			// Green LED on emonTx
 bool g_toggleLED = false;
@@ -125,15 +127,15 @@ void setup()
 	//writeEEPROM(0, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
-	//g_waterPayload.flowRate = 0;
 	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
 	g_waterPayload.flowCount[0] = (unsigned long) ( g_flowCount/PULSES_PER_DECILITRE);
 
 	pinMode(3, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
 
-	delay(100);
-	
+  	Serial.println(F("Watchdog timer set for 8 seconds"));
+  	wdt_enable(WDTO_8S);
+  	delay(100);	
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
 
@@ -142,6 +144,8 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
+	wdt_reset();
+
 	char s[16];
 
 	unsigned long flowCount = (unsigned long)(g_flowCount / PULSES_PER_DECILITRE);
@@ -192,10 +196,16 @@ void loop ()
 	}
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-
+	int waitMS;
 	if (activity || g_previousActivity)
-		delay(1000);
+		waitMS = 1000;  //keep sending if there is water movement
 	else
-		delay(30000);
+		waitMS = 30000; //wait 30 seconds before sending a new update
+	while(waitMS >= 0)
+	{
+		delay(1000);
+		waitMS = waitMS - 1000;
+		wdt_reset();
+	}
 	g_previousActivity = activity;
 }
