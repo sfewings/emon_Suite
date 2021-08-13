@@ -24,6 +24,9 @@
 
 #include <SPI.h>
 #include <RH_RF69.h>
+#include <avr/wdt.h>    //watchdog timer
+
+
 // Singleton instance of the radio driver
 RH_RF69 g_rf69;
 
@@ -317,7 +320,7 @@ void setup()
 
 	lcd.print(F("Fewings Power"));
 	lcd.setCursor(0, 1);
-	lcd.print(F("Monitor 4.1"));
+	lcd.print(F("Monitor 4.2"));
 
 	Serial.println(F("Fewings emon LCD monitor - gen and use"));
 
@@ -411,6 +414,8 @@ void setup()
 
 	//let the startup LCD display for a while!
 	delay(2500);
+
+  	wdt_enable(WDTO_8S);
 }
 //--------------------------------------------------------------------------------------------
 
@@ -420,6 +425,8 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
+	wdt_reset();
+
 	time_t time = now();
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
