@@ -414,8 +414,8 @@ void setup()
 	slow_update = now();
 
 	//let the startup LCD display for a while!
-	delay(2500);
-
+	wdt_disable();  /* Disable the watchdog and wait for more than 2 seconds */
+	delay(3000);  /* Done so that the Arduino doesn't keep resetting infinitely in case of wrong configuration */
   	wdt_enable(WDTO_8S);
 }
 //--------------------------------------------------------------------------------------------

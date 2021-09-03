@@ -14,7 +14,7 @@
 RH_RF69 g_rf69;
 
 
-#define PORTS 5							//number of ports on the JeeNode
+#define PORTS 4							//number of ports on the JeeNode
 #define VOLTAGE_MEASURE_PIN 		A0
 //#define WHISPER_NODE 1
 
@@ -201,7 +201,7 @@ void loop()
 
 	//only send as many ints as we have temperatures plus numSensors + Vcc	
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-	g_rf69.send((const uint8_t*) &temperaturePayload, sizeof(temperaturePayload) - sizeof(int)*(MAX_TEMPERATURE_SENSORS- temperaturePayload.numSensors));
+	g_rf69.send((const uint8_t*) &temperaturePayload, sizeof(temperaturePayload));// - sizeof(int)*(MAX_TEMPERATURE_SENSORS- temperaturePayload.numSensors));
 	if( g_rf69.waitPacketSent() )
 	{
 		EmonSerial::PrintTemperaturePayload(&temperaturePayload);
