@@ -11,12 +11,12 @@
 // 2010-05-28 <jcw@equi4.com> http://opensource.org/licenses/mit-license.php
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-
-#include <PortsLCD.h>
+#include <LiquidCrystal.h>
 #include <TimeLib.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
+#include <PinChangeInterrupt.h>
+//#include <PinChangeInt.h>				//Library to provide additional interrupts on the Arduino Uno328
 #include <EEPROM.h>
 
 #include <EmonShared.h>
@@ -399,9 +399,10 @@ void setup()
 
 	//pushbutton configuration
 	pinMode(A3, INPUT_PULLUP);
-	attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
-
-	EmonSerial::PrintRainPayload(NULL);
+	//attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
+  attachPCINT(digitalPinToPCINT(A3),interruptHandlerPushButton, RISING);
+  
+  EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
