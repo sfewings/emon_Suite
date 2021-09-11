@@ -101,7 +101,7 @@ void setup()
 
 
 	// Initialise 
-	//writeEEPROM(0, 0);					//reset the flash
+	//writeEEPROM(0, 16453);					//reset the flash
 	g_rainCount = readEEPROM(0);	//read last reading from flash
 	g_transmitCount = 1;
 	g_RGlastTick = millis();
@@ -129,6 +129,10 @@ void loop()
 
 	if (doTransmit)
 	{
+    if( g_transmitCount == 0)
+    {
+      writeEEPROM(0, g_rainCount);    //update eeprom
+    }
 		g_transmitCount++;
 		rainPayload.rainCount = g_rainCount;
 		rainPayload.transmitCount = g_transmitCount;
