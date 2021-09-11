@@ -55,7 +55,7 @@ class emon_influx:
         p = Point("rssi").tag("sensor", f"rssi/{sensorName}")\
                         .tag("sensorGroup","RSSI")\
                         .tag("sensorName", sensorName)\
-                        .field("value", int(vals[1])).time(time)  #each pulse is 0.2mm
+                        .field("value", int(vals[1])).time(time)
         self.write_api.write(bucket=self.bucket, record=p)
         
 
@@ -231,10 +231,10 @@ class emon_influx:
                                         .field("value", payload.pulseOut[sensor]/1).time(time)
                         self.write_api.write(bucket=self.bucket, record=p)
                 #get the mid voltages
-                railVoltage = payload.voltage[0]
+                railVoltage = payload.voltage[0]/100.0  #voltages are in 100ths
                 for sensor in range(emonSuite.MAX_VOLTAGES):
                     if(nodeSettings[payload.subnode][f"v{sensor}"] != "Unused"):
-                        voltage = payload.voltage[sensor]
+                        voltage = payload.voltage[sensor]/100.0
                         if(sensor != 0 ):
                             voltage = voltage - railVoltage/2.0
                         p = Point("voltage").tag("sensor",f"battery/voltage/{sensor}/{payload.subnode}")\

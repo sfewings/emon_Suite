@@ -11,7 +11,8 @@ To create python bindings
 To create pyemonlib
 ===================
 Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-library-7d5aea80cc3f 
-1. Create a virtual environment to contain the python setup
+1. Create a virtual environment to contain the python setup in pyEmon
+    > cd ./emon_Suite/python/pyEmon
     > python3 -m venv venv
     > source venv/bin/activate
 2. Install the libraries required for setup
@@ -25,6 +26,7 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
 4. Copy the wheel from dist and install
     > pip install ./dist/pyemonlib-0.1.0-py3-none-any.whl
     or
+    > deactivate
     > pip3 uninstall -y pyemonlib && pip3 install ./dist/pyemonlib-0.1.0-py3-none-any.whl
 
 To create and enable python environment
