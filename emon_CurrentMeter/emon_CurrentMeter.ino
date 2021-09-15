@@ -276,8 +276,8 @@ void loop()
 	unsigned long period = now - g_lastMillis;
 	g_lastMillis = now;
 
-//	g_payloadBattery.power[0] = mVolts * amps / 100.0;  //convert mV to mW
-	g_payloadBattery.power[0] = mVolts * amps / 1000.0 * 4;//convert mV* amps to W . *4 for 4 12v batteries in series tests.
+	g_payloadBattery.power[0] = mVolts * amps / 1000.0;  //convert mV to mW
+//	g_payloadBattery.power[0] = mVolts * amps / 1000.0 * 4;//convert mV* amps to W . *4 for 4 12v batteries in series tests.
 	if (g_payloadBattery.power[0] < 0)
 		g_mWH_Out += -1.0 * g_payloadBattery.power[0] * period / (60 * 60 * 1000.0); //convert to wH
 	else
