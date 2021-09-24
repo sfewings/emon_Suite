@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+from pybind11.setup_helpers import Pybind11Extension
+
 
 setup(
     name='pyemonlib',
@@ -11,5 +13,6 @@ setup(
     setup_requires=['pytest-runner'],
     tests_require=['pytest==4.4.1', 'cython', 'numpy', 'pytz'],
     test_suite='tests',
-    package_data={'': ['emonSuite.cpython-37m-arm-linux-gnueabihf.so']}
+    ext_modules = [Pybind11Extension( "pyemonlib.emonSuite",['pyemonlib/emon_pybindings.cpp'])]
+    #package_data={'': ['emonSuite.cpython-37m-arm-linux-gnueabihf.so']}
 )
