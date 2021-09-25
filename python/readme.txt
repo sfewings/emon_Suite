@@ -1,13 +1,3 @@
-To create python bindings
-=========================
-1. To create python bindings using pybind11  https://pybind11.readthedocs.io/
-    pybind11 is included as a git submodule of emon_suite
-        git submodule add -b stable ../../pybind/pybind11 extern/pybind11
-        git submodule update --init
-2. Build python .so 
-    run ./make.sh
-3. Copy emonSuite.cpython-37m-arm-linux-gnueabihf.so to the pyEmon/pyemonlib
-    
 To create pyemonlib
 ===================
 Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-library-7d5aea80cc3f 
@@ -19,6 +9,7 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
     > pip install wheel
     > pip install setuptools
     > pip install twine
+    > pip install Pybind11Extension
 3. Run all the tests in tests folder
     > python setup.py pytest
 3. Run setup
