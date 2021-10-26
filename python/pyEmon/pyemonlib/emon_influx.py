@@ -48,11 +48,14 @@ class emon_influx:
     def publishRSSI(self, time, sensorName, reading):
         vals = reading.split(':')
         if('|' in vals[0]):         #reading has a relay value. Add the relay node to the sensor name
+            relay = vals[0].split('|')[1]   # get the relay string e.g."00001010"
+            if(relay.count("1")>1):
+                return              #don't publish RSSI values that have more than 1 relay. As we don't know which relay node the RSSI represents
             sensorName = sensorName +'-'+vals[0].split('|')[1]
         p = Point("rssi").tag("sensor", f"rssi/{sensorName}")\
                         .tag("sensorGroup","RSSI")\
                         .tag("sensorName", sensorName)\
-                        .field("value", int(vals[1])).time(time)  #each pulse is 0.2mm
+                        .field("value", int(vals[1])).time(time)
         self.write_api.write(bucket=self.bucket, record=p)
         
 
@@ -132,7 +135,7 @@ class emon_influx:
                                         .field("value", payload.temperature/100).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
-                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" display", reading )
             except Exception as ex:
                 self.printException("dispException", reading, ex)
 
@@ -228,10 +231,10 @@ class emon_influx:
                                         .field("value", payload.pulseOut[sensor]/1).time(time)
                         self.write_api.write(bucket=self.bucket, record=p)
                 #get the mid voltages
-                railVoltage = payload.voltage[0]
+                railVoltage = payload.voltage[0]/100.0  #voltages are in 100ths
                 for sensor in range(emonSuite.MAX_VOLTAGES):
                     if(nodeSettings[payload.subnode][f"v{sensor}"] != "Unused"):
-                        voltage = payload.voltage[sensor]
+                        voltage = payload.voltage[sensor]/100.0
                         if(sensor != 0 ):
                             voltage = voltage - railVoltage/2.0
                         p = Point("voltage").tag("sensor",f"battery/voltage/{sensor}/{payload.subnode}")\
@@ -367,7 +370,7 @@ class emon_influx:
                                 .field("value",payload.pm10p0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
-                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" air", reading )
             except Exception as ex:
                 self.printException("airQualityException", reading, ex)
 

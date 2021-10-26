@@ -41,6 +41,7 @@ if __name__ == "__main__":
     with serial.Serial(serialPort, 9600, timeout=5) as ser:
         while 1:
             line = ser.readline().decode('utf-8').rstrip('\r\n')
+            #print(line)
             if(line.startswith("RSSI")):
                 RSSIvalue = int(line[6:])     #parse -36 from "RSSI: -36"
             else:

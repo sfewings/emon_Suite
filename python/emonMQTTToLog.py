@@ -35,10 +35,12 @@ def subscribe_mqtt( mqttServer, emonInflux ):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Log Emon mqtt messages to daily log.TXT files")
-    parser.add_argument("-m", "--MQTT", help= "IP address of MQTT server", default="localhost")
+    parser.add_argument("-m", "--MQTT", help= "IP address of MQTT server", default="0.0.0.0")
     parser.add_argument("-l", "--logPath", help= "Path to log", default="/share/Input")
     args = parser.parse_args()
     mqttServer = str(args.MQTT)
     logPath = str(args.logPath)
 
+    print(f'mqttServer={mqttServer}')
+    
     subscribe_mqtt(mqttServer, logPath)
