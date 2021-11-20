@@ -106,6 +106,21 @@ bat:
     v6: Unused
     v7: Unused
     v8: Arduino
+  2:
+    name: Reverse Current Tester
+    s0: Bank 1 - Reverse
+    s1: Bank 1 - Forward
+    s2: Unused
+    v0: 50v ref
+    v0_reference: true
+    v1: V_In
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Arduino
 air:
   0:
     name: Kitchen
