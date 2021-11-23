@@ -191,7 +191,7 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			PayloadPulse pulse;
 			if (EmonSerial::ParsePulsePayload((char*)reading.c_str(), &pulse))
 			{
-				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported" };
+				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported", "Car", "unused" };
 				for (int i = 0; i< PULSE_NUM_PINS; i++)
 				{
 						m_power.Add(sensor[i], time, pulse.power[i]);

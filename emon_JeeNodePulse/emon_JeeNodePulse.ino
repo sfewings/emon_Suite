@@ -7,18 +7,19 @@
 #include <RH_RF69.h>
 
 
-#define NUM_PINS	PULSE_NUM_PINS
+//--------------------------------------------------------------------------------------
 #define FIRST_PIN 4
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
 
 RH_RF69 g_rf69;
 
-volatile unsigned long 	g_pulseCount[NUM_PINS]	= { 0,0,0,0 };	//pulses since recording started
-volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
-volatile unsigned long	g_period[NUM_PINS]			= { 0,0,0,0 };		//ms between last two pulses
-const		double		g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,0.4,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
-PayloadPulse pulsePayload;
+volatile unsigned long 	g_pulseCount[PULSE_MAX_SENSORS]	= { 0,0,0,0,0,0 };	//pulses since recording started
+volatile unsigned long	g_lastTick[PULSE_MAX_SENSORS]		= { 0,0,0,0,0,0 };		//millis() value at last pulse
+volatile unsigned long	g_period[PULSE_MAX_SENSORS]			= { 0,0,0,0,0,0 };		//ms between last two pulses
+const		double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 2.0,2.0,0.4,1.0,2.0,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
+const    uint8_t		g_pin[PULSE_MAX_SENSORS]			= { 4,5,6,7,14,15 };	//pin number for each input
+PayloadPulse g_pulsePayload;
 
 int g_currentHour;
 
@@ -50,16 +51,22 @@ void writeEEPROM(int offset, unsigned long value)
 // routine called when external interrupt is triggered
 void interruptHandlerIR() 
 {
-	uint8_t pin = PCintPort::arduinoPin - FIRST_PIN; //pin number of this interrupt
+	uint8_t sensor = 0;
+	while(g_pin[sensor] != PCintPort::arduinoPin)
+	{
+		if( ++sensor == PULSE_MAX_SENSORS)
+			return;		// we only support 6 sensors though we could get an interrupt for sensors 7 and 8!
+	}
 
-	g_pulseCount[pin]++;								//Update number of pulses, 1 pulse = 1 watt
+	g_pulseCount[sensor]++;								//Update number of pulses, 1 pulse = 1 watt
 	unsigned long tick = millis();
-	if (tick < g_lastTick[pin])
-		g_period[pin] = tick + (g_lastTick[pin] - 0xFFFFFFFF);	//rollover occured
+	if (tick < g_lastTick[sensor])
+		g_period[sensor] = tick + (g_lastTick[sensor] - 0xFFFFFFFF);	//rollover occured
 	else
-		g_period[pin] = tick - g_lastTick[pin];
-	g_lastTick[pin] = tick;
+		g_period[sensor] = tick - g_lastTick[sensor];
+	g_lastTick[sensor] = tick;
 }
+
 
 unsigned short MeterCurrentWatts(int channel)
 {
@@ -119,7 +126,7 @@ void setup()
 
 
 //for reset to 0.	
-//	for (int i = 0; i < NUM_PINS; i++)
+//	for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 //	{
 //		writeEEPROM(i * sizeof(unsigned long), 0);
 //	}
@@ -132,25 +139,26 @@ void setup()
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(PULSE_JEENODE);
+	g_rf69.setHeaderId(TESTING_NODE);  //PULSE_JEENODE);
 
 	Serial.print("RF69 initialise node: ");
-	Serial.print(PULSE_JEENODE);
+	Serial.print(TESTING_NODE);  //PULSE_JEENODE);
 	Serial.println(" Freq: 915MHz");
 
 	//initialise
-	for (int i = 0; i < NUM_PINS; i++)
+	for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 	{
 		g_period[i] = millis() - TIMEOUT_PERIOD;
 
-		pulsePayload.power[i] = 0;
+		g_pulsePayload.power[i] = 0;
 		g_pulseCount[i] = readEEPROM(i * sizeof(unsigned long));
-		pulsePayload.pulse[i] = (unsigned long) (g_pulseCount[i] / g_pulsePerWH[i]); // convert from number of pulses since recoding started to wHrs since start
+		g_pulsePayload.pulse[i] = (unsigned long) (g_pulseCount[i] / g_pulsePerWH[i]); // convert from number of pulses since recoding started to wHrs since start
 
-		pinMode(FIRST_PIN+i, INPUT_PULLUP);
-		attachPinChangeInterrupt(FIRST_PIN + i, interruptHandlerIR, RISING);
+		pinMode(g_pin[i], INPUT_PULLUP);
+		attachPinChangeInterrupt(g_pin[i], interruptHandlerIR, RISING);
 	}
-	pulsePayload.supplyV = 0;
+	g_pulsePayload.subnode = 0;
+	g_pulsePayload.supplyV = 0;
 
 	g_currentHour = hour();
 
@@ -163,36 +171,36 @@ void setup()
 void loop()
 {
 	//read values
-	for (int i = 0; i < NUM_PINS; i++)
+	for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 	{
-		pulsePayload.power[i] = MeterCurrentWatts(i);
-		pulsePayload.pulse[i] = MeterTotalWatts(i);
+		g_pulsePayload.power[i] = MeterCurrentWatts(i);
+		g_pulsePayload.pulse[i] = MeterTotalWatts(i);
 	}
-	pulsePayload.supplyV = readVcc();
+	g_pulsePayload.supplyV = readVcc();
 
 	if (hour() != g_currentHour)
 	{
 		g_currentHour = hour();
 
-		unsigned long pulse[NUM_PINS];
+		unsigned long pulse[PULSE_MAX_SENSORS];
 		uint8_t oldSREG = SREG;			
 		cli();							
-		for (int i = 0; i < NUM_PINS; i++)
+		for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 		{
 			pulse[i] = g_pulseCount[i];
 		}
 		SREG = oldSREG;					// restore interrupts
 		//store to EEPROM every hour
-		for (int i = 0; i < NUM_PINS; i++)
+		for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 		{
 			writeEEPROM(i * sizeof(unsigned long), pulse[i]);
 		}
 	}
 
-	g_rf69.send((const uint8_t*) &pulsePayload, sizeof (PayloadPulse));
+	g_rf69.send((const uint8_t*) &g_pulsePayload, sizeof (PayloadPulse));
 	if( g_rf69.waitPacketSent() )
 	{
-		EmonSerial::PrintPulsePayload(&pulsePayload);
+		EmonSerial::PrintPulsePayload(&g_pulsePayload);
 	}
 	else
 	{
