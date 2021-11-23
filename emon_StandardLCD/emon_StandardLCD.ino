@@ -453,7 +453,7 @@ void loop ()
 
 	if( node_id != -1)
 	{
-		if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
+		if (node_id == TESTING_NODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
 		{
 			pulsePayload = *(PayloadPulse*)buf;							// get payload data
 
