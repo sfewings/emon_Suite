@@ -1,0 +1,33 @@
+version: '2'
+services:
+  emon_mqtt_to_log:
+    image: emon_mqtt_to_log:v1
+    container_name: emon_log
+    volumes:
+      - /share/Input:/share/Input
+    environment:
+      - MQTT_IP=mqtt
+      - TZ=Australia/Perth
+  emon_serial_to_mqtt:
+    image: emon_serial_to_mqtt:v1
+    container_name: emon_serial
+    devices:
+      - /dev/ttyUSB1
+    environment:
+      - SERIAL_PORT=/dev/ttyUSB1
+      - MQTT_IP=mqtt
+  emon_mqtt_to_influx:
+    image: emon_mqtt_to_influx:v1
+    container_name: emon_influx
+    devices:
+      - /dev/ttyUSB1
+    volumes:
+      - /share/emon_Suite/python:/share/config
+    environment:
+      - MQTT_IP=mqtt
+      - INFLUX_IP=influxdb
+
+networks: 
+  default: 
+    external: 
+      name: docker-compose-influxdb-grafana_default      

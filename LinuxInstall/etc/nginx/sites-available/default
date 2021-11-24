@@ -79,6 +79,18 @@ server {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
   }
+ 
+  location /grafana/ {
+    proxy_pass http://192.168.1.121:3000/grafana/;
+  }
+
+  location /grafana2/ {
+    proxy_pass http://192.168.1.131:3000/grafana/;
+  }
+
+  location /other/ {
+    proxy_pass http://192.168.1.121:1880/ui/;
+  }
 }
 
 
