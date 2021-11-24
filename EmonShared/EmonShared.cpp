@@ -144,6 +144,8 @@ void EmonSerial::PrintPulsePayload(Stream& stream, PayloadPulse* pPayloadPulse, 
 	{
 		stream.print(F("pulse3,"));
 		stream.print(pPayloadPulse->subnode);
+		stream.print(F(","));
+			
 		for(int i=0; i< PULSE_MAX_SENSORS;i++)
 		{
 			stream.print(pPayloadPulse->power[i]);
