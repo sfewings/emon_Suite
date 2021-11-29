@@ -8,7 +8,6 @@
 
 
 //--------------------------------------------------------------------------------------
-#define FIRST_PIN 4
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
 

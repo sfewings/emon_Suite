@@ -108,20 +108,20 @@ class emon_influx:
         payload = emonSuite.PayloadPulse()
         if( emonSuite.EmonSerial.ParsePulsePayload(reading,payload) ):
             try:
-                for sensor in range(emonSuite.PULSE_NUM_PINS):
-                    p = Point("power").tag("sensor",f"power/{sensor}")\
-                                    .tag("sensorGroup", nodeSettings[0]["name"]) \
-                                    .tag("sensorName", (nodeSettings[0][f"p{sensor}"]))\
+                for sensor in range(emonSuite.PULSE_MAX_SENSORS):
+                    p = Point("power").tag("sensor",f"power/{payload.subnode}/{sensor}")\
+                                    .tag("sensorGroup", nodeSettings[payload.subnode]["name"]) \
+                                    .tag("sensorName", (nodeSettings[payload.subnode][f"p{sensor}"]))\
                                     .field("value", payload.power[sensor]/1).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
-                    p = Point("pulse").tag("sensor",f"pulse/{sensor}")\
-                                    .tag("sensorGroup", nodeSettings[0]["name"]) \
-                                    .tag("sensorName", (nodeSettings[0][f"p{sensor}"]))\
+                    p = Point("pulse").tag("sensor",f"pulse/{payload.subnode}/{sensor}")\
+                                    .tag("sensorGroup", nodeSettings[payload.subnode]["name"]) \
+                                    .tag("sensorName", (nodeSettings[payload.subnode][f"p{sensor}"]))\
                                     .field("value", payload.pulse[sensor]/1).time(time)
                                 #.field("value", payload.pulse[sensor]*nodeSettings[0][f"p{sensor}_wPerPulse"]/1).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
-                    self.publishRSSI( time, nodeSettings[0]['name'], reading )
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("pulseException", reading, ex)
 
