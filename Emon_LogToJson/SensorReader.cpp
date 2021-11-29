@@ -191,13 +191,16 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			PayloadPulse pulse;
 			if (EmonSerial::ParsePulsePayload((char*)reading.c_str(), &pulse))
 			{
-				std::string sensor[4] = { "HWS", "Produced", "Consumed", "Imported", "Car", "unused" };
-				for (int i = 0; i< PULSE_NUM_PINS; i++)
+				if( pulse.subnode == 0)
 				{
-						m_power.Add(sensor[i], time, pulse.power[i]);
+					std::string sensor[PULSE_MAX_SENSORS] = { "HWS", "Produced", "Consumed", "Imported", "Car", "unused" };
+					for (int i = 0; i< PULSE_MAX_SENSORS; i++)
+					{
+							m_power.Add(sensor[i], time, pulse.power[i]);
+					}
+					m_power.Add("Exported", time, ((pulse.power[1] > pulse.power[2]) ? (pulse.power[1] - pulse.power[2]): 0.0));
 				}
-				m_power.Add("Exported", time, ((pulse.power[1] > pulse.power[2]) ? (pulse.power[1] - pulse.power[2]): 0.0));
-			}
+		}
 		break;
 		}
 		case BASE_JEENODE: 
