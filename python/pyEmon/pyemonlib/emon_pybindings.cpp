@@ -14,7 +14,7 @@ PYBIND11_MODULE(emonSuite, m) {
     //CONSTANTS
     m.attr("MAX_SUBNODES")              = py::int_(MAX_SUBNODES);       //Maximum number of disp and temp nodes supported
     m.attr("MAX_WATER_SENSORS")         = py::int_(MAX_WATER_SENSORS); 	//Maximum number of water pulse and water height metres
-    m.attr("PULSE_NUM_PINS")            = py::int_(PULSE_NUM_PINS); 	//number of pins and hence, readings on the pulse Jeenode
+    m.attr("PULSE_MAX_SENSORS")         = py::int_(PULSE_MAX_SENSORS); 	//number of pins and hence, readings on the pulse Jeenode
     m.attr("MAX_TEMPERATURE_SENSORS")   = py::int_(MAX_TEMPERATURE_SENSORS); 	//maximum number of temperature sensors on the temperature_JeeNode  
     m.attr("HWS_TEMPERATURES")          = py::int_(HWS_TEMPERATURES); 	//number of temperature readings from the hot water system
     m.attr("HWS_PUMPS")                 = py::int_(HWS_PUMPS);          //number of pumps from the hot water system
@@ -42,13 +42,14 @@ PYBIND11_MODULE(emonSuite, m) {
     //PayloadPulse
     py::class_<PayloadPulse, PayloadRelay> payloadPulse(m, "PayloadPulse");
     payloadPulse.def(py::init<>());
+    payloadPulse.def_readwrite("subnode", &PayloadPulse::subnode, "allow multiple Pulse nodes on the network" );
     payloadPulse.def_property("power", [](PayloadPulse &payload)->pybind11::array {
             auto dtype = pybind11::dtype(pybind11::format_descriptor<int>::format());
-            return pybind11::array(dtype, { PULSE_NUM_PINS }, { sizeof(int) }, payload.power, nullptr);
+            return pybind11::array(dtype, { PULSE_MAX_SENSORS }, { sizeof(int) }, payload.power, nullptr);
             }, [](PayloadPulse& payload) {});	//current power reading
     payloadPulse.def_property("pulse", [](PayloadPulse &payload)->pybind11::array {
             auto dtype = pybind11::dtype(pybind11::format_descriptor<unsigned long>::format());
-            return pybind11::array(dtype, { PULSE_NUM_PINS }, { sizeof(unsigned long) }, payload.pulse, nullptr);
+            return pybind11::array(dtype, { PULSE_MAX_SENSORS }, { sizeof(unsigned long) }, payload.pulse, nullptr);
             }, [](PayloadPulse& payload) {});	//cummulative pulse reading
     payloadPulse.def_readwrite("supplyV", &PayloadPulse::supplyV, "unit supply milli voltage");
 
