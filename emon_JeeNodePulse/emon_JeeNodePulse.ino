@@ -1,32 +1,23 @@
 //--------------------------------------------------------------------------------------
 //Interrupt pulse counting on 4 input pins of a Jeenode
-
-
-#define RF69_COMPAT 1
-
-#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-#include <Ports.h>
-#include <RF12.h>
-#include <avr/eeprom.h>
-#include <util/crc16.h>		//cyclic redundancy check
-#include <time.h>					//required for EmonShared.h
 #include <EmonShared.h>
 #include <PinChangeInt.h>
-#include <eeprom.h>
+#include <EEPROM.h>
+#include <SPI.h>
+#include <RH_RF69.h>
 
 
-#define ENABLE_SERIAL 1
 #define NUM_PINS	PULSE_NUM_PINS
 #define FIRST_PIN 4
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
 
-RF12Init rf12Init = { PULSE_JEENODE, RF12_915MHZ, TESTING_MONITOR_GROUP };
+RH_RF69 g_rf69;
 
 volatile unsigned long 	g_pulseCount[NUM_PINS]	= { 0,0,0,0 };	//pulses since recording started
 volatile unsigned long	g_lastTick[NUM_PINS]		= { 0,0,0,0 };		//millis() value at last pulse
 volatile unsigned long	g_period[NUM_PINS]			= { 0,0,0,0 };		//ms between last two pulses
-const		double					g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,0.4,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
+const		double		g_pulsePerWH[NUM_PINS]	= { 2.0,2.0,0.4,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
 PayloadPulse pulsePayload;
 
 int g_currentHour;
@@ -126,23 +117,26 @@ void setup()
 	Serial.println(F("Fewings emon Pulse"));
 	delay(10);
 
-	// RFM12B Initialize
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);	 
-	EmonSerial::PrintRF12Init(rf12Init);
-	
-	delay(20);
-
-	if (ENABLE_SERIAL == 0) 
-	{
-		Serial.println("serial disabled");
-		Serial.end();
-	}
 
 //for reset to 0.	
 //	for (int i = 0; i < NUM_PINS; i++)
 //	{
 //		writeEEPROM(i * sizeof(unsigned long), 0);
 //	}
+
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(PULSE_JEENODE);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(PULSE_JEENODE);
+	Serial.println(" Freq: 915MHz");
 
 	//initialise
 	for (int i = 0; i < NUM_PINS; i++)
@@ -194,16 +188,16 @@ void loop()
 			writeEEPROM(i * sizeof(unsigned long), pulse[i]);
 		}
 	}
-	// Send data via RF 
-	int i = 0;
-	while (!rf12_canSend() && i++ < 100)
+
+	g_rf69.send((const uint8_t*) &pulsePayload, sizeof (PayloadPulse));
+	if( g_rf69.waitPacketSent() )
 	{
-		rf12_recvDone();
+		EmonSerial::PrintPulsePayload(&pulsePayload);
 	}
-	rf12_sendStart(0, &pulsePayload, sizeof pulsePayload);
-	
-	//print the results
-	EmonSerial::PrintPulsePayload(&pulsePayload);
+	else
+	{
+		Serial.println(F("No packet sent"));
+	}
 
 	delay(2000);		//2s delay	
 }

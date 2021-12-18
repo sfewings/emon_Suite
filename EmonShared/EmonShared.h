@@ -4,9 +4,9 @@
 //Note to make this available to sketches it must appear in the arduino libraries folder as a symbolic link
 // mklink / J ..\..\arduino - 1.0.3\libraries\EmonShared EmonShared
 //Junction created for ..\..\arduino - 1.0.3\libraries\EmonShared <<= == >> EmonShared
-
 #ifdef MQTT_LIB
 #ifdef _WIN32
+	#define _CRT_SECURE_NO_WARNINGS //so we can use 'strtok' without error C4996: depricated
 	#include <Windows.h>
 #else
 	#include <unistd.h>
@@ -201,7 +201,7 @@ public:
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
-	static void UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater);
+	static int UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater);
 
 	static void ParseRelay(PayloadRelay* pPayloadRelay, char* pch);
 	static int ParseRainPayload(char* str, PayloadRain *pPayloadRain);

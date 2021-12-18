@@ -1,20 +1,10 @@
-//JeeLabs libraries 
-#include <Ports.h>
-#include <RF12.h>
+#include <Ports.h>	//Jeelib SLeepy routine
 #include <avr/eeprom.h>
-#include <util/crc16.h>	//cyclic redundancy check
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <EEPROM.h>
 #include <Time.h>			// needed for EmonShared
 #include <EmonShared.h>
-
-
-//---------------------------------------------------------------------------------------------------
-// Serial print settings - disable all serial prints if SERIAL 0 - increases long term stability 
-//---------------------------------------------------------------------------------------------------
-#define ENABLE_SERIAL 1
-//---------------------------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------------------------
 // Dallas temperature sensor	on pin 5, Jeenode port 2
@@ -23,10 +13,12 @@ OneWire oneWire(5);
 DallasTemperature temperatureSensor(&oneWire);
 
 //---------------------------------------------------------------------------------------------------
-// RF12 settings 
+//Radiohead RF_69 support
 //---------------------------------------------------------------------------------------------------
+#include <SPI.h>
+#include <RH_RF69.h>
 
-RF12Init rf12Init = { RAIN_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
+RH_RF69 g_rf69;
 
 #define INTERRUPT_IR				1	// ATmega 168 and 328 - interrupt 0 = pin 2, 1 = pin 3
 #define RAIN_GAUGE_PIN				3
@@ -34,16 +26,13 @@ RF12Init rf12Init = { RAIN_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 #define VOLTAGE_MEASURE_PIN 		A2
 #define EEPROM_BASE 				0x10
 
-
 volatile unsigned long	g_rainCount;			//The count from the rain gauge
 volatile unsigned long	g_transmitCount;		//Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0 
 volatile unsigned long	g_minuteCount = 0;		//How many minutes since the last transmit
 volatile unsigned long	g_RGlastTick = 0;		//Clock count of last interrupt
 //--------------------------------------------------------------------------------------------------
 
-
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
-
 
 // Rain gauge interrupt routine
 void interruptHandlerRainGauge()
@@ -76,21 +65,20 @@ void setup()
 
 	Serial.println(F("Fewings rain gauge Jeenode Tx"));
 
-	//-----------------------------------------
-	// RFM12B Initialize
-	//------------------------------------------
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(RAIN_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);	 //Initialize RFM12 with settings defined above, use pin 10 as SSelect
-	rf12_sleep(RF12_SLEEP);
-	//------------------------------------------
-
-	EmonSerial::PrintRF12Init(rf12Init);
-
-	if (ENABLE_SERIAL == 0)
-	{
-		Serial.println("serial disabled");
-		Serial.end();
-	}
+	Serial.print("RF69 initialise node: ");
+	Serial.print(RAIN_NODE);
+	Serial.println(" Freq: 915MHz");
 
 
 	temperatureSensor.begin();
@@ -113,7 +101,7 @@ void setup()
 
 
 	// Initialise 
-	//writeEEPROM(0, 0);					//reset the flash
+	//writeEEPROM(0, 16453);					//reset the flash
 	g_rainCount = readEEPROM(0);	//read last reading from flash
 	g_transmitCount = 1;
 	g_RGlastTick = millis();
@@ -141,6 +129,10 @@ void loop()
 
 	if (doTransmit)
 	{
+    if( g_transmitCount == 0)
+    {
+      writeEEPROM(0, g_rainCount);    //update eeprom
+    }
 		g_transmitCount++;
 		rainPayload.rainCount = g_rainCount;
 		rainPayload.transmitCount = g_transmitCount;
@@ -153,7 +145,6 @@ void loop()
 	{
 		temperatureSensor.requestTemperatures();
 		rainPayload.temperature = temperatureSensor.getTempCByIndex(0) * 100;
-		//rainPayload.supplyV = readVcc();
 
 		//voltage divider is 60k and 100k. Jeenode reference voltage is 3.3v. AD range is 1024
 		//voltage divider current draw is 29 uA
@@ -161,28 +152,28 @@ void loop()
 		measuredvbat = (measuredvbat/1024.0 * 3.3) * (1000000.0+1000000.0)/1000000.0;
 		rainPayload.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 
-
-		rf12_sleep(RF12_WAKEUP);
-
-		if (rainPayload.transmitCount == 1)
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+		g_rf69.send((const uint8_t*) &rainPayload, sizeof(PayloadRain));
+		if( g_rf69.waitPacketSent() )
 		{
-			writeEEPROM(0, rainPayload.rainCount);
+			EmonSerial::PrintRainPayload(&rainPayload);
 		}
-
-		while (!rf12_canSend())
-			rf12_recvDone();
-		rf12_sendStart(0, &rainPayload, sizeof rainPayload);
-		rf12_sendWait(0);
-		rf12_sleep(RF12_SLEEP);
+		else
+		{
+			Serial.println(F("No packet sent"));
+		}
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
 		g_minuteCount = 0;
 
-		if (ENABLE_SERIAL == 1)
-		{
-			EmonSerial::PrintRainPayload(&rainPayload);
-			delay(100);		//for the serial buffer to empty
-		}
+		//let serial buffer empty
+		//see http://www.gammon.com.au/forum/?id=11428
+		while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
+			UCSR0A |= 1 << TXC0;  // mark transmission not complete
+		while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 	}
+
+
 	if (rainPayload.transmitCount < 5)
 		Sleepy::loseSomeTime(1000);
 	else

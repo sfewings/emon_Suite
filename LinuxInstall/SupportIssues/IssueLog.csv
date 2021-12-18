@@ -1,2 +1,15 @@
 Issues and fixes on home moinitor,,
 22/04/2021,shannstainable.fewings.org. Bad Gateway 502 after restarting Rasp Pi,Checked shannstainable.fewings.org/grafana worked ok. 192.168.1.111:1880/ui worked ok. Restarted nodered (sudo systemctl restart nodered.service)=> no fix. Solution restart nginx (sudo systemctl restart nginx)
+22/08/2021, To view logs from journalctrl use journalctl -f | grep "temp1,"
+23/09/2021, \
+pulse2,3,0,163,53,1029910,8396628,12583090,4991257,3236:-31
+Traceback (most recent call last):
+  File "emonSerialToMQTT.py", line 52, in <module>
+    mqttClient.publish("EmonLog",line)
+  File "/home/pi/.local/lib/python3.7/site-packages/paho/mqtt/client.py", line 1274, in publish
+    local_mid, topic, local_payload, qos, retain, False, info, properties)
+  File "/home/pi/.local/lib/python3.7/site-packages/paho/mqtt/client.py", line 2563, in _send_publish
+    return self._packet_queue(PUBLISH, packet, mid, qos, info)
+  File "/home/pi/.local/lib/python3.7/site-packages/paho/mqtt/client.py", line 2911, in _packet_queue
+    self._sockpairW.send(sockpair_data)
+TimeoutError: [Errno 110] Connection timed out

@@ -2,7 +2,8 @@
 //
 
 #include <iostream>
-//#define MQTT_LIB
+#define MQTT_LIB //exclude arduino specific headers
+
 #include "..\EmonShared\EmonShared.h"
 
 
