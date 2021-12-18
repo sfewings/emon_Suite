@@ -137,17 +137,21 @@ void EmonSerial::PrintPulsePayload(Stream& stream, PayloadPulse* pPayloadPulse, 
 {
 	if (pPayloadPulse == NULL)
 	{
-		stream.println(F("pulse2,power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
+		//stream.println(F("pulse2,power[0..3],pulse[0..3],supplyV|ms_since_last_pkt"));
+		stream.println(F("pulse3,subnode,power[0..5],pulse[0..5],supplyV|ms_since_last_pkt"));
 	}
 	else
 	{
-		stream.print(F("pulse2,"));
-		for(int i=0; i< PULSE_NUM_PINS;i++)
+		stream.print(F("pulse3,"));
+		stream.print(pPayloadPulse->subnode);
+		stream.print(F(","));
+			
+		for(int i=0; i< PULSE_MAX_SENSORS;i++)
 		{
 			stream.print(pPayloadPulse->power[i]);
 			stream.print(F(","));
 		}
-		for (int i = 0; i < PULSE_NUM_PINS; i++)
+		for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 		{
 			stream.print(pPayloadPulse->pulse[i]);
 			stream.print(F(","));
@@ -640,24 +644,41 @@ int EmonSerial::ParseDispPayload(char* str, PayloadDisp* pPayloadDisp)
 int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
 {
 	memset(pPayloadPulse, 0, sizeof(PayloadPulse));
-	//version 1 stored pulse as int. version2 stored as unsigned long
+	//version 1 stored pulse as int. version2 stored as unsigned long. version3 added subnode and increased numsensor from 4 to 6
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
 	int version;
+	int numSensors = 0;
+	pPayloadPulse->subnode = 0;
 	if (0 == strcmp(pch, "pulse") )
+	{
 		version = 1;
+		numSensors = 4;
+		pPayloadPulse->subnode = 0;
+	}
 	else if(0 == strcmp(pch, "pulse2"))
+	{
 		version = 2;
+		numSensors = 4;
+		pPayloadPulse->subnode = 0;
+	}
+	else if(0 == strcmp(pch, "pulse3"))
+	{
+		version = 3;
+		numSensors = PULSE_MAX_SENSORS;	//6
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+		pPayloadPulse->subnode = atoi(pch);
+	}
 	else
 		return 0;	//can't find "pulse" or "pulse2" as first token
-	
-	for (int i = 0; i < PULSE_NUM_PINS; i++)
+
+	for (int i = 0; i < numSensors; i++)
 	{
 		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadPulse->power[i] = atoi(pch);
 	}
-	for (int i = 0; i < PULSE_NUM_PINS; i++)
+	for (int i = 0; i < numSensors; i++)
 	{
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadPulse->pulse[i] = atol(pch);
@@ -673,7 +694,7 @@ int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
 		//unsigned long timeSinceLast = atol(pch);
 	}
 
-	return 1;
+	return version;
 }
 
 int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadTemperature)

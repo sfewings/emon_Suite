@@ -34,17 +34,18 @@ typedef unsigned char byte;
 #define INVERTER_NODE 21			//Node for sending MPP inverter readings
 #define BEEHIVEMONITOR_NODE 22		//Node for monitoring beehives
 #define AIRQUALITY_NODE 23			//Node for Plantower PM7003 ar quality sensor
+#define TESTING_NODE 24				//Node for testing
 
-#define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
-#define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
+#define MAX_SUBNODES	4			//Maximum number of disp and temp nodes supported
+#define MAX_WATER_SENSORS	4		//Maximum number of water pulse and water height metres
 
-#define PULSE_NUM_PINS 4				//number of pins and hence, readings on the pulse Jeenode
-#define MAX_TEMPERATURE_SENSORS 4  //maximum number of temperature sensors on the temperature_JeeNode  
+#define PULSE_MAX_SENSORS 6			//number of pins and hence, readings on the pulse Jeenode. 6 is max for RF packet size 64 bytes
+#define MAX_TEMPERATURE_SENSORS 4   //maximum number of temperature sensors on the temperature_JeeNode  
 #define HWS_TEMPERATURES 7			//number of temperature readings from the hot water system
-#define HWS_PUMPS 3							//number of pumps from the hot water system
+#define HWS_PUMPS 3					//number of pumps from the hot water system
 
-#define BATTERY_SHUNTS	3				//number of battery banks in the system. Each with a shunt for measuring current in and out
-#define MAX_VOLTAGES		9				//number of voltage measurements made on the battery monitoring system
+#define BATTERY_SHUNTS	3			//number of battery banks in the system. Each with a shunt for measuring current in and out
+#define MAX_VOLTAGES		9		//number of voltage measurements made on the battery monitoring system
 
 #define FEWINGS_MONITOR_GROUP  211
 #define TESTING_MONITOR_GROUP	 210
@@ -73,9 +74,10 @@ typedef struct {
 } PayloadRelay;
 
 typedef struct PayloadPulse: PayloadRelay{
-	int power[PULSE_NUM_PINS];					// power values
-	unsigned long pulse[PULSE_NUM_PINS];	// pulse values 
-	unsigned long supplyV;							// unit supply voltage
+	byte subnode;							//subnode number
+	int power[PULSE_MAX_SENSORS];				// power values
+	unsigned long pulse[PULSE_MAX_SENSORS];	// pulse values 
+	unsigned long supplyV;					// unit supply voltage
 } PayloadPulse;
 
 

@@ -72,10 +72,14 @@ pulse:
     p1: Solar production (Schneider)
     p2: Consumed
     p3: Imported
+    p4: Car
+    p5: Unused
     p0_wPerPulse: 0.25
     p1_wPerPulse: 0.25
     p2_wPerPulse: 2.5
     p3_wPerPulse: 1
+    p4_wPerPulse: 0.25
+    p5_wPerPulse: 1
 bat:
   0:
     name: Main battery monitor

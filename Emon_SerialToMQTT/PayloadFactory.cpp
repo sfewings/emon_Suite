@@ -68,17 +68,17 @@ bool PayloadFactory::PublishPayload(char* s)
 			char buf[100];
 			char topic[100];
 
-			for (int i = 0; i < 4; i++)
+			for (int i = 0; i < PULSE_MAX_SENSORS; i++)
 			{
-				sprintf(topic, "power/%d", i);
+				sprintf(topic, "power/%d/%d", pulse->subnode, i);
 				sprintf(buf, "%d", pulse->power[i]);
 				m_MQTTClient.Publish(topic, buf);
-				sprintf(topic, "pulse/%d", i);
+				sprintf(topic, "pulse/%d/%d", pulse->subnode, i);
 				sprintf(buf, "%d", pulse->pulse[i]);
 				m_MQTTClient.Publish(topic, buf);
 				std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
 			}
-			sprintf(topic, "supplyV/pulse");
+			sprintf(topic, "supplyV/pulse/%d", pulse->subnode);
 			sprintf(buf, "%d", pulse->supplyV);
 			m_MQTTClient.Publish(topic, buf);
 			std::cout << " publish topic=" << topic << " payload=" << buf << std::endl;
