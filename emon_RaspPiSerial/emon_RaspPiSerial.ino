@@ -15,7 +15,7 @@
 	#include <SPI.h>
 	#include <RH_RF69.h>
 	// Singleton instance of the radio driver
-	RH_RF69 rf69;
+	RH_RF69 g_rf69;
 	#define RFM69_RST     4
 #endif
 
@@ -46,16 +46,16 @@ void setup ()
 	delay(10);
 
 
-	if (!rf69.init())
+	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(915.0))
 		Serial.println("rf69 setFrequency failed");
 	Serial.println("RF69 initialise node: 10 Freq: 915MHz");
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	rf69.setEncryptionKey(key);
-	//rf69.setHeaderId(BASE_JEENODE);
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(BASE_JEENODE);
 #endif
 
 	EmonSerial::PrintRainPayload(NULL);
@@ -82,6 +82,7 @@ void setup ()
 void loop () 
 {
 	volatile uint8_t *data = NULL;
+	uint8_t len = 0;
 	int node_id = 0;
 
 #ifdef USE_JEELIB
@@ -125,77 +126,104 @@ void loop ()
 		{
 			node_id = (rf12_hdr & 0x1F);
 			data = rf12_data;
+			len = rf12_hdr;		//Note. Need to test that this is the same size as sizeof(PayloadXXXX)
 #else
-	if (rf69.available())
+	if (g_rf69.available())
 	{
 		digitalWrite(GREEN_LED, HIGH);
 		// Should be a message for us now   
 		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
-		uint8_t len = sizeof(buf);
-		if (rf69.recv(buf, &len))
+		memset(buf, 0, RH_RF69_MAX_MESSAGE_LEN);
+		len = sizeof(buf);
+		if (g_rf69.recv(buf, &len))
 		{
 			//RH_RF69::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
 			Serial.print("RSSI: ");
-			Serial.println(rf69.lastRssi(), DEC);
+			Serial.println(g_rf69.lastRssi(), DEC);
 
-
-			node_id = rf69.headerId();
+			node_id = g_rf69.headerId();
 			data = buf;
 #endif
-
-			if (node_id == BASE_JEENODE)		
+			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
 			{
 				SERIAL_OUT(Base, Payload);
 			}
-			if (node_id == PULSE_JEENODE)
+			if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse))
 			{
 				SERIAL_OUT(Pulse, Payload);
 			}
-			if (node_id == TEMPERATURE_JEENODE)
+			if (node_id == TEMPERATURE_JEENODE && len == sizeof(PayloadTemperature))
 			{
 				SERIAL_OUT(Temperature, Payload);
 			}
-			if (node_id == HWS_JEENODE )
+			if (node_id == HWS_JEENODE  && len == sizeof(PayloadHWS))
 			{
 				SERIAL_OUT(HWS, Payload);
 			}
-			if (node_id == RAIN_NODE)				
+			if (node_id == RAIN_NODE  && len == sizeof(PayloadRain))
 			{
 				SERIAL_OUT(Rain, Payload);
 			}
-			if (node_id == DISPLAY_NODE)
+			if (node_id == DISPLAY_NODE && len == sizeof(PayloadDisp))
 			{
 				SERIAL_OUT(Disp, Payload);
 			}
 			if (node_id == WATERLEVEL_NODE)
 			{
 				PayloadWater* pPayload = (PayloadWater*)data;
-				EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
-				EmonSerial::PrintWaterPayload(pPayload);
+				int packedSize = EmonSerial::UnpackWaterPayload((byte*)pPayload, pPayload);
+				if( len == packedSize)
+				{
+					EmonSerial::PrintWaterPayload(pPayload);
+				}
 			}
-			if (node_id == SCALE_NODE)
+			if (node_id == SCALE_NODE  && len == sizeof(PayloadScale))
 			{
 				SERIAL_OUT(Scale, Payload);
 			}
-			if (node_id == BATTERY_NODE)
+			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery))
 			{
 				SERIAL_OUT(Battery, Payload);
 			}
-			if (node_id == INVERTER_NODE)
+			if (node_id == INVERTER_NODE  && len == sizeof(PayloadInverter))
 			{
 				SERIAL_OUT(Inverter, Payload);
 			}
-			if (node_id == BEEHIVEMONITOR_NODE)
+			if (node_id == BEEHIVEMONITOR_NODE  && len == sizeof(PayloadBeehive) )
 			{
 				SERIAL_OUT(Beehive, Payload);
 			}
-			if (node_id == AIRQUALITY_NODE)
+			if (node_id == AIRQUALITY_NODE  && len == sizeof(PayloadAirQuality))
 			{
 				SERIAL_OUT(AirQuality, Payload);
 			}
 		}
+
+#ifdef USE_JEELIB
+#else
+		//read the time basePayload 
+		if (Serial.available())
+		{
+			char sendBuf[100];
+			PayloadBase basePayload;
+			Serial.readBytesUntil('\0', sendBuf, 100);
+			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload))
+			{
+				g_rf69.send((const uint8_t*) &basePayload, sizeof(basePayload));
+				if( g_rf69.waitPacketSent() )
+				{
+					Serial.println(F("BasePayload with time sent"));
+					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
+				}
+				else
+				{
+					Serial.println(F("No packet sent"));
+				}
+			}
+		}
+#endif
 
 		digitalWrite(GREEN_LED, LOW);
 	}

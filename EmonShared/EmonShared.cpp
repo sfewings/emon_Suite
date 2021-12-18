@@ -320,7 +320,7 @@ void EmonSerial::PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBat
 {
 	if (pPayloadBattery == NULL)
 	{
-		stream.print(F("bat2,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..7]|ms_since_last_packet"));
+		stream.print(F("bat2,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..8]|ms_since_last_packet"));
 	}
 	else
 	{
@@ -489,35 +489,57 @@ int EmonSerial::PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr)
 	//pack the two arrays of readings into the end of the structure to save on bytes transmitted. if only 1 of each sensor, this saves 3*8 +3*4 bytes = 36bytes. We will only transmit 5+8+4=17bytes. 
 	byte* ptr2 = ptr;
 	memcpy(ptr, pPayloadWater, sizeof(PayloadWater));
+	int numFlowCount = pPayloadWater->numSensors & 0xF;
+	int numHeight = (pPayloadWater->numSensors & 0xF0) >> 4;
+	if( numFlowCount > MAX_WATER_SENSORS || numHeight > MAX_WATER_SENSORS)
+		return 0;	//not permitted!
 	ptr2 += offsetof(PayloadWater, flowCount);
-	ptr2 += sizeof(unsigned long) * (pPayloadWater->numSensors & 0xF);
-	for (int i = 0; i < (pPayloadWater->numSensors & 0xF0) >> 4; i++)
+	ptr2 += sizeof(unsigned long) * numFlowCount;
+	for (int i = 0; i < numHeight; i++)
 	{
 		int height = pPayloadWater->waterHeight[i];
 		memcpy(ptr2, &height, sizeof(int));
 		ptr2 += sizeof(int);
 	}
+	//return size of packed payload
 	return (int)(ptr2 - ptr);
 }
 
-void EmonSerial::UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater)
+int EmonSerial::UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater)
 {
 	byte* ptr2 = ptr;
 	memcpy(pPayloadWater, ptr, sizeof(PayloadWater));
+	int numFlowCount = pPayloadWater->numSensors & 0xF;
+	int numHeight = (pPayloadWater->numSensors & 0xF0) >> 4;
+	if( numFlowCount > MAX_WATER_SENSORS || numHeight > MAX_WATER_SENSORS)
+		return 0;
 	ptr2 += offsetof(PayloadWater, flowCount);
-	ptr2 += sizeof(unsigned long) * (pPayloadWater->numSensors & 0xF);
-	for (int i = 0; i < (pPayloadWater->numSensors & 0xF0) >> 4; i++)
+	ptr2 += sizeof(unsigned long) * (numFlowCount);
+	for (int i = 0; i < numHeight; i++)
 	{
 		int height;
 		memcpy(&height, ptr2, sizeof(int));
 		pPayloadWater->waterHeight[i] = height;
 		ptr2 += sizeof(int);
 	}
+	//return size of packed payload
+	return sizeof(PayloadWater) - sizeof(int)*(MAX_WATER_SENSORS-numHeight) - sizeof(unsigned long)*(MAX_WATER_SENSORS-numFlowCount);
 }
 
 
 
 //---------------Parse routines -------------------
+
+//returns if the string is a digit
+// only check the first expected value of each pack to dicern value packet from description packet
+// e.g  pulse2,877,0,1658,185,900480,7721220,11533622,4599059,3236  
+// from pulse2,power[0..3],pulse[0..3],supplyV|ms_since_last_pkt
+bool isDigit(char* pch)
+{
+	char* p;
+	long converted = strtol(pch, &p, 10);
+	return !(*p); // *p should be NULL if entire string was a number
+}
 
 void EmonSerial::ParseRelay(PayloadRelay* pPayloadRelay, char* pch)
 {
@@ -539,7 +561,7 @@ int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 	if (0 != strcmp(pch, "rain"))
 		return 0;	//can't find "rain:" as first token
 
-	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 	pPayloadRain->rainCount = atol(pch);
 
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
@@ -570,8 +592,7 @@ int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
 	if (0 != strcmp(pch, "base"))
 		return 0;	//can't find "base:" as first token
 
-	pch = strtok(NULL, tok);
-	if (pch == NULL)
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) 
 		return 0;
 	pPayloadBase->time = (time_t)atol(pch);
 
@@ -599,7 +620,7 @@ int EmonSerial::ParseDispPayload(char* str, PayloadDisp* pPayloadDisp)
 	}
 	else if (0 == strcmp(pch,"disp1")) //version 2
 	{
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadDisp->subnode = atoi(pch);	//the last char is the subnode number
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadDisp->temperature = atoi(pch);
@@ -619,7 +640,7 @@ int EmonSerial::ParseDispPayload(char* str, PayloadDisp* pPayloadDisp)
 int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
 {
 	memset(pPayloadPulse, 0, sizeof(PayloadPulse));
-	//version 1 stored pulse as int. version2 sotred as unsigned long
+	//version 1 stored pulse as int. version2 stored as unsigned long
 	char* pch = strtok(str, tok);
 	if (pch == NULL)
 		return 0;	//can't find anything
@@ -633,7 +654,7 @@ int EmonSerial::ParsePulsePayload(char* str, PayloadPulse *pPayloadPulse)
 	
 	for (int i = 0; i < PULSE_NUM_PINS; i++)
 	{
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadPulse->power[i] = atoi(pch);
 	}
 	for (int i = 0; i < PULSE_NUM_PINS; i++)
@@ -665,7 +686,7 @@ int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadT
 
 	if (0 == strcmp(pch, "temp"))
 	{
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadTemperature->numSensors = atoi(pch);
 		if (pPayloadTemperature->numSensors > MAX_TEMPERATURE_SENSORS)
 			return 0;  //don't support more than ten sensors!
@@ -686,7 +707,7 @@ int EmonSerial::ParseTemperaturePayload(char* str, PayloadTemperature *pPayloadT
 	}
 	else if (0 == strcmp(pch, "temp1"))	//version 2
 	{
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadTemperature->subnode = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadTemperature->supplyV = atoi(pch);
@@ -727,7 +748,7 @@ int EmonSerial::ParseHWSPayload(char* str, PayloadHWS *pPayloadHWS)
 
 	for (int i = 0; i < HWS_TEMPERATURES; i++)
 	{
-		if (NULL == (pch = strtok(NULL, tok))) 
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) 
 			return 0;
 		pPayloadHWS->temperature[i] = (byte) atoi(pch);
 	}
@@ -800,7 +821,7 @@ int EmonSerial::ParseWaterPayload(char* str, PayloadWater* pPayloadWater)
 	}
 	else if (0 == strcmp(pch, "wtr3"))
 	{
-		if (NULL == (pch = strtok(NULL, tok)))	return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadWater->subnode = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok)))	return 0;
 		pPayloadWater->supplyV = atoi(pch);
@@ -832,7 +853,7 @@ int EmonSerial::ParseScalePayload(char* str, PayloadScale* pPayloadScale)
 
 	if (0 == strcmp(pch, "scl"))
 	{
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadScale->subnode = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadScale->grams = atol(pch);
@@ -864,7 +885,7 @@ int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
 		if( 0 == strcmp(pch, "bat2"))
 			maxVoltages = 9; //MAX_VOLTAGES;
 
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadBattery->subnode = atoi(pch);
 		for (int i = 0; i < BATTERY_SHUNTS; i++)
 		{
@@ -914,7 +935,7 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 		version = 2;
 	if (version )
 	{
-		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 		pPayloadInverter->subnode = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadInverter->activePower = atoi(pch);
@@ -957,7 +978,7 @@ int EmonSerial::ParseBeehivePayload(char* str, PayloadBeehive* pPayloadBeehive)
 	int version = 0;
 	if (0 == strcmp(pch, "bee"))
 		version = 1;
-	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 	pPayloadBeehive->subnode = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadBeehive->beeInRate = atoi(pch);
@@ -995,7 +1016,7 @@ int EmonSerial::ParseAirQualityPayload(char* str, PayloadAirQuality* pPayloadAir
 	int version = 0;
 	if (0 == strcmp(pch, "air"))
 		version = 1;
-	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 	pPayloadAirQuality->subnode = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadAirQuality->pm0p3 = atoi(pch);

@@ -1,20 +1,22 @@
-#define RF69_COMPAT 1
-#define WHISPER_NODE 1
-
-#include <JeeLib.h>
-//Temperature support - OneWire Dallas temperature sensor
-
 #include <Ports.h>
-#include <RF12.h>
-#include <avr/eeprom.h>
-#include <util/crc16.h>		//cyclic redundancy check
 #include <time.h>					//required for EmonShared.h
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#define PORTS 5							//number of ports on the JeeNode
+//---------------------------------------------------------------------------------------------------
+//Radiohead RF_69 support
+//---------------------------------------------------------------------------------------------------
+#include <SPI.h>
+#include <RH_RF69.h>
+
+RH_RF69 g_rf69;
+
+
+#define PORTS 4							//number of ports on the JeeNode
+#define VOLTAGE_MEASURE_PIN 		A0
+//#define WHISPER_NODE 1
 
 DallasTemperature *pDallasOneWire[PORTS];			// Pass our oneWire reference to Dallas Temperature.
 int numberOfSensors[PORTS];										//count of sensors on each device/pin
@@ -27,11 +29,7 @@ PayloadTemperature temperaturePayload;
 int readings[MAX_TEMPERATURE_SENSORS][READING_HISTORY];
 int readingIndex = 0;
 
-#define ENABLE_SERIAL 1
-
-RF12Init rf12Init = { TEMPERATURE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
 EEPROMSettings  eepromSettings;
-
 
 //--------------------------------------------------------------------------------------------
 // RFM12B Setup
@@ -64,17 +62,9 @@ void setup()
 
 	Serial.println(F("Fewings Jeenode temperature node for emon network"));
 
-	// Data wire assignements
-	//JeeNode port,	Arduino pin
-	//		IRQ3			3
-	//			1				4			
-	//			2				5			
-	//			3				6			
-	//			4				7			
-
 	sleepDelay = 30000;	//in milliseconds
 
-		//initialise the EEPROMSettings for relay and node number
+	//initialise the EEPROMSettings for relay and node number
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	if (eepromSettings.relayNumber)
@@ -153,9 +143,23 @@ void setup()
 
 	EmonSerial::PrintTemperaturePayload(NULL);
 
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
-	rf12_sleep(RF12_SLEEP);
-	EmonSerial::PrintRF12Init(rf12Init);
+	//rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group, 1600);
+	//rf12_sleep(RF12_SLEEP);
+	//EmonSerial::PrintRF12Init(rf12Init);
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(TEMPERATURE_JEENODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(TEMPERATURE_JEENODE);
+	Serial.println(" Freq: 915MHz");
 
 	Serial.println("Initialisation complete");
 	delay(50); 	//time for the serial buffer to empty
@@ -182,43 +186,32 @@ void loop()
 	}
 	readingIndex = (++readingIndex) % READING_HISTORY;
 
-
-/*	//debug output
-	for (int i = 0; i < temperaturePayload.numSensors; i++)
-	{
-		for (int j = 0; j < READING_HISTORY; j++)
-		{
-			Serial.print( readings[i][j] );
-			if( j < READING_HISTORY-1)
-				Serial.print(",");
-		}
-		Serial.println();
-	}
-*/
-
 	//add the current supply voltage at the end
 #ifdef WHISPER_NODE
 	temperaturePayload.supplyV = readVcc_WhisperNode(); 
 #else
-	temperaturePayload.supplyV =  readVcc();
+	//voltage divider is 1M and 1M. Jeenode reference voltage is 3.3v. AD range is 1024
+	//voltage divider current draw is 29 uA
+	float measuredvbat = analogRead(VOLTAGE_MEASURE_PIN);
+	measuredvbat = (measuredvbat/1024.0 * 3.3) * (1000000.0+1000000.0)/1000000.0;
+	temperaturePayload.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
+
+//	temperaturePayload.supplyV =  readVcc();
 #endif
 
-	//transmit
-	rf12_sleep(RF12_WAKEUP);
-	int wait = 1000;
-	while (!rf12_canSend() && wait--)
-		rf12_recvDone();
-	if (wait)
+	//only send as many ints as we have temperatures plus numSensors + Vcc	
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+	g_rf69.send((const uint8_t*) &temperaturePayload, sizeof(temperaturePayload));// - sizeof(int)*(MAX_TEMPERATURE_SENSORS- temperaturePayload.numSensors));
+	if( g_rf69.waitPacketSent() )
 	{
-		//only send as many ints as we have temperatures plus numSensors + Vcc
-		//rf12_sendStart(0, &temperaturePayload, sizeof(int) * (2 + temperaturePayload.numSensors));
-		rf12_sendStart(0, &temperaturePayload, sizeof(temperaturePayload) - sizeof(int)*(MAX_TEMPERATURE_SENSORS- temperaturePayload.numSensors));
-
-		rf12_sendWait(0);
+		EmonSerial::PrintTemperaturePayload(&temperaturePayload);
 	}
-	rf12_sleep(RF12_SLEEP);
+	else
+	{
+		Serial.println(F("No packet sent"));
+	}
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-	EmonSerial::PrintTemperaturePayload(&temperaturePayload);
 	
 	//turn the led on pin 5 (port 2) on for 1ms
 	pinMode(9, OUTPUT);
