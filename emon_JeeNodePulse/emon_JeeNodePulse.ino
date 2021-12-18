@@ -138,10 +138,10 @@ void setup()
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(TESTING_NODE);  //PULSE_JEENODE);
+	g_rf69.setHeaderId(PULSE_JEENODE);
 
 	Serial.print("RF69 initialise node: ");
-	Serial.print(TESTING_NODE);  //PULSE_JEENODE);
+	Serial.print(PULSE_JEENODE);
 	Serial.println(" Freq: 915MHz");
 
 	//initialise
