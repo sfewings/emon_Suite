@@ -23,8 +23,7 @@ bool g_lastActivity = false;
 //currently hard-coded flowCount[0] is water metre on hall effect A0 pin, flowCount[1] is bore pulse 
 const double PulsePerDeciLitre[2] = { 0.1, 26.0 };
 
-enum calibrationStep { eStart, eWaitingForPeak, eFirstPass, eSecondPass, eCalculate, eFinished };
-
+enum calibrationStep { eInit, eStart, eWaitingForPeak, eFirstPass, eSecondPass, eCalculate, eFinished };
 typedef struct HallEffectStateType
 {
 	int calibrationStep;
@@ -86,12 +85,29 @@ int ServiceHallEffectSensor(struct HallEffectStateType &state)
 	int value = analogRead(HALL_EFFECT_PIN);
 
 	//Calibration process
-	if (state.calibrationStep != eFinished)
+	if (state.calibrationStep == eInit )
 	{
-		Serial.print("Calibrating step(");
-		Serial.print(state.calibrationStep);
-		Serial.print(") ");
-		Serial.print((state.rising?"^":"|"));
+		//Print the header of log details during calibration
+		Serial.println(F("Caliration,step,enter routine rising(+)/falling(-),exit routine rising(+)/falling(-),analogue reading,number of litres"));
+		state.calibrationStep = eStart;
+		return 0;
+	}
+	else if (state.calibrationStep != eFinished)
+	{
+		Serial.print("Calibrating step,");
+		switch(state.calibrationStep)
+		{
+			case eStart: 			Serial.print(F("start           "));break;
+			case eWaitingForPeak:	Serial.print(F("waiting for peak"));break;
+			case eFirstPass:		Serial.print(F("first pass      "));break;
+			case eSecondPass:		Serial.print(F("second pass     "));break;
+			case eCalculate:		Serial.print(F("calculating     "));break;
+			case eFinished:			Serial.print(F("finished        "));break;
+		}
+		
+		Serial.print(",");
+		Serial.print((state.rising?"+":"-"));
+		Serial.print(",");
 
 		switch (state.calibrationStep)
 		{
@@ -168,7 +184,8 @@ int ServiceHallEffectSensor(struct HallEffectStateType &state)
 				break;
 			}
 		}
-		Serial.print((state.rising ? "^" : "|"));
+		Serial.print((state.rising ? "+" : "-"));
+		Serial.print(",");
 		state.lastValue = value;
 	}
 	else  //monitoring process
@@ -238,7 +255,7 @@ int ServiceHallEffectSensor(struct HallEffectStateType &state)
 	if (state.calibrationStep != eFinished || litresReturn)
 	{
 		Serial.print(value);
-		Serial.print(": ");
+		Serial.print(",");
 		Serial.println(litresReturn);
 	}
 
@@ -292,12 +309,8 @@ void setup()
 
 	//Hall effect sensor AH3503
 	pinMode(HALL_EFFECT_PIN, INPUT);
-	
-	//g_hallEffectState.minCalibration = 0;
-	//g_hallEffectState.maxCalibration = 1024;
-	//g_hallEffectState.calibrationStep = eFinished;
 
-	g_hallEffectState.calibrationStep = eStart;
+	g_hallEffectState.calibrationStep = eInit;
 	g_hallEffectState.lastValue = analogRead(HALL_EFFECT_PIN);
 
 	pinMode(FLOW_INTERRUPT_PIN, INPUT_PULLUP);
