@@ -79,8 +79,8 @@ pulse:
 bat:
   0:
     name: Main battery monitor
-    s0: Bank 1
-    s1: Bank 2
+    s0: Bank 2
+    s1: Bank 1
     s2: Bank 3 (old batteries)
     v0: Rail
     v0_reference: true
@@ -108,7 +108,7 @@ bat:
     v8: Arduino
   2:
     name: Reverse Current Tester
-    s0: Bank 1 - Reverse
+    s0: Bank 1 - Rev
     s1: Bank 1 - Forward
     s2: Unused
     v0: 50v ref
