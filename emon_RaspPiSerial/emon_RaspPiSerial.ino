@@ -70,6 +70,7 @@ void setup ()
 	EmonSerial::PrintInverterPayload(NULL);
 	EmonSerial::PrintBeehivePayload(NULL);
 	EmonSerial::PrintAirQualityPayload(NULL);
+	EmonSerial::PrintLeafPayload(NULL);
 
 	digitalWrite(GREEN_LED, LOW);
 }
@@ -198,6 +199,10 @@ void loop ()
 			if (node_id == AIRQUALITY_NODE  && len == sizeof(PayloadAirQuality))
 			{
 				SERIAL_OUT(AirQuality, Payload);
+			}
+			if (node_id == LEAF_NODE  && len == sizeof(PayloadLeaf))
+			{
+				SERIAL_OUT(Leaf, Payload);
 			}
 		}
 
