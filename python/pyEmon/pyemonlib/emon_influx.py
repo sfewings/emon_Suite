@@ -376,17 +376,17 @@ class emon_influx:
                 self.printException("airQualityException", reading, ex)
 
     def leafMessage(self, time, reading, nodeSettings ):
-        payload = emonSuite.PayloadAirQuality()
-        if( emonSuite.EmonSerial.ParseAirQualityPayload(reading,payload) ):
+        payload = emonSuite.PayloadLeaf()
+        if( emonSuite.EmonSerial.ParseLeafPayload(reading,payload) ):
             try:
                 p = Point("leaf").tag("sensor",f"leaf/odometer/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - odometer")\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - Odometer")\
                                 .field("value",payload.odometer).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("leaf").tag("sensor",f"leaf/range/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - range")\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Range")\
                                 .field("value",payload.range).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("leaf").tag("sensor",f"leaf/batteryTemperature/{payload.subnode}")\
@@ -410,9 +410,9 @@ class emon_influx:
                                 .field("value",payload.batteryChargeBars).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
-                    self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" leaf", reading )
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
-                self.printException("airQualityException", reading, ex)
+                self.printException("leafException", reading, ex)
 
     def otherMessage(self, time, reading, nodeSettings ):
         print(reading)

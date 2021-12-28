@@ -12,10 +12,10 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
 3. Run setup
     > python setup.py bdist_wheel
 4. Copy the wheel from dist and install
-    > pip install ./dist/pyemonlib-0.1.0-py3-none-any.whl
+    > pip install ./dist/pyemonlib-0.1.0-cp37-cp37m-linux_armv7l.whl
     or
     > deactivate
-    > pip3 uninstall -y pyemonlib && pip3 install ./dist/pyemonlib-0.1.0-py3-none-any.whl
+    > pip3 uninstall -y pyemonlib && pip3 install ./dist/pyemonlib-0.1.0-cp37-cp37m-linux_armv7l.whl
 
 To create and enable python environment
 =======================================

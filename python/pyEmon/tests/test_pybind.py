@@ -4,7 +4,7 @@ import pyemonlib.emonSuite as emonSuite
 def test1():
     print("MAX_SUBNODES           = {}".format(emonSuite.MAX_SUBNODES           ) )
     print("MAX_WATER_SENSORS      = {}".format(emonSuite.MAX_WATER_SENSORS      ) )
-    print("PULSE_NUM_PINS         = {}".format(emonSuite.PULSE_NUM_PINS         ) )
+    print("PULSE_MAX_SENSORS      = {}".format(emonSuite.PULSE_MAX_SENSORS      ) )
     print("MAX_TEMPERATURE_SENSORS= {}".format(emonSuite.MAX_TEMPERATURE_SENSORS) )
     print("HWS_TEMPERATURES       = {}".format(emonSuite.HWS_TEMPERATURES       ) )
     print("HWS_PUMPS              = {}".format(emonSuite.HWS_PUMPS              ) )
@@ -17,7 +17,8 @@ def test1():
     print('returnVal={},rainCount={},transmitCount={},tempertature={},supplyV={}'.format(retVal, payload.rainCount, payload.transmitCount, payload.temperature, payload.supplyV))
 
 
-    TEMP_MSG = "temp: 4,2354,2381,2327,2350,2880"
+    #TEMP_MSG = "temp,4,2354,2381,2327,2350,2880"
+    TEMP_MSG = "temp1,0,4149,4,3554,2513,2651,3606"
     payload = emonSuite.PayloadTemperature()
     retVal = emonSuite.EmonSerial.ParseTemperaturePayload(TEMP_MSG,payload)
     print('returnVal={},subnode={},supplyV={},numSensors={}'.format(retVal, payload.subnode, payload.supplyV, payload.numSensors))
@@ -39,11 +40,11 @@ def test1():
     retVal = emonSuite.EmonSerial.ParsePulsePayload(PULSE_MSG,payload)
     print('returnVal={},supplyV={}'.format(retVal, payload.supplyV))
     print("power", end = '')
-    for x in range(emonSuite.PULSE_NUM_PINS):
+    for x in range(emonSuite.PULSE_MAX_SENSORS):
         print(",{}".format(payload.power[x]), end = '')
     print("")
     print("pulse", end = '')
-    for x in range(emonSuite.PULSE_NUM_PINS):
+    for x in range(emonSuite.PULSE_MAX_SENSORS):
         print(",{}".format(payload.pulse[x]), end = '')
     print("")
 
@@ -160,5 +161,19 @@ def test1():
     print(f"pm5p0={payload.pm5p0}")
     print(f"pm10p0={payload.pm10p0}")
 
-test1()
+    LEAF_MESSAGE = "leaf,0,57876,77,36,64,11440,8"
+    print(LEAF_MESSAGE)
+    payload = emonSuite.PayloadLeaf()
+    retval = emonSuite.EmonSerial.ParseLeafPayload(LEAF_MESSAGE, payload)
+    print('returnVal={}'.format(retVal))
+    print(f"subnode={payload.subnode}")
+    print(f"odometer={payload.odometer}")
+    print(f"range={payload.range}")
+    print(f"batteryTemperature={payload.batteryTemperature}")
+    print(f"batterySOH={payload.batterySOH}")
+    print(f"batteryWH={payload.batteryWH}")
+    print(f"batteryChargeBars={payload.batteryChargeBars}")
+
+if __name__ == '__main__':
+    test1()
 

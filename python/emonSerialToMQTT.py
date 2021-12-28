@@ -34,7 +34,7 @@ if __name__ == "__main__":
     #mqttClient.on_message = on_message
     mqttClient.connect(mqttServer, 1883, 60)
 
-    nodes = ['rain','temp','disp','pulse','hws','wtr','scl','bat','inv','bee','air']
+    nodes = ['rain','temp','disp','pulse','hws','wtr','scl','bat','inv','bee','air','leaf']
     RSSIvalue = 0
     lastSentTimeUpdate = datetime.datetime.now()
 
