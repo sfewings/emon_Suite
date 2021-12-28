@@ -1,26 +1,19 @@
-#include <CanBusMCP2515_asukiaaa.h>
-//See https://github.com/asukiaaa/CanBusMCP2515-arduino
-
+//emon_Leaf node for reading the details of the Nissan Leaf ZE0 Dashboard CAN bus and transmitting to emon_Suite
+//Dec 2021
+#include <CanBusMCP2515_asukiaaa.h>   //See https://github.com/asukiaaa/CanBusMCP2515-arduino
 #include <EmonShared.h>
+#include <RH_RF69.h>
 
 static const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
 static const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
 static const auto CS_PIN            = 8;
-CanBusMCP2515_asukiaaa::Driver canCar(CS_PIN); //(9);
-//CanBusMCP2515_asukiaaa::Driver canEV(8);
+static const auto SEND_PERIOD       = 1000*5; //5 minutes if no data updates otherwise.
+
+
+CanBusMCP2515_asukiaaa::Driver canCar(CS_PIN);
 
 CanBusData_asukiaaa::Frame last_0x5B3, last_0x5C5, last_0x5A9;
-
-
-typedef struct PayloadLeaf : PayloadRelay {
-	byte subnode;                           // 
-	unsigned long   odometer;
-  short  range;                //NL range in 0.2 kilometers
-  byte   batteryTemperature;
-  byte   batterySOH;           //Battery state of health %
-  unsigned long batteryWH;     //WH in battery
-  byte   batteryChargeBars;    //Battery available charge bars
-} PayloadLeaf;
+RH_RF69 g_rf69;
 
 PayloadLeaf payloadLeaf;
 
@@ -49,51 +42,34 @@ bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
 }
 
 
-void PrintLeafPayload(PayloadLeaf* pPayloadLeaf)
-{
-	PrintLeafPayload(Serial, pPayloadLeaf);
-}
-
-void PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf)
-{
-	if (pPayloadLeaf == NULL)
-	{
-		stream.print(F("leaf,subnode,odometer,range,batteryTemperature,batterySOH,batteryWH,batteryChargeBars"));
-	}
-	else
-	{
-		stream.print(F("leaf,"));
-		stream.print(pPayloadLeaf->subnode);
-		stream.print(F(","));
-		stream.print(pPayloadLeaf->odometer);
-		stream.print(F(","));
-		stream.print(pPayloadLeaf->range);
-		stream.print(F(","));    
-		stream.print(pPayloadLeaf->batteryTemperature);
-		stream.print(F(","));
-		stream.print(pPayloadLeaf->batterySOH);
-		stream.print(F(","));
-		stream.print(pPayloadLeaf->batteryWH);
-		stream.print(F(","));
-		stream.print(pPayloadLeaf->batteryChargeBars);
-
-		//PrintRelay(stream, pPayloadBeehive);
-	}
-	stream.println();
-}
 
 void setup() 
 {
-  Serial.begin(115200);
+  Serial.begin(9600);
 
+  EmonSerial::PrintLeafPayload(NULL);
   initCAN( canCar );
-  PrintLeafPayload(NULL);
- // initCAN( canEV );
+
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(915.0))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(LEAF_NODE);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(LEAF_NODE);
+	Serial.println(" Freq: 915MHz");
 }
 
 void loop() 
 {
   static uint32_t waitingStart = millis();
+  bool dataToSend = false;
+  
   if (canCar.available()) 
   {
     CanBusData_asukiaaa::Frame frame;
@@ -107,7 +83,7 @@ void loop()
       if( last_0x5B3.data64 != frame.data64)
       {
         Serial.println(frame.toString());
-        PrintLeafPayload(Serial, &payloadLeaf);
+        dataToSend = true;
         last_0x5B3 = frame;
       }
     }
@@ -117,7 +93,7 @@ void loop()
       if( last_0x5C5.data64 != frame.data64)
       {
         Serial.println(frame.toString());
-        PrintLeafPayload(Serial, &payloadLeaf);
+        dataToSend = true;
         last_0x5C5 = frame;
       }
     }
@@ -127,24 +103,29 @@ void loop()
       if( last_0x5A9.data64 != frame.data64)
       {
         Serial.println(frame.toString());
-        PrintLeafPayload(Serial, &payloadLeaf);
+        dataToSend = true;
         last_0x5A9 = frame;
       }      
     }
-    // else
-    // {
-    //   Serial.print("canCar:");
-    //   Serial.print(frame.id,HEX);
-    //   Serial.print(",");
-    //   Serial.println(frame.toString());
-    // }
   }
-
-  if(millis() - waitingStart > 1000)
-  {
-    //PrintLeafPayload(Serial, &payloadLeaf);
+  
+  if( dataToSend || millis() - waitingStart > SEND_PERIOD )
+  {   
     waitingStart = millis();
-  }
+
+    if( last_0x5A9.data64 != 0 && last_0x5C5.data64 != 0 && last_0x5B3.data64 != 0)
+    {
+      g_rf69.send((const uint8_t*) &payloadLeaf, sizeof (PayloadLeaf));
+      if( g_rf69.waitPacketSent() )
+      {
+        EmonSerial::PrintLeafPayload(&payloadLeaf);
+      }
+      else
+      {
+        Serial.println(F("No packet sent"));
+      }      
+    }
+  }    
   delay(1);
 }
 

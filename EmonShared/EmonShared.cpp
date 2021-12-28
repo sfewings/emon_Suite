@@ -481,6 +481,45 @@ void EmonSerial::PrintAirQualityPayload(Stream& stream, PayloadAirQuality* pPayl
 	}
 	stream.println();
 }
+
+void EmonSerial::PrintLeafPayload(PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast)
+{
+	PrintLeafPayload(Serial, pPayloadLeaf, timeSinceLast);
+}
+
+void EmonSerial::PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast)
+{
+	if (pPayloadLeaf == NULL)
+	{
+		stream.print(F("leaf,subnode,odometer,range,batteryTemperature,batterySOH,batteryWH,batteryChargeBars"));
+	}
+	else
+	{
+		stream.print(F("leaf,"));
+		stream.print(pPayloadLeaf->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadLeaf->odometer);
+		stream.print(F(","));
+		stream.print(pPayloadLeaf->range);
+		stream.print(F(","));    
+		stream.print(pPayloadLeaf->batteryTemperature);
+		stream.print(F(","));
+		stream.print(pPayloadLeaf->batterySOH);
+		stream.print(F(","));
+		stream.print(pPayloadLeaf->batteryWH);
+		stream.print(F(","));
+		stream.print(pPayloadLeaf->batteryChargeBars);
+
+		PrintRelay(stream, pPayloadLeaf);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 
@@ -1034,6 +1073,40 @@ int EmonSerial::ParseAirQualityPayload(char* str, PayloadAirQuality* pPayloadAir
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadAirQuality, pch);
+	}
+	return version;
+}
+
+int EmonSerial::ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf)
+{
+	memset(pPayloadLeaf, 0, sizeof(PayloadLeaf));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "leaf"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadLeaf->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadLeaf->odometer = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadLeaf->range = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadLeaf->batteryTemperature = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadLeaf->batterySOH = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadLeaf->batteryWH = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadLeaf->batteryChargeBars = atoi(pch);
+
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadLeaf, pch);
 	}
 	return version;
 }

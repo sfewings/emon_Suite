@@ -34,6 +34,7 @@ typedef unsigned char byte;
 #define INVERTER_NODE 21			//Node for sending MPP inverter readings
 #define BEEHIVEMONITOR_NODE 22		//Node for monitoring beehives
 #define AIRQUALITY_NODE 23			//Node for Plantower PM7003 ar quality sensor
+#define LEAF_NODE 24				//Node for Nissan Leaf sensor
 
 #define MAX_SUBNODES	4					//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4			//Maximum number of water pulse and water height metres
@@ -166,6 +167,17 @@ typedef struct PayloadAirQuality : PayloadRelay {
 } PayloadAirQuality;
 #pragma pack(pop)
 
+typedef struct PayloadLeaf : PayloadRelay {
+	byte subnode;                           // 
+	unsigned long   odometer;     			//odometer in KM
+  	short  range;                 			//range in 0.2 kilometers
+  	byte   batteryTemperature;    			//battery temperature in celsius
+  	byte   batterySOH;            			//Battery state of health %
+  	unsigned long batteryWH;      			//WH in battery
+  	byte   batteryChargeBars;     			//Battery available charge bars. As displayed on the car.
+} PayloadLeaf;
+
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -183,6 +195,7 @@ public:
 	static void PrintInverterPayload(PayloadInverter* pPayloadInverter, unsigned long timeSinceLast = 0);
 	static void PrintBeehivePayload(PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast = 0);
 	static void PrintAirQualityPayload(PayloadAirQuality* pPayloadAirQuality, unsigned long timeSinceLast = 0);
+	static void PrintLeafPayload(PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast = 0);
 
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -198,6 +211,7 @@ public:
 	static void PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadInverter, unsigned long timeSinceLast = 0);
 	static void PrintBeehivePayload(Stream& stream, PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast = 0);
 	static void PrintAirQualityPayload(Stream& stream, PayloadAirQuality* pPayloadAirQuality, unsigned long timeSinceLast = 0);
+	static void PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast = 0);
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
@@ -216,6 +230,7 @@ public:
 	static int ParseInverterPayload(char* str, PayloadInverter* pPayloadInverter);
 	static int ParseBeehivePayload(char* str, PayloadBeehive* pPayloadBeehive);
 	static int ParseAirQualityPayload(char* str, PayloadAirQuality* pPayloadAirQuality);
+	static int ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf);
 };
 
 

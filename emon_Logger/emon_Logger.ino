@@ -87,6 +87,7 @@ void setup ()
 	EmonSerial::PrintInverterPayload(NULL);
 	EmonSerial::PrintBeehivePayload(NULL);
 	EmonSerial::PrintAirQualityPayload(NULL);
+	EmonSerial::PrintLeafPayload(NULL);
 
 	SdFile::dateTimeCallback(dateTime);
 
@@ -296,6 +297,10 @@ void loop ()
 			if (node_id == AIRQUALITY_NODE  && len == sizeof(PayloadAirQuality))
 			{
 				PRINT_AND_LOG(AirQuality, Payload);
+			}
+			if (node_id == LEAF_NODE  && len == sizeof(PayloadLeaf))
+			{
+				PRINT_AND_LOG(Leaf, Payload);
 			}
 
 			if (file)
