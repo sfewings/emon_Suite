@@ -165,6 +165,18 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadAirQuality.def_readwrite("pm10p0", &PayloadAirQuality::pm10p0, "Particles Per Deciliter pm10.0 reading");
 
 
+    //PayloadLeaf
+    py::class_<PayloadLeaf, PayloadRelay> payloadLeaf(m, "PayloadLeaf");
+    payloadLeaf.def(py::init<>());
+    payloadLeaf.def_readwrite("subnode", &PayloadLeaf::subnode, "allow multiple Leaf nodes on the network");
+    payloadLeaf.def_readwrite("odometer", &PayloadLeaf::odometer, "Odometer reading in kilometers");
+    payloadLeaf.def_readwrite("range", &PayloadLeaf::range, "Remaining range in 0.2 kilometers");
+    payloadLeaf.def_readwrite("batteryTemperature", &PayloadLeaf::batteryTemperature, "Battery temperature in celcius");
+    payloadLeaf.def_readwrite("batterySOH", &PayloadLeaf::batterySOH, "Battery state of health in percent");
+    payloadLeaf.def_readwrite("batteryWH", &PayloadLeaf::batteryWH, "Battery WH remaining");
+    payloadLeaf.def_readwrite("batteryChargeBars", &PayloadLeaf::batteryChargeBars, "Battery charge bars on Dashboard (12=fully charged)");
+
+
     //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
     emonSerial.def_static("ParseRainPayload", &EmonSerial::ParseRainPayload, "Parses from string to RainPayload",py::arg("string"), py::arg("PayloadRain"));
@@ -179,6 +191,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseBeehivePayload", &EmonSerial::ParseBeehivePayload, "Parses from string to PayloadBeehive",py::arg("string"), py::arg("PayloadBeehive"));
     emonSerial.def_static("ParseInverterPayload", &EmonSerial::ParseInverterPayload, "Parses from string to PayloadInverter",py::arg("string"), py::arg("PayloadInverter"));
     emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
+    emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
 }
 
 

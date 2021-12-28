@@ -33,6 +33,7 @@ class emon_influx:
             'inv'  : self.inverterMessage,
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
+            'leaf' : self.leafMessage,
             'other': self.otherMessage
         }
 
@@ -371,6 +372,45 @@ class emon_influx:
                 self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" air", reading )
+            except Exception as ex:
+                self.printException("airQualityException", reading, ex)
+
+    def leafMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadAirQuality()
+        if( emonSuite.EmonSerial.ParseAirQualityPayload(reading,payload) ):
+            try:
+                p = Point("leaf").tag("sensor",f"leaf/odometer/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - odometer")\
+                                .field("value",payload.odometer).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("leaf").tag("sensor",f"leaf/range/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - range")\
+                                .field("value",payload.range).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("leaf").tag("sensor",f"leaf/batteryTemperature/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Battery Temperature")\
+                                .field("value",payload.batteryTemperature).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("leaf").tag("sensor",f"leaf/batterySOH/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Battery SOH")\
+                                .field("value",payload.batterySOH).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("leaf").tag("sensor",f"leaf/batteryWH/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Battery WH")\
+                                .field("value",payload.batteryWH).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("leaf").tag("sensor",f"leaf/batteryChargeBars/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Battery charge bars")\
+                                .field("value",payload.batteryChargeBars).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name']+" leaf", reading )
             except Exception as ex:
                 self.printException("airQualityException", reading, ex)
 
