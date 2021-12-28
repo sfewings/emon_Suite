@@ -1,271 +1,262 @@
-// See https://github.com/pierremolinaro/acan2515
-//——————————————————————————————————————————————————————————————————————————————
-//  ACAN2515 Demo in loopback mode
+// // See https://github.com/pierremolinaro/acan2515
+// //——————————————————————————————————————————————————————————————————————————————
+// //  ACAN2515 Demo in loopback mode
+// //——————————————————————————————————————————————————————————————————————————————
+
+// #include <ACAN2515.h>
+
+// //——————————————————————————————————————————————————————————————————————————————
+// //  MCP2515 connections:
+// //    - standard SPI pins for SCK, MOSI and MISO
+// //    - a digital output for CS
+// //    - interrupt input pin for INT
+// //——————————————————————————————————————————————————————————————————————————————
+// // If you use CAN-BUS shield (http://wiki.seeedstudio.com/CAN-BUS_Shield_V2.0/) with Arduino Uno,
+// // use B connections for MISO, MOSI, SCK, #9 or #10 for CS (as you want),
+// // #2 or #3 for INT (as you want).
+// //——————————————————————————————————————————————————————————————————————————————
+// // Error codes and possible causes:
+// //    In case you see "Configuration error 0x1", the Arduino doesn't communicate
+// //       with the 2515. You will get this error if there is no CAN shield or if
+// //       the CS pin is incorrect. 
+// //    In case you see succes up to "Sent: 17" and from then on "Send failure":
+// //       There is a problem with the interrupt. Check if correct pin is configured
+// //——————————————————————————————————————————————————————————————————————————————
+
+// static const byte MCP2515_CS  =  9 ; // CS input of MCP2515 (adapt to your design)    //CARCan
+// static const byte MCP2515_INT =  2 ; // INT output of MCP2515 (adapt to your design)
+// static const byte MCP2515_CS_2=  8 ; // CS input of MCP2515 (adapt to your design)    //EVCan
+// static const byte MCP2515_INT_2 =  1 ; // INT output of MCP2515 (adapt to your design)
+
+// //——————————————————————————————————————————————————————————————————————————————
+// //  MCP2515 Driver object
+// //——————————————————————————————————————————————————————————————————————————————
+
+// ACAN2515 can (MCP2515_CS, SPI, MCP2515_INT) ;
+// ACAN2515 can2 (MCP2515_CS_2, SPI, MCP2515_INT) ;
+
+// //——————————————————————————————————————————————————————————————————————————————
+// //  MCP2515 Quartz: adapt to your design
+// //——————————————————————————————————————————————————————————————————————————————
+
+// static const uint32_t QUARTZ_FREQUENCY = 8UL * 1000UL * 1000UL ; // 8 MHz
+
+// //——————————————————————————————————————————————————————————————————————————————
+// //   SETUP
+// //——————————————————————————————————————————————————————————————————————————————
+
+// void setup () {
+// //--- Switch on builtin led
+//   pinMode (LED_BUILTIN, OUTPUT) ;
+//   digitalWrite (LED_BUILTIN, HIGH) ;
+// //--- Start serial
+//   Serial.begin (9600);
+// //--- Wait for serial (blink led at 10 Hz during waiting)
+//   while (!Serial) {
+//     delay (50) ;
+//     digitalWrite (LED_BUILTIN, !digitalRead (LED_BUILTIN)) ;
+//   }
+// //--- Begin SPI
+//   SPI.begin () ;
+// //--- Configure ACAN2515
+//   Serial.println ("Configure ACAN2515") ;
+//   ACAN2515Settings settings (QUARTZ_FREQUENCY, 500UL * 1000UL) ; // CAN bit rate 500 kb/s
+//   settings.mRequestedMode = ACAN2515Settings::LoopBackMode ; // Select loopback mode
+//   uint16_t errorCode = can2.begin (settings, [] { can2.isr () ; }) ;
+//   if (errorCode == 0) {
+//     Serial.print ("Bit Rate prescaler: ") ;
+//     Serial.println (settings.mBitRatePrescaler) ;
+//     Serial.print ("Propagation Segment: ") ;
+//     Serial.println (settings.mPropagationSegment) ;
+//     Serial.print ("Phase segment 1: ") ;
+//     Serial.println (settings.mPhaseSegment1) ;
+//     Serial.print ("Phase segment 2: ") ;
+//     Serial.println (settings.mPhaseSegment2) ;
+//     Serial.print ("SJW: ") ;
+//     Serial.println (settings.mSJW) ;
+//     Serial.print ("Triple Sampling: ") ;
+//     Serial.println (settings.mTripleSampling ? "yes" : "no") ;
+//     Serial.print ("Actual bit rate: ") ;
+//     Serial.print (settings.actualBitRate ()) ;
+//     Serial.println (" bit/s") ;
+//     Serial.print ("Exact bit rate ? ") ;
+//     Serial.println (settings.exactBitRate () ? "yes" : "no") ;
+//     Serial.print ("Sample point: ") ;
+//     Serial.print (settings.samplePointFromBitStart ()) ;
+//     Serial.println ("%") ;
+//   }else{
+//     Serial.print ("Configuration error 0x") ;
+//     Serial.println (errorCode, HEX) ;
+//   }
+
+//   Serial.println ("Configure ACAN2515 2") ;
+//   errorCode = can.begin (settings, [] { can.isr () ; }) ;
+//   if (errorCode == 0) {
+//     Serial.print ("Bit Rate prescaler: ") ;
+//     Serial.println (settings.mBitRatePrescaler) ;
+//     Serial.print ("Propagation Segment: ") ;
+//     Serial.println (settings.mPropagationSegment) ;
+//     Serial.print ("Phase segment 1: ") ;
+//     Serial.println (settings.mPhaseSegment1) ;
+//     Serial.print ("Phase segment 2: ") ;
+//     Serial.println (settings.mPhaseSegment2) ;
+//     Serial.print ("SJW: ") ;
+//     Serial.println (settings.mSJW) ;
+//     Serial.print ("Triple Sampling: ") ;
+//     Serial.println (settings.mTripleSampling ? "yes" : "no") ;
+//     Serial.print ("Actual bit rate: ") ;
+//     Serial.print (settings.actualBitRate ()) ;
+//     Serial.println (" bit/s") ;
+//     Serial.print ("Exact bit rate ? ") ;
+//     Serial.println (settings.exactBitRate () ? "yes" : "no") ;
+//     Serial.print ("Sample point: ") ;
+//     Serial.print (settings.samplePointFromBitStart ()) ;
+//     Serial.println ("%") ;
+//   }else{
+//     Serial.print ("Configuration error 0x") ;
+//     Serial.println (errorCode, HEX) ;
+//   }
+// }
+
+// //----------------------------------------------------------------------------------------------------------------------
+
+// static uint32_t gBlinkLedDate = 0 ;
+// static uint32_t gReceivedFrameCount = 0 ;
+// static uint32_t gSentFrameCount = 0 ;
+
+// //——————————————————————————————————————————————————————————————————————————————
+
+// void loop () {
+//   CANMessage frame ;
+//   // if (gBlinkLedDate < millis ()) {
+//   //   gBlinkLedDate += 2000 ;
+//   //   digitalWrite (LED_BUILTIN, !digitalRead (LED_BUILTIN)) ;
+//   //   const bool ok = can.tryToSend (frame) ;
+//   //   if (ok) {
+//   //     gSentFrameCount += 1 ;
+//   //     Serial.print ("Sent: ") ;
+//   //     Serial.println (gSentFrameCount) ;
+//   //   }else{
+//   //     Serial.println ("Send failure") ;
+//   //   }
+//   // }
+//   if (can.available ()) {
+//     can.receive (frame) ;
+//     gReceivedFrameCount ++ ;
+//     Serial.print ("Received 1: ") ;
+//     Serial.println (gReceivedFrameCount) ;
+//   }
+
+//   if (can2.available ()) {
+//     can2.receive (frame) ;
+//     gReceivedFrameCount ++ ;
+//     Serial.print ("Received 2: ") ;
+//     Serial.println (gReceivedFrameCount) ;
+//   }
+// }
+
 //——————————————————————————————————————————————————————————————————————————————
 
-#include <ACAN2515.h>
 
-//——————————————————————————————————————————————————————————————————————————————
-//  MCP2515 connections:
-//    - standard SPI pins for SCK, MOSI and MISO
-//    - a digital output for CS
-//    - interrupt input pin for INT
-//——————————————————————————————————————————————————————————————————————————————
-// If you use CAN-BUS shield (http://wiki.seeedstudio.com/CAN-BUS_Shield_V2.0/) with Arduino Uno,
-// use B connections for MISO, MOSI, SCK, #9 or #10 for CS (as you want),
-// #2 or #3 for INT (as you want).
-//——————————————————————————————————————————————————————————————————————————————
-// Error codes and possible causes:
-//    In case you see "Configuration error 0x1", the Arduino doesn't communicate
-//       with the 2515. You will get this error if there is no CAN shield or if
-//       the CS pin is incorrect. 
-//    In case you see succes up to "Sent: 17" and from then on "Send failure":
-//       There is a problem with the interrupt. Check if correct pin is configured
-//——————————————————————————————————————————————————————————————————————————————
 
-static const byte MCP2515_CS  =  9 ; // CS input of MCP2515 (adapt to your design) 
-static const byte MCP2515_INT =  2 ; // INT output of MCP2515 (adapt to your design)
-static const byte MCP2515_CS_2=  8 ; // CS input of MCP2515 (adapt to your design) 
-static const byte MCP2515_INT_2 =  1 ; // INT output of MCP2515 (adapt to your design)
+#include <CanBusMCP2515_asukiaaa.h>
+#ifndef PIN_CS
+#define PIN_CS 9
+#endif
+#ifndef PIN_INT
+#define PIN_INT 2
+#endif
 
-//——————————————————————————————————————————————————————————————————————————————
-//  MCP2515 Driver object
-//——————————————————————————————————————————————————————————————————————————————
+//See https://github.com/asukiaaa/CanBusMCP2515-arduino
 
-ACAN2515 can (MCP2515_CS, SPI, MCP2515_INT) ;
-ACAN2515 can2 (MCP2515_CS_2, SPI, MCP2515_INT) ;
+static const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
+static const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
+#ifndef CAN_ID
+#define CAN_ID 3000
+#endif
 
-//——————————————————————————————————————————————————————————————————————————————
-//  MCP2515 Quartz: adapt to your design
-//——————————————————————————————————————————————————————————————————————————————
+CanBusMCP2515_asukiaaa::Driver canCar(9); //(9);
+//CanBusMCP2515_asukiaaa::Driver canEV(8);
 
-static const uint32_t QUARTZ_FREQUENCY = 8UL * 1000UL * 1000UL ; // 8 MHz
+bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
+{
+  CanBusMCP2515_asukiaaa::Settings settings(QUARTZ_FREQUENCY, BITRATE);
+  Serial.print("settings for :");Serial.println(can.CS());
+  Serial.println(settings.toString());
 
-//——————————————————————————————————————————————————————————————————————————————
-//   SETUP
-//——————————————————————————————————————————————————————————————————————————————
+  while (true) {
+    uint16_t errorCode = can.begin(settings);
+    if (errorCode == 0) {
+      Serial.println("can.begin() success");
+      break;
+    } else {
+      Serial.print("can.begin() failed: ");
+      Serial.println(errorCode);
+      delay(1000);
+    }
 
-void setup () {
-//--- Switch on builtin led
-  pinMode (LED_BUILTIN, OUTPUT) ;
-  digitalWrite (LED_BUILTIN, HIGH) ;
-//--- Start serial
-  Serial.begin (9600);
-//--- Wait for serial (blink led at 10 Hz during waiting)
-  while (!Serial) {
-    delay (50) ;
-    digitalWrite (LED_BUILTIN, !digitalRead (LED_BUILTIN)) ;
+    if (errorCode == 0) break;
+    Serial.print("Configuration error: ");
+    Serial.println(CanBusMCP2515_asukiaaa::Error::toString(errorCode));
+    delay(1000);
   }
-//--- Begin SPI
-  SPI.begin () ;
-//--- Configure ACAN2515
-  Serial.println ("Configure ACAN2515") ;
-  ACAN2515Settings settings (QUARTZ_FREQUENCY, 500UL * 1000UL) ; // CAN bit rate 500 kb/s
-  settings.mRequestedMode = ACAN2515Settings::LoopBackMode ; // Select loopback mode
-  uint16_t errorCode = can2.begin (settings, [] { can2.isr () ; }) ;
-  if (errorCode == 0) {
-    Serial.print ("Bit Rate prescaler: ") ;
-    Serial.println (settings.mBitRatePrescaler) ;
-    Serial.print ("Propagation Segment: ") ;
-    Serial.println (settings.mPropagationSegment) ;
-    Serial.print ("Phase segment 1: ") ;
-    Serial.println (settings.mPhaseSegment1) ;
-    Serial.print ("Phase segment 2: ") ;
-    Serial.println (settings.mPhaseSegment2) ;
-    Serial.print ("SJW: ") ;
-    Serial.println (settings.mSJW) ;
-    Serial.print ("Triple Sampling: ") ;
-    Serial.println (settings.mTripleSampling ? "yes" : "no") ;
-    Serial.print ("Actual bit rate: ") ;
-    Serial.print (settings.actualBitRate ()) ;
-    Serial.println (" bit/s") ;
-    Serial.print ("Exact bit rate ? ") ;
-    Serial.println (settings.exactBitRate () ? "yes" : "no") ;
-    Serial.print ("Sample point: ") ;
-    Serial.print (settings.samplePointFromBitStart ()) ;
-    Serial.println ("%") ;
-  }else{
-    Serial.print ("Configuration error 0x") ;
-    Serial.println (errorCode, HEX) ;
-  }
-
-  Serial.println ("Configure ACAN2515 2") ;
-  errorCode = can.begin (settings, [] { can.isr () ; }) ;
-  if (errorCode == 0) {
-    Serial.print ("Bit Rate prescaler: ") ;
-    Serial.println (settings.mBitRatePrescaler) ;
-    Serial.print ("Propagation Segment: ") ;
-    Serial.println (settings.mPropagationSegment) ;
-    Serial.print ("Phase segment 1: ") ;
-    Serial.println (settings.mPhaseSegment1) ;
-    Serial.print ("Phase segment 2: ") ;
-    Serial.println (settings.mPhaseSegment2) ;
-    Serial.print ("SJW: ") ;
-    Serial.println (settings.mSJW) ;
-    Serial.print ("Triple Sampling: ") ;
-    Serial.println (settings.mTripleSampling ? "yes" : "no") ;
-    Serial.print ("Actual bit rate: ") ;
-    Serial.print (settings.actualBitRate ()) ;
-    Serial.println (" bit/s") ;
-    Serial.print ("Exact bit rate ? ") ;
-    Serial.println (settings.exactBitRate () ? "yes" : "no") ;
-    Serial.print ("Sample point: ") ;
-    Serial.print (settings.samplePointFromBitStart ()) ;
-    Serial.println ("%") ;
-  }else{
-    Serial.print ("Configuration error 0x") ;
-    Serial.println (errorCode, HEX) ;
-  }
+  Serial.println("Succeeced in beginning");
 }
 
-//----------------------------------------------------------------------------------------------------------------------
+void setup() {
+  Serial.begin(115200);
 
-static uint32_t gBlinkLedDate = 0 ;
-static uint32_t gReceivedFrameCount = 0 ;
-static uint32_t gSentFrameCount = 0 ;
+  initCAN( canCar );
+ // initCAN( canEV );
+ }
 
-//——————————————————————————————————————————————————————————————————————————————
+void loop() 
+{
+    static uint32_t waitingStart = millis();
 
-void loop () {
-  CANMessage frame ;
-  // if (gBlinkLedDate < millis ()) {
-  //   gBlinkLedDate += 2000 ;
-  //   digitalWrite (LED_BUILTIN, !digitalRead (LED_BUILTIN)) ;
-  //   const bool ok = can.tryToSend (frame) ;
-  //   if (ok) {
-  //     gSentFrameCount += 1 ;
-  //     Serial.print ("Sent: ") ;
-  //     Serial.println (gSentFrameCount) ;
-  //   }else{
-  //     Serial.println ("Send failure") ;
-  //   }
+  // static unsigned long trySendAt = 0;
+  // static const unsigned long intervalMs = 1000UL;
+  // // if (trySendAt == 0 || millis() - trySendAt > intervalMs) {
+  //   trySendAt = millis();
+  //   CanBusData_asukiaaa::Frame frame;
+  //   frame.id = CAN_ID;
+  //   frame.ext = frame.id > 2048;
+  //   frame.data64 = millis();
+  //   // frame.idx = frame.data64 % 3;
+  //   const bool ok = can.tryToSend(frame);
+  //   Serial.println("Sent");
+  //   Serial.println(frame.toString());
+  //   Serial.print(ok ? "Succeeded" : "Failed");
+  //   Serial.print(" at ");
+  //   Serial.println(trySendAt);
   // }
-  if (can.available ()) {
-    can.receive (frame) ;
-    gReceivedFrameCount ++ ;
-    Serial.print ("Received 1: ") ;
-    Serial.println (gReceivedFrameCount) ;
+  if (canCar.available()) {
+    CanBusData_asukiaaa::Frame frame;
+    canCar.receive(&frame);
+    Serial.print("canCar:");
+    Serial.print(frame.id,HEX);
+    Serial.print(",");
+    Serial.println(frame.toString());
+    waitingStart = millis();
   }
 
-  if (can2.available ()) {
-    can2.receive (frame) ;
-    gReceivedFrameCount ++ ;
-    Serial.print ("Received 2: ") ;
-    Serial.println (gReceivedFrameCount) ;
+  // if (canEV.available()) {
+  //   CanBusData_asukiaaa::Frame frame;
+  //   canEV.receive(&frame);
+  //   Serial.print("canEV:");
+  //   Serial.print(frame.id,HEX);
+  //   Serial.print(",");
+  //   Serial.println(frame.toString());
+  //   waitingStart = millis();
+  // }
+
+  if(millis() - waitingStart > 1000)
+  {
+    Serial.println(".");
+    waitingStart = millis();
   }
+  delay(2);
 }
-
-//——————————————————————————————————————————————————————————————————————————————
-
-
-
-// #include <CanBusMCP2515_asukiaaa.h>
-// #ifndef PIN_CS
-// #define PIN_CS 9
-// #endif
-// #ifndef PIN_INT
-// #define PIN_INT 2
-// #endif
-//
-// See https://github.com/asukiaaa/CanBusMCP2515-arduino
-//
-// static const auto QUARTZ_FREQUENCY =
-//     CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
-// static const auto BITRATE = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
-// #ifndef CAN_ID
-// #define CAN_ID 3000
-// #endif
-
-// CanBusMCP2515_asukiaaa::Driver canCar(9);
-// CanBusMCP2515_asukiaaa::Driver canEV(8);
-
-// bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
-// {
-//   CanBusMCP2515_asukiaaa::Settings settings(QUARTZ_FREQUENCY, BITRATE);
-//   Serial.print("settings for :");Serial.println(can.CS());
-//   Serial.println(settings.toString());
-
-//   while (true) {
-//     uint16_t errorCode = can.begin(settings);
-//     if (errorCode == 0) {
-//       Serial.println("can.begin() success");
-//       break;
-//     } else {
-//       Serial.print("can.begin() failed: ");
-//       Serial.println(errorCode);
-//       delay(1000);
-//     }
-
-//     if (errorCode == 0) break;
-//     Serial.print("Configuration error: ");
-//     Serial.println(CanBusMCP2515_asukiaaa::Error::toString(errorCode));
-//     delay(1000);
-//   }
-//   Serial.println("Succeeced in beginning");
-// }
-
-// void setup() {
-//   Serial.begin(9600);
-
-//   initCAN( canEV );
-//   //initCAN( canCar );
-//  }
-
-// void loop() 
-// {
-//   static uint8_t i = 0;
-
-//   // static unsigned long trySendAt = 0;
-//   // static const unsigned long intervalMs = 1000UL;
-//   // // if (trySendAt == 0 || millis() - trySendAt > intervalMs) {
-//   //   trySendAt = millis();
-//   //   CanBusData_asukiaaa::Frame frame;
-//   //   frame.id = CAN_ID;
-//   //   frame.ext = frame.id > 2048;
-//   //   frame.data64 = millis();
-//   //   // frame.idx = frame.data64 % 3;
-//   //   const bool ok = can.tryToSend(frame);
-//   //   Serial.println("Sent");
-//   //   Serial.println(frame.toString());
-//   //   Serial.print(ok ? "Succeeded" : "Failed");
-//   //   Serial.print(" at ");
-//   //   Serial.println(trySendAt);
-//   // }
-//   // if (canCar.available()) {
-//   //   CanBusData_asukiaaa::Frame frame;
-//   //   canCar.receive(&frame);
-//   //   Serial.print("canCar: ");
-//   //   Serial.print(frame.id,HEX);
-//   //   Serial.print(":");
-//   //   Serial.println(frame.toString());
-//   //   i=0;
-//   // }
-//   // else
-//   // {
-//   //   i++;
-//   // }
-
-//   if (canEV.available()) {
-//     CanBusData_asukiaaa::Frame frame;
-//     canEV.receive(&frame);
-//     Serial.print("canEV: ");
-//     Serial.print(frame.id,HEX);
-//     Serial.print(":");
-//     Serial.println(frame.toString());
-//     i=0;
-//   }
-//   else
-//   {
-//     i++;
-//   }
-
-//   if(i >=100)
-//   {
-//     i = 0;
-//     Serial.println(".");
-//   }
-//   delay(10);
-// }
 
 
 // // see https://ev-olution.yolasite.com/CANa.php for more info
