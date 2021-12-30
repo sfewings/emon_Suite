@@ -8,7 +8,7 @@ static const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::M
 static const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
 static const auto CS_PIN            = 8;
 static const auto SEND_PERIOD       = 1000*5; //5 minutes if no data updates otherwise.
-
+static const auto LED_ACTION_PIN    = 6;
 
 CanBusMCP2515_asukiaaa::Driver canCar(CS_PIN);
 
@@ -16,6 +16,21 @@ CanBusData_asukiaaa::Frame last_0x5B3, last_0x5C5, last_0x5A9;
 RH_RF69 g_rf69;
 
 PayloadLeaf payloadLeaf;
+
+void flashError(int error)
+{
+  while( true)
+  { 
+    for( int i = 0; i < error; i++)
+    {
+      digitalWrite(LED_ACTION_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_ACTION_PIN, LOW);
+      delay(100);
+    }
+    delay(1000); 
+  }
+}
 
 bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
 {
@@ -26,7 +41,8 @@ bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
   while (true) 
   {
     uint16_t errorCode = can.begin(settings);
-    if (errorCode == 0) {
+    if (errorCode == 0) 
+    {
       Serial.println("can.begin() success");
       return true;
     } 
@@ -35,10 +51,9 @@ bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
       Serial.print("can.begin() failed: ");
       Serial.println(errorCode);
       Serial.println(CanBusMCP2515_asukiaaa::Error::toString(errorCode));
-      delay(1000);
-      //will never return!
+      return false;
     }
- }
+  }
 }
 
 
@@ -47,13 +62,24 @@ void setup()
 {
   Serial.begin(9600);
 
+  pinMode(LED_ACTION_PIN, OUTPUT);
+  digitalWrite(LED_ACTION_PIN, HIGH);
   EmonSerial::PrintLeafPayload(NULL);
-  initCAN( canCar );
+  if(!initCAN( canCar ))
+  {
+      flashError(1); //will never return!
+  }
 
 	if (!g_rf69.init())
+  {
 		Serial.println("rf69 init failed");
+    flashError(2); //will never return!
+  }
 	if (!g_rf69.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
+  {
+    Serial.println("rf69 setFrequency failed");
+    flashError(3); //will never return!
+  }
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -63,6 +89,7 @@ void setup()
 	Serial.print("RF69 initialise node: ");
 	Serial.print(LEAF_NODE);
 	Serial.println(" Freq: 915MHz");
+  digitalWrite(LED_ACTION_PIN, LOW);
 }
 
 void loop() 
@@ -115,6 +142,7 @@ void loop()
 
     if( last_0x5A9.data64 != 0 && last_0x5C5.data64 != 0 && last_0x5B3.data64 != 0)
     {
+      digitalWrite(LED_ACTION_PIN, HIGH);
       g_rf69.send((const uint8_t*) &payloadLeaf, sizeof (PayloadLeaf));
       if( g_rf69.waitPacketSent() )
       {
@@ -125,6 +153,8 @@ void loop()
         Serial.println(F("No packet sent"));
       }      
     }
+    delay(10);
+    digitalWrite(LED_ACTION_PIN, LOW);
   }    
   delay(1);
 }
