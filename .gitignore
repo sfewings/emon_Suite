@@ -21,7 +21,6 @@
 *.ipch
 *.log
 *.vmps.xml
-*.json
 *.db-shm
 *.db-wal
 **/Debug/

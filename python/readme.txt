@@ -45,6 +45,16 @@ docker container prune
 docker container list
 docker ps
 
+Dockerhub commands
+==================
+docker login -u sfewings32
+docker image tag emon_serial_to_mqtt:v1 sfewings32/emon_serial_to_mqtt:latest
+docker push sfewings32/emon_serial_to_mqtt:latest
+docker image tag emon_mqtt_to_influx:v1 sfewings32/emon_mqtt_to_influx:latest
+docker push sfewings32/emon_mqtt_to_influx:latest
+docker image tag emon_mqtt_to_log:v1 sfewings32/emon_mqtt_to_log:latest
+docker push sfewings32/emon_mqtt_to_log:latest
+
 
 To drop the sensor database from influx and create a new one
 ============================================================

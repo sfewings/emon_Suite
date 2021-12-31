@@ -39,7 +39,7 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_PANELS_ENABLE_ALPHA=true
-      - GF_SERVER_ROOT_URL=https://shannstainable.fewings.org/grafana
+      - GF_SERVER_ROOT_URL=${GRAFANA_URL}
   mosquitto:
     image: eclipse-mosquitto
     container_name: mqtt
@@ -50,6 +50,36 @@ services:
       - mosquitto-logs:/mosquitto/logs
       - ./mosquitto-config:/mosquitto/config
     restart: unless-stopped
+
+  emon_mqtt_to_log:
+    image: sfewings32/emon_mqtt_to_log:latest
+    container_name: emon_log
+    volumes:
+      - /share/Input:/share/Input
+    environment:
+      - MQTT_IP=mqtt
+      - TZ=Australia/Perth
+
+  emon_serial_to_mqtt:
+    image: sfewings32/emon_serial_to_mqtt:latest
+    container_name: emon_serial
+    devices:
+      - /dev/ttyUSB1
+    environment:
+      - SERIAL_PORT=/dev/ttyUSB1
+      - MQTT_IP=mqtt
+      
+  emon_mqtt_to_influx:
+    image: sfewings32/emon_mqtt_to_influx:latest
+    container_name: emon_influx
+    devices:
+      - /dev/ttyUSB1
+    volumes:
+      - /share/emon_Suite/python:/share/config
+    environment:
+      - MQTT_IP=mqtt
+      - INFLUX_IP=influxdb
+
 
 volumes:
   influxdb-storage:
