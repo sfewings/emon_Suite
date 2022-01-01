@@ -56,9 +56,12 @@ services:
     container_name: emon_log
     volumes:
       - /share/Input:/share/Input
+    depends_on:
+      - mosquitto
     environment:
       - MQTT_IP=mqtt
       - TZ=Australia/Perth
+    restart: unless-stopped
 
   emon_serial_to_mqtt:
     image: sfewings32/emon_serial_to_mqtt:latest
@@ -68,6 +71,9 @@ services:
     environment:
       - SERIAL_PORT=/dev/ttyUSB1
       - MQTT_IP=mqtt
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
       
   emon_mqtt_to_influx:
     image: sfewings32/emon_mqtt_to_influx:latest
@@ -79,6 +85,10 @@ services:
     environment:
       - MQTT_IP=mqtt
       - INFLUX_IP=influxdb
+    depends_on:
+      - influxdb
+      - mosquitto
+    restart: unless-stopped
 
 
 volumes:
