@@ -1,6 +1,9 @@
 # to build. Run from ../Emon_LogToJson so that ../EmonShared can be found
 # to build    docker build -f Emon_LogToJson/Dockerfile -t "emon_logtojson:v1" .
 # to run      docker run --rm -it -e "MQTT_IP=mqtt" -v /share:/share --name emon_logtojson --network=docker-compose-influxdb-grafana_default emon_logtojson:v1 
+# to publish  docker image tag emon_logtojson:v1 sfewings32/emon_logtojson:latest
+#             docker push sfewings32/emon_logtojson:latest
+
 
 FROM arm32v7/python:3.7-buster
 
