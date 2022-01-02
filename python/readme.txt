@@ -44,6 +44,9 @@ docker-compose down
 docker container prune
 docker container list
 docker ps
+docker image prune
+docker rmi [image name]
+docker exec -it [image name] /bin/bash
 
 Dockerhub commands
 ==================
