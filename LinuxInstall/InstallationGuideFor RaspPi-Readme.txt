@@ -82,7 +82,7 @@
 	 sudo cmake --build build/ --target install
 
 13. Build paho.mqtt.cpp	
-	cd paho.mqtt.c
+	cd paho.mqtt.cpp
 	use cmake to build the makefiles in folder "build"
 	 cmake -B build
 	use cmake gui to set PAHO_MQTT_C_INCLUDE_DIRS 

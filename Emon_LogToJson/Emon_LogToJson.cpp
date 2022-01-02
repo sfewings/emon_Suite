@@ -195,7 +195,7 @@ int main(int argc, char** argv)
 		const std::vector<int> QOS{ 0, 1 };
 
 		try {
-			std::cout << "Connecting to the MQTT server..." << std::flush;
+			std::cout << "Connecting to the MQTT server ("<< MQTTIPAAddress << ")..." << std::flush;
 			cli.connect(connOpts);
 			cli.subscribe(TOPICS, QOS);
 			std::cout << "OK\n" << std::endl;

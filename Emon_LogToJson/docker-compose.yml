@@ -1,0 +1,14 @@
+version: '2'
+services:
+  emon_logtojson:
+    image: emon_logtojson:v1
+    volumes:
+      - /share:/share
+    environment:
+      - TZ=Australia/Perth
+      - MQTT_IP=mqtt
+
+networks: 
+  default: 
+    external: 
+      name: docker-compose-influxdb-grafana_default   
