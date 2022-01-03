@@ -51,7 +51,9 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	m_batteryCurrent("batteryCurrent", rootPath, eReading, eRatePerSecond, eRatePerSecond),
 	m_batteryVoltage("batteryVoltage", rootPath, eReading, eReading, eReading),
 	m_inverter("inverter", rootPath, eReading, eRatePerSecond, eRatePerSecond),
-	m_beehive("beehive", rootPath, eReading, eRatePerSecond, eRatePerSecond)
+	m_beehive("beehive", rootPath, eReading, eRatePerSecond, eRatePerSecond),
+	m_air("air", rootPath, eReading, eReading, eReading),
+	m_leaf("leaf", rootPath, eCounterTotal, eCounterPeriod, eCounterPeriod)
 {
 	m_rootPath = rootPath;
 	if (removeAll && fs::is_directory(rootPath) && rootPath.length()> 5 )
@@ -76,6 +78,8 @@ SensorReader::SensorReader(std::string rootPath, bool removeAll):
 	fs::create_directory(rootPath + "/batteryVoltage");
 	fs::create_directory(rootPath + "/inverter");
 	fs::create_directory(rootPath + "/beehive");
+	fs::create_directory(rootPath + "/air");
+	fs::create_directory(rootPath + "/leaf");
 
 	m_rainFall.SetCounterScaleFactor(0.2); //rainfall is 0.2mm for every counter
 }
@@ -120,6 +124,9 @@ unsigned short SensorReader::StringToNode(std::string line)
 	if (line.compare(0, 3, "log") == 0) return EMON_LOGGER;
 	if (line.compare(0, 3, "bat") == 0) return BATTERY_NODE;
 	if (line.compare(0, 3, "inv") == 0) return INVERTER_NODE;
+	if (line.compare(0, 3, "bee") == 0) return BEEHIVEMONITOR_NODE;
+	if (line.compare(0, 3, "air") == 0) return AIRQUALITY_NODE;
+	if (line.compare(0, 4, "leaf") == 0) return LEAF_NODE;
 	return 0;
 }
 
@@ -487,7 +494,26 @@ unsigned short SensorReader::AddReading(std::string reading, tm time)
 			}
 			break;
 		}
-
+		case AIRQUALITY_NODE:
+		{
+			std::string sensor[2] = { "Kitchen", "Gararge" };
+			PayloadAirQuality airQuality;
+			if (EmonSerial::ParseAirQualityPayload((char*)reading.c_str(), &airQuality) &&
+				airQuality.subnode<2 )
+			{
+				m_air.Add( sensor[airQuality.subnode] +" - 2.5 ppq", time, airQuality.pm2p5);
+			}
+			break;
+		}
+		case LEAF_NODE:
+		{
+			PayloadLeaf leaf;
+			if (EmonSerial::ParseLeafPayload((char*)reading.c_str(), &leaf) )
+			{
+				m_leaf.Add( "Leaf - kilometers", time, leaf.odometer);
+			}
+			break;
+		}
 		default: 
 			break;
 	}
@@ -507,6 +533,9 @@ void SensorReader::SaveAll()
 	m_batteryCurrent.Close(false);
 	m_batteryVoltage.Close(false);
 	m_inverter.Close(false);
+	m_beehive.Close(false);
+	m_air.Close(false);
+	m_leaf.Close(false);
 }
 
 void SensorReader::Close()
@@ -522,4 +551,7 @@ void SensorReader::Close()
 	m_batteryCurrent.Close();
 	m_batteryVoltage.Close();
 	m_inverter.Close();
+	m_beehive.Close();
+	m_air.Close();
+	m_leaf.Close();
 }

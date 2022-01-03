@@ -529,6 +529,10 @@ void EmonSerial::PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, uns
 
 int EmonSerial::PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr)
 {
+//See https://stackoverflow.com/questions/177885/looking-for-something-similar-to-offsetof-for-non-pod-types
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+
 	//pack the two arrays of readings into the end of the structure to save on bytes transmitted. if only 1 of each sensor, this saves 3*8 +3*4 bytes = 36bytes. We will only transmit 5+8+4=17bytes. 
 	byte* ptr2 = ptr;
 	memcpy(ptr, pPayloadWater, sizeof(PayloadWater));
@@ -546,10 +550,14 @@ int EmonSerial::PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr)
 	}
 	//return size of packed payload
 	return (int)(ptr2 - ptr);
+#pragma GCC diagnostic pop
 }
 
 int EmonSerial::UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+
 	byte* ptr2 = ptr;
 	memcpy(pPayloadWater, ptr, sizeof(PayloadWater));
 	int numFlowCount = pPayloadWater->numSensors & 0xF;
@@ -567,6 +575,8 @@ int EmonSerial::UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater)
 	}
 	//return size of packed payload
 	return sizeof(PayloadWater) - sizeof(int)*(MAX_WATER_SENSORS-numHeight) - sizeof(unsigned long)*(MAX_WATER_SENSORS-numFlowCount);
+
+#pragma GCC diagnostic pop
 }
 
 

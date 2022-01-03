@@ -29,6 +29,8 @@ protected:
 	SensorData m_batteryVoltage;
 	SensorData m_inverter;
 	SensorData m_beehive;
+	SensorData m_air;
+	SensorData m_leaf;
 
 	std::string m_rootPath;
 	std::map<std::string, double> m_temperatureMovingAverage;
