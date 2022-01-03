@@ -1,19 +1,8 @@
 import argparse
 import datetime
-import paho.mqtt.client as mqtt
 import serial
-
-
-def on_connect(client, userdata, flags, rc):
-    print(f"Connected with result code {rc}")
-
-# def on_publish(client,userdata,result):
-#     print("published")
-
-# def on_message(client, settings, msg):
-#     line = msg.payload.decode("utf-8")
-#     message = msg.topic
-#     print( f"MQTT received {msg.topic}, {line}" )
+import yaml
+from pyemonlib import emon_mqtt
 
 def check_int(s):
     if s[0] in ('-', '+'):
@@ -22,19 +11,24 @@ def check_int(s):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Connect emonRaspPiSerial to serial port and publish to MQTT")
-    parser.add_argument("-s", "--Serial", help= "serial port to listen", default="/dev/ttyUSB0")
+    parser.add_argument("-c", "--Serial", help= "serial port to listen", default="/dev/ttyUSB0")
+    parser.add_argument("-s", "--settingsPath", help= "Path to emon_config.yml containing emon configuration", default="/share/emon_Suite/python/emon_config.yml")
     parser.add_argument("-m", "--MQTT", help= "IP address of MQTT server", default="localhost")
     args = parser.parse_args()
     mqttServer = str(args.MQTT)
     serialPort = str(args.Serial)
 
-    mqttClient = mqtt.Client()
-    mqttClient.on_connect = on_connect
-    #mqttClient.on_publish = on_publish
-    #mqttClient.on_message = on_message
-    mqttClient.connect(mqttServer, 1883, 60)
+    # get the node names from the settings file
+    # nodes = ['rain','temp','disp','pulse','hws','wtr','scl','bat','inv','bee','air','leaf']
+    nodes = []
+    settingsFile = open(args.settingsPath, 'r')
+    settings = yaml.full_load(settingsFile)
+    for i,key in enumerate(settings):
+        nodes.append(key)
+    
 
-    nodes = ['rain','temp','disp','pulse','hws','wtr','scl','bat','inv','bee','air','leaf']
+    emonMQTT = emon_mqtt.emon_mqtt(mqtt_server=mqttServer, mqtt_port = 1883, settingsPath=args.settingsPath)
+
     RSSIvalue = 0
     lastSentTimeUpdate = datetime.datetime.now()
 
@@ -49,9 +43,10 @@ if __name__ == "__main__":
                 if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
                     if(RSSIvalue!=0):
                         line = f"{line}:{RSSIvalue}"
-                    mqttClient.publish("EmonLog",line)
+                    emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
                     print(line)
                     RSSIvalue = 0
+
             #send a time update every 30 seconds
             time = datetime.datetime.now()
             if( (time-lastSentTimeUpdate).total_seconds() >30):

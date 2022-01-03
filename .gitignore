@@ -40,7 +40,7 @@ Analyse_python/pandas/
 
 #python built modules
 *.so
-venv/
+venv*/
 .eggs/
 build/
 pyemonlib.egg-info/

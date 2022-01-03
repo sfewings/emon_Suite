@@ -69,8 +69,11 @@ services:
     devices:
       - /dev/ttyUSB1
     environment:
+      - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB1
       - MQTT_IP=mqtt
+    volumes:
+      - /share/emon_Suite/python:/data
     depends_on:
       - mosquitto
     restart: unless-stopped
@@ -78,8 +81,6 @@ services:
   emon_mqtt_to_influx:
     image: sfewings32/emon_mqtt_to_influx:latest
     container_name: emon_influx
-    devices:
-      - /dev/ttyUSB1
     volumes:
       - /share/emon_Suite/python:/share/config
     environment:
@@ -89,6 +90,27 @@ services:
       - influxdb
       - mosquitto
     restart: unless-stopped
+
+  node-red:
+    image: nodered/node-red:latest
+    container_name: node_red
+    environment:
+      - TZ=Australia/Perth
+    entrypoint: /data/entrypoint.sh
+    ports:
+      - "1880:1880"
+    volumes:
+      - /share/emon-node-red:/data
+      - /share:/share
+
+  emon_logtojson:
+    image: sfewings32/emon_logtojson:latest
+    container_name: emon_logtojson
+    volumes:
+      - /share:/share
+    environment:
+      - TZ=Australia/Perth
+      - MQTT_IP=mqtt
 
 
 volumes:
