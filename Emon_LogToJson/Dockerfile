@@ -1,6 +1,5 @@
-# to build. Run from ../Emon_LogToJson so that ../EmonShared can be found
-# to build    docker build -f Emon_LogToJson/Dockerfile -t "emon_logtojson:v1" .
-# to run      docker run --rm -it -e "MQTT_IP=mqtt" -v /share:/share --name emon_logtojson --network=docker-compose-influxdb-grafana_default emon_logtojson:v1 
+# to build    docker build -f Dockerfile -t "emon_logtojson:v1" ..
+# to run      docker run --rm -it -e "MQTT_IP=mqtt" -e "TZ=Australia/Perth" -v /share:/share --name emon_logtojson --network=docker-compose-influxdb-grafana_default emon_logtojson:v1 
 # to publish  docker image tag emon_logtojson:v1 sfewings32/emon_logtojson:latest
 #             docker push sfewings32/emon_logtojson:latest
 
@@ -39,5 +38,6 @@ WORKDIR /share
 ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
 ENV MQTT_IP=localhost
 ENV TZ="Australia/Perth"
-ENTRYPOINT /Emon_LogToJson.exe -i /share/Input -o /share/Output -m $MQTT_IP -y this
+ENV REPROCESS_LOGS_FROM_YEAR=this
+ENTRYPOINT /Emon_LogToJson.exe -i /share/Input -o /share/Output -m $MQTT_IP -y $REPROCESS_LOGS_FROM_YEAR
 #CMD ["sh"]

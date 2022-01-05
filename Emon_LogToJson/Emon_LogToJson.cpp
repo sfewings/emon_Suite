@@ -165,7 +165,7 @@ int main(int argc, char** argv)
 			reprocessFromYear = now.tm_year + 1900;
 		}
 		else
-			reprocessFromYear = atoi(str.c_str());	//COM1 == comPort0
+			reprocessFromYear = atoi(str.c_str());	//Year to process from is passed in on the command line
 	}
 
 	std::vector<std::string> paths = getPaths(inputFolder, reprocessFromYear);

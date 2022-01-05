@@ -16,7 +16,7 @@ def on_message(client, logPath, msg):
     time = datetime.datetime.now()
     path = f"{logPath}/{time.strftime('%Y%m%d.TXT')}"
     #09/07/2021 00:00:22
-    logLine = f"{time.strftime('%d/%m/%Y %H:%M:%S')} {line}"
+    logLine = f"{time.strftime('%d/%m/%Y %H:%M:%S')},{line}"
     f=open(path, "a+", encoding= 'utf-8')
     f.write(logLine)
     f.write('\n')

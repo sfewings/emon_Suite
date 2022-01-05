@@ -13,6 +13,7 @@ services:
       - INFLUXDB_ADMIN_USER=${INFLUXDB_USERNAME}
       - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_HTTP_FLUX_ENABLED=true
+    restart: always
   chronograf:
     image: chronograf:latest
     ports:
@@ -40,6 +41,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_PANELS_ENABLE_ALPHA=true
       - GF_SERVER_ROOT_URL=${GRAFANA_URL}
+    restart: always
   mosquitto:
     image: eclipse-mosquitto
     container_name: mqtt
@@ -49,7 +51,7 @@ services:
       - mosquitto-data:/mosquitto/data
       - mosquitto-logs:/mosquitto/logs
       - ./mosquitto-config:/mosquitto/config
-    restart: unless-stopped
+    restart: always
 
   emon_mqtt_to_log:
     image: sfewings32/emon_mqtt_to_log:latest
@@ -61,22 +63,22 @@ services:
     environment:
       - MQTT_IP=mqtt
       - TZ=Australia/Perth
-    restart: unless-stopped
+    restart: always
 
   emon_serial_to_mqtt:
     image: sfewings32/emon_serial_to_mqtt:latest
     container_name: emon_serial
     devices:
-      - /dev/ttyUSB1
+      - /dev/ttyUSB0
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
-      - SERIAL_PORT=/dev/ttyUSB1
+      - SERIAL_PORT=/dev/ttyUSB0
       - MQTT_IP=mqtt
     volumes:
       - /share/emon_Suite/python:/data
     depends_on:
       - mosquitto
-    restart: unless-stopped
+    restart: always
       
   emon_mqtt_to_influx:
     image: sfewings32/emon_mqtt_to_influx:latest
@@ -89,7 +91,7 @@ services:
     depends_on:
       - influxdb
       - mosquitto
-    restart: unless-stopped
+    restart: always
 
   node-red:
     image: nodered/node-red:latest
@@ -102,6 +104,9 @@ services:
     volumes:
       - /share/emon-node-red:/data
       - /share:/share
+    depends_on:
+      - mosquitto
+    restart: always
 
   emon_logtojson:
     image: sfewings32/emon_logtojson:latest
@@ -111,6 +116,10 @@ services:
     environment:
       - TZ=Australia/Perth
       - MQTT_IP=mqtt
+      - REPROCESS_LOGS_FROM_YEAR=this
+    depends_on:
+      - mosquitto
+    restart: always
 
 
 volumes:

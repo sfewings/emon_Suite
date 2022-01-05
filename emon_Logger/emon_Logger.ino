@@ -40,7 +40,7 @@ void dateTime(uint16_t* date, uint16_t* time)
 void GetDateTimeStr(char* dateTime)
 {
 	//dd/mm/yyyy HH:mm:ss
-	snprintf_P(dateTime, DATETIME_LEN, PSTR("%02d/%02d/%04d %02d:%02d:%02d,"), day(), month(), year(), hour(), minute(), second());
+	snprintf_P(dateTime, DATETIME_LEN, PSTR("%02d/%02d/%04d,%02d:%02d:%02d,"), day(), month(), year(), hour(), minute(), second());
 }
 //--------------------------------------------------------------------------------------------
 // Setup

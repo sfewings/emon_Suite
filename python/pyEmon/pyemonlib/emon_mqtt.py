@@ -60,7 +60,7 @@ class emon_mqtt:
                 self.mqttClient.publish("temperature/rain/0",payload.temperature / 100)
                 self.mqttClient.publish("supplyV/rain",payload.supplyV)
                 if(':' in reading):
-                    self.mqttClient.publish( f"{nodeSettings[0]['name']}", reading )
+                    self.publishRSSI( nodeSettings[0]['name'], reading )
             except Exception as ex:
                 self.printException("rainException", reading, ex)
 

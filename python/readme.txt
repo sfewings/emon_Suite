@@ -32,7 +32,7 @@ To build docker file and run
 2. docker build -f MQTTToLog.Dockerfile -t "emon_mqtt_to_log:v1" .
 3. docker run --rm -it -e "MQTT_IP=mqtt" -v /share/test:/share/Input --name emon_log --network=docker-compose-influxdb-grafana_default emon_mqtt_to_log:v1
 4. docker build -f serialToMQTT.Dockerfile -t "emon_serial_to_mqtt:v1" .
-5. docker run --rm -it -e "MQTT_IP=mqtt" -e "SERIAL_PORT=/dev/ttyUSB1" --device=/dev/ttyUSB1 --name emon_serial --network=docker-compose-influxdb-grafana_default emon_serial_to_mqtt:v1
+5. docker run --rm -it -v /share/emon_Suite/python:/data -e "MQTT_IP=mqtt" -e "SERIAL_PORT=/dev/ttyUSB0" -e "SETTINGS_PATH=/data/emon_config.yml" --device=/dev/ttyUSB1 --name emon_serial --network=docker-compose-influxdb-grafana_default emon_serial_to_mqtt:v1
 6. docker build -f MQTTToInflux.Dockerfile -t "emon_mqtt_to_influx:v1" .
 7. docker run --rm -it -e "MQTT_IP=mqtt" -e "INFLUX_IP=influxdb" -v /share/emon_Suite/python:/share/config --name emon_influx --network=docker-compose-influxdb-grafana_default emon_mqtt_to_influx:v1
 

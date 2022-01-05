@@ -136,6 +136,14 @@ unsigned short SensorReader::StringToNode(std::string line)
 size_t SensorReader::GetTime(std::string line, tm &time)
 {
 	size_t pos = line.find_first_of(",", 0);
+	if( pos > 19)
+	{
+		//some data was logged without a comma separating date_time from sensor id and data
+		// both 08/08/2019 00:00:01,pulse2,28,0,490,478,45291,164331,448390,366058,3236
+		// and  08/08/2019 00:00:01 pulse2,28,0,490,478,45291,164331,448390,366058,3236
+		// will work with this change
+		pos = 19;
+	}
 	if (pos != std::string::npos)
 	{
 		std::string timeString = line.substr(0, pos);
