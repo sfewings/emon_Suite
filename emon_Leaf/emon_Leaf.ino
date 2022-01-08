@@ -3,10 +3,11 @@
 #include <CanBusMCP2515_asukiaaa.h>   //See https://github.com/asukiaaa/CanBusMCP2515-arduino
 #include <EmonShared.h>
 #include <RH_RF69.h>
+#include <SoftwareSerial.h>
 
 static const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
 static const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
-static const auto CS_PIN            = 8;
+static const auto CS_PIN            = 5;
 static const auto SEND_PERIOD       = 1000*5; //5 minutes if no data updates otherwise.
 static const auto LED_ACTION_PIN    = 6;
 
@@ -16,6 +17,7 @@ CanBusData_asukiaaa::Frame last_0x5B3, last_0x5C5, last_0x5A9;
 RH_RF69 g_rf69;
 
 PayloadLeaf payloadLeaf;
+SoftwareSerial g_serial(3, 4);
 
 void flashError(int error)
 {
@@ -56,14 +58,15 @@ bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
   }
 }
 
-
-
 void setup() 
 {
   Serial.begin(9600);
 
   pinMode(LED_ACTION_PIN, OUTPUT);
   digitalWrite(LED_ACTION_PIN, HIGH);
+
+  g_serial.begin(115200);
+
   EmonSerial::PrintLeafPayload(NULL);
   if(!initCAN( canCar ))
   {
@@ -92,70 +95,219 @@ void setup()
   digitalWrite(LED_ACTION_PIN, LOW);
 }
 
+void testWriteSerial()
+{
+  Serial.print("testWriteSerial sent:");
+  int val = g_serial.print("testWriteSerial");
+  g_serial.print("\n");
+  Serial.println("val");
+}
+
+void testReadSerial()
+{
+  while( g_serial.available() )
+  {
+    Serial.print((char)g_serial.read());
+  }
+  Serial.println("received");
+}
+
+void writeSerial(CanBusData_asukiaaa::Frame& frame)
+{
+  int frameSize = sizeof(frame);
+  char* frameData = (char*)&frame;
+  for(int i=0; i<frameSize; i++)
+  {
+    g_serial.write(frameData[i]);
+  }
+  Serial.print("writeSerial: ");
+  Serial.println(frameSize);
+}
+
+bool readSerial(CanBusData_asukiaaa::Frame& frame)
+{
+  int frameSize = sizeof(frame);
+  int frameIndex = 0;
+  char* frameData = (char*)&frame;
+  while( g_serial.available() > 0 && frameIndex < frameSize)
+  {
+    frameData[frameIndex] = g_serial.read();
+    frameIndex++;
+  }
+  Serial.print("readSerial: ");
+  Serial.println(frameIndex);
+  return frameSize == frameIndex;
+}
+
+void printFrame(CanBusData_asukiaaa::Frame& frame, bool fromCAN)
+{
+  Serial.print("Frame: ");
+  Serial.print(fromCAN ? "CAN   " : "Serial");
+  Serial.print(" id: ");
+  Serial.print(frame.id, HEX);
+  Serial.print(" ext: ");
+  Serial.print(frame.ext);
+  Serial.print(" len: ");
+  Serial.print(frame.len);
+  Serial.print(" data: ");
+  for(int i=0; i<frame.len; i++)
+  {
+    Serial.print(frame.data[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+  
+  if(fromCAN)
+  {
+    writeSerial(frame);
+  }
+}
+
+
 void loop() 
 {
   static uint32_t waitingStart = millis();
-  bool dataToSend = false;
-  
-  if (canCar.available()) 
+
+  if(millis() - waitingStart > 1000)
   {
-    CanBusData_asukiaaa::Frame frame;
-    canCar.receive(&frame);
-    if(frame.id == 0x5B3 )        //1459, VCM relayed and processed data to instrument cluster
-    {
-      payloadLeaf.batteryTemperature = frame.data[0] / 4;   //in 0.25c units
-      payloadLeaf.batterySOH = frame.data[1] >> 1;          
-      payloadLeaf.batteryWH = (((unsigned long)(frame.data[4] & 0x1))*256  + frame.data[5])*80;   // from GID *80
-      payloadLeaf.batteryChargeBars = frame.data[6] >>3;
-      if( last_0x5B3.data64 != frame.data64)
-      {
-        Serial.println(frame.toString());
-        dataToSend = true;
-        last_0x5B3 = frame;
-      }
-    }
-    else if (frame.id == 0x5C5)   //1477, Instrument cluster -> BCM / AV / VCM
-    {
-      payloadLeaf.odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + frame.data[3];
-      if( last_0x5C5.data64 != frame.data64)
-      {
-        Serial.println(frame.toString());
-        dataToSend = true;
-        last_0x5C5 = frame;
-      }
-    }
-    else if (frame.id == 0x5A9)   //1449, VCM to instrument cluster
-    {
-      payloadLeaf.range = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4)/5;
-      if( last_0x5A9.data64 != frame.data64)
-      {
-        Serial.println(frame.toString());
-        dataToSend = true;
-        last_0x5A9 = frame;
-      }      
-    }
+    testWriteSerial();
+    waitingStart = millis();
   }
   
-  if( dataToSend || millis() - waitingStart > SEND_PERIOD )
-  {   
-    waitingStart = millis();
+  Serial.print( g_serial.isListening() ? "Listening" : "Not listening");
+  Serial.println( g_serial.available() );
+  if( g_serial.available() > 0)
+  {
+    testReadSerial();
+  }
 
-    if( last_0x5A9.data64 != 0 && last_0x5C5.data64 != 0 && last_0x5B3.data64 != 0)
+  delay(250);
+  return;
+
+
+  static int messageIDs[] = {0x5C5, 0x5A9, 0x5B9, 0x5BF,0x5BC};
+  static int messageLen = sizeof(messageIDs)/sizeof(messageIDs[0]);
+
+  bool dataToTransmit = false;
+  bool haveFrame = false;
+  bool fromCANbus = false;
+  bool usefulFrame = false;
+
+  CanBusData_asukiaaa::Frame frame;
+  
+  if ( canCar.available()) 
+  {
+    canCar.receive(&frame);
+    bool found = false;
+    for(int i=0;i < messageLen && !found; i++)
     {
-      digitalWrite(LED_ACTION_PIN, HIGH);
-      g_rf69.send((const uint8_t*) &payloadLeaf, sizeof (PayloadLeaf));
-      if( g_rf69.waitPacketSent() )
+      if(messageIDs[i] == frame.id)
       {
-        EmonSerial::PrintLeafPayload(&payloadLeaf);
+        found = true;
       }
-      else
-      {
-        Serial.println(F("No packet sent"));
-      }      
     }
-    delay(10);
-    digitalWrite(LED_ACTION_PIN, LOW);
-  }    
-  delay(1);
+    if(found && millis() - waitingStart > 1000)
+    {
+      waitingStart = millis();
+      fromCANbus = true;
+      haveFrame = true;
+    }
+  }
+
+  if( g_serial.available() > 0)
+  {
+    if( readSerial(frame))
+    {
+      fromCANbus = false;
+      haveFrame = true;
+    }
+  }
+
+  if( haveFrame )
+  {
+    //EV bus
+    if( frame.id == 0x5B9 )
+    {
+      //EV Bus : charge minutes remaining
+      printFrame(frame, fromCANbus);
+    }
+    else if( frame.id == 0x5BF )
+    {
+      //EV Bus : Charging status
+      printFrame(frame, fromCANbus);
+    }
+    else if( frame.id == 0x5BC )
+    {
+      //EV Bus : remaining capacity, SOH, Charge bars, battery temperature
+      printFrame(frame, fromCANbus);
+    }
+    //VCM bus    
+    else if( frame.id == 0x5C5 )
+    {
+      printFrame(frame, fromCANbus);
+    }
+    else if( frame.id == 0x5A9 )
+    {
+      printFrame(frame, fromCANbus);
+    }
+  }
+
+
+  //   if(frame.id == 0x5B3 )        //1459, VCM relayed and processed data to instrument cluster
+  //   {
+  //     payloadLeaf.batteryTemperature = frame.data[0] / 4;   //in 0.25c units
+  //     payloadLeaf.batterySOH = frame.data[1] >> 1;          
+  //     payloadLeaf.batteryWH = (((unsigned long)(frame.data[4] & 0x1))*256  + frame.data[5])*80;   // from GID *80
+  //     payloadLeaf.batteryChargeBars = frame.data[6] >>3;
+  //     if( last_0x5B3.data64 != frame.data64)
+  //     {
+  //       Serial.println(frame.toString());
+  //       dataToTransmit = true;
+  //       last_0x5B3 = frame;
+  //     }
+  //   }
+  //   else if (frame.id == 0x5C5)   //1477, Instrument cluster -> BCM / AV / VCM
+  //   {
+  //     payloadLeaf.odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + frame.data[3];
+  //     if( last_0x5C5.data64 != frame.data64)
+  //     {
+  //       Serial.println(frame.toString());
+  //       dataToTransmit = true;
+  //       last_0x5C5 = frame;
+  //     }
+  //   }
+  //   else if (frame.id == 0x5A9)   //1449, VCM to instrument cluster
+  //   {
+  //     payloadLeaf.range = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4)/5;
+  //     if( last_0x5A9.data64 != frame.data64)
+  //     {
+  //       Serial.println(frame.toString());
+  //       dataToTransmit = true;
+  //       last_0x5A9 = frame;
+  //     }      
+  //   }
+  // }
+  
+  // if( dataToTransmit || millis() - waitingStart > SEND_PERIOD )
+  // {   
+  //   waitingStart = millis();
+
+  //   if( last_0x5A9.data64 != 0 && last_0x5C5.data64 != 0 && last_0x5B3.data64 != 0)
+  //   {
+  //     digitalWrite(LED_ACTION_PIN, HIGH);
+  //     g_rf69.send((const uint8_t*) &payloadLeaf, sizeof (PayloadLeaf));
+  //     if( g_rf69.waitPacketSent() )
+  //     {
+  //       EmonSerial::PrintLeafPayload(&payloadLeaf);
+  //     }
+  //     else
+  //     {
+  //       Serial.println(F("No packet sent"));
+  //     }      
+  //   }
+  //   delay(10);
+  //   digitalWrite(LED_ACTION_PIN, LOW);
+  // }    
+  //delay(1);
 }
 
