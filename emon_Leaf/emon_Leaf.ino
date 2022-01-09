@@ -10,7 +10,7 @@ static const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
 static const auto CS_PIN            = 5;
 static const auto SEND_PERIOD       = 1000*5; //5 minutes if no data updates otherwise.
 static const auto LED_ACTION_PIN    = 6;
-static const auto DEBUG_TIME_INTERVAL = 1000;
+static const auto DEBUG_TIME_INTERVAL = 1000; //Limit the debug print of each message
 
 CanBusMCP2515_asukiaaa::Driver canCar(CS_PIN);
 
@@ -21,7 +21,7 @@ static const int NUM_EV_MESSAGES = sizeof(EV_CAN_IDs)/sizeof(EV_CAN_IDs[0]);
 
 static unsigned long lastDebugTime[NUM_MESSAGES];
 
-CanBusData_asukiaaa::Frame lastMessage[NUM_MESSAGES]; //last_0x5B3, last_0x5C5, last_0x5A9;
+CanBusData_asukiaaa::Frame lastMessage[NUM_MESSAGES];
 
 RH_RF69 g_rf69;
 
@@ -119,8 +119,6 @@ void writeSerial(CanBusData_asukiaaa::Frame& frame)
   {
     g_serial.write(frameData[i]);
   }
-//  Serial.print("writeSerial: ");
-//  Serial.println(frameSize);
 }
 
 bool readSerial(CanBusData_asukiaaa::Frame& frame)
@@ -133,8 +131,6 @@ bool readSerial(CanBusData_asukiaaa::Frame& frame)
    frameData[frameIndex] = g_serial.read();
     frameIndex++;
   }
-//  Serial.print("readSerial: ");
-//  Serial.println(frameIndex);
   return frameSize == frameIndex;
 }
 
@@ -190,9 +186,6 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     {
         payloadLeaf.range = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4)/5;
     }
-    //unsigned long RangeInstrumentCluster = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4);
-    //Serial.print(F("RangeInstrumentCluster: "));Serial.println(RangeInstrumentCluster);
-
     return true;
   }
   //EV bus
@@ -287,6 +280,8 @@ void loop()
 
       if (isEVmessage(frame))
       {
+        //only send EV messages to VCM by serial. 
+        //Note SoftwareSerial is half duplex! Sending both ways stops the receive buffer!
         isEV_CAN_unit = true;
         writeSerial(frame);
       }
@@ -310,7 +305,8 @@ void loop()
     digitalWrite(LED_ACTION_PIN, HIGH);
     if(isEV_CAN_unit)
     {
-        EmonSerial::PrintLeafPayload(&payloadLeaf);
+      //Don's xmit from teh EV unit. Only the VCM unit!
+      EmonSerial::PrintLeafPayload(&payloadLeaf);
     }
     else
     {

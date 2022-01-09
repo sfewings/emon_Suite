@@ -1,0 +1,305 @@
+#include <mcp_can.h>
+#include <SPI.h>
+#include <LiquidCrystal.h>
+
+const int rs = 8, en = 7, d4 = 6, d5 = 5, d6 = 4, d7 = 3;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+long unsigned int rxId;
+unsigned char len = 0;
+unsigned char rxBuf[8];
+
+long LCDInterval = 500;        // First and second screen update interval
+long LCD3Interval = 500;       // Third screen update interval
+long LCD4Interval = 2000;      // Forth screen update interval
+long CANInterval = 500;        // 0x79b message repeat interval in case of unsuccessful previous attempts
+long LCDMillis = 0;            // for LCD screen update
+long LCD3Millis = 0;           // for LCD third screen update
+long LCD4Millis = 0;           // for LCD forth screen update 
+long CANMillis = 0;            // for 0x79b message repeat
+float BattVolts;               // Main battery voltage
+uint16_t Soc;                  // Gids
+uint16_t ActSoc;               // Actual state of charge
+int16_t Amp;                   
+float SocPct;                  // Gids in percentage
+float ActSocPct;               // Acual state of charge in percentages 
+float Amps;                    // Main battery current
+float kWh;                     // Energy left in main batery
+float kW;                      // Power used from main battery
+int BattTemp1;                 // Battery temperature sensor 1 
+int BattTemp2;                 // Battery temperature sensor 2
+int BattTemp3;                 // Battery temperature sensor 3
+int BattTemp4;                 // Battery temperature sensor 4
+int ScSt = 0;                  // Screen page state
+int CANSt = 0;
+uint16_t CPVmin,CPVmax,CPVdiff;// cell pair min/max/diff voltage (mV)
+uint8_t RcvFrIdx;
+
+#define MAX_SOC 281.0F
+#define CAN0_INT 2             // Set INT to pin 2
+MCP_CAN CAN0(10);              // Set CS to pin 10
+#define KW_FACTOR 74.73F       // Some people prefer 80
+
+void setup() {
+  pinMode(9, INPUT_PULLUP);
+  
+  lcd.begin(16, 2);
+  lcd.print(" EV-OLUTION.NET");
+  lcd.setCursor(0, 1);
+  lcd.print("CANa Ver: 1.3");
+  delay (2000);
+  
+  // Initialize MCP2515 running at 8MHz with a baudrate of 500kb/s and the masks and filters disabled.
+  // Change MCP_8MHZ to MCP_16 MHZ if your MCP2515 board is equiped with 16MHZ crystal!!!
+  
+  if (CAN0.begin(MCP_STDEXT, CAN_500KBPS, MCP_8MHZ) == CAN_OK){
+    lcd.clear();
+    lcd.print("  MCP2515 Init");
+    lcd.setCursor(0, 1);
+    lcd.print("  Successfully");
+    delay(1000);
+  }
+  else {
+    lcd.clear();
+    lcd.print("  MCP2515 Init");
+    lcd.setCursor(0, 1);
+    lcd.print("     Error!");
+    delay(5000);
+  }
+  CAN0.init_Mask(0, 0, 0x07ff0000);
+  CAN0.init_Filt(0, 0, 0x07bb0000);
+  CAN0.init_Filt(1, 0, 0x07bb0000);
+
+  CAN0.init_Mask(1, 0, 0x07ff0000);
+  CAN0.init_Filt(2, 0, 0x01db0000);
+  CAN0.init_Filt(3, 0, 0x055b0000); 
+  CAN0.init_Filt(4, 0, 0x05bc0000); 
+  CAN0.init_Filt(5, 0, 0x05bc0000); 
+  CAN0.setMode(MCP_NORMAL);
+
+  pinMode(CAN0_INT, INPUT);
+}
+
+void loop() {
+  if (!digitalRead(CAN0_INT)){
+    CAN0.readMsgBuf(&rxId, &len, rxBuf);
+    if (ScSt == 0){
+    /////////////////// GIDS, SOH, SOC And kWh Remaining /////////////////
+      if (rxId == 0x5bc){
+        Soc = (rxBuf[0] << 2) | (rxBuf[1] >> 6);
+        SocPct = (Soc / MAX_SOC) * 100.0F;
+        kWh = (((float)Soc) * KW_FACTOR) / 1000.0F;
+      }
+      /////////////////// Actual SOC /////////////////////////////////////
+      else if (rxId == 0x55b) {
+        ActSoc = (rxBuf[0] << 2) | (rxBuf[1] >> 6);
+        ActSocPct = ActSoc / 10.0F;
+      }
+    }
+    else if (ScSt == 1){
+      ////////////////// HV Voltage, Current And Energy Used /////////////
+      if (rxId == 0x1db) {
+        BattVolts = (rxBuf[2] << 2) | (rxBuf[3] >> 6);
+        BattVolts = BattVolts/2.0F;
+        Amp = (rxBuf[0] << 3) | (rxBuf[1] >> 5);
+        if (Amp & 0x0400) Amp |= 0xf800;
+        Amps = -(Amp / (2.0F));
+        kW = (Amps * BattVolts)/1000.0F;
+      }
+    }
+    /////////////// HV Battery Cell Min Max Voltages//////////////////////  
+    else if (ScSt == 2){
+      byte data[8] = {0x02, 0x21, 0x03, 0xff, 0xff, 0xff, 0xff, 0xff};
+      byte data2[8] = {0x30, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff};
+      if (CANSt == 0){
+        byte sndStat = CAN0.sendMsgBuf(0x79b, 0, 8, data);
+        CANMillis = millis();
+        CANSt = 1;
+      }
+      if (rxId == 0x7bb && rxBuf[0] == 0x10) {
+        byte sndStat = CAN0.sendMsgBuf(0x79b, 0, 8, data2);
+      }
+      else if (rxId == 0x7bb && rxBuf[0] == 0x21) {
+        CPVmax = rxBuf[7];
+        byte sndStat = CAN0.sendMsgBuf(0x79b, 0, 8, data2);
+      }
+      else if (rxId == 0x7bb && rxBuf[0] == 0x22) {
+        CPVmax <<= 8;
+        CPVmax |= rxBuf[1];
+        CPVmin = rxBuf[2];
+        CPVmin <<= 8;
+        CPVmin |= rxBuf[3];
+        CPVdiff = CPVmax - CPVmin;
+        RcvFrIdx = 1;
+      }
+      if (millis() - CANMillis > CANInterval){
+        CANSt = 0;
+      }
+    }
+    ////////////// HV Battery Temperature ////////////////////////////////
+    else if (ScSt == 3){
+      byte data[8] = {0x02, 0x21, 0x04, 0xff, 0xff, 0xff, 0xff, 0xff};
+      byte data2[8] = {0x30, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff};
+      if (CANSt == 0){
+        byte sndStat = CAN0.sendMsgBuf(0x79b, 0, 8, data);
+        CANMillis = millis();
+        CANSt = 1;
+      }        
+      if (rxId == 0x7bb && rxBuf[0] == 0x10) {
+        BattTemp1 = rxBuf[6];
+        byte sndStat = CAN0.sendMsgBuf(0x79b, 0, 8, data2);
+      }
+      else if (rxId == 0x7bb && rxBuf[0] == 0x21) {
+        BattTemp2 = rxBuf[2];
+        BattTemp3 = rxBuf[5];
+        byte sndStat = CAN0.sendMsgBuf(0x79b, 0, 8, data2);
+      }
+      else if (rxId == 0x7bb && rxBuf[0] == 0x22) {
+        BattTemp4 = rxBuf[1];
+        RcvFrIdx = 1;
+      }
+      unsigned long currentCANMillis = millis();
+      if (millis() - CANMillis > (3 * CANInterval)){
+        CANSt = 0;
+      }
+    }
+  }
+  
+/////////////////////LCD update code /////////////////////////////////////////
+  
+  if (ScSt == 0 && (millis() - LCDMillis > LCDInterval)){
+    LCDMillis = millis(); 
+    lcd.clear();
+    lcd.print("Gids:");
+    if (Soc < 10){
+      lcd.setCursor(7, 0);
+    }
+    else if (Soc < 100){
+      lcd.setCursor(6, 0);
+    }
+    else lcd.setCursor(5, 0);
+    lcd.print(Soc);
+    lcd.setCursor(9, 0);
+    lcd.setCursor(11, 0);
+    lcd.print(SocPct);
+    lcd.setCursor(15, 0);
+    lcd.print("%");
+    lcd.setCursor(0, 1);
+    lcd.print("CS:");
+    lcd.print(kWh);
+    lcd.setCursor(7, 1);
+    lcd.print("kWh");    
+    lcd.setCursor(11, 1);
+    lcd.print(ActSocPct);
+    lcd.setCursor(15, 1);
+    lcd.print("%");
+  }
+  
+  else if (ScSt == 1 && (millis() - LCDMillis > LCDInterval)){
+    LCDMillis = millis(); 
+    lcd.clear();
+    if (BattVolts < 10){
+      lcd.setCursor(2, 0);
+    }
+    else if (BattVolts < 100){
+      lcd.setCursor(1, 0);
+    }
+    else lcd.setCursor(0, 0);
+    lcd.print(BattVolts);
+    lcd.print("V");
+    if (Amps < -9){
+      lcd.setCursor(0, 1);
+    }
+    else if (Amps < 0){
+      lcd.setCursor(1, 1);
+    }
+    else if (Amps < 10){
+      lcd.setCursor(2, 1);
+    }
+    else if (Amps < 100){
+      lcd.setCursor(1, 1);
+    }
+    else lcd.setCursor(0, 1);
+    lcd.print(Amps);
+    lcd.setCursor(6, 1);
+    lcd.print("A ");
+    if (kW < 0){
+      lcd.setCursor(9, 1);
+    }
+    else if (kW < 10){
+      lcd.setCursor(10, 1);
+    }
+    else lcd.setCursor(9, 1);
+    lcd.print(kW);
+    lcd.setCursor(14, 1);
+    lcd.print("kW");
+  }
+  
+  else if (ScSt == 2 && RcvFrIdx == 1 && (millis() - LCD3Millis > LCD3Interval)){
+    LCD3Millis = millis();
+    lcd.clear();
+    lcd.print("Max:");
+    lcd.print(CPVmax);
+    lcd.print("mV Diff:");
+    lcd.setCursor(0, 1);
+    lcd.print("Min:");
+    lcd.print(CPVmin);
+    lcd.print("mV");
+    if (CPVdiff<10){
+      lcd.setCursor(13, 1);
+    }
+    else if (CPVdiff<100){
+      lcd.setCursor(12,1);
+    }
+    else lcd.setCursor(11,1);
+    lcd.print(CPVdiff);
+    lcd.print("mV");
+    RcvFrIdx = 0;
+    CANSt = 0;
+  }
+  
+  else if (ScSt == 3 && RcvFrIdx == 1 && (millis() - LCD4Millis > LCD4Interval)){
+    LCD4Millis = millis();
+    lcd.clear();
+    lcd.print("T1:");
+    lcd.print(BattTemp1);                 //Coment this line for Fahrenheit
+    lcd.print("C");                       //Coment this line for Fahrenheit
+    //lcd.print((BattTemp1*1.8)+32);      //Uncoment this line for Fahrenheit
+    //lcd.print("F");                     //Uncoment this line for Fahrenheit
+    lcd.setCursor(8, 0);
+    lcd.print("T2:");
+    lcd.print(BattTemp2);                 //Coment this line for Fahrenheit
+    lcd.print("C");                       //Coment this line for Fahrenheit
+    //lcd.print((BattTemp2*1.8)+32);      //Uncoment this line for Fahrenheit
+    //lcd.print("F");                     //Uncoment this line for Fahrenheit
+    lcd.setCursor(0, 1);
+    lcd.print("T3:");
+    lcd.print(BattTemp3);                 //Coment this line for Fahrenheit
+    lcd.print("C");                       //Coment this line for Fahrenheit
+    //lcd.print((BattTemp3*1.8)+32);      //Uncoment this line for Fahrenheit
+    //lcd.print("F");                     //Uncoment this line for Fahrenheit
+    lcd.setCursor(8, 1);
+    lcd.print("T4:");
+    lcd.print(BattTemp4);                 //Coment this line for Fahrenheit
+    lcd.print("C");                       //Coment this line for Fahrenheit
+    //lcd.print((BattTemp4*1.8)+32);      //Uncoment this line for Fahrenheit
+    //lcd.print("F");                     //Uncoment this line for Fahrenheit
+    RcvFrIdx = 0;
+    CANSt = 0;
+  }
+
+////////////// Button scan ////////////////////////////////////////////////////
+  
+  if (digitalRead(9) == LOW){
+    lcd.clear();
+    CANSt = 0;
+    RcvFrIdx = 0;
+    ScSt = 1 + ScSt;
+    if (ScSt > 3){
+      ScSt = 0;
+    }
+    while (digitalRead(9) == LOW){
+      delay(500);
+    }
+  }
+}
