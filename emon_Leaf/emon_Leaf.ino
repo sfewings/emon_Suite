@@ -5,14 +5,10 @@
 #include <RH_RF69.h>
 #include <SoftwareSerial.h>
 
-static const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
-static const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
 static const auto CS_PIN            = 5;
-static const auto SEND_PERIOD       = 1000*5; //5 minutes if no data updates otherwise.
 static const auto LED_ACTION_PIN    = 6;
-static const auto DEBUG_TIME_INTERVAL = 1000; //Limit the debug print of each message
-
-CanBusMCP2515_asukiaaa::Driver canCar(CS_PIN);
+static const uint32_t SEND_PERIOD         = 1000*30;//30 seconds if no data updates otherwise.
+static const uint32_t DEBUG_TIME_INTERVAL = 1000; //Limit the debug print of each message
 
 static const int ALL_MESSAGE_IDs[] = {0x5B3, 0x5C5, 0x5A9, 0x5B9, 0x5BF, 0x5BC};
 static const int EV_CAN_IDs[] = {0x5B9, 0x5BF,0x5BC};
@@ -20,15 +16,14 @@ static const int NUM_MESSAGES = sizeof(ALL_MESSAGE_IDs)/sizeof(ALL_MESSAGE_IDs[0
 static const int NUM_EV_MESSAGES = sizeof(EV_CAN_IDs)/sizeof(EV_CAN_IDs[0]);
 
 static unsigned long lastDebugTime[NUM_MESSAGES];
-
 CanBusData_asukiaaa::Frame lastMessage[NUM_MESSAGES];
 
-RH_RF69 g_rf69;
+RH_RF69         g_rf69;
+PayloadLeaf     g_payloadLeaf;
+SoftwareSerial  g_serial(3, 4);
+CanBusMCP2515_asukiaaa::Driver g_canCar(CS_PIN);
 
-PayloadLeaf payloadLeaf;
-SoftwareSerial g_serial(3, 4);
-
-void flashError(int error)
+void flashErrorToLED(int error)
 {
   while( true)
   { 
@@ -45,6 +40,8 @@ void flashError(int error)
 
 bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
 {
+  const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
+  const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
   CanBusMCP2515_asukiaaa::Settings settings(QUARTZ_FREQUENCY, BITRATE);
   Serial.print(F("settings for :"));Serial.println(can.CS());
   Serial.println(settings.toString());
@@ -83,20 +80,20 @@ void setup()
   }
 
   EmonSerial::PrintLeafPayload(NULL);
-  if(!initCAN( canCar ))
+  if(!initCAN( g_canCar ))
   {
-      flashError(1); //will never return!
+      flashErrorToLED(1); //will never return!
   }
 
 	if (!g_rf69.init())
   {
 		Serial.println(F("rf69 init failed"));
-    flashError(2); //will never return!
+    flashErrorToLED(2); //will never return!
   }
 	if (!g_rf69.setFrequency(915.0))
   {
     Serial.println(F("rf69 setFrequency failed"));
-    flashError(3); //will never return!
+    flashErrorToLED(3); //will never return!
   }
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -128,7 +125,7 @@ bool readSerial(CanBusData_asukiaaa::Frame& frame)
   char* frameData = (char*)&frame;
   while( g_serial.available() > 0 && frameIndex < frameSize)
   {
-   frameData[frameIndex] = g_serial.read();
+    frameData[frameIndex] = g_serial.read();
     frameIndex++;
   }
   return frameSize == frameIndex;
@@ -165,10 +162,12 @@ bool isEVmessage(CanBusData_asukiaaa::Frame& frame)
   return false;
 }
 
+//returns true if any of the 
 bool processFrame(CanBusData_asukiaaa::Frame& frame)
 {
   if(frame.id == 0x5B3 )        //1459, VCM relayed and processed data to instrument cluster
   {
+  //  Note: These are all populated from the EV bus from message 0x5BC. Temperature seems different if populated from each.
   //  payloadLeaf.batteryTemperature = frame.data[0] / 4;   //in 0.25c units
   //  payloadLeaf.batterySOH = frame.data[1] >> 1;          
   //  payloadLeaf.batteryWH = (((unsigned long)(frame.data[4] & 0x1))*256  + frame.data[5])*80;   // from GID *80
@@ -177,21 +176,30 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
   }
   else if (frame.id == 0x5C5)   //1477, Instrument cluster -> BCM / AV / VCM
   {
-    payloadLeaf.odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + frame.data[3];
-    return true;
+    unsigned long odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + frame.data[3];
+    if( odometer != g_payloadLeaf.odometer)
+    {
+      g_payloadLeaf.odometer = odometer;
+      return true;
+    }
   }
   else if (frame.id == 0x5A9)   //1449, VCM to instrument cluster
   {
     if(frame.data[0] != 0xFF && frame.data[1] != 0xFF)   // 0xFF while charging
     {
-        payloadLeaf.range = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4)/5;
+      short range = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4)/5;
+      if( g_payloadLeaf.range != range)
+      {
+        g_payloadLeaf.range = range;
+        return true;
+      }
     }
-    return true;
   }
   //EV bus
   else if( frame.id == 0x5B9 )
   {
     //EV Bus : charge minutes remaining
+    unsigned long chargeMinutesRemaining = (((unsigned long)(frame.data[0] & 0x7))<<8) + (unsigned long)(frame.data[1]);
   }
   else if( frame.id == 0x5BF )
   {
@@ -200,38 +208,26 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
   else if( frame.id == 0x5BC )
   {
     //EV Bus : remaining capacity, SOH, Charge bars, battery temperature
-    unsigned long LB_Remain_Capacity   = ((((unsigned long)(frame.data[0]))<<2)  + (((unsigned long)(frame.data[1]))>>6))*80;
-    unsigned long LB_New_Full_Capacity = ((((unsigned long)(frame.data[1]))<<4)  + (((unsigned long)(frame.data[2]))>>4))*80;
-    unsigned long LB_Remaining_Capacity_Segment = frame.data[2] & 0xf;
-    unsigned long LB_Average_Battery_Temperature = frame.data[3]-40;
-    unsigned long LB_Capacity_Deterioration_Rate = frame.data[4] >> 1;
+    unsigned long batteryWH = ((((unsigned long)(frame.data[0]))<<2)  + (((unsigned long)frame.data[1])>>6))*80;   // from GID *80
     unsigned long LB_Remaining_Capaci_Segment_Switch = frame.data[4] & 0x1;
-    unsigned long LB_Output_Power_Limit_Reason = frame.data[5] >> 5;
-    unsigned long LB_Capacity_Bal_Complete_Flag = (frame.data[5] >> 2) & 0x1;
-    unsigned long LB_Remain_charge_time_condition = ((unsigned long)(frame.data[5] & 0x3 << 3)) + ((unsigned long)(frame.data[6]>> 5));
-    unsigned long LB_Remain_charge_time = ((unsigned long)frame.data[6]) << 5 + (unsigned long)frame.data[7];
+    byte batteryChargeBars = frame.data[2] & 0xf;
+    byte batterySOH = frame.data[4] >> 1;
+    byte batteryTemperature = frame.data[3]-40;
 
-    // Serial.print(F("LB_Remain_Capacity:                 "));Serial.println(LB_Remain_Capacity);
-    // Serial.print(F("LB_New_Full_Capacity:               "));Serial.println(LB_New_Full_Capacity);
-    // Serial.print(F("LB_Remaining_Capacity_Segment:      "));Serial.println(LB_Remaining_Capacity_Segment);
-    // Serial.print(F("LB_Average_Battery_Temperature:     "));Serial.println(LB_Average_Battery_Temperature);
-    // Serial.print(F("LB_Capacity_Deterioration_Rate:     "));Serial.println(LB_Capacity_Deterioration_Rate);
-    // Serial.print(F("LB_Remaining_Capaci_Segment_Switch: "));Serial.println(LB_Remaining_Capaci_Segment_Switch);
-    // Serial.print(F("LB_Output_Power_Limit_Reason:       "));Serial.println(LB_Output_Power_Limit_Reason);
-    // Serial.print(F("LB_Capacity_Bal_Complete_Flag:      "));Serial.println(LB_Capacity_Bal_Complete_Flag);
-    // Serial.print(F("LB_Remain_charge_time_condition:    "));Serial.println(LB_Remain_charge_time_condition);
-    // Serial.print(F("LB_Remain_charge_time:              "));Serial.println(LB_Remain_charge_time);
-
-
-    payloadLeaf.batteryWH = ((((unsigned long)(frame.data[0]))<<2)  + (((unsigned long)frame.data[1])>>6))*80;   // from GID *80
-    if( LB_Remaining_Capaci_Segment_Switch == 0 )
+    if( g_payloadLeaf.batteryWH != batteryWH ||
+        (LB_Remaining_Capaci_Segment_Switch == 0 && g_payloadLeaf.batteryChargeBars != batteryChargeBars) ||
+        g_payloadLeaf.batterySOH != batterySOH ||
+        g_payloadLeaf.batteryTemperature != batteryTemperature)
     {
-      payloadLeaf.batteryChargeBars = frame.data[2] & 0xf;
+      g_payloadLeaf.batteryWH = batteryWH;
+      if( LB_Remaining_Capaci_Segment_Switch == 0 )
+      {
+        g_payloadLeaf.batteryChargeBars = batteryChargeBars;
+      }
+      g_payloadLeaf.batterySOH = batterySOH;
+      g_payloadLeaf.batteryTemperature = batteryTemperature;
+      return true;
     }
-    payloadLeaf.batterySOH = frame.data[4] >> 1;
-    payloadLeaf.batteryTemperature = frame.data[3]-40;
-
-    return true;
   }
 
   return false;
@@ -245,9 +241,9 @@ void loop()
 
   CanBusData_asukiaaa::Frame frame;
   
-  if ( canCar.available()) 
+  if ( g_canCar.available()) 
   {
-    canCar.receive(&frame);
+    g_canCar.receive(&frame);
     int index = -1;
     for(int i=0;i < NUM_MESSAGES; i++)
     {
@@ -258,7 +254,7 @@ void loop()
       }
     }
 
-    //debug the message
+    //debug print the message
     if(index != -1)
     {
       if( millis() - DEBUG_TIME_INTERVAL > lastDebugTime[index] ) 
@@ -268,7 +264,7 @@ void loop()
       }
     }
 
-
+    // try processing the frame if it is different from the last received frame
     if(index >= 0 && frame.data64 != lastMessage[index].data64 )
     {
       lastMessage[index] = frame;
@@ -288,32 +284,34 @@ void loop()
     }
   }
 
-   if( g_serial.available() > 0)
-   {
-     if( readSerial(frame) && processFrame(frame) )
-     {
-       printFrame(frame, false);
-       dataToTransmit = true;
-     }
-   }
+  if( g_serial.available() > 0)
+  {
+    if( readSerial(frame) && processFrame(frame) )
+    {
+      printFrame(frame, false);
+      dataToTransmit = true;
+    }
+  }
 
-
-  if( (dataToTransmit || millis() - waitingStart > SEND_PERIOD) )
+  //are we ready to transmit the packet?
+  if( (dataToTransmit || millis() - waitingStart > SEND_PERIOD) &&
+      (g_payloadLeaf.odometer != 0 || isEV_CAN_unit) )  //don't send till we have at least filled the odometer field
   {   
+    //Serial.print(F("waitingStart:")); Serial.println(millis()-waitingStart);
     waitingStart = millis();
-
     digitalWrite(LED_ACTION_PIN, HIGH);
+
     if(isEV_CAN_unit)
     {
-      //Don's xmit from teh EV unit. Only the VCM unit!
-      EmonSerial::PrintLeafPayload(&payloadLeaf);
+      //We Don't transmit from the EV unit. Only from the VCM unit! EV unit messages are sent to VCM unit by serial.
+      EmonSerial::PrintLeafPayload(&g_payloadLeaf);
     }
     else
     {
-      g_rf69.send((const uint8_t*) &payloadLeaf, sizeof (PayloadLeaf));
+      g_rf69.send((const uint8_t*) &g_payloadLeaf, sizeof (PayloadLeaf));
       if( g_rf69.waitPacketSent() )
       {
-        EmonSerial::PrintLeafPayload(&payloadLeaf);
+        EmonSerial::PrintLeafPayload(&g_payloadLeaf);
       }
       else
       {
