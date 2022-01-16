@@ -215,6 +215,7 @@ class emon_mqtt:
                 self.mqttClient.publish(f"leaf/batterySOH/{payload.subnode}",payload.batterySOH)
                 self.mqttClient.publish(f"leaf/batteryWH/{payload.subnode}",payload.batteryWH)
                 self.mqttClient.publish(f"leaf/batteryChargeBars/{payload.subnode}",payload.batteryChargeBars)
+                self.mqttClient.publish(f"leaf/chargeTimeRemaining/{payload.subnode}",payload.chargeTimeRemaining)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:

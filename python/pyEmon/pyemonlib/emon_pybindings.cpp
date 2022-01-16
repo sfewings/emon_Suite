@@ -170,11 +170,12 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadLeaf.def(py::init<>());
     payloadLeaf.def_readwrite("subnode", &PayloadLeaf::subnode, "allow multiple Leaf nodes on the network");
     payloadLeaf.def_readwrite("odometer", &PayloadLeaf::odometer, "Odometer reading in kilometers");
-    payloadLeaf.def_readwrite("range", &PayloadLeaf::range, "Remaining range in 0.2 kilometers");
+    payloadLeaf.def_readwrite("range", &PayloadLeaf::range, "Remaining range in kilometers");
     payloadLeaf.def_readwrite("batteryTemperature", &PayloadLeaf::batteryTemperature, "Battery temperature in celcius");
     payloadLeaf.def_readwrite("batterySOH", &PayloadLeaf::batterySOH, "Battery state of health in percent");
     payloadLeaf.def_readwrite("batteryWH", &PayloadLeaf::batteryWH, "Battery WH remaining");
     payloadLeaf.def_readwrite("batteryChargeBars", &PayloadLeaf::batteryChargeBars, "Battery charge bars on Dashboard (12=fully charged)");
+    payloadLeaf.def_readwrite("chargeTimeRemaining", &PayloadLeaf::chargeTimeRemaining, "Battery charge time remaining in minutes");
 
 
     //Parse function calls

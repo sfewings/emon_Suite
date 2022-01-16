@@ -171,11 +171,12 @@ typedef struct PayloadAirQuality : PayloadRelay {
 typedef struct PayloadLeaf : PayloadRelay {
 	byte subnode;                           // 
 	unsigned long   odometer;     			//odometer in KM
-  	short  range;                 			//range in 0.2 kilometers
-  	byte   batteryTemperature;    			//battery temperature in celsius
+  	short  range;                 			//range in kilometers
+  	short  batteryTemperature;    			//battery temperature in celsius
   	byte   batterySOH;            			//Battery state of health %
   	unsigned long batteryWH;      			//WH in battery
   	byte   batteryChargeBars;     			//Battery available charge bars. As displayed on the car.
+	short  chargeTimeRemaining;   			//Charge time remaining in minutes
 } PayloadLeaf;
 
 

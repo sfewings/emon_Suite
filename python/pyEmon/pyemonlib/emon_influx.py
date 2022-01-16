@@ -409,6 +409,11 @@ class emon_influx:
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Battery charge bars")\
                                 .field("value",payload.batteryChargeBars).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("leaf").tag("sensor",f"leaf/chargeTimeRemaining/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Charge time remaining")\
+                                .field("value",payload.chargeTimeRemaining).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:

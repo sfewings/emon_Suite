@@ -495,11 +495,11 @@ void EmonSerial::PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, uns
 {
 	if (pPayloadLeaf == NULL)
 	{
-		stream.print(F("leaf,subnode,odometer,range,batteryTemperature,batterySOH,batteryWH,batteryChargeBars"));
+		stream.print(F("leaf2,subnode,odometer,range,batteryTemperature,batterySOH,batteryWH,batteryChargeBars,chargeTimeRemaining"));
 	}
 	else
 	{
-		stream.print(F("leaf,"));
+		stream.print(F("leaf2,"));
 		stream.print(pPayloadLeaf->subnode);
 		stream.print(F(","));
 		stream.print(pPayloadLeaf->odometer);
@@ -513,7 +513,8 @@ void EmonSerial::PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, uns
 		stream.print(pPayloadLeaf->batteryWH);
 		stream.print(F(","));
 		stream.print(pPayloadLeaf->batteryChargeBars);
-
+		stream.print(F(","));
+		stream.print(pPayloadLeaf->chargeTimeRemaining);
 		PrintRelay(stream, pPayloadLeaf);
 		if (timeSinceLast != 0)
 		{
@@ -1119,6 +1120,8 @@ int EmonSerial::ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf)
 	int version = 0;
 	if (0 == strcmp(pch, "leaf"))
 		version = 1;
+	else if (0 == strcmp(pch, "leaf2"))
+		version = 2;
 
 	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 	pPayloadLeaf->subnode = atoi(pch);
@@ -1134,7 +1137,11 @@ int EmonSerial::ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf)
 	pPayloadLeaf->batteryWH = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadLeaf->batteryChargeBars = atoi(pch);
-
+	if(version >= 2)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadLeaf->chargeTimeRemaining = atoi(pch);
+	}
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadLeaf, pch);
