@@ -220,21 +220,21 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     unsigned long LB_Remaining_Capaci_Segment_Switch = frame.data[4] & 0x1;
     unsigned long LB_Output_Power_Limit_Reason = frame.data[5] >> 5;
     unsigned long LB_Capacity_Bal_Complete_Flag = (frame.data[5] >> 2) & 0x1;
-    unsigned long LB_Remain_charge_time_condition = ((unsigned long)(frame.data[5] & 0x3 ) << 3) + (unsigned long)frame.data[6]>>5;
-    unsigned long LB_Remain_charge_time           = ((unsigned long)(frame.data[6] & 0x1F) << 8) + (unsigned long)frame.data[7];
+    unsigned long LB_Remain_charge_time_condition = (((unsigned long)(frame.data[5] & 0x3 )) << 3) + (unsigned long)(frame.data[6]>>5);
+    unsigned long LB_Remain_charge_time           = (((unsigned long)(frame.data[6] & 0x1F)) << 8) + (unsigned long)frame.data[7];
   
-    // Serial.print(F("0x5BC"));
-    // Serial.print(F(","));Serial.print(LB_Remain_Capacity);
-    // Serial.print(F(","));Serial.print(LB_New_Full_Capacity);
-    // Serial.print(F(","));Serial.print(LB_Remaining_Capacity_Segment);
-    // Serial.print(F(","));Serial.print(LB_Average_Battery_Temperature);
-    // Serial.print(F(","));Serial.print(LB_Capacity_Deterioration_Rate);
-    // Serial.print(F(","));Serial.print(LB_Remaining_Capaci_Segment_Switch);
-    // Serial.print(F(","));Serial.print(LB_Output_Power_Limit_Reason);
-    // Serial.print(F(","));Serial.print(LB_Capacity_Bal_Complete_Flag);
-    // Serial.print(F(","));Serial.print(LB_Remain_charge_time_condition);
-    // Serial.print(F(","));Serial.print(LB_Remain_charge_time);
-    // Serial.println();
+    Serial.print(F("0x5BC"));
+    Serial.print(F(","));Serial.print(LB_Remain_Capacity);
+    Serial.print(F(","));Serial.print(LB_New_Full_Capacity);
+    Serial.print(F(","));Serial.print(LB_Remaining_Capacity_Segment);
+    Serial.print(F(","));Serial.print(LB_Average_Battery_Temperature);
+    Serial.print(F(","));Serial.print(LB_Capacity_Deterioration_Rate);
+    Serial.print(F(","));Serial.print(LB_Remaining_Capaci_Segment_Switch);
+    Serial.print(F(","));Serial.print(LB_Output_Power_Limit_Reason);
+    Serial.print(F(","));Serial.print(LB_Capacity_Bal_Complete_Flag);
+    Serial.print(F(","));Serial.print(LB_Remain_charge_time_condition);
+    Serial.print(F(","));Serial.print(LB_Remain_charge_time);
+    Serial.println();
     
 
     if( g_payloadLeaf.batteryWH != LB_Remain_Capacity ||
