@@ -142,18 +142,18 @@ class emon_mqtt:
         payload = emonSuite.PayloadBattery()
         if( emonSuite.EmonSerial.ParseBatteryPayload(reading,payload) ):
             try:
-                #get the mid voltages from the rail voltage reference
                 for sensor in range(emonSuite.BATTERY_SHUNTS):
                     if(nodeSettings[payload.subnode][f"s{sensor}"] != "Unused"):
                         self.mqttClient.publish(f"battery/power/{payload.subnode}/{sensor}", payload.power[sensor]/1)
                         self.mqttClient.publish(f"battery/pulseIn/{payload.subnode}/{sensor}", payload.pulseIn[sensor]/1)
                         self.mqttClient.publish(f"battery/pulseOut/{payload.subnode}/{sensor}", payload.pulseOut[sensor]/1)
+                #get the mid voltages from the rail voltage reference
                 railVoltage = payload.voltage[0]/100.0  #voltages are in 100ths
                 for sensor in range(emonSuite.MAX_VOLTAGES):
                     voltage = payload.voltage[sensor]/100.0
                     if(sensor != 0 ):
                         voltage = voltage - railVoltage/2.0
-                    self.mqttClient.publish(f"battery/voltage/{payload.subnode}/{sensor}}", voltage/1)
+                    self.mqttClient.publish(f"battery/voltage/{payload.subnode}/{sensor}", voltage/1)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
