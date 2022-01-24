@@ -180,7 +180,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
   // else 
   if (frame.id == 0x5C5)   //1477, Instrument cluster -> BCM / AV / VCM
   {
-    unsigned long odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + frame.data[3];
+    unsigned long odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + ((unsigned long)frame.data[3]);
     if( odometer != g_payloadLeaf.odometer)
     {
       g_payloadLeaf.odometer = odometer;
@@ -223,23 +223,23 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     unsigned long LB_Remain_charge_time_condition = (((unsigned long)(frame.data[5] & 0x3 )) << 3) + (unsigned long)(frame.data[6]>>5);
     unsigned long LB_Remain_charge_time           = (((unsigned long)(frame.data[6] & 0x1F)) << 8) + (unsigned long)frame.data[7];
   
-    Serial.print(F("0x5BC"));
-    Serial.print(F(","));Serial.print(LB_Remain_Capacity);
-    Serial.print(F(","));Serial.print(LB_New_Full_Capacity);
-    Serial.print(F(","));Serial.print(LB_Remaining_Capacity_Segment);
-    Serial.print(F(","));Serial.print(LB_Average_Battery_Temperature);
-    Serial.print(F(","));Serial.print(LB_Capacity_Deterioration_Rate);
-    Serial.print(F(","));Serial.print(LB_Remaining_Capaci_Segment_Switch);
-    Serial.print(F(","));Serial.print(LB_Output_Power_Limit_Reason);
-    Serial.print(F(","));Serial.print(LB_Capacity_Bal_Complete_Flag);
-    Serial.print(F(","));Serial.print(LB_Remain_charge_time_condition);
-    Serial.print(F(","));Serial.print(LB_Remain_charge_time);
-    Serial.println();
+    // Serial.print(F("0x5BC"));
+    // Serial.print(F(","));Serial.print(LB_Remain_Capacity);
+    // Serial.print(F(","));Serial.print(LB_New_Full_Capacity);
+    // Serial.print(F(","));Serial.print(LB_Remaining_Capacity_Segment);
+    // Serial.print(F(","));Serial.print(LB_Average_Battery_Temperature);
+    // Serial.print(F(","));Serial.print(LB_Capacity_Deterioration_Rate);
+    // Serial.print(F(","));Serial.print(LB_Remaining_Capaci_Segment_Switch);
+    // Serial.print(F(","));Serial.print(LB_Output_Power_Limit_Reason);
+    // Serial.print(F(","));Serial.print(LB_Capacity_Bal_Complete_Flag);
+    // Serial.print(F(","));Serial.print(LB_Remain_charge_time_condition);
+    // Serial.print(F(","));Serial.print(LB_Remain_charge_time);
+    // Serial.println();
     
 
-    if( g_payloadLeaf.batteryWH != LB_Remain_Capacity ||
+    if( (g_payloadLeaf.batteryWH != LB_Remain_Capacity && LB_Remain_Capacity != (0x3FF*80)) ||    // note Remain capacity = 0x3FF when charging first starts
         (LB_Remaining_Capaci_Segment_Switch == 0 && g_payloadLeaf.batteryChargeBars != LB_Remaining_Capacity_Segment) ||
-        (LB_Remain_charge_time_condition == 17 && g_payloadLeaf.chargeTimeRemaining != LB_Remain_charge_time) ||
+        (LB_Remain_charge_time_condition == 18 && g_payloadLeaf.chargeTimeRemaining != LB_Remain_charge_time) ||
         g_payloadLeaf.batterySOH != LB_Capacity_Deterioration_Rate ||
         g_payloadLeaf.batteryTemperature != LB_Average_Battery_Temperature)
     {
@@ -248,7 +248,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
       {
         g_payloadLeaf.batteryChargeBars = LB_Remaining_Capacity_Segment;
       }
-      if( LB_Remain_charge_time_condition == 17 )   //0b10010 = Normal charge, 250V
+      if( LB_Remain_charge_time_condition == 18 )   //0b10010 = Normal charge, 250V
       {
         g_payloadLeaf.chargeTimeRemaining = LB_Remain_charge_time;
       }
