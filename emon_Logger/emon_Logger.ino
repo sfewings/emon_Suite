@@ -98,9 +98,12 @@ void setup ()
 	if (!SD.begin(9)) {
 		Serial.println(F("Card failed, or not present"));
 		// don't do anything more:
-		while (1);
+		//while (1);
 	}
-	Serial.println(F("card initialized."));
+	else
+	{
+		Serial.println(F("Card initialized."));
+	}
 
 #ifdef RTC_LIB
 	if (!rtc.begin()) {
