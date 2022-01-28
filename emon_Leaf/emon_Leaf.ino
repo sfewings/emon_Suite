@@ -222,7 +222,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     unsigned long LB_Capacity_Bal_Complete_Flag = (frame.data[5] >> 2) & 0x1;
     unsigned long LB_Remain_charge_time_condition = (((unsigned long)(frame.data[5] & 0x3 )) << 3) + (unsigned long)(frame.data[6]>>5);
     unsigned long LB_Remain_charge_time           = (((unsigned long)(frame.data[6] & 0x1F)) << 8) + (unsigned long)frame.data[7];
-  
+    
     // Serial.print(F("0x5BC"));
     // Serial.print(F(","));Serial.print(LB_Remain_Capacity);
     // Serial.print(F(","));Serial.print(LB_New_Full_Capacity);
@@ -236,26 +236,34 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     // Serial.print(F(","));Serial.print(LB_Remain_charge_time);
     // Serial.println();
     
-
-    if( (g_payloadLeaf.batteryWH != LB_Remain_Capacity && LB_Remain_Capacity != (0x3FF*80)) ||    // note Remain capacity = 0x3FF when charging first starts
-        (LB_Remaining_Capaci_Segment_Switch == 0 && g_payloadLeaf.batteryChargeBars != LB_Remaining_Capacity_Segment) ||
-        (LB_Remain_charge_time_condition == 18 && g_payloadLeaf.chargeTimeRemaining != LB_Remain_charge_time) ||
-        g_payloadLeaf.batterySOH != LB_Capacity_Deterioration_Rate ||
+    bool updateRequired = false;
+    
+    if( LB_Remain_Capacity != (0x3FF*80) &&           // Remain capacity = 0x3FF when charging first starts
+        g_payloadLeaf.batteryWH != LB_Remain_Capacity)     
+    {
+        g_payloadLeaf.batteryWH = LB_Remain_Capacity;
+        updateRequired = true;
+    }
+    if( LB_Remaining_Capaci_Segment_Switch == 0 &&    // 0 = remaining capacity, 1 = full capacity, 
+        g_payloadLeaf.batteryChargeBars != LB_Remaining_Capacity_Segment)
+    {
+      g_payloadLeaf.batteryChargeBars = LB_Remaining_Capacity_Segment;
+      updateRequired = true;
+    } 
+    if( LB_Remain_charge_time_condition == 18 &&      //0b10010 = Normal charge, 250V
+        g_payloadLeaf.chargeTimeRemaining != LB_Remain_charge_time)  
+    {
+      g_payloadLeaf.chargeTimeRemaining = LB_Remain_charge_time;
+      updateRequired = true;
+    }
+    if( g_payloadLeaf.batterySOH != LB_Capacity_Deterioration_Rate ||
         g_payloadLeaf.batteryTemperature != LB_Average_Battery_Temperature)
     {
-      g_payloadLeaf.batteryWH = LB_Remain_Capacity;
-      if( LB_Remaining_Capaci_Segment_Switch == 0 )
-      {
-        g_payloadLeaf.batteryChargeBars = LB_Remaining_Capacity_Segment;
-      }
-      if( LB_Remain_charge_time_condition == 18 )   //0b10010 = Normal charge, 250V
-      {
-        g_payloadLeaf.chargeTimeRemaining = LB_Remain_charge_time;
-      }
       g_payloadLeaf.batterySOH = LB_Capacity_Deterioration_Rate;
       g_payloadLeaf.batteryTemperature = LB_Average_Battery_Temperature;
-      return true;
+      updateRequired = true;
     }
+    return updateRequired;
   }
 
   return false;

@@ -22,6 +22,8 @@
 6. Clone emon_Suite to /share
 	cd /share
 	git clone git@github.com:sfewings/emon_Suite.git
+   or to clone without account
+	git clone https://github.com/sfewings/emon_Suite.git
 
 7. Install and configure samba to make share available
 	sudo apt-get install samba samba-common-bin
@@ -46,8 +48,9 @@
 	sudo sh get-docker.sh
    Add pi user permissions to start containers
 	sudo usermod -aG docker pi
-	reboot
-
+   Restart
+	shutdown -r now
+   Install Docker Compose
 	sudo pip3 install docker-compose	
 
 9. Create a share/lib directory in the home directory (or anywhere. But be sure to expose through samba)
