@@ -72,7 +72,7 @@ void setup()
   pinMode(LED_ACTION_PIN, OUTPUT);
   digitalWrite(LED_ACTION_PIN, HIGH);
 
-  g_serial.begin(115200);
+  g_serial.begin(57600);
   g_serial.listen();
 
   for(int i=0; i<NUM_MESSAGES; i++)
@@ -119,6 +119,14 @@ void writeSerial(CanBusData_asukiaaa::Frame& frame)
   {
     g_serial.write(frameData[i]);
   }
+  // Serial.print(frameSize);
+  // Serial.print(F(" sent:"));
+  // for(int i=0; i<frameSize; i++)
+  // {
+  //   Serial.print(F(" "));
+  //   Serial.print(frameData[i], HEX);
+  // }
+  // Serial.println();
 }
 
 bool readSerial(CanBusData_asukiaaa::Frame& frame)
@@ -128,9 +136,17 @@ bool readSerial(CanBusData_asukiaaa::Frame& frame)
   char* frameData = (char*)&frame;
   while( g_serial.available() > 0 && frameIndex < frameSize)
   {
-    frameData[frameIndex] = g_serial.read();
-    frameIndex++;
+    frameData[frameIndex++] = g_serial.read();
   }
+
+  // Serial.print(frameIndex);
+  // Serial.print(F(" received:"));
+  // for(int i=0; i<frameIndex; i++)
+  // {
+  //   Serial.print(F(" "));
+  //   Serial.print(frameData[i], HEX);
+  // }
+  // Serial.println();
   return frameSize == frameIndex;
 }
 
@@ -147,7 +163,7 @@ void printFrame(CanBusData_asukiaaa::Frame& frame, bool fromCAN)
   Serial.print(F(",data:"));
   for(int i=0; i<frame.len; i++)
   {
-    Serial.print(frame.data[i]);
+    Serial.print(frame.data[i], HEX);
     Serial.print(F(" "));
   }
   Serial.println();
@@ -181,7 +197,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
   if (frame.id == 0x5C5)   //1477, Instrument cluster -> BCM / AV / VCM
   {
     unsigned long odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + ((unsigned long)frame.data[3]);
-    if( odometer != g_payloadLeaf.odometer)
+    if( odometer != g_payloadLeaf.odometer )
     {
       g_payloadLeaf.odometer = odometer;
       return true;
@@ -238,7 +254,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     
     bool updateRequired = false;
     
-    if( LB_Remain_Capacity != (0x3FF*80) &&           // Remain capacity = 0x3FF when charging first starts
+    if( LB_Remain_Capacity != ((unsigned long)0x000003FF)*80  &&           // Remain capacity = 0x3FF when charging first starts
         g_payloadLeaf.batteryWH != LB_Remain_Capacity)     
     {
         g_payloadLeaf.batteryWH = LB_Remain_Capacity;
@@ -250,7 +266,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
       g_payloadLeaf.batteryChargeBars = LB_Remaining_Capacity_Segment;
       updateRequired = true;
     } 
-    if( LB_Remain_charge_time_condition == 18 &&      //0b10010 = Normal charge, 250V
+    if( LB_Remain_charge_time_condition == 10 &&      //0b01010 = Normal charge, 200V
         g_payloadLeaf.chargeTimeRemaining != LB_Remain_charge_time)  
     {
       g_payloadLeaf.chargeTimeRemaining = LB_Remain_charge_time;
@@ -300,7 +316,7 @@ void loop()
     }
 
     // try processing the frame if it is different from the last received frame
-    if(index >= 0 && frame.data64 != lastMessage[index].data64 )
+    if(index >= 0 && frame.data64 != lastMessage[index].data64)
     {
       lastMessage[index] = frame;
 
