@@ -117,10 +117,10 @@ class emon_mqtt:
         if( emonSuite.EmonSerial.ParseWaterPayload(reading,payload) ):
             try:
                 for sensor in range(payload.numFlowSensors):
-                    self.mqttClient.publish(f"water/flowCount/{sensor}/{payload.subnode}",\
+                    self.mqttClient.publish(f"water/flowCount/{payload.subnode}/{sensor}",\
                             payload.flowCount[sensor]*nodeSettings[payload.subnode][f"f{sensor}_litresPerPulse"])
                 for sensor in range(payload.numHeightSensors):
-                    self.mqttClient.publish(f"water/height/{sensor}/{payload.subnode}",payload.waterHeight[sensor]/1)
+                    self.mqttClient.publish(f"water/height/{payload.subnode}/{sensor}",payload.waterHeight[sensor]/1)
                 self.mqttClient.publish(f"supplyV/water/{payload.subnode}", payload.supplyV/1000)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
