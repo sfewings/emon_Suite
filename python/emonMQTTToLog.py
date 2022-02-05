@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import pytz
+from pathlib import Path
 from pyemonlib import emon_influx
 import paho.mqtt.client as mqtt
 
@@ -40,6 +41,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     mqttServer = str(args.MQTT)
     logPath = str(args.logPath)
+    
+    Path(logPath).mkdir(parents=True, exist_ok=True)
 
     print(f'mqttServer={mqttServer}')
     
