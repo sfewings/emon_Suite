@@ -55,7 +55,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "8.3.3",
+      "pluginVersion": "8.3.4",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -209,7 +209,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "continuous-blues"
           },
           "mappings": [],
           "thresholds": {
@@ -229,14 +229,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 14,
+        "h": 13,
         "w": 6,
         "x": 17,
         "y": 0
       },
       "id": 6,
       "options": {
-        "colorMode": "value",
+        "colorMode": "none",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -250,7 +250,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "8.3.3",
+      "pluginVersion": "8.3.4",
       "targets": [
         {
           "alias": "$tag_sensorName",
@@ -282,6 +282,8 @@
           "measurement": "leaf",
           "orderByTime": "ASC",
           "policy": "default",
+          "query": "SELECT mean(\"value\")  FROM \"leaf\" WHERE $timeFilter GROUP BY time($__interval), \"sensorName\" fill(null)",
+          "rawQuery": true,
           "refId": "B",
           "resultFormat": "time_series",
           "select": [
@@ -295,13 +297,44 @@
               {
                 "params": [],
                 "type": "mean"
+              },
+              {
+                "params": [
+                  " / 100"
+                ],
+                "type": "math"
               }
             ]
           ],
           "tags": []
+        },
+        {
+          "alias": "Distance Travelled",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "hide": false,
+          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"leaf\" WHERE (\"sensorName\" = 'Leaf - Odometer') AND $timeFilter GROUP BY time($__interval))),\"sensorName\" fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Charge KW",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "hide": false,
+          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\")/1000 FROM \"pulse\" WHERE (\"sensorName\" = 'Car') AND $timeFilter GROUP BY time($__interval))),\"sensorName\" fill(null)",
+          "rawQuery": true,
+          "refId": "C",
+          "resultFormat": "time_series"
         }
       ],
-      "title": "Panel Title",
+      "title": "Leaf state",
+      "transparent": true,
       "type": "stat"
     },
     {
@@ -463,6 +496,6 @@
   "timezone": "",
   "title": "Nissan Leaf",
   "uid": "o22hbWRgk",
-  "version": 1,
+  "version": 7,
   "weekStart": ""
 }
