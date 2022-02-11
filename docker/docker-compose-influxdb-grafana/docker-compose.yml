@@ -14,18 +14,18 @@ services:
       - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_HTTP_FLUX_ENABLED=true
     restart: always
-  chronograf:
-    image: chronograf:latest
-    ports:
-      - '127.0.0.1:8888:8888'
-    volumes:
-      - chronograf-storage:/var/lib/chronograf
-    depends_on:
-      - influxdb
-    environment:
-      - INFLUXDB_URL=http://influxdb:8086
-      - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
-      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
+  # chronograf:
+  #   image: chronograf:latest
+  #   ports:
+  #     - '127.0.0.1:8888:8888'
+  #   volumes:
+  #     - chronograf-storage:/var/lib/chronograf
+  #   depends_on:
+  #     - influxdb
+  #   environment:
+  #     - INFLUXDB_URL=http://influxdb:8086
+  #     - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
+  #     - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
   grafana:
     image: grafana/grafana:latest
     container_name: grafana1
@@ -41,6 +41,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_PANELS_ENABLE_ALPHA=true
       - GF_SERVER_ROOT_URL=${GRAFANA_URL}
+      - GF_ALLOW_UI_UPDATES=true
+      - GF_ALLOWUIUPDATES=true
     restart: always
   mosquitto:
     image: eclipse-mosquitto
@@ -74,7 +76,6 @@ services:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB0
       - MQTT_IP=mqtt
-      - TZ=Australia/Perth
     volumes:
       - /share/emon_Suite/python:/data
     depends_on:
@@ -94,39 +95,44 @@ services:
       - mosquitto
     restart: always
 
-  node-red:
-    image: nodered/node-red:latest
-    container_name: node_red
-    environment:
-      - TZ=Australia/Perth
-    entrypoint: /data/entrypoint.sh
-    ports:
-      - "1880:1880"
-    volumes:
-      - /share/emon-node-red:/data
-      - /share:/share
-      - /media:/containermedia
-    depends_on:
-      - mosquitto
-    restart: always
+#  node-red:
+#    image: nodered/node-red:latest
+#    container_name: node_red
+#    environment:
+#      - TZ=Australia/Perth
+#    entrypoint: /data/entrypoint.sh
+#    ports:
+#      - "1880:1880"
+#    volumes:
+#      - /share/emon-node-red:/data
+#      - /share:/share
+#    depends_on:
+#      - mosquitto
+#    restart: always
 
-  emon_logtojson:
-    image: sfewings32/emon_logtojson:latest
-    container_name: emon_logtojson
-    volumes:
-      - /share:/share
-    environment:
-      - TZ=Australia/Perth
-      - MQTT_IP=mqtt
-      - REPROCESS_LOGS_FROM_YEAR=this
-    depends_on:
-      - mosquitto
-    restart: always
+  # emon_logtojson:
+  #   image: sfewings32/emon_logtojson:latest
+  #   container_name: emon_logtojson
+  #   volumes:
+  #     - /share:/share
+  #   environment:
+  #     - TZ=Australia/Perth
+  #     - MQTT_IP=mqtt
+  #     - REPROCESS_LOGS_FROM_YEAR=this
+  #   depends_on:
+  #     - mosquitto
+  #   restart: always
 
+  query_bom:
+    image: query_bom:v1
+    container_name: query_bom
+    depends_on:
+      - influxdb
+    restart: always
 
 volumes:
   influxdb-storage:
-  chronograf-storage:
+#  chronograf-storage:
   grafana-storage:
   mosquitto-data:
   mosquitto-logs:
