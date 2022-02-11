@@ -104,6 +104,7 @@ services:
     volumes:
       - /share/emon-node-red:/data
       - /share:/share
+      - /media:/containermedia
     depends_on:
       - mosquitto
     restart: always
