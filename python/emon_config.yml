@@ -6,16 +6,17 @@ temp:
     t2: Living room
     t3: Ceiling space
   1:
-    name: Fridge temperatures
-    t0: On top of fridge
-    t1: Freezer
-    t2: Fridge
+    name: Office Unit 1
+    t0: Office room 4
+    t1: Office room 3
+    t2: Work area - End of office
+    t3: Unused
   2:
-    name: inside
-    t0: sensor 1
-    t1: sensor 2
-    t2: sensor 3
-    t3: sensor 4
+    name: Office Unit 2
+    t0: Roof space
+    t1: Work area - Front of office
+    t2: Office room 2
+    t3: Office room 1
 hws:
   0:
     name: Hot water system
@@ -31,13 +32,13 @@ hws:
     p2: Heat pump booster
 disp:
   0:
-    name: Kitchen
+    name: Unused disp 0
   1:
-    name: Office
+    name: Server room
   2:
-    name: Unused
+    name: Unused disp 2
   3:
-    name: Upstairs
+    name: R&D area
 wtr:
   0:
     name: Rain tank and HWS
@@ -56,7 +57,7 @@ wtr:
     f0_litresPerPulse: 0.1
 rain:
   0:
-    name: Rain gauge
+    name: Outside
     mmPerPulse: 0.2
 scl:
   0:
