@@ -6,6 +6,7 @@ FROM arm32v7/python:3.7-buster
 RUN pip3 install weather.au
 RUN pip3 install influxdb-client[ciso]
 RUN pip3 install bs4 lxml
+ENV INFLUX_IP=localhost
 COPY ./queryBOM.py ./
-CMD python ./queryBOM.py
+CMD python ./queryBOM.py -i $INFLUX_IP
 #CMD ["sh"]

@@ -126,6 +126,8 @@ services:
   query_bom:
     image: query_bom:v1
     container_name: query_bom
+    environment:
+      - INFLUX_IP=influxdb
     depends_on:
       - influxdb
     restart: always
