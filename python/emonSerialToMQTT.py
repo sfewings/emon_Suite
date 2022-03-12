@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import time
 import serial
 import yaml
 from pyemonlib import emon_mqtt
@@ -25,7 +26,7 @@ if __name__ == "__main__":
     settings = yaml.full_load(settingsFile)
     for i,key in enumerate(settings):
         nodes.append(key)
-    
+    nodes.append('base')
 
     emonMQTT = emon_mqtt.emon_mqtt(mqtt_server=mqttServer, mqtt_port = 1883, settingsPath=args.settingsPath)
 
@@ -48,12 +49,13 @@ if __name__ == "__main__":
                     RSSIvalue = 0
 
             #send a time update every 30 seconds
-            time = datetime.datetime.now()
-            if( (time-lastSentTimeUpdate).total_seconds() >30):
-                baseMsg = f"base,{int(time.timestamp())+60*60*8}"       #Perth timezone!
-                #ser.write(baseMsg.encode('utf-8'))
+            t = datetime.datetime.now()
+            if( (t-lastSentTimeUpdate).total_seconds() >30):
+                offset = time.timezone if (time.localtime().tm_isdst == 0) else time.altzone
+                baseMsg = f"base,{int(t.timestamp())-offset}"
+                ser.write(baseMsg.encode('utf-8'))
                 print(baseMsg)
-                lastSentTimeUpdate = time
+                lastSentTimeUpdate = t
 
 
 
