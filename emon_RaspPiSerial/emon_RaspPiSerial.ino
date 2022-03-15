@@ -5,19 +5,11 @@
 
 #include <EmonShared.h>
 
-#ifdef USE_JEELIB
-	#define RF69_COMPAT 1
-
-	//JeeLab libraires				http://github.com/jcw
-	#include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-	RF12Init rf12Init = { BASE_JEENODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP };
-#else
 	#include <SPI.h>
 	#include <RH_RF69.h>
 	// Singleton instance of the radio driver
 	RH_RF69 g_rf69;
 	#define RFM69_RST     4
-#endif
 
 
 const int GREEN_LED = 9;  //Pin 9 on the Emon node.
@@ -32,11 +24,7 @@ void setup ()
 	
 	delay(1000);
 	Serial.println(F("Fewings Serial output for RaspberryPi"));
-#ifdef USE_JEELIB
-	Serial.println(F("rf12_initialize"));
-	rf12_initialize(rf12Init.node, rf12Init.freq, rf12Init.group);
-	EmonSerial::PrintRF12Init(rf12Init);
-#else
+
 	pinMode(RFM69_RST, OUTPUT);
 	digitalWrite(RFM69_RST, LOW);
 	delay(1);
@@ -56,7 +44,7 @@ void setup ()
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(BASE_JEENODE);
-#endif
+
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
@@ -86,49 +74,6 @@ void loop ()
 	uint8_t len = 0;
 	int node_id = 0;
 
-#ifdef USE_JEELIB
-	//--------------------------------------------------------------------------------------------
-	// 1. On RF recieve
-	//--------------------------------------------------------------------------------------------	
-	if (rf12_recvDone())
-	{
-		digitalWrite(GREEN_LED, HIGH);
-
-		if (rf12_crc)
-		{
-			Serial.print(F("rcv crc err:"));
-			Serial.print(rf12_crc);
-			Serial.print(F(",len:"));
-			Serial.println(rf12_hdr);
-		}
-
-	//read the time basePayload 
-		if (Serial.available())
-		{
-			char buf[100];
-			PayloadBase basePayload;
-			Serial.readBytesUntil('\0', buf, 100);
-			if (EmonSerial::ParseBasePayload(buf, &basePayload))
-			{
-				int wait = 1000;
-				while (!rf12_canSend() && wait--)
-					rf12_recvDone();
-				if (wait)
-				{
-					rf12_sendStart(0, &basePayload, sizeof basePayload);
-					rf12_sendWait(0);
-					Serial.println(F("BasePayload with time sent"));
-					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
-				}
-			}
-		}
-
-		if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0)	// and no rf errors
-		{
-			node_id = (rf12_hdr & 0x1F);
-			data = rf12_data;
-			len = rf12_hdr;		//Note. Need to test that this is the same size as sizeof(PayloadXXXX)
-#else
 	if (g_rf69.available())
 	{
 		digitalWrite(GREEN_LED, HIGH);
@@ -146,7 +91,7 @@ void loop ()
 
 			node_id = g_rf69.headerId();
 			data = buf;
-#endif
+
 			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
 			{
 				SERIAL_OUT(Base, Payload);
@@ -206,15 +151,14 @@ void loop ()
 			}
 		}
 
-#ifdef USE_JEELIB
-#else
 		//read the time basePayload 
 		if (Serial.available())
 		{
 			char sendBuf[100];
+			memset(sendBuf, 0, 100);
 			PayloadBase basePayload;
 			Serial.readBytesUntil('\0', sendBuf, 100);
-			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload))
+			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload) )
 			{
 				g_rf69.send((const uint8_t*) &basePayload, sizeof(basePayload));
 				if( g_rf69.waitPacketSent() )
@@ -228,7 +172,6 @@ void loop ()
 				}
 			}
 		}
-#endif
 
 		digitalWrite(GREEN_LED, LOW);
 	}
