@@ -49,7 +49,7 @@ wtr:
     f0: Mains
     f0_litresPerPulse: 0.1
     f1: Bore
-    f1_litresPerPulse: 1.0
+    f1_litresPerPulse: 0.1
   3:
     name: Testing
     f0: Tester

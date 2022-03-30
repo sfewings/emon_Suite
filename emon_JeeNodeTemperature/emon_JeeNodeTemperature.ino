@@ -1,9 +1,18 @@
-#include <Ports.h>
+
+#define LCD_SUPPORT 
+#ifdef LCD_SUPPORT
+	#include <LiquidCrystal.h>
+	LiquidCrystal lcd(A2,4,8,7,6,5);
+#else
+	#include <Ports.h>
+	ISR(WDT_vect) { Sleepy::watchdogEvent(); }
+#endif
 #include <time.h>					//required for EmonShared.h
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+
 
 //---------------------------------------------------------------------------------------------------
 //Radiohead RF_69 support
@@ -18,14 +27,15 @@ RH_RF69 g_rf69;
 #define VOLTAGE_MEASURE_PIN 		A0
 //#define WHISPER_NODE 1
 
+
 DallasTemperature *pDallasOneWire[PORTS];			// Pass our oneWire reference to Dallas Temperature.
-int numberOfSensors[PORTS];										//count of sensors on each device/pin
-int sleepDelay;																//sleep delay depends on node. So two nodes don't always transmit together
-int numberOfDevices;													//The number of temperature sensors connected to the device
+int numberOfSensors[PORTS];							//count of sensors on each device/pin
+int numberOfDevices;								//The number of temperature sensors connected to the device
 PayloadTemperature temperaturePayload;
 
 //moving average buffer and index
 #define READING_HISTORY 4		//number of values to average over
+#define SLEEP_DELAY 30000		//ms between readings and transmit
 int readings[MAX_TEMPERATURE_SENSORS][READING_HISTORY];
 int readingIndex = 0;
 
@@ -34,8 +44,6 @@ EEPROMSettings  eepromSettings;
 //--------------------------------------------------------------------------------------------
 // RFM12B Setup
 //--------------------------------------------------------------------------------------------
-
-ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
 
 void printAddress(uint8_t deviceAddress[8])
@@ -53,6 +61,23 @@ void printAddress(uint8_t deviceAddress[8])
 	Serial.print(" }");
 }
 
+String TemperatureString(String& str, int temperature )
+{
+	int t = temperature;
+	if( t < 0 )
+	{
+		str = "-";
+		t *= -1;
+		str += t/100;
+	}
+	else
+		str = String(t/100);
+	str +=".";
+ 
+	str += (t/10)%10;
+
+	return str;
+}
 
 void setup()
 {
@@ -61,8 +86,6 @@ void setup()
 	delay(500);
 
 	Serial.println(F("Fewings Jeenode temperature node for emon network"));
-
-	sleepDelay = 30000;	//in milliseconds
 
 	//initialise the EEPROMSettings for relay and node number
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
@@ -162,7 +185,21 @@ void setup()
 	Serial.println(" Freq: 915MHz");
 
 	Serial.println("Initialisation complete");
-	delay(50); 	//time for the serial buffer to empty
+
+#ifdef LCD_SUPPORT
+	lcd.begin(16, 2);
+	lcd.setCursor(0, 0);
+
+	lcd.print(F("Temperature"));
+	lcd.setCursor(0, 1);
+	lcd.print(F("Sensors="));
+	lcd.print(temperaturePayload.numSensors);
+	lcd.print(F(" Node="));
+	lcd.print(eepromSettings.subnode);
+
+#endif
+
+	delay(1000); 	//time for the serial buffer to empty
 }
 
 void loop()
@@ -224,7 +261,22 @@ void loop()
 		UCSR0A |= 1 << TXC0;  // mark transmission not complete
 	while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 
-	Sleepy::loseSomeTime(sleepDelay);
+
+#ifdef LCD_SUPPORT
+	String str;
+	lcd.clear();
+	for(int i=0; i< temperaturePayload.numSensors; i++)
+	{
+		lcd.setCursor((i%2*8), i/2 );
+		lcd.print(TemperatureString(str, temperaturePayload.temperature[i]));
+		lcd.print(F("c"));
+	}
+	delay(SLEEP_DELAY + temperaturePayload.subnode);  //sleep delay depends on node. So two nodes don't always transmit together
+
+#else
+	Sleepy::loseSomeTime(SLEEP_DELAY + temperaturePayload.subnode);
+#endif
+
 }
 
 

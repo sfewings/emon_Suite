@@ -69,7 +69,7 @@ class emon_influx:
                                 .tag("sensorName", nodeSettings[0]['name'])\
                                 .field("value", payload.rainCount*nodeSettings[0]['mmPerPulse']).time(time)  #each pulse is 0.2mm
                 self.write_api.write(bucket=self.bucket, record=p)
-                p = Point("temperature").tag("sensor", "temperature")\
+                p = Point("temperature").tag("sensor", "temperature/rain")\
                                         .tag("sensorGroup","rain gauge")\
                                         .tag("sensorName", nodeSettings[0]['name'])\
                                         .field("value", payload.temperature/100).time(time)
@@ -166,13 +166,13 @@ class emon_influx:
         if( emonSuite.EmonSerial.ParseWaterPayload(reading,payload) ):
             try:
                 for sensor in range(payload.numFlowSensors):
-                    p = Point("water").tag("sensor",f"water/flowCount/{sensor}/{payload.subnode}")\
+                    p = Point("water").tag("sensor",f"water/flowCount/{payload.subnode}/{sensor}")\
                                     .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                     .tag("sensorName",nodeSettings[payload.subnode][f"f{sensor}"])\
                                     .field("value", payload.flowCount[sensor]*nodeSettings[payload.subnode][f"f{sensor}_litresPerPulse"]).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
                 for sensor in range(payload.numHeightSensors):
-                    p = Point("tank").tag("sensor", f"water/height/{sensor}/{payload.subnode}")\
+                    p = Point("tank").tag("sensor", f"water/height/{payload.subnode}/{sensor}")\
                                     .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                     .tag("sensorName",nodeSettings[payload.subnode][f"h{sensor}"])\
                                     .field("value", payload.waterHeight[sensor]/1).time(time)

@@ -646,9 +646,9 @@ int EmonSerial::ParseBasePayload(char* str, PayloadBase *pPayloadBase)
 	if (0 != strcmp(pch, "base"))
 		return 0;	//can't find "base:" as first token
 
-	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) 
+	if (NULL == (pch = strtok(NULL, tok))) 
 		return 0;
-	pPayloadBase->time = (time_t)atol(pch);
+	pPayloadBase->time = (time_t)strtoul(pch, NULL, 10);
 
 	pch = strtok(NULL, tok);
 	if (pch != NULL && strlen(pch) == 8) //8 differentiates timeSinceLast from relay)

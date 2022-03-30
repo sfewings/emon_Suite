@@ -74,6 +74,7 @@ services:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB0
       - MQTT_IP=mqtt
+      - TZ=Australia/Perth
     volumes:
       - /share/emon_Suite/python:/data
     depends_on:
@@ -104,6 +105,7 @@ services:
     volumes:
       - /share/emon-node-red:/data
       - /share:/share
+      - /media:/containermedia
     depends_on:
       - mosquitto
     restart: always

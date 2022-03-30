@@ -3,7 +3,7 @@ To create pyemonlib
 Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-library-7d5aea80cc3f 
 1. Create a virtual environment to contain the python setup in pyEmon
     > cd ./emon_Suite/python/pyEmon
-    > python3 -m venv venv
+    > python3.7 -m venv venv
     > source venv/bin/activate
 2. Install the libraries required for setup
     > pip install wheel setuptools twine pybind11
