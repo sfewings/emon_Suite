@@ -34,12 +34,12 @@ class emon_mqtt:
     # def __del__(self):
     #     self.client.close()
 
-    def on_connect(client, userdata, flags, rc):
+    def on_connect(self, client, userdata, flags, rc):
         print(f"emon_mqtt:Connected with result code {rc}")
 
-    def on_disconnect(client, userdata,rc=0):
+    def on_disconnect(self, client, userdata,rc=0):
         print("DisConnected result code {rc}")
-        client.loop_stop()        
+        self.mqttClient.loop_stop()
     
     def printException(self, exceptionSource, reading, ex):
         if( self.lineNumber == -1):
