@@ -3,6 +3,7 @@
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include <JeeLib.h>			// still required for sleepy::
+#include <PinChangeInt.h>
 #include <EEPROM.h>
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
@@ -13,10 +14,11 @@
 RH_RF69 g_rf69;
 
 #define GREEN_LED 9			// Green LED on emonTx
-#define HALL_EFFECT_PIN A0
-#define FLOW_INTERRUPT_PIN 3
+#define HALL_EFFECT_PIN A1
+#define FLOW_INTERRUPT_PIN 4
 #define EEPROM_BASE 0x10	//where the water count is stored
 #define HALL_PEAK_THRESHOLD 3	//the minimum change in reading required to signal a change from rising to falling
+#define VOLTAGE_MEASURE_PIN 		A0
 
 bool g_lastActivity = false;
 
@@ -301,11 +303,15 @@ void setup()
 
 	//water flow rate setup
 	//writeEEPROM(1, 0);					//reset the flash
+	//writeEEPROM(0, 1540850);				
+	//writeEEPROM(1, 988990);
 
 	g_waterPayload.numSensors = 2;
 	g_waterPayload.flowCount[0] = readEEPROM(0); 
-	g_flowCount = readEEPROM(1);
-	g_waterPayload.flowCount[1] = (unsigned long)((double)g_flowCount / PulsePerDeciLitre[1]);
+	g_waterPayload.flowCount[1] = readEEPROM(1);
+	g_flowCount =  g_waterPayload.flowCount[1] * PulsePerDeciLitre[1];
+
+	Serial.print("Flow count: "); Serial.print(g_waterPayload.flowCount[0]); Serial.print(","); Serial.println(g_waterPayload.flowCount[1]);
 
 	//Hall effect sensor AH3503
 	pinMode(HALL_EFFECT_PIN, INPUT);
@@ -314,7 +320,8 @@ void setup()
 	g_hallEffectState.lastValue = analogRead(HALL_EFFECT_PIN);
 
 	pinMode(FLOW_INTERRUPT_PIN, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(FLOW_INTERRUPT_PIN), interruptHandlerWaterFlow, CHANGE);
+	attachPinChangeInterrupt(FLOW_INTERRUPT_PIN, interruptHandlerWaterFlow, CHANGE);
+	//attachInterrupt(digitalPinToInterrupt(FLOW_INTERRUPT_PIN), interruptHandlerWaterFlow, CHANGE);
 
 	EmonSerial::PrintWaterPayload(NULL);
 
@@ -323,19 +330,16 @@ void setup()
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
 
+
 long readVcc()
 {
-	long result;
-	// Read 1.1V reference against AVcc
-	ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-	delay(2); // Wait for Vref to settle
-	ADCSRA |= _BV(ADSC); // Convert
-	while (bit_is_set(ADCSRA, ADSC));
-	result = ADCL;
-	result |= ADCH << 8;
-	result = 1126400L / result; // Back-calculate AVcc in mV
-	return result;
+	//voltage divider is 1M and 1M. Jeenode reference voltage is 3.3v. AD range is 1024
+	//voltage divider current draw is 29 uA
+	float measuredvbat = analogRead(VOLTAGE_MEASURE_PIN);
+	measuredvbat = (measuredvbat/1024.0 * 3.3) * (1000000.0+1000000.0)/1000000.0;
+	return (measuredvbat*1000);//sent in mV
 }
+
 
 
 //--------------------------------------------------------------------------------------------
@@ -366,7 +370,7 @@ void loop ()
 	{
 		digitalWrite(GREEN_LED, HIGH);
 		writeEEPROM(0, g_waterPayload.flowCount[0]);
-		writeEEPROM(1, boreFlowCount);
+		writeEEPROM(1, g_waterPayload.flowCount[1]);
 	}
 
 	digitalWrite(GREEN_LED, LOW);
