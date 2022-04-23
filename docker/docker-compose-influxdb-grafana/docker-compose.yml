@@ -87,9 +87,11 @@ services:
     container_name: emon_influx
     volumes:
       - /share/emon_Suite/python:/share/config
+      - /share/Input:/share/Input
     environment:
       - MQTT_IP=mqtt
       - INFLUX_IP=influxdb
+      - TZ=Australia/Perth      
     depends_on:
       - influxdb
       - mosquitto

@@ -13,7 +13,7 @@ def writeValue(sensorName, temperatureValue, BOM_id, url ):
                                             .tag("sensorGroup", "BOM") \
                                             .tag("sensorName", sensorName)\
                                             .tag("BOM_id", BOM_id)\
-                                            .field("value", temperatureValue)
+                                            .field("value", temperatureValue/1)
   
   ret = client.write_api().write(bucket="sensors", record=p)
   print(f"{sensorName}: {temperatureValue}")
