@@ -1,5 +1,5 @@
 
-#define LCD_SUPPORT 
+#undef LCD_SUPPORT 
 #ifdef LCD_SUPPORT
 	#include <LiquidCrystal.h>
 	LiquidCrystal lcd(A2,4,8,7,6,5);
@@ -35,7 +35,7 @@ PayloadTemperature temperaturePayload;
 
 //moving average buffer and index
 #define READING_HISTORY 4		//number of values to average over
-#define SLEEP_DELAY 30000		//ms between readings and transmit
+#define SLEEP_DELAY 60000		//ms between readings and transmit
 int readings[MAX_TEMPERATURE_SENSORS][READING_HISTORY];
 int readingIndex = 0;
 
