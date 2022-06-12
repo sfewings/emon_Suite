@@ -16,6 +16,9 @@ temp:
     t1: sensor 2
     t2: sensor 3
     t3: sensor 4
+  3:
+    name: Solar tester
+    t0: unused
 hws:
   0:
     name: Hot water system

@@ -79,6 +79,25 @@ String TemperatureString(String& str, int temperature )
 	return str;
 }
 
+//Supply in mV
+String SupplyVString(String& str, int supplyV)
+{
+	int v = supplyV;
+	if( v < 0 )
+	{
+		str = "-";
+		v *= -1;
+		str += v/1000;
+	}
+	else
+		str = String(v/1000);
+	str +=".";
+	for(int i=2;i>=0;i--)
+	{
+		str += ((int)((double)v/pow(10,i)))%10;
+	}
+	return str;
+}
 void setup()
 {
 	Serial.begin(9600);
@@ -251,10 +270,10 @@ void loop()
 
 	
 	//turn the led on pin 5 (port 2) on for 1ms
-	pinMode(9, OUTPUT);
-	digitalWrite(9, 1);
-	delay(1);
-	digitalWrite(9, 0);
+//	pinMode(9, OUTPUT);
+//	digitalWrite(9, 1);
+//	delay(1);
+//	digitalWrite(9, 0);
 
 	//see http://www.gammon.com.au/forum/?id=11428
 	while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
@@ -271,8 +290,11 @@ void loop()
 		lcd.print(TemperatureString(str, temperaturePayload.temperature[i]));
 		lcd.print(F("c"));
 	}
+	//print the supplyv in the bottom right corner
+	lcd.setCursor(10, 1);
+	lcd.print(SupplyVString(str, temperaturePayload.supplyV));
+	lcd.print('v');
 	delay(SLEEP_DELAY + temperaturePayload.subnode);  //sleep delay depends on node. So two nodes don't always transmit together
-
 #else
 	Sleepy::loseSomeTime(SLEEP_DELAY + temperaturePayload.subnode);
 #endif
