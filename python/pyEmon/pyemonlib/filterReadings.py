@@ -1,8 +1,11 @@
+import pyemonlib.emonSuite as emonSuite
 
 WATER_MAX_INCREMENT = 100
 PULSE_MAX_INCREMENT = 100
 ODOMETER_MAX_INCREMENT = 100
 RAIN_MAX_INCREMENT = 20
+TEMPERATURE_MAX_INCREMENT = 50  #100ths of a degree
+SUPPLY_VOLTAGE_MAX_INCREMENT = 50  #100ths of a volt
 
 class filterReadings:
     def __init__(self):
@@ -18,6 +21,12 @@ class filterReadings:
             elif value < self.lastReading[readingID] + MAX_INCREMENT:
                 self.lastReading[readingID] = value
         return True
+
+    def validRainPayload(self, rainPayload):
+        if( not self.validCounterReading("rain.rainCount", rainPayload.rainCount, RAIN_MAX_INCREMENT) or
+            not self.validCounterReading("rain.temperature", rainPayload.temperature, TEMPERATURE_MAX_INCREMENT) or
+            not self.validCounterReading("rain.voltage", rainPayload.voltage, SUPPLY_VOLTAGE_MAX_INCREMENT):
+            return False
 
 
     def isValid(self, readingID, value):

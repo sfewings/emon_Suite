@@ -7,7 +7,7 @@ import os
 import yaml
 import filterReadings
 
-class emon_filterReader:
+class emon_filterReader(object):
     def __init__(self, settingsPath="./emon_config.yml"):
         settingsFile = open(settingsPath, 'r')
         self.settings = yaml.full_load(settingsFile)
