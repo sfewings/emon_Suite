@@ -69,3 +69,19 @@ To drop the sensor database from influx and create a new one
     DROP DATABASE sensors
 4. Create a new sensors database
     CREATE DATABASE sensors
+
+
+To run emonLogToInflux.py inside a container
+============================================
+1. open the container with interactive prompt
+     docker run --rm -it  sfewings32/emon_mqtt_to_influx:latest
+   or
+     open in Portainer
+2. run nohup 
+    nohup python emonLogToInflux.py --fromFile 20200101.TXT -s /share/config/emon_config.yml --influx influx /share/Input & 
+3. Reopen container and check for running jobs 
+    jobs -l
+4. View the logs from operation
+    cat hohup.out
+    or
+    tail -f -n100 nohup.out
