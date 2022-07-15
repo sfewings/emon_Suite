@@ -1,10 +1,13 @@
 version: '3.6'
 services:
   web:
-    image: jupyter/scipy-notebook
+    image: jupyter/scipy-notebook:aarch64-python-3.10.5
     container_name: 'jupyter'
     restart: always
     environment:
-      - JUPYTER_TOKEN=abcdefg12345
+      - JUPYTER_TOKEN=jupyter
+    volumes:
+      - /share/emon_Suite:/home/jovyan/work/emon_Suite
+      - /media/pi/510F-2D7D/Input_all:/home/jovyan/work/data
     ports:
       - 8888:8888

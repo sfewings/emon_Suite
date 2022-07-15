@@ -1,7 +1,7 @@
 version: '2'
 services:
   influxdb:
-    image: arm32v7/influxdb:latest
+    image: influxdb:latest
     container_name: influx
     ports:
       - '8086:8086'
