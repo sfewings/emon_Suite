@@ -72,11 +72,13 @@ To drop the sensor database from influx and create a new one
 
 To delete values from influx sensor tables
 ==========================================
-1.  docker exec -it 999fca3ed0cd sh
-2.  influx
-3.  use sensors
-4.  select "Rain\\ gauge","value" from "rain" where "value" >100000.0
-5. From returned entries take the time for each line and call
+1.  use sensors
+2.  select "Rain\\ gauge","value" from "rain" where "value" >100000.0
+3. From returned entries take the time for each line and call
     delete from "rain" where time = 1642333256869619000
-     
+
+To show all influx series 
+=========================
+1. use sensors
+2. show series   
 
