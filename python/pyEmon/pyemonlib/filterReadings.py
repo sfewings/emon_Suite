@@ -4,8 +4,8 @@ WATER_MAX_INCREMENT = 100
 PULSE_MAX_INCREMENT = 100
 ODOMETER_MAX_INCREMENT = 100
 RAIN_MAX_INCREMENT = 20
-TEMPERATURE_MAX_INCREMENT = 50  #100ths of a degree
-SUPPLY_VOLTAGE_MAX_INCREMENT = 50  #100ths of a volt
+TEMPERATURE_MAX_CHANGE = 50  #100ths of a degree
+SUPPLY_VOLTAGE_MAX_CHANGE = 50  #100ths of a volt
 
 class filterReadings:
     def __init__(self):
@@ -18,16 +18,32 @@ class filterReadings:
         else:
             if value < self.lastReading[readingID]:
                 return False
-            elif value < self.lastReading[readingID] + MAX_INCREMENT:
+            elif value > self.lastReading[readingID] + MAX_INCREMENT:
+                return False
+            else:
                 self.lastReading[readingID] = value
         return True
 
+    def validChange(self, readingID, value, MAX_CHANGE):
+        if( readingID in self.lastReading ):
+           if( abs(value - self.lastReading[readingID])>MAX_CHANGE):
+                return False;
+        self.lastReading[readingID] = value
+        return True
+
+        
     def validRainPayload(self, rainPayload):
         if( not self.validCounterReading("rain.rainCount", rainPayload.rainCount, RAIN_MAX_INCREMENT) or
-            not self.validCounterReading("rain.temperature", rainPayload.temperature, TEMPERATURE_MAX_INCREMENT) or
-            not self.validCounterReading("rain.voltage", rainPayload.voltage, SUPPLY_VOLTAGE_MAX_INCREMENT):
+            not self.validChange("rain.temperature", rainPayload.temperature, TEMPERATURE_MAX_CHANGE) or
+            not self.validChange("rain.voltage", rainPayload.voltage, SUPPLY_VOLTAGE_MAX_CHANGE) ):
             return False
 
+    def validTemperaturePayload(self, temperaturePayload):
+        readingID = f'temperature[{temperaturePayload.subnode}]['
+        for sensor in range(temperaturePayload.numSensors):
+            if(not self.validChange(f'temperature[{temperaturePayload.subnode}][{sensor}]') ):
+                return False
+        return True
 
     def isValid(self, readingID, value):
         readingIDelements = readingID.split('/')

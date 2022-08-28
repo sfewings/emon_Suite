@@ -26,7 +26,7 @@ class emon_filterReader(object):
             'leaf' : self.leafMessage,
             'other': self.otherMessage
         }
-        filterReadings.init()
+        self.filterReadings = filterReadings.init()
 
     
     def printException(self, exceptionSource, reading, ex):
@@ -50,19 +50,21 @@ class emon_filterReader(object):
         if( emonSuite.EmonSerial.ParseRainPayload(reading,payload) ):
             try:
                 readingID = "rain"
-                if( filterReadings.isValid(readingID, payload.rainCount) ):
-                    # todo: Add a mechanism to have the over-ride class be called here 
-                    self.mqttClient.publish(readingID,payload.rainCount)
-                self.mqttClient.publish("temperature/rain/0",payload.temperature / 100)
-                self.mqttClient.publish("supplyV/rain",payload.supplyV)
-                if(':' in reading):
-                    self.publishRSSI( nodeSettings[0]['name'], reading )
+                if( not self.filterReadings.isValid(readingID, payload.rainCount) ):
+                    print(f"Rejected {reading}")
+                    # # todo: Add a mechanism to have the over-ride class be called here 
+                    # self.mqttClient.publish(readingID,payload.rainCount)
+                    # self.mqttClient.publish("temperature/rain/0",payload.temperature / 100)
+                    # self.mqttClient.publish("supplyV/rain",payload.supplyV)
+                    # if(':' in reading):
+                    #     self.publishRSSI( nodeSettings[0]['name'], reading )
             except Exception as ex:
                 self.printException("rainException", reading, ex)
 
     def temperatureMessage(self, reading, nodeSettings ):
         payload = emonSuite.PayloadTemperature()
         if( emonSuite.EmonSerial.ParseTemperaturePayload(reading,payload) ):
+            if( not self.filterReadings.validTemperaturePayload(payload) ):
             try:
                 for sensor in range(payload.numSensors):
                     self.mqttClient.publish(f"temperature/temp/{payload.subnode}/{sensor}",payload.temperature[sensor]/100);
