@@ -29,61 +29,63 @@
 #define ONE_WIRE 18
 
 RH_RF69 g_rf69(CS,INTERRUPT);      // pins for Adafruit Feather M0 board
-//Hx711 g_scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
+Hx711 * g_pScale;
 OneWire oneWire(ONE_WIRE);     // pin 10 for DS18b20 temperature sensors
 DallasTemperature g_dallasOneWire(&oneWire);
 
 PayloadBeehive g_payload;
 
+const int NUMBER_OF_GATES = 24; // 24 gates, 48 sensors
+const int START_GATE = 0;  //useful for testing
+const int END_GATE = 24;   //useful for testing
+const int DEBEE_BOUNCE = 30;
+const int SENDING_DELAY = 60000;  //prints bee counts every 60 seconds
+const int NUMBER_OF_BANKS = 6;    // number of switch banks
 
-const int numberOfGates = 24; // 24 gates, 48 sensors
-const int startGate = 0;  //useful for testing
-const int endGate = 24;   //useful for testing
-const int debeebounce = 30;
-const int outputDelay = 15000;  //prints bee counts every 15 seconds
-const int numberOfBanks = 6;    // number of switch banks
 unsigned long lastOutput = 0;
 unsigned long currentTime = 0;
 
-
 //boolean 0 or 1 sensor readings, 1 bee is present
-boolean inSensorReading[numberOfGates];
-boolean outSensorReading[numberOfGates];
+boolean inSensorReading[NUMBER_OF_GATES];
+boolean outSensorReading[NUMBER_OF_GATES];
 
-boolean lastInSensorReading[numberOfGates];
-boolean lastOutSensorReading[numberOfGates];
+boolean lastInSensorReading[NUMBER_OF_GATES];
+boolean lastOutSensorReading[NUMBER_OF_GATES];
 
-boolean checkStateIn[numberOfGates];
-boolean checkStateOut[numberOfGates];
+boolean checkStateIn[NUMBER_OF_GATES];
+boolean checkStateOut[NUMBER_OF_GATES];
 
-int inCount[numberOfGates];
-int outCount[numberOfGates];
+int inCount[NUMBER_OF_GATES];
+int outCount[NUMBER_OF_GATES];
   
-unsigned long startInReadingTime[numberOfGates];
-unsigned long startOutReadingTime[numberOfGates];
+unsigned long startInReadingTime[NUMBER_OF_GATES];
+unsigned long startOutReadingTime[NUMBER_OF_GATES];
 
-unsigned long inSensorTime[numberOfGates];
-unsigned long outSensorTime[numberOfGates];
+unsigned long inSensorTime[NUMBER_OF_GATES];
+unsigned long outSensorTime[NUMBER_OF_GATES];
  
-unsigned long lastInFinishedTime[numberOfGates];
-unsigned long lastOutFinishedTime[numberOfGates];
+unsigned long lastInFinishedTime[NUMBER_OF_GATES];
+unsigned long lastOutFinishedTime[NUMBER_OF_GATES];
   
-unsigned long inReadingTimeHigh[numberOfGates];
-unsigned long outReadingTimeHigh[numberOfGates];
+unsigned long inReadingTimeHigh[NUMBER_OF_GATES];
+unsigned long outReadingTimeHigh[NUMBER_OF_GATES];
 
-unsigned long lastInTime[numberOfGates];
-unsigned long lastOutTime[numberOfGates];
+// unsigned long lastInTime[numberOfGates];
+// unsigned long lastOutTime[numberOfGates];
 
-unsigned long lastInReadingTimeHigh[numberOfGates];
-unsigned long lastOutReadingTimeHigh[numberOfGates];
+// unsigned long lastInReadingTimeHigh[numberOfGates];
+// unsigned long lastOutReadingTimeHigh[numberOfGates];
 
-int totalTimeTravelGoingOut[numberOfGates];
-int totalTimeTravelGoingIn[numberOfGates];
+// int totalTimeTravelGoingOut[numberOfGates];
+// int totalTimeTravelGoingIn[numberOfGates];
 
-int firstTestInVariable[numberOfGates];
+// int firstTestInVariable[numberOfGates];
+// int firstTestOutVariable[numberOfGates];
 
 
-int firstTestOutVariable[numberOfGates];
+byte switchBank[NUMBER_OF_BANKS];
+byte oldSwitchBank[NUMBER_OF_BANKS];
+
 
 
 unsigned long inTotal = 0;
@@ -120,11 +122,11 @@ void Blink(byte PIN, byte DELAY_MS, byte loops)
 
 void setup() 
 {
-  pinMode(LED, OUTPUT);    
-
-  Blink(LED, 50, 3);
-
   Serial.begin(9600);
+
+  pinMode(LED, OUTPUT);    
+  Blink(LED, 100, 10);
+
   delay(500);
 
 	EmonSerial::PrintBeehivePayload(NULL);
@@ -140,7 +142,36 @@ void setup()
   g_payload.supplyV = 0;
 
 
-  //g_scale.setScale(-22.43f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
+  g_pScale = new Hx711(SDA, SCL, 22.43f ); // SDA, SCL on Feaather M0 board
+  currentTime = millis(); 
+  float grams = g_pScale->getGram();
+  Serial.print("Scales grams,");
+  Serial.print( grams );
+  Serial.print(",");
+  Serial.print("Scales initialisation time (ms),");
+  Serial.print( millis()-currentTime );
+  Serial.println();
+
+  // Hx711 scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
+  // scale.setOffset( 8886700 );  //with no weight on beehive.
+  // scale.setScale( 22.43f );		//calibration_factor = 19.55 for 4 load-cell 200kg rating
+
+  // while (true)
+  // {
+  //   currentTime = millis(); 
+  //   long value = scale.getValue();
+  //   Serial.print( value );
+  //   Serial.print(",");
+  //   Serial.print( millis()-currentTime );
+  //   currentTime = millis(); 
+  //   Serial.print(",");
+  
+  //   float grams = scale.getGram();
+  //   Serial.print( grams );
+  //   Serial.print(",");
+  //   Serial.print( millis()-currentTime );
+  //   Serial.println();
+  // }
 
 
   g_dallasOneWire.begin();
@@ -159,6 +190,7 @@ void setup()
   pinMode(CS, OUTPUT);
   digitalWrite(CS, HIGH);
 
+  //Initialise the IR gates
   SPI.begin();
   SPI.beginTransaction(SPISettings(3000000, MSBFIRST, SPI_MODE2));
   
@@ -167,10 +199,37 @@ void setup()
   digitalWrite (LATCH, HIGH);
 
   pinMode (POWER_GATES_1, OUTPUT);
-  digitalWrite(POWER_GATES_1, LOW);
   pinMode (POWER_GATES_2, OUTPUT);
+
+  digitalWrite(POWER_GATES_1, HIGH);
+  digitalWrite(POWER_GATES_2, HIGH);
+  delayMicroseconds(75); //first 24 gates only need 15us while gates closer to the end need ~40us-75us
+  
+  digitalWrite (LATCH, LOW);    // pulse the parallel load latch
+  delayMicroseconds(3);
+  digitalWrite (LATCH, HIGH);
+  delayMicroseconds(3);
+  
+  digitalWrite(POWER_GATES_1, LOW);
   digitalWrite(POWER_GATES_2, LOW);
 
+  //initialise the switchbank
+  for(int i =0; i < NUMBER_OF_BANKS;i++)
+  {
+    oldSwitchBank[i] = SPI.transfer (0);
+  }
+
+  for (int i = START_GATE; i < END_GATE; i++) 
+  { 
+    lastInSensorReading[i] = 0;
+    lastOutSensorReading[i] = 0;
+    inSensorReading[i] = 0;
+    outSensorReading[i] = 0;
+    lastInSensorReading[i] = 0;
+    lastOutSensorReading[i] = 0;
+    checkStateIn[i] = 1;
+    checkStateOut[i] = 1;    
+  }
 
   if (!g_rf69.init())
     Serial.println("g_rf69 init failed");
@@ -188,12 +247,9 @@ void setup()
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   g_rf69.setEncryptionKey(key);
+  Serial.println("Initialisation complete");
   
 }
-
-
-byte switchBank[numberOfBanks];
-byte oldSwitchBank[numberOfBanks];
 
 
 void loop ()
@@ -216,7 +272,7 @@ void loop ()
   //reading 24 bits at 3Mhz should take about 8us
   //reading 48 bits at 3Mhz should take abotu 16us
   bool change = false;
-  for(int i =0; i < numberOfBanks;i++)
+  for(int i =0; i < NUMBER_OF_BANKS;i++)
   {
     switchBank[i] = SPI.transfer (0);
     if( switchBank[i] != oldSwitchBank[i])
@@ -226,24 +282,26 @@ void loop ()
   if( change )
   {
     int gate = 0;
-    for(int i =0; i < numberOfBanks;i++)
+    for(int i =0; i < NUMBER_OF_BANKS;i++)
     {
       for(int j = 0; j < 8; j++)
       {
         if((switchBank[i] >> j) & 1)
-            outSensorReading[gate] = HIGH;
-        else outSensorReading[gate] = LOW;
+          outSensorReading[gate] = HIGH;
+        else 
+          outSensorReading[gate] = LOW;
         j++;
         if((switchBank[i] >> j) & 1)
-            inSensorReading[gate] = HIGH;
-        else inSensorReading[gate] = LOW;       
+          inSensorReading[gate] = HIGH;
+        else 
+          inSensorReading[gate] = LOW;       
         gate++;  
       }
       oldSwitchBank[i] = switchBank[i];
     }
   }
 
-  for (int i = startGate; i < endGate; i++) 
+  for (int i = START_GATE; i < END_GATE; i++) 
   { 
     if(inSensorReading[i] == HIGH || outSensorReading[i] == HIGH) 
     {
@@ -254,7 +312,7 @@ void loop ()
   }
 
   
-  for (int i = startGate; i < endGate; i++) 
+  for (int i = START_GATE; i < END_GATE; i++) 
   { 
     if(inSensorReading[i] != lastInSensorReading[i])  //change of state on IN sensor
     { 
@@ -268,7 +326,7 @@ void loop ()
       lastOutSensorReading[i] = outSensorReading[i];
       outSensorTime[i] = currentTime;
     }       
-    if(currentTime - inSensorTime[i] > debeebounce && checkStateIn[i] == 0)  //debounce IN sensor
+    if(currentTime - inSensorTime[i] > DEBEE_BOUNCE && checkStateIn[i] == 0)  //debounce IN sensor
     {
       checkStateIn[i] = 1; //passed debounce         
       if(inSensorReading[i] == HIGH) //a bee just entered the sensor
@@ -280,24 +338,20 @@ void loop ()
         lastInFinishedTime[i] = currentTime;            
         inReadingTimeHigh[i] = currentTime - startInReadingTime[i]; //this variable is how long the bee was present for
         Serial.print(i);
-        Serial.print(", IT ,");
+        Serial.print(",In ,");
         Serial.print(inReadingTimeHigh[i]);
-        Serial.print(", ");    
-        if(outReadingTimeHigh[i] < 650 && inReadingTimeHigh[i] < 650){ //should be less than 650ms
-          if(currentTime - lastOutFinishedTime[i] < 200){ //the sensors are pretty cose together so the time it takes to trigger on and then the other should be small.. ~200ms
+        if(outReadingTimeHigh[i] < 650 && inReadingTimeHigh[i] < 650)  //should be less than 650ms
+        {
+          if(currentTime - lastOutFinishedTime[i] < 200) //the sensors are pretty cose together so the time it takes to trigger on and then the other should be small.. ~200ms
+          {
             inTotal++;
-            Serial.print(currentTime);
-            Serial.print(",");
-            Serial.println(1);
-          }else{
-            Serial.println(currentTime);
+            Serial.print(",1");
           }
-        }else{
-          Serial.println(currentTime);
         }
+        Serial.println();
       }           
     }
-    if(currentTime - outSensorTime[i] > debeebounce && checkStateOut[i] == 0)  //debounce OUT sensor
+    if(currentTime - outSensorTime[i] > DEBEE_BOUNCE && checkStateOut[i] == 0)  //debounce OUT sensor
     {
       checkStateOut[i] = 1; //passed debounce         
       if(outSensorReading[i] == HIGH) //a bee just entered the sensor
@@ -309,28 +363,24 @@ void loop ()
         lastOutFinishedTime[i] = currentTime;            
         outReadingTimeHigh[i] = currentTime - startOutReadingTime[i]; //this variable is how long the bee was present for
         Serial.print(i);
-        Serial.print(", OT ,");
+        Serial.print(",Out,");
         Serial.print(outReadingTimeHigh[i]);
-        Serial.print(", ");        
-        if(outReadingTimeHigh[i] < 600 && inReadingTimeHigh[i] < 600){ //should be less than 600ms
-          if(currentTime - lastInFinishedTime[i] < 200){ //the sensors are pretty cose together so this time should be small
+        if(outReadingTimeHigh[i] < 600 && inReadingTimeHigh[i] < 600) //should be less than 600ms
+        {
+          if(currentTime - lastInFinishedTime[i] < 200) //the sensors are pretty cose together so this time should be small
+          {
             outTotal++;
-            Serial.print(currentTime);
-            Serial.print(",");
-            Serial.println(1);
-          }else{
-            Serial.println(currentTime);
+            Serial.print(",1");
           }
-        }else{
-          Serial.println(currentTime);
         }
+        Serial.println();
       }          
     }        
   }    
 
   delay (15);   // debounce
 
-  if (currentTime - lastOutput > outputDelay) 
+  if (currentTime - lastOutput > SENDING_DELAY) 
   {
     sendData(inTotal, outTotal); 
     lastOutput = currentTime; 
@@ -351,14 +401,7 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   g_payload.temperatureOut = g_dallasOneWire.getTempCByIndex(1)*100;
   Serial.print("temp time: \t"); Serial.println((millis()-t)); t = millis();
  
-
-   Hx711 scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
-   scale.setScale(-22.43f);		//calibration_factor = 19.55 for 4 load-cell 200kg rating
-   scale.setOffset( 8388608 );  //with no weight on beehive.
-   g_payload.grams = scale.getGram();
-//pinMode(SCL, INPUT);
-	pinMode(SDA, OUTPUT);
-
+  g_payload.grams = g_pScale->getGram();
   Serial.print("scale time:\t"); Serial.println((millis()-t)); t = millis();
  
   float measuredvbat = analogRead(VBATPIN);
@@ -368,8 +411,8 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   Serial.print("vRead time:\t");  Serial.println((millis()-t)); t = millis();
 
 
-  g_payload.beeInRate=beesIn/((double)outputDelay/60000.0);
-  g_payload.beeOutRate=beesOut/((double)outputDelay/60000.0);
+  g_payload.beeInRate=beesIn/((double)SENDING_DELAY/60000.0);
+  g_payload.beeOutRate=beesOut/((double)SENDING_DELAY/60000.0);
   g_payload.beesIn += beesIn;
   g_payload.beesOut += beesOut;
   g_payload.supplyV = (unsigned long) (measuredvbat*1000);  //transmit as mV
@@ -379,8 +422,6 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   g_rf69.waitPacketSent();
 
   Serial.print("send time: \t"); Serial.println((millis()-t)); t = millis();
-
-
   Serial.print("total time:\t"); Serial.println((millis()-tStart));
 
   EmonSerial::PrintBeehivePayload(&g_payload);

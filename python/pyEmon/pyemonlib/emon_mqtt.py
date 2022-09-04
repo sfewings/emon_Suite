@@ -190,6 +190,7 @@ class emon_mqtt:
                 self.mqttClient.publish(f"beehive/beesOut/{payload.subnode}",payload.beesOut)
                 self.mqttClient.publish(f"temperature/beehiveIn/{payload.subnode}",payload.temperatureIn/100)
                 self.mqttClient.publish(f"temperature/beehiveOut/{payload.subnode}",payload.temperatureOut/100)
+                self.mqttClient.publish(f"beehive/scale/{payload.subnode}",payload.grams/1)                
                 self.mqttClient.publish(f"supplyV/beehive/{payload.subnode}",payload.supplyV/1000)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )

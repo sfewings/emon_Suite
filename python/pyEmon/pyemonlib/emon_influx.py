@@ -317,14 +317,19 @@ class emon_influx:
                                     .field("value",payload.beesOut).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("temperature").tag("sensor",f"temperature/beehiveIn/{payload.subnode}")\
-                                        .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Inside")\
-                                        .field("value",payload.temperatureIn/100).time(time)
+                                    .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                    .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Inside")\
+                                    .field("value",payload.temperatureIn/100).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("temperature").tag("sensor",f"temperature/beehiveOut/{payload.subnode}")\
-                                        .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Outside")\
-                                        .field("value",payload.temperatureOut/100).time(time)
+                                    .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                    .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Outside")\
+                                    .field("value",payload.temperatureOut/100).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("scale").tag("sensor",f"scale/beehive/{payload.subnode}")\
+                                    .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                    .tag("sensorName",nodeSettings[payload.subnode]["name"])\
+                                    .field("value", payload.grams/1).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("supplyV").tag("sensor",f"supplyV/beehive/{payload.subnode}")\
                                     .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
