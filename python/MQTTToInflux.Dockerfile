@@ -5,7 +5,7 @@ COPY ./emonMQTTToInflux.py ./
 COPY ./emonLogToInflux.py ./
 COPY ./pyEmon/dist/pyemonlib-0.1.0-cp37-cp37m-linux_armv7l.whl ./
 RUN pip3 install pyemonlib-0.1.0-cp37-cp37m-linux_armv7l.whl
-RUN pip3 install numpy
+RUN pip3 install numpy pytz
 RUN mkdir -p /share/config
 ENV INFLUX_IP=localhost
 ENV MQTT_IP=localhost
