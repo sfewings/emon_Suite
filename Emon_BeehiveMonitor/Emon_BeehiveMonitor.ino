@@ -1,5 +1,6 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 // Emon_BeehiveMonitor
+// Use Adafruit Feather M0 board configuration
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
@@ -122,13 +123,13 @@ void Blink(byte PIN, byte DELAY_MS, byte loops)
 
 void setup() 
 {
-  Serial.begin(9600);
 
   pinMode(LED, OUTPUT);    
   Blink(LED, 100, 10);
 
-  delay(500);
+  delay(1000);
 
+  Serial.begin(9600);
 	EmonSerial::PrintBeehivePayload(NULL);
 
   //initialise payload fields
@@ -155,23 +156,6 @@ void setup()
   // Hx711 scale(SDA, SCL ); // SDA, SCL on Feaather M0 board
   // scale.setOffset( 8886700 );  //with no weight on beehive.
   // scale.setScale( 22.43f );		//calibration_factor = 19.55 for 4 load-cell 200kg rating
-
-  // while (true)
-  // {
-  //   currentTime = millis(); 
-  //   long value = scale.getValue();
-  //   Serial.print( value );
-  //   Serial.print(",");
-  //   Serial.print( millis()-currentTime );
-  //   currentTime = millis(); 
-  //   Serial.print(",");
-  
-  //   float grams = scale.getGram();
-  //   Serial.print( grams );
-  //   Serial.print(",");
-  //   Serial.print( millis()-currentTime );
-  //   Serial.println();
-  // }
 
 
   g_dallasOneWire.begin();
@@ -241,7 +225,7 @@ void setup()
 
   // If you are using a high power g_rf69 eg RFM69HW, you *must* set a Tx power with the
   // ishighpowermodule flag set like this:
-  g_rf69.setTxPower(14, true);
+  g_rf69.setTxPower(20, true);
 
   // The encryption key has to be the same as the one in the client
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -418,8 +402,8 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   g_payload.supplyV = (unsigned long) (measuredvbat*1000);  //transmit as mV
 
 
-  g_rf69.send((const uint8_t*) &g_payload, sizeof(g_payload));
-  g_rf69.waitPacketSent();
+  //g_rf69.send((const uint8_t*) &g_payload, sizeof(g_payload));
+  //g_rf69.waitPacketSent();
 
   Serial.print("send time: \t"); Serial.println((millis()-t)); t = millis();
   Serial.print("total time:\t"); Serial.println((millis()-tStart));
