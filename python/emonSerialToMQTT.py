@@ -36,25 +36,30 @@ if __name__ == "__main__":
     lastSentTimeUpdate = datetime.datetime.now()
 
     sers = []
+    rssi = []
+
     sers.append( serial.Serial(serialPort, 9600, timeout=1) )
+    rssi.append(0)
 
     if(serialPort2 != "none"):
-        sers.append( serial.Serial(serialPort2,9600, timeout=1))
+        sers.append( serial.Serial(serialPort2,9600, timeout=1) )
+        rssi.append(0)
 
     while 1:
-        for ser in sers:
+        for i in range(len(sers)):
+            ser = sers[i]
             line = ser.readline().decode('utf-8').rstrip('\r\n')
-            print(line)
+            #print(line)
             if(line.startswith("RSSI")):
-                RSSIvalue = int(line[6:])     #parse -36 from "RSSI: -36"
+                rssi[i] = int(line[6:])     #parse -36 from "RSSI: -36"
             else:
                 lineFields = line.split(',',2)
                 if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
-                    if(RSSIvalue!=0):
-                        line = f"{line}:{RSSIvalue}"
+                    if(rssi[i]!=0):
+                        line = f"{line}:{rssi[i]}"
                     emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
                     print(line)
-                    RSSIvalue = 0
+                    rssi[i] = 0
 
         #send a time update every 30 seconds
         t = datetime.datetime.now()

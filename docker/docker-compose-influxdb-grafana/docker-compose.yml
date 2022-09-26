@@ -70,9 +70,11 @@ services:
     container_name: emon_serial
     devices:
       - /dev/ttyUSB0
+      - /dev/ttyUSB1
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB0
+      - SERIAL_PORT=/dev/ttyUSB1
       - MQTT_IP=mqtt
       - TZ=Australia/Perth
     volumes:
