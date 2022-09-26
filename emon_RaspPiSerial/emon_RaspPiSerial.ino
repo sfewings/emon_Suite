@@ -1,25 +1,28 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
+//Note: Use Moteino 8MHz for the Lora 8MHz boards
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 #undef USE_JEELIB
 
 #include <EmonShared.h>
 
 	#include <SPI.h>
-	#include <RH_RF69.h>
+	#include <RH_RF95.h>
 	// Singleton instance of the radio driver
-	RH_RF69 g_rf69;
+	RH_RF95 g_rf95;
 	#define RFM69_RST     4
 
 
 const int GREEN_LED = 9;  //Pin 9 on the Emon node.
+
+unsigned long lastSentTime;
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
 void setup () 
 {
-	pinMode(GREEN_LED, OUTPUT);
-	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
+//	pinMode(GREEN_LED, OUTPUT);
+//	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
 	Serial.begin(9600);
 	
 	delay(1000);
@@ -34,16 +37,17 @@ void setup ()
 	delay(10);
 
 
-	if (!g_rf69.init())
+	if (!g_rf95.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rf95.setFrequency(915.0))
 		Serial.println("rf69 setFrequency failed");
-	Serial.println("RF69 initialise node: 10 Freq: 915MHz");
+	Serial.println("RF95 initialise node: 10 Freq: 915MHz");
 	// The encryption key has to be the same as the one in the client
-	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(BASE_JEENODE);
+	// uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+	// 				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	// g_rf95.setEncryptionKey(key);
+	//g_rf95.setHeaderId(BASE_JEENODE);
+	g_rf95.setHeaderId(TEMPERATURE_JEENODE);
 
 
 	EmonSerial::PrintRainPayload(NULL);
@@ -60,7 +64,9 @@ void setup ()
 	EmonSerial::PrintAirQualityPayload(NULL);
 	EmonSerial::PrintLeafPayload(NULL);
 
-	digitalWrite(GREEN_LED, LOW);
+//	digitalWrite(GREEN_LED, LOW);
+
+	lastSentTime = millis();
 }
 
 #define SERIAL_OUT(NAME, PAYLOAD)\
@@ -74,22 +80,22 @@ void loop ()
 	uint8_t len = 0;
 	int node_id = 0;
 
-	if (g_rf69.available())
+	if(g_rf95.available())
 	{
-		digitalWrite(GREEN_LED, HIGH);
+		//digitalWrite(GREEN_LED, HIGH);
 		// Should be a message for us now   
-		uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
-		memset(buf, 0, RH_RF69_MAX_MESSAGE_LEN);
+		uint8_t buf[RH_RF95_MAX_PAYLOAD_LEN];
+		memset(buf, 0, RH_RF95_MAX_PAYLOAD_LEN);
 		len = sizeof(buf);
-		if (g_rf69.recv(buf, &len))
+		if (g_rf95.recv(buf, &len))
 		{
-			//RH_RF69::printBuffer("Received: ", buf, len);
+			RH_RF95::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
 			Serial.print("RSSI: ");
-			Serial.println(g_rf69.lastRssi(), DEC);
+			Serial.println(g_rf95.lastRssi(), DEC);
 
-			node_id = g_rf69.headerId();
+			node_id = g_rf95.headerId();
 			data = buf;
 
 			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
@@ -160,8 +166,8 @@ void loop ()
 			Serial.readBytesUntil('\0', sendBuf, 100);
 			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload) )
 			{
-				g_rf69.send((const uint8_t*) &basePayload, sizeof(basePayload));
-				if( g_rf69.waitPacketSent() )
+				g_rf95.send((const uint8_t*) &basePayload, sizeof(basePayload));
+				if( g_rf95.waitPacketSent() )
 				{
 					Serial.println(F("BasePayload with time sent"));
 					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
@@ -173,6 +179,27 @@ void loop ()
 			}
 		}
 
-		digitalWrite(GREEN_LED, LOW);
+		//digitalWrite(GREEN_LED, LOW);
+	}
+
+	if (millis() >= lastSentTime+ 30000)
+	{
+		lastSentTime = millis();
+
+		char sendBuf[] = "temp1,0,4085,4,1700,1768,1763,1768";
+		PayloadTemperature tempPayload;
+		if (EmonSerial::ParseTemperaturePayload(sendBuf, &tempPayload) )
+		{
+			bool sent = g_rf95.send((const uint8_t*) &tempPayload, sizeof(tempPayload));
+			if( g_rf95.waitPacketSent() )
+			{
+				Serial.print(F("TemperaturePayload with time sent:"));
+				EmonSerial::PrintTemperaturePayload(&tempPayload);  //send it back down the serial line
+			}
+			else
+			{
+				Serial.println(F("No packet sent"));
+			}
+		}
 	}
 } 

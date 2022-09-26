@@ -7,7 +7,8 @@
 
 //Radiohead RF_69 support
 #include <SPI.h>
-#include <RH_RF69.h>
+//#include <RH_RF69.h>
+#include <RH_RF95.h>
 //load cell support
 #include <hx711.h>
 //Dallas temperature support
@@ -29,7 +30,7 @@
 #define INTERRUPT 3
 #define ONE_WIRE 18
 
-RH_RF69 g_rf69(CS,INTERRUPT);      // pins for Adafruit Feather M0 board
+RH_RF95 g_rf95(CS,INTERRUPT);      // pins for Adafruit Feather M0 board
 Hx711 * g_pScale;
 OneWire oneWire(ONE_WIRE);     // pin 10 for DS18b20 temperature sensors
 DallasTemperature g_dallasOneWire(&oneWire);
@@ -71,23 +72,8 @@ unsigned long lastOutFinishedTime[NUMBER_OF_GATES];
 unsigned long inReadingTimeHigh[NUMBER_OF_GATES];
 unsigned long outReadingTimeHigh[NUMBER_OF_GATES];
 
-// unsigned long lastInTime[numberOfGates];
-// unsigned long lastOutTime[numberOfGates];
-
-// unsigned long lastInReadingTimeHigh[numberOfGates];
-// unsigned long lastOutReadingTimeHigh[numberOfGates];
-
-// int totalTimeTravelGoingOut[numberOfGates];
-// int totalTimeTravelGoingIn[numberOfGates];
-
-// int firstTestInVariable[numberOfGates];
-// int firstTestOutVariable[numberOfGates];
-
-
 byte switchBank[NUMBER_OF_BANKS];
 byte oldSwitchBank[NUMBER_OF_BANKS];
-
-
 
 unsigned long inTotal = 0;
 unsigned long outTotal = 0;
@@ -215,22 +201,22 @@ void setup()
     checkStateOut[i] = 1;    
   }
 
-  if (!g_rf69.init())
-    Serial.println("g_rf69 init failed");
+  if (!g_rf95.init())
+    Serial.println("g_rf95 init failed");
   // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
   // No encryption
-  if (!g_rf69.setFrequency(915.0))
+  if (!g_rf95.setFrequency(915.0))
     Serial.println("setFrequency failed");
-  g_rf69.setHeaderId(BEEHIVEMONITOR_NODE);
+  g_rf95.setHeaderId(BEEHIVEMONITOR_NODE);
 
   // If you are using a high power g_rf69 eg RFM69HW, you *must* set a Tx power with the
   // ishighpowermodule flag set like this:
-  g_rf69.setTxPower(20, true);
+  //g_rf95.setTxPower(20, true);
 
   // The encryption key has to be the same as the one in the client
-  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-  g_rf69.setEncryptionKey(key);
+  // uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+  //                   0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  // g_rf95.setEncryptionKey(key);
   Serial.println("Initialisation complete");
   
 }
@@ -402,8 +388,8 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   g_payload.supplyV = (unsigned long) (measuredvbat*1000);  //transmit as mV
 
 
-  //g_rf69.send((const uint8_t*) &g_payload, sizeof(g_payload));
-  //g_rf69.waitPacketSent();
+  g_rf95.send((const uint8_t*) &g_payload, sizeof(g_payload));
+  g_rf95.waitPacketSent();
 
   Serial.print("send time: \t"); Serial.println((millis()-t)); t = millis();
   Serial.print("total time:\t"); Serial.println((millis()-tStart));
