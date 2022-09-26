@@ -6,16 +6,14 @@
 
 #include <EmonShared.h>
 
-	#include <SPI.h>
-	#include <RH_RF95.h>
-	// Singleton instance of the radio driver
-	RH_RF95 g_rf95;
-	#define RFM69_RST     4
+#include <SPI.h>
+#include <RH_RF95.h>
+// Singleton instance of the radio driver
+RH_RF95 g_rf95;
+#define RFM69_RST     4
 
+//const int GREEN_LED = 9;  //Pin 9 on the Emon node.
 
-const int GREEN_LED = 9;  //Pin 9 on the Emon node.
-
-unsigned long lastSentTime;
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -46,8 +44,7 @@ void setup ()
 	// uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 	// 				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	// g_rf95.setEncryptionKey(key);
-	//g_rf95.setHeaderId(BASE_JEENODE);
-	g_rf95.setHeaderId(TEMPERATURE_JEENODE);
+	g_rf95.setHeaderId(BASE_JEENODE);
 
 
 	EmonSerial::PrintRainPayload(NULL);
@@ -65,8 +62,6 @@ void setup ()
 	EmonSerial::PrintLeafPayload(NULL);
 
 //	digitalWrite(GREEN_LED, LOW);
-
-	lastSentTime = millis();
 }
 
 #define SERIAL_OUT(NAME, PAYLOAD)\
@@ -89,7 +84,7 @@ void loop ()
 		len = sizeof(buf);
 		if (g_rf95.recv(buf, &len))
 		{
-			RH_RF95::printBuffer("Received: ", buf, len);
+			//RH_RF95::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
 			Serial.print("RSSI: ");
@@ -155,6 +150,10 @@ void loop ()
 			{
 				SERIAL_OUT(Leaf, Payload);
 			}
+			if (node_id == BASE_JEENODE  && len == sizeof(PayloadBase))
+			{
+				SERIAL_OUT(Base, Payload);
+			}
 		}
 
 		//read the time basePayload 
@@ -180,26 +179,5 @@ void loop ()
 		}
 
 		//digitalWrite(GREEN_LED, LOW);
-	}
-
-	if (millis() >= lastSentTime+ 30000)
-	{
-		lastSentTime = millis();
-
-		char sendBuf[] = "temp1,0,4085,4,1700,1768,1763,1768";
-		PayloadTemperature tempPayload;
-		if (EmonSerial::ParseTemperaturePayload(sendBuf, &tempPayload) )
-		{
-			bool sent = g_rf95.send((const uint8_t*) &tempPayload, sizeof(tempPayload));
-			if( g_rf95.waitPacketSent() )
-			{
-				Serial.print(F("TemperaturePayload with time sent:"));
-				EmonSerial::PrintTemperaturePayload(&tempPayload);  //send it back down the serial line
-			}
-			else
-			{
-				Serial.println(F("No packet sent"));
-			}
-		}
 	}
 } 
