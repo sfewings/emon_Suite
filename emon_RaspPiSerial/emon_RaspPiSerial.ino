@@ -1,51 +1,58 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
-//Note: Use Moteino 8MHz for the Lora 8MHz boards
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-#undef USE_JEELIB
-
 #include <EmonShared.h>
-
 #include <SPI.h>
-#include <RH_RF95.h>
-// Singleton instance of the radio driver
-RH_RF95 g_rf95;
-#define RFM69_RST     4
 
-//const int GREEN_LED = 9;  //Pin 9 on the Emon node.
+#undef LORA_RF95
+
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define GREEN_LED 		9
+	#define RFM69_RST     	4
+#endif
+
+
+void SetLed(uint8_t val)
+{
+#ifndef LORA_RF95
+	pinMode(GREEN_LED, OUTPUT);
+	digitalWrite(GREEN_LED, val );
+#endif
+}
+
 
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
 void setup () 
 {
-//	pinMode(GREEN_LED, OUTPUT);
-//	digitalWrite(GREEN_LED, HIGH);		//Red LED has inverted logic. LOW is on, HIGH is off!
+	SetLed(HIGH);
 	Serial.begin(9600);
-	
 	delay(1000);
 	Serial.println(F("Fewings Serial output for RaspberryPi"));
 
+#ifndef LORA_RF95
 	pinMode(RFM69_RST, OUTPUT);
 	digitalWrite(RFM69_RST, LOW);
 	delay(1);
 	digitalWrite(RFM69_RST, HIGH);
 	delay(10);
-	digitalWrite(RFM69_RST, LOW);
 	delay(10);
+#endif
 
-
-	if (!g_rf95.init())
-		Serial.println("rf69 init failed");
-	if (!g_rf95.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
-	Serial.println("RF95 initialise node: 10 Freq: 915MHz");
-	// The encryption key has to be the same as the one in the client
-	// uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-	// 				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	// g_rf95.setEncryptionKey(key);
-	g_rf95.setHeaderId(BASE_JEENODE);
-
+	if (!g_rfRadio.init())
+		Serial.println("rf radio init failed");
+	if (!g_rfRadio.setFrequency(915.0))
+		Serial.println("rf setFrequency failed");
+	g_rfRadio.setHeaderId(BASE_JEENODE);
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
@@ -61,7 +68,13 @@ void setup ()
 	EmonSerial::PrintAirQualityPayload(NULL);
 	EmonSerial::PrintLeafPayload(NULL);
 
-//	digitalWrite(GREEN_LED, LOW);
+#ifndef LORA_RF95
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+	 				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rfRadio.setEncryptionKey(key);
+#endif
+	SetLed(LOW);
 }
 
 #define SERIAL_OUT(NAME, PAYLOAD)\
@@ -75,22 +88,22 @@ void loop ()
 	uint8_t len = 0;
 	int node_id = 0;
 
-	if(g_rf95.available())
+	if(g_rfRadio.available())
 	{
-		//digitalWrite(GREEN_LED, HIGH);
-		// Should be a message for us now   
-		uint8_t buf[RH_RF95_MAX_PAYLOAD_LEN];
-		memset(buf, 0, RH_RF95_MAX_PAYLOAD_LEN);
+		SetLed(HIGH);
+		uint8_t buf[RADIO_BUF_LEN];
+		memset(buf, 0, RADIO_BUF_LEN);
+
 		len = sizeof(buf);
-		if (g_rf95.recv(buf, &len))
+		if (g_rfRadio.recv(buf, &len))
 		{
 			//RH_RF95::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
 			Serial.print("RSSI: ");
-			Serial.println(g_rf95.lastRssi(), DEC);
+			Serial.println(g_rfRadio.lastRssi(), DEC);
 
-			node_id = g_rf95.headerId();
+			node_id = g_rfRadio.headerId();
 			data = buf;
 
 			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
@@ -150,10 +163,6 @@ void loop ()
 			{
 				SERIAL_OUT(Leaf, Payload);
 			}
-			if (node_id == BASE_JEENODE  && len == sizeof(PayloadBase))
-			{
-				SERIAL_OUT(Base, Payload);
-			}
 		}
 
 		//read the time basePayload 
@@ -165,8 +174,8 @@ void loop ()
 			Serial.readBytesUntil('\0', sendBuf, 100);
 			if (EmonSerial::ParseBasePayload(sendBuf, &basePayload) )
 			{
-				g_rf95.send((const uint8_t*) &basePayload, sizeof(basePayload));
-				if( g_rf95.waitPacketSent() )
+				g_rfRadio.send((const uint8_t*) &basePayload, sizeof(basePayload));
+				if( g_rfRadio.waitPacketSent() )
 				{
 					Serial.println(F("BasePayload with time sent"));
 					EmonSerial::PrintBasePayload(&basePayload);  //send it back down the serial line
@@ -178,6 +187,6 @@ void loop ()
 			}
 		}
 
-		//digitalWrite(GREEN_LED, LOW);
+		SetLed(LOW);
 	}
 } 
