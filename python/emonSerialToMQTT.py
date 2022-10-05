@@ -5,6 +5,20 @@ import serial
 import yaml
 from pyemonlib import emon_mqtt
 
+import queue
+import threading
+
+class SerialInput:
+    def __init__(self, ser):
+        self.ser = ser 
+        self.queue = queue.Queue(1000)
+        self.rssi = 0
+
+def serial_read(serialInput):
+    while True:
+        line = serialInput.ser.readline().decode('utf-8')
+        serialInput.queue.put(line)
+
 def check_int(s):
     if s[0] in ('-', '+'):
         return s[1:].isdigit()
@@ -32,43 +46,44 @@ if __name__ == "__main__":
 
     emonMQTT = emon_mqtt.emon_mqtt(mqtt_server=mqttServer, mqtt_port = 1883, settingsPath=args.settingsPath)
 
-    RSSIvalue = 0
     lastSentTimeUpdate = datetime.datetime.now()
 
-    sers = []
-    rssi = []
-
-    sers.append( serial.Serial(serialPort, 9600, timeout=1) )
-    rssi.append(0)
+    serInputs = []
+    
+    serInputs.append( SerialInput( serial.Serial(serialPort, 9600, timeout=1) ))
+    threadA = threading.Thread(target=serial_read, args=(serInputs[0],),).start()
+    threadB = None
 
     if(serialPort2 != "none"):
-        sers.append( serial.Serial(serialPort2,9600, timeout=1) )
-        rssi.append(0)
+        serInputs.append( SerialInput( serial.Serial(serialPort2, 9600, timeout=1) ))
+        threadB = threading.Thread(target=serial_read, args=(serInputs[1],),).start()
 
     while 1:
-        for i in range(len(sers)):
-            ser = sers[i]
-            line = ser.readline().decode('utf-8').rstrip('\r\n')
-            #print(line)
-            if(line.startswith("RSSI")):
-                rssi[i] = int(line[6:])     #parse -36 from "RSSI: -36"
+        for ser in serInputs:
+            if( ser.queue.empty() ):
+                pass
             else:
-                lineFields = line.split(',',2)
-                if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
-                    if(rssi[i]!=0):
-                        line = f"{line}:{rssi[i]}"
-                    emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
-                    print(line)
-                    rssi[i] = 0
+                line = ser.queue.get(True,1).rstrip('\r\n')
+                #print(line)
+                if(line.startswith("RSSI")):
+                    ser.rssi = int(line[6:])     #parse -36 from "RSSI: -36"
+                else:
+                    lineFields = line.split(',',2)
+                    if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
+                        if(ser.rssi!=0):
+                            line = f"{line}:{ser.rssi}"
+                        emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
+                        print(line)
+                        ser.rssi = 0
 
         #send a time update every 30 seconds
         t = datetime.datetime.now()
         if( (t-lastSentTimeUpdate).total_seconds() >30):
             lastSentTimeUpdate = t
-            for ser in sers:
+            for ser in serInputs:
                 offset = time.timezone if (time.localtime().tm_isdst == 0) else time.altzone
                 baseMsg = f"base,{int(t.timestamp())-offset}"
-                ser.write(baseMsg.encode('utf-8'))
+                ser.ser.write(baseMsg.encode('utf-8'))
                 print(baseMsg)
     
 
