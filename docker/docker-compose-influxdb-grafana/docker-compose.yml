@@ -70,11 +70,25 @@ services:
     container_name: emon_serial
     devices:
       - /dev/ttyUSB0
-      - /dev/ttyUSB1
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB0
-      - SERIAL_PORT2=/dev/ttyUSB1
+      - MQTT_IP=mqtt
+      - TZ=Australia/Perth
+    volumes:
+      - /share/emon_Suite/python:/data
+    depends_on:
+      - mosquitto
+    restart: always
+
+  emon_serial_to_mqtt_lora:
+    image: sfewings32/emon_serial_to_mqtt:latest
+    container_name: emon_serial_lora
+    devices:
+      - /dev/ttyUSB1
+    environment:
+      - SETTINGS_PATH=/data/emon_config.yml
+      - SERIAL_PORT=/dev/ttyUSB1
       - MQTT_IP=mqtt
       - TZ=Australia/Perth
     volumes:
