@@ -1,6 +1,7 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 // Emon_BeehiveMonitor
 // Use Adafruit Feather M0 (Adafruit SAMD boards) board configuration
+// Beehive monitor project at https://www.instructables.com/Easy-Bee-Counter/
 //-------------------------------------------------------------------------------------------------------------------------------------------------
 #include <EmonShared.h>
 
@@ -45,9 +46,11 @@ const int END_GATE = 24;   //useful for testing
 const int DEBEE_BOUNCE = 30;
 const int SENDING_DELAY = 60000;  //prints bee counts every 60 seconds
 const int NUMBER_OF_BANKS = 6;    // number of switch banks
+const int STORE_TO_SSD_DELAY = 60; //Store totals to SRAM every 60 SENDING_DELAYs. 
 
 unsigned long lastOutput = 0;
 unsigned long currentTime = 0;
+unsigned long lastStoreToSRAM = 0;
 
 //boolean 0 or 1 sensor readings, 1 bee is present
 boolean inSensorReading[NUMBER_OF_GATES];
@@ -251,8 +254,15 @@ void setup()
   pinPeripheral(SERIAL_FLASH_RX, PIO_SERCOM_ALT);
   pinPeripheral(SERIAL_FLASH_TX, PIO_SERCOM);
 
+
+  //Initialise the ATTiny85 settings. Uncomment to initialise before installation
+  //Serial5.println("g8967043");
+  //Serial5.println("i0");
+  //Serial5.println("o0");
+  //Serial5.println("n0");
   //Read the settings from ATTiny flash, if available.
-  //Note. Very strang bug where passing g_payload.beesIn as a reference crashes MCU when assigning a value. Most likely because of pack(1) on PayloadBeehive struct
+  //Note. Very strang bug where passing g_payload.beesIn as a reference crashes MCU when assigning a value. 
+  //Most likely because of pack(1) on PayloadBeehive struct
   unsigned long beesIn, beesOut;
   if( ReadSettingsFromFlash(g_payload.subnode, beesIn, beesOut, g_scaleOffset) )
   {
@@ -271,6 +281,9 @@ void setup()
   }
 
   g_pScale = new Hx711(SDA, SCL, 22.43f ); // SDA, SCL on Feather M0 board  //calibration_factor = 22.43f for 4 load-cell 200kg rating
+  long offset = g_pScale->averageValue();
+  Serial.print("Scale offset reading "); Serial.println(offset);
+
   g_pScale->setOffset(g_scaleOffset);
 
   currentTime = millis(); 
@@ -531,13 +544,16 @@ void sendData(unsigned long beesIn, unsigned long beesOut)
   Serial.print("send time: \t"); Serial.println((millis()-t)); t = millis();
 
   //store the latest beesIn and beesOut to Flash on ATTiny85 via serial
-  char sendStr[40];
-  sprintf(sendStr, "i%ld", g_payload.beesIn);
-  Serial5.println(sendStr);
-  sprintf(sendStr, "o%ld", g_payload.beesOut);
-  Serial5.println(sendStr);
-  Serial.print("Write Flash time:\t");  Serial.println((millis()-t)); t = millis();
-
+  if( ++lastStoreToSRAM >= STORE_TO_SSD_DELAY)
+  {
+    lastStoreToSRAM = 0;
+    char sendStr[40];
+    sprintf(sendStr, "i%ld", g_payload.beesIn);
+    Serial5.println(sendStr);
+    sprintf(sendStr, "o%ld", g_payload.beesOut);
+    Serial5.println(sendStr);
+    Serial.print("Write Flash time:\t");  Serial.println((millis()-t)); t = millis();
+  }
   Serial.print("total time:\t"); Serial.println((millis()-tStart));
 
   EmonSerial::PrintBeehivePayload(&g_payload);
