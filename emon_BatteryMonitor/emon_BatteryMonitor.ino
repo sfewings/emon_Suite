@@ -171,7 +171,7 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	return stats.median;  //median removes chance of spike reading influencing the tallies
 }
 
-double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool &noisyData)
+double ReadingDifferential(const char* shuntName, uint8_t ads, uint8_t channel, bool &noisyData)
 {
 	int gain;
 	double samples[SAMPLES];
@@ -222,7 +222,7 @@ double ReadingDifferential(uint8_t shuntNum, uint8_t ads, uint8_t channel, bool 
 
 	//Serial.println(F("current,shuntNum,gain,factor,median,mean,stdDev"));
 	Serial.print(F("current,"));
-	Serial.print(shuntNum);	Serial.print(F(",")); 
+	Serial.print(shuntName);	Serial.print(F(",")); 
 	Serial.print(gain);		Serial.print(F(",")); 
 	Serial.print(stats.median);	Serial.print(F(",")); 
 	Serial.print(stats.mean);		Serial.print(F(",")); 
@@ -344,22 +344,22 @@ void loop()
 	g_payloadBattery.voltage[6] = (short) Reading(6, 3, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 3
     g_payloadBattery.voltage[7] = (short) Reading(7, 3, 2, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 2
     g_payloadBattery.voltage[8] = (short) Reading(8, 3, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 1 (top)
-  wdt_reset();
+  	wdt_reset();
   
 	double amps[BATTERY_SHUNTS];
-	amps[0] = ReadingDifferential(0, 1, 0, noisyData ) * 150.0 / 50.0; //shunt is 150Amps for 90mV; Bank 2
-  wdt_reset();
-	amps[1] = ReadingDifferential(1, 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV; Bank 1
-  wdt_reset();
-	amps[2] = ReadingDifferential(2, 1, 1, noisyData ) * 50.0 / 75.0; //shunt is 50Amps for 75mV;  Li ion
-  wdt_reset();
+	amps[0] = ReadingDifferential("Bank2"  , 1, 0, noisyData ) * 90.0 / 100.0; //shunt is 150Amps for 90mV; Bank 2
+  	wdt_reset();
+	amps[1] = ReadingDifferential("Bank1"  , 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV; Bank 1
+  	wdt_reset();
+	amps[2] = ReadingDifferential("LiFePo1", 1, 1, noisyData ) * 150.0 / 50.0; //shunt is 50Amps for 75mV;  Li ion
+  	wdt_reset();
 
 	if( noisyData || railVoltage > 10000)
 	{
 		digitalWrite(LED_PIN, HIGH);
 		Serial.println("High std dev on a reading. Noisy data. Exiting without sending.");
 		uint32_t millisTaken = millis()- millisStart; 
-    wdt_reset();
+    	wdt_reset();
 		if( millisTaken < SEND_PERIOD )
 			delay( SEND_PERIOD - millisTaken);
 		digitalWrite(LED_PIN,LOW);	//LED will stay on for a few seconds when no data sent
@@ -404,24 +404,7 @@ void loop()
 	
 	//Send packet 
 	digitalWrite(LED_PIN, HIGH);
-#ifdef USE_JEELIB
-	rf12_sleep(RF12_WAKEUP);
-	int wait = 1000;
-	while (!rf12_canSend() && wait--)
-		rf12_recvDone();
-	if (wait)
-	{
-		rf12_sendStart(0, &g_payloadBattery, sizeof g_payloadBattery);
-		rf12_sendWait(0);
-		EmonSerial::PrintBatteryPayload(&g_payloadBattery);
-		Serial.println(F("Sent"));
-	}
-	else
-	{
-		Serial.println(F("RF12 waiting. No packet sent"));
-	}
-	rf12_sleep(RF12_SLEEP);
-#else
+
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 	g_rf69.send((const uint8_t*) &g_payloadBattery, sizeof(g_payloadBattery));
 	if( g_rf69.waitPacketSent() )
@@ -433,7 +416,7 @@ void loop()
 		Serial.println(F("No packet sent"));
 	}
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-#endif
+	
 	digitalWrite(LED_PIN, LOW);
 
 	uint32_t millisTaken = millis()- millisStart; 
