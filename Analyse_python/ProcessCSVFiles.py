@@ -1,8 +1,10 @@
+import matplotlib.pyplot as plt
 import pandas as pd
 import datetime
 import os
 import numpy
 import re
+import matplotlib.dates as mdates
 
 def CreateStats(inPath, outPath=None, coll=None):
     df = pd.read_csv (inPath, sep = ",", header=0,parse_dates=[0], index_col=0 )
@@ -81,22 +83,42 @@ def CreateOutputProfile(files, outputName):
             if( dfSum is None ):
                 dfSum = df
             else:
-                dfSum = dfSum.add( df.values )
-                count +=1
+                if(dfSum.shape[1] == df.shape[1]):
+                    dfSum = dfSum.add( df.values )
+                    count +=1
+    print(f'{outputName}, nfiles {len(files)}, processed {count}');
     #dfSum['time'] = pd.to_datetime(dfSum['time']).dt.date
-    dfSum.div(count).to_csv(outputName )
+    dfResult = dfSum.div(count)
+    dfResult.to_csv(outputName )
+    #fig, ax = plt.subplots()
+    plt.figure(figsize=(7, 7))
+    plt.title(outputName)
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%H"))
+    #plt.gca().xaxis.set_minor_formatter(mdates.DateFormatter("%H"))
+    plt.plot(dfResult)
+    #plt.format_xdata = mdates.DateFormatter('%H:%M')
+    #_ = ax.xticks(rotation=90)
+    plt.legend(df._info_axis)
+    plt.savefig(outputName+".png", dpi=600)
+    plt.close('all')
 
 def processSeasons():
     #inPath = "input"
-    inPath = "C:/Users/StephenFewings/OneDrive - PenningtonScott/My_Documents/Home/HomePower/Emon_logs/Output/power"
+    #inPath = "C:/Users/StephenFewings/OneDrive - PenningtonScott/My_Documents/Home/HomePower/Emon_logs/Output/power"
+    inPath = "C:/Users/sfewi/Documents/Home/HomePower/Emon_logs/Output/power"
     months = ["Jan", "Feb", "Mar","Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     mNum = 1
-    for m in months:
-        CreateOutputProfile(list_files(inPath, r"20\d\d{:02d}\d\d.txt".format(mNum) ), "./output/" +m +".txt" ) 
-        mNum += 1
-    CreateOutputProfile(list_files(inPath, r"20\d\d0(4|5|6|7|8|9)\d\d.txt" ), "./output/Winter.txt")
-    CreateOutputProfile(list_files(inPath, r"20\d\d(10|11|12|01|02|03)\d\d.txt" ), "./output/Summer.txt")
-    CreateOutputProfile(list_files(inPath, r"20\d\d\d\d\d\d.txt" ), "./output/Allyear.txt")
-    CreateOutputProfile(list_files(inPath, r"2020\d\d\d\d.txt" ), "./output/2020.txt")
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
+
+ #   for m in months:
+ #       CreateOutputProfile(list_files(inPath, r"20\d\d{:02d}\d\d.txt".format(mNum) ), "./output/" +m +".txt" ) 
+ #       mNum += 1
+    # CreateOutputProfile(list_files(inPath, r"20220(4|5|6|7|8|9)\d\d.txt" ), "./output/Winter.txt")
+    # CreateOutputProfile(list_files(inPath, r"2022(10|11|12|01|02|03)\d\d.txt" ), "./output/Summer.txt")
+    CreateOutputProfile(list_files(inPath, r"20210(5|6|7|8)\d\d.txt" ), "./output/Winter.txt")
+    CreateOutputProfile(list_files(inPath, r"2021(11|12|01|02)\d\d.txt" ), "./output/Summer.txt")
+    CreateOutputProfile(list_files(inPath, r"2021\d\d\d\d.txt" ), "./output/Allyear.txt")
+ #   CreateOutputProfile(list_files(inPath, r"2020\d\d\d\d.txt" ), "./output/2020.txt")
 
 processSeasons()
