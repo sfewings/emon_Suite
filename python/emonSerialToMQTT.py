@@ -32,9 +32,10 @@ if __name__ == "__main__":
 
     RSSIvalue = 0
     lastSentTimeUpdate = datetime.datetime.now()
+    lastReceivedDataPacket = datetime.datetime.now()
 
     with serial.Serial(serialPort, 9600, timeout=5) as ser:
-        while 1:
+        while ((datetime.datetime.now()-lastReceivedDataPacket).total_seconds() < 600):
             line = ser.readline().decode('utf-8').rstrip('\r\n')
             #print(line)
             if(line.startswith("RSSI")):
@@ -47,6 +48,7 @@ if __name__ == "__main__":
                     emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
                     print(line)
                     RSSIvalue = 0
+                    lastReceivedDataPacket = datetime.datetime.now()
 
             #send a time update every 30 seconds
             t = datetime.datetime.now()
@@ -56,6 +58,6 @@ if __name__ == "__main__":
                 ser.write(baseMsg.encode('utf-8'))
                 print(baseMsg)
                 lastSentTimeUpdate = t
-
+    print(f"emonSerialToMQTT closing. No serial recieved for {(datetime.datetime.now()-lastReceivedDataPacket).total_seconds()} seconds.")
 
 
