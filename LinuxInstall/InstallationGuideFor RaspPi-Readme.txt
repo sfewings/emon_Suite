@@ -114,6 +114,7 @@
 	//note sympolic link to files in /etc/systemd/system/multi-user.target.wants
 
 19. 	Install nginx
+	sudo apt install nginx
 	Copy contents of /etc/nginx/sites-available/default
 	This enables shannstainable.fewings.org http and https traffic to node-red on port :1880\ui
 
