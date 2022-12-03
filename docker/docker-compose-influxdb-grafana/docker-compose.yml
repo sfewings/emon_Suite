@@ -41,6 +41,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_PANELS_ENABLE_ALPHA=true
       - GF_SERVER_ROOT_URL=${GRAFANA_URL}
+      - GF_SERVER_DOMAIN=${DOMAIN_NAME}
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     restart: always
   mosquitto:
     image: eclipse-mosquitto
@@ -138,6 +140,38 @@ services:
     depends_on:
       - mosquitto
     restart: always
+
+#   nginx-proxy:
+#     image: nginx
+#     container_name: nginx-proxy
+#     restart: always
+#     ports:
+#       - "443:443"
+#       - "80:80"
+#     volumes:
+# #      - ./www:/var/www:ro
+#       - /etc/nginx:/share/emon_Suite/LinuxInstall/etc/nginx/sites-available:ro
+#       - /etc/nginx/ssl:/etc/letsencrypt/live/shannstainable.fewings.org
+#      - ./ssl:/etc/letsencrypt/live/shannstainable.fewings.org
+#      - ./snippets:/etc/nginx/snippets:ro
+#      - ./protect:/etc/nginx/protect:ro
+
+  # Let's Encrypt / Certbot
+  # Check README.md to know how to issue new certs.
+#   certbot:
+#     image: certbot/certbot
+#     container_name: certbot
+#     depends_on:
+#       - nginx-proxy
+#     volumes:
+#       - ./ssl:/etc/letsencrypt
+#       - ./ssl-log:/var/log/letsencrypt
+# #      - ./www/.well-known:/var/www/.well-known
+#     profiles:
+#       - certbot
+#     command: [
+#             "renew",
+#           ]
 
 
 volumes:
