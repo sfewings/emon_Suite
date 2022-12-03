@@ -217,8 +217,12 @@ void printValue(int value, int offset = 0, uint8_t intensity = 255)
         strip.SetPixelColor(pixel, (g_invertText?colour:RgbColor(0, 0, 0)));
     }
 
-    offset += g_fontWidth[g_fontIndex]+1;
-	int places = log10(abs(value));
+    int places = log10(abs(value));
+
+    //use -1 as indication to align to centre
+    if(offset == -1)
+        offset = NUM_PIXELS/8/2 - (places+1)*(g_fontWidth[g_fontIndex]+1)/2;
+
 	for (int i = 0; i <= places; i++)
     {
         int digit = value % 10;
@@ -324,6 +328,6 @@ void loop()
     }
     digitalWrite(LED_PIN, LOW);
 
-    printValue((unsigned int) pulsePayload.power[2], 0, readLDR());
+    printValue((unsigned int) pulsePayload.power[2], -1, readLDR());
     delay(10);
 }
