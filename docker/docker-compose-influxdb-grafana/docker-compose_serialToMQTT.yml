@@ -1,0 +1,14 @@
+version: '2'
+services:
+  emon_serial_to_mqtt:
+    image: sfewings32/emon_serial_to_mqtt:latest
+    container_name: emon_serial
+    devices:
+      - /dev/ttyUSB0
+    environment:
+      - SETTINGS_PATH=/data/emon_config.yml
+      - SERIAL_PORT=/dev/ttyUSB0
+      - MQTT_IP=10.0.0.114
+    volumes:
+      - /home/terra15/sfewings/emon_Suite/python:/data
+    restart: always
