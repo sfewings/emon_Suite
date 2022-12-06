@@ -8,7 +8,7 @@ services:
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB0
-      - MQTT_IP=10.0.0.114
+      - MQTT_IP=10.6.6.38
     volumes:
       - /home/terra15/sfewings/emon_Suite/python:/data
     restart: always
