@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": "-- Grafana --",
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -11,10 +14,19 @@
         "name": "Annotations & Alerts",
         "showIn": 0,
         "tags": [],
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
         "type": "dashboard"
       },
       {
-        "datasource": "-- Grafana --",
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
         "enable": true,
         "hide": false,
         "iconColor": "rgba(255, 96, 96, 1)",
@@ -24,25 +36,33 @@
         "tags": [
           "BatteryAction"
         ],
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "BatteryAction"
+          ],
+          "type": "tags"
+        },
         "type": "tags"
       }
     ]
   },
   "editable": true,
-  "gnetId": null,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 10,
+  "id": 25,
   "links": [],
+  "liveNow": false,
   "panels": [
     {
       "aliasColors": {},
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
       },
       "fill": 1,
       "fillGradient": 0,
@@ -70,7 +90,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.6",
+      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -87,6 +107,10 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -136,9 +160,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Battery Voltage",
       "tooltip": {
         "shared": true,
@@ -147,9 +169,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -157,32 +177,24 @@
         {
           "$$hashKey": "object:3040",
           "format": "volt",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "$$hashKey": "object:3041",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
-      "datasource": null,
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
       },
       "gridPos": {
         "h": 22,
@@ -205,6 +217,10 @@
       "pluginVersion": "7.5.6",
       "targets": [
         {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -240,8 +256,6 @@
           "tags": []
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "Actions",
       "type": "annolist"
     },
@@ -250,10 +264,9 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
       },
       "fill": 1,
       "fillGradient": 0,
@@ -281,7 +294,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.6",
+      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -292,6 +305,10 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -342,9 +359,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Batteries Current",
       "tooltip": {
         "shared": true,
@@ -353,9 +368,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -363,25 +376,18 @@
         {
           "$$hashKey": "object:2906",
           "format": "watt",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "$$hashKey": "object:2907",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
@@ -389,10 +395,9 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
       },
       "fill": 1,
       "fillGradient": 0,
@@ -420,7 +425,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.6",
+      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -431,6 +436,10 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -486,9 +495,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Battery current -cummulative",
       "tooltip": {
         "shared": true,
@@ -497,9 +504,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -507,30 +512,23 @@
         {
           "$$hashKey": "object:107",
           "format": "watth",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "$$hashKey": "object:108",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     }
   ],
   "refresh": false,
-  "schemaVersion": 27,
+  "schemaVersion": 37,
   "style": "dark",
   "tags": [],
   "templating": {
@@ -544,5 +542,6 @@
   "timezone": "",
   "title": "Test Battery Charger",
   "uid": "5EIX34kgk",
-  "version": 11
+  "version": 1,
+  "weekStart": ""
 }

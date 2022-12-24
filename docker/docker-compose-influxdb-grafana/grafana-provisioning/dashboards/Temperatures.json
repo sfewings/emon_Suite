@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": "-- Grafana --",
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -26,12 +29,18 @@
   "liveNow": false,
   "panels": [
     {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
@@ -90,16 +99,22 @@
         "legend": {
           "calcs": [],
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
+          "mode": "single",
+          "sort": "none"
         }
       },
       "pluginVersion": "8.3.4",
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -158,6 +173,12 @@
               "key": "sensorGroup",
               "operator": "<>",
               "value": "Fridge temperatures"
+            },
+            {
+              "condition": "AND",
+              "key": "sensorGroup",
+              "operator": "<>",
+              "value": "Solar tester"
             }
           ]
         }
@@ -170,6 +191,10 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -196,7 +221,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "8.3.4",
+      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -207,6 +232,10 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -287,6 +316,10 @@
       }
     },
     {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -330,7 +363,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "8.3.4",
+      "pluginVersion": "9.3.1",
       "targets": [
         {
           "alias": "Outside",
@@ -532,6 +565,10 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -558,7 +595,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "8.3.4",
+      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -569,6 +606,10 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -615,6 +656,12 @@
               "key": "sensorGroup",
               "operator": "=",
               "value": "Fridge temperatures"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorGroup",
+              "operator": "=",
+              "value": "Solar tester"
             }
           ]
         }
@@ -653,20 +700,20 @@
     }
   ],
   "refresh": "1m",
-  "schemaVersion": 34,
+  "schemaVersion": 37,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now/d",
-    "to": "now/d"
+    "from": "now-7d",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Temperatures",
   "uid": "JNuaOxZRk",
-  "version": 3,
+  "version": 6,
   "weekStart": ""
 }
