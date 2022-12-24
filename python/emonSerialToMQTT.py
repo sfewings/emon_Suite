@@ -47,6 +47,7 @@ if __name__ == "__main__":
     emonMQTT = emon_mqtt.emon_mqtt(mqtt_server=mqttServer, mqtt_port = 1883, settingsPath=args.settingsPath)
 
     lastSentTimeUpdate = datetime.datetime.now()
+    lastReceivedDataPacket = datetime.datetime.now()
 
     serInputs = []
     
@@ -58,7 +59,8 @@ if __name__ == "__main__":
         serInputs.append( SerialInput( serial.Serial(serialPort2, 9600, timeout=1) ))
         threadB = threading.Thread(target=serial_read, args=(serInputs[1],),).start()
 
-    while 1:
+
+    while ((datetime.datetime.now()-lastReceivedDataPacket).total_seconds() < 600):
         for ser in serInputs:
             if( ser.queue.empty() ):
                 pass
@@ -75,6 +77,7 @@ if __name__ == "__main__":
                         emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
                         print(line)
                         ser.rssi = 0
+                        lastReceivedDataPacket = datetime.datetime.now()
 
         #send a time update every 30 seconds
         t = datetime.datetime.now()
@@ -86,5 +89,6 @@ if __name__ == "__main__":
                 ser.ser.write(baseMsg.encode('utf-8'))
                 print(baseMsg)
     
+    print(f"emonSerialToMQTT closing. No serial recieved for {(datetime.datetime.now()-lastReceivedDataPacket).total_seconds()} seconds.")
 
 
