@@ -525,6 +525,39 @@ void EmonSerial::PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, uns
 	stream.println();
 }
 
+void EmonSerial::PrintGPSPayload(PayloadGPS* pPayloadGPS, unsigned long timeSinceLast)
+{
+	PrintGPSPayload(Serial, pPayloadGPS, timeSinceLast);
+}
+
+void EmonSerial::PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsigned long timeSinceLast)
+{
+	if (pPayloadGPS == NULL)
+	{
+		stream.print(F("gps,subnode,latitude,longitude,course,speed"));
+	}
+	else
+	{
+		stream.print(F("gps,"));
+		stream.print(pPayloadGPS->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadGPS->latitude,9);
+		stream.print(F(","));
+		stream.print(pPayloadGPS->longitude,9);
+		stream.print(F(","));    
+		stream.print(pPayloadGPS->course);
+		stream.print(F(","));
+		stream.print(pPayloadGPS->speed);
+		PrintRelay(stream, pPayloadGPS);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 
@@ -591,7 +624,7 @@ int EmonSerial::UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater)
 bool isDigit(char* pch)
 {
 	char* p;
-	long converted = strtol(pch, &p, 10);
+	double converted = strtod(pch, &p);
 	return !(*p); // *p should be NULL if entire string was a number
 }
 
@@ -1145,6 +1178,36 @@ int EmonSerial::ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf)
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadLeaf, pch);
+	}
+	return version;
+}
+
+
+int EmonSerial::ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS)
+{
+	memset(pPayloadGPS, 0, sizeof(PayloadGPS));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "gps"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadGPS->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadGPS->latitude = (float) atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadGPS->longitude = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadGPS->course = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadGPS->speed = atof(pch);
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadGPS, pch);
 	}
 	return version;
 }

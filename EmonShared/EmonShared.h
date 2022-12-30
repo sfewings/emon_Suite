@@ -35,6 +35,8 @@ typedef unsigned char byte;
 #define BEEHIVEMONITOR_NODE 22		//Node for monitoring beehives
 #define AIRQUALITY_NODE 23			//Node for Plantower PM7003 ar quality sensor
 #define LEAF_NODE 24				//Node for Nissan Leaf sensor
+#define GPS_NODE 25					//Node for GPS unit
+
 
 #define MAX_SUBNODES	4			//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4		//Maximum number of water pulse and water height metres
@@ -179,6 +181,14 @@ typedef struct PayloadLeaf : PayloadRelay {
 	short  chargeTimeRemaining;   			//Charge time remaining in minutes
 } PayloadLeaf;
 
+typedef struct PaylodGPS : PayloadRelay {
+	byte subnode;                           // 
+	float latitude;
+	float longitude;
+	float course;
+	float speed;
+} PayloadGPS;
+
 
 class EmonSerial{
 public:
@@ -198,6 +208,7 @@ public:
 	static void PrintBeehivePayload(PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast = 0);
 	static void PrintAirQualityPayload(PayloadAirQuality* pPayloadAirQuality, unsigned long timeSinceLast = 0);
 	static void PrintLeafPayload(PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast = 0);
+	static void PrintGPSPayload(PayloadGPS* pPayloadGPS, unsigned long timeSinceLast = 0);
 
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -214,6 +225,8 @@ public:
 	static void PrintBeehivePayload(Stream& stream, PayloadBeehive* pPayloadBeehive, unsigned long timeSinceLast = 0);
 	static void PrintAirQualityPayload(Stream& stream, PayloadAirQuality* pPayloadAirQuality, unsigned long timeSinceLast = 0);
 	static void PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast = 0);
+	static void PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsigned long timeSinceLast = 0);
+	
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
@@ -233,6 +246,7 @@ public:
 	static int ParseBeehivePayload(char* str, PayloadBeehive* pPayloadBeehive);
 	static int ParseAirQualityPayload(char* str, PayloadAirQuality* pPayloadAirQuality);
 	static int ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf);
+	static int ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS);
 };
 
 
