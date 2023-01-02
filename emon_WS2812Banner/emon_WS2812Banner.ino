@@ -376,6 +376,9 @@ void setup()
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(DISPLAY_NODE);
 
+    g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+
     pinMode( LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
 
@@ -383,7 +386,7 @@ void setup()
 	Serial.print("RF69 initialise node: ");
 	Serial.print(DISPLAY_NODE);
 	Serial.println(" Freq: 914MHz");
-	EmonSerial::PrintPulsePayload(NULL);
+	//EmonSerial::PrintPulsePayload(NULL);
     memset(&g_pulsePayload, 0, sizeof(PayloadPulse));
 	EmonSerial::PrintGPSPayload(NULL);
     memset(&g_payloadGPS, 0, sizeof(PayloadGPS));
@@ -475,7 +478,7 @@ void loop()
 		g_payloadTemperature.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 
 		g_rf69.send((const uint8_t*) &g_payloadTemperature, sizeof(PayloadTemperature));
-		if( g_rf69.waitPacketSent() )
+		if( g_rf69.waitPacketSent() ) m
 		{
 			EmonSerial::PrintTemperaturePayload(&g_payloadTemperature);
 		}
@@ -496,11 +499,12 @@ void loop()
             digitalWrite(LED_PIN, HIGH);
             delay(100);
         }
+        Serial.print("g_displayMode:");Serial.println(g_displayMode);
     }
 
-    if( millis()-g_lastButtonPush[1] > 10000 && g_displayMode == 2)
+    if( millis()-g_lastButtonPush[1] > 3600000 && g_displayMode == 2)
     {
-        //Automaticallt turn off the while light after 1 hour
+        //Automaticallt turn off the while light after 1 hour (3600000ms)
         Serial.println("Auto turn off from full light mode");
         g_displayMode = 0;
     }
@@ -517,5 +521,17 @@ void loop()
     }
 
     digitalWrite(LED_PIN, LOW);
-    delay(10);
+    if( g_displayMode == 0)
+    {
+        g_rf69.sleep();
+        for(int i=0; i<300 && g_displayMode ==0;i++)
+        {
+            delay(10);
+        }
+    }
+	else
+    {
+        delay(10);
+    }
+
 }
