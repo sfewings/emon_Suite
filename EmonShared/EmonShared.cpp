@@ -558,6 +558,37 @@ void EmonSerial::PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsign
 	stream.println();
 }
 
+void EmonSerial::PrintPressurePayload(PayloadPressure* pPayloadPressure, unsigned long timeSinceLast)
+{
+	PrintPressurePayload(Serial, pPayloadPressure, timeSinceLast);
+}
+
+void EmonSerial::PrintPressurePayload(Stream& stream, PayloadPressure* pPayloadPressure, unsigned long timeSinceLast)
+{
+	if (pPayloadPressure == NULL)
+	{
+		stream.print(F("pth,subnode,pressure,temperature,humidity"));
+	}
+	else
+	{
+		stream.print(F("pth,"));
+		stream.print(pPayloadPressure->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadPressure->pressure,2);
+		stream.print(F(","));
+		stream.print(pPayloadPressure->temperature,2);
+		stream.print(F(","));    
+		stream.print(pPayloadPressure->humidity,2);
+		PrintRelay(stream, pPayloadPressure);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 
@@ -1208,6 +1239,34 @@ int EmonSerial::ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS)
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadGPS, pch);
+	}
+	return version;
+}
+
+
+int EmonSerial::ParsePressurePayload(char* str, PayloadPressure* pPayloadPressure)
+{
+	memset(pPayloadPressure, 0, sizeof(PayloadPressure));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "pth"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadPressure->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadPressure->pressure = (float) atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadPressure->temperature = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadPressure->humidity = atof(pch);
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadPressure, pch);
 	}
 	return version;
 }
