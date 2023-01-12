@@ -31,19 +31,26 @@ class filterReadings:
         self.lastReading[readingID] = value
         return True
 
+    def validSupplyVRange(self,value ):
+        return( value >= 0 and value < 24000)
+
         
     def validRainPayload(self, rainPayload):
         if( not self.validCounterReading("rain.rainCount", rainPayload.rainCount, RAIN_MAX_INCREMENT) or
             not self.validChange("rain.temperature", rainPayload.temperature, TEMPERATURE_MAX_CHANGE) or
             not self.validChange("rain.voltage", rainPayload.voltage, SUPPLY_VOLTAGE_MAX_CHANGE) ):
             return False
+        return True
 
     def validTemperaturePayload(self, temperaturePayload):
         readingID = f'temperature[{temperaturePayload.subnode}]['
         for sensor in range(temperaturePayload.numSensors):
             if(not self.validChange(f'temperature[{temperaturePayload.subnode}][{sensor}]') ):
                 return False
+        if( not self.validSupplyVRange(temperaturePayload.voltage) ):
+            return False
         return True
+
 
     def isValid(self, readingID, value):
         readingIDelements = readingID.split('/')

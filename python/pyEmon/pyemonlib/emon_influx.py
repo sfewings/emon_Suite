@@ -6,6 +6,7 @@ import datetime
 import pytz
 import os
 import yaml
+from filterReadings import filterReadings
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 
@@ -36,6 +37,7 @@ class emon_influx:
             'leaf' : self.leafMessage,
             'other': self.otherMessage
         }
+        self.filterReadings = filterReadings()
 
     def __del__(self):
         self.client.close()
@@ -63,6 +65,9 @@ class emon_influx:
     def rainMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadRain()
         if( emonSuite.EmonSerial.ParseRainPayload(reading,payload) ):
+            if(not self.filterReadings.validRainPayload(payload)):
+                print(f"Invalid {time},{reading}")
+                return;
             try:
                 p = Point("rain").tag("sensor", "rain")\
                                 .tag("sensorGroup","rain gauge")\
@@ -87,6 +92,9 @@ class emon_influx:
     def temperatureMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadTemperature()
         if( emonSuite.EmonSerial.ParseTemperaturePayload(reading,payload) ):
+            if(not self.filterReadings.validTemperaturePayload(payload)):
+                print(f"Invalid {time},{reading}")
+                return;
             try:
                 for sensor in range(payload.numSensors):
                     p = Point("temperature").tag("sensor",f"temperature/temp/{payload.subnode}/{sensor}")\
