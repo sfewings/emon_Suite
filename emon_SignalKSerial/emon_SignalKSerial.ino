@@ -165,6 +165,10 @@ void setup ()
 		Payload##NAME* pPayload = (Payload##NAME*)data; \
 		PrintSignalK_##NAME##PAYLOAD(pPayload);\
 
+#define SERIAL_OUT(NAME, PAYLOAD)\
+		Payload##NAME* pPayload = (Payload##NAME*)data; \
+		EmonSerial::Print##NAME##PAYLOAD(pPayload);\
+
 
 void loop () 
 {
@@ -192,15 +196,18 @@ void loop ()
 
 			if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
 			{
-				SIGNALK_OUT(GPS, Payload);
+				//SIGNALK_OUT(GPS, Payload);
+				SERIAL_OUT(GPS, Payload);
 			}
 			if (node_id == PRESSURE_NODE && len == sizeof(PayloadPressure))
 			{
-				SIGNALK_OUT(Pressure, Payload);
+				//SIGNALK_OUT(Pressure, Payload);
+				SERIAL_OUT(Pressure, Payload);
 			}
 			if (node_id == TEMPERATURE_JEENODE && len == sizeof(PayloadTemperature))
 			{
-				SIGNALK_OUT(Temperature, Payload);
+				//SIGNALK_OUT(Temperature, Payload);
+				SERIAL_OUT(Temperature, Payload);
 			}
 			// if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
 			// {
