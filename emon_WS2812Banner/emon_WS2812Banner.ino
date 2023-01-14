@@ -125,7 +125,7 @@ const uint8_t NUM_BUTTONS = 2;
 const uint8_t  g_buttons[NUM_BUTTONS] = { A1, A2 };	//pin number for each input A1, A2.  Pins 15 & 16
 const uint16_t NUM_PIXELS = 256;
 
-volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };		//millis() value at last pulse
+volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
 
 volatile uint8_t g_displayMode = 0; //0 is off, 1 is dimmed text, 2 is white light
 volatile uint8_t g_fontIndex = 0;
@@ -134,7 +134,7 @@ NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
 
 RH_RF69 g_rf69;
 
-PayloadPulse g_pulsePayload;
+PayloadBase g_basePayload;
 PayloadGPS g_payloadGPS;
 PayloadTemperature g_payloadTemperature;
 
@@ -208,7 +208,6 @@ void bannerDigit(int digit, int offset, RgbColor colour)
                     pixelColour = digits[g_fontIndex][digit][i] & 1<<b ? onColour : offColour;
                 else
                     pixelColour = digits[g_fontIndex][digit][i] & 1<<(7-b) ? onColour : offColour;
-
                 strip.SetPixelColor(index+b, pixelColour);
             }
         }
@@ -260,9 +259,6 @@ void printValue(float value, int decimals, RgbColor inColour, int offset = 0, ui
             int pos = offset*8;
             if( offset %2 == 1)
                 pos+= 7;
-            // else
-            //     pos+=8;
-        
             strip.SetPixelColor(pos, colour);
             offset += 2;
         }
@@ -374,7 +370,7 @@ void setup()
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(DISPLAY_NODE);
+	g_rf69.setHeaderId(TEMPERATURE_JEENODE);
 
     g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
@@ -384,10 +380,8 @@ void setup()
 
 
 	Serial.print("RF69 initialise node: ");
-	Serial.print(DISPLAY_NODE);
+	Serial.print(TEMPERATURE_JEENODE);
 	Serial.println(" Freq: 914MHz");
-	//EmonSerial::PrintPulsePayload(NULL);
-    memset(&g_pulsePayload, 0, sizeof(PayloadPulse));
 	EmonSerial::PrintGPSPayload(NULL);
     memset(&g_payloadGPS, 0, sizeof(PayloadGPS));
 
@@ -446,17 +440,17 @@ void loop()
 			node_id = g_rf69.headerId();
 		}
 
-		if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
-		{
-			g_pulsePayload = *(PayloadPulse*)buf;							// get payload data
-			EmonSerial::PrintPulsePayload(&g_pulsePayload);				// print data to serial
-            //printValue((unsigned int) pulsePayload.power[2], -1, readLDR());
-		}
-
 		if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
 		{
 			g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
 			EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
+		}
+
+		if ( node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
+		{
+			g_basePayload = *((PayloadBase*)buf);
+			EmonSerial::PrintBasePayload(&g_basePayload);			 // print data to serial
+			setTime(g_basePayload.time);
 		}
     }
 
@@ -478,7 +472,7 @@ void loop()
 		g_payloadTemperature.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 
 		g_rf69.send((const uint8_t*) &g_payloadTemperature, sizeof(PayloadTemperature));
-		if( g_rf69.waitPacketSent() ) m
+		if( g_rf69.waitPacketSent() )
 		{
 			EmonSerial::PrintTemperaturePayload(&g_payloadTemperature);
 		}
@@ -499,12 +493,12 @@ void loop()
             digitalWrite(LED_PIN, HIGH);
             delay(100);
         }
-        Serial.print("g_displayMode:");Serial.println(g_displayMode);
+        //Serial.print("g_displayMode:");Serial.println(g_displayMode);
     }
 
     if( millis()-g_lastButtonPush[1] > 3600000 && g_displayMode == 2)
     {
-        //Automaticallt turn off the while light after 1 hour (3600000ms)
+        //Automatically turn off the while light after 1 hour (3600000ms)
         Serial.println("Auto turn off from full light mode");
         g_displayMode = 0;
     }
