@@ -42,6 +42,8 @@
 	Add a samba user to allow access to samba (user is pi)
 		sudo smbpasswd -a pi
 	restart the samba service
+		sudo smbcontrol smbd reload-config
+
 
 8. Install docker and docker-compose
 	curl -fsSL https://get.docker.com -o get-docker.sh
@@ -51,7 +53,9 @@
    Restart
 	shutdown -r now
    Install Docker Compose
-	sudo pip3 install docker-compose	
+	sudo pip3 install docker-compose
+  or
+    sudo apt install docker-compose	
 
 9. Create a share/lib directory in the home directory (or anywhere. But be sure to expose through samba)
 	mkdir -p /share/libs
