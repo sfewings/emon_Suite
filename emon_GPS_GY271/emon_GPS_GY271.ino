@@ -209,6 +209,29 @@ int freeMemory()
   return &top - __brkval;
 }
 
+void digitalClockDisplay() {
+ // digital clock display of the time
+ Serial.print(hour());
+ printDigits(minute());
+ printDigits(second());
+ Serial.print(" ");
+ Serial.print(day());
+ Serial.print(" ");
+ Serial.print(month());
+ Serial.print(" ");
+ Serial.print(year());
+ Serial.println();
+}
+
+void printDigits(int digits) {
+ // utility function for digital clock display: prints preceding colon and leading 0
+ Serial.print(":");
+ if (digits < 10)
+ Serial.print('0');
+ Serial.print(digits);
+}
+
+
 void setup()
 {
     pinMode(LED, OUTPUT);    
@@ -321,6 +344,7 @@ void loop()
 
         if (gpsNMEA.encode(ch)) // Did a new valid sentence come in?
         {
+            digitalWrite(LED,HIGH);
             newData = true;
 
             // gpsBuf[gpsBufPos++] = '\n';
@@ -333,11 +357,12 @@ void loop()
             int Year;
             byte Month, Day, Hour, Minute, Second;
             gpsNMEA.crack_datetime(&Year, &Month, &Day, &Hour, &Minute, &Second, NULL, &age);
-            if (age < 500) 
+            if (age < 1000) 
             {
               // set the Time to the latest GPS reading
               setTime(Hour, Minute, Second, Day, Month, Year);
               adjustTime(TIME_ZONE_OFFSET * SECS_PER_HOUR);
+              digitalClockDisplay();
             }
 
             gpsNMEA.f_get_position(&g_payloadGPS.latitude, &g_payloadGPS.longitude, &age);
@@ -378,8 +403,8 @@ void loop()
 
     if( millis() - lastSendPressureTime > 15000 )
     {
+      digitalWrite(LED,HIGH);
       lastSendPressureTime = millis();
-
 
       BME280::TempUnit tempUnit(BME280::TempUnit_Celsius);
       BME280::PresUnit presUnit(BME280::PresUnit_Pa);
@@ -400,4 +425,6 @@ void loop()
 
       //SendSignalKDataPressure(g_payloadPressure.pressure, g_payloadPressure.temperature, g_payloadPressure.humidity );
     }
+    digitalWrite(LED,LOW);
+
 }
