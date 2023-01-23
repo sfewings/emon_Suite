@@ -19,6 +19,14 @@
 	#define RFM69_RST     	4
 #endif
 
+//#define HOUSE_BANNER
+#define BOAT_BANNER
+#ifdef HOUSE_BANNER
+    #define NETWORK_FREQUENCY 915.0
+#elif defined(BOAT_BANNER)
+    #define NETWORK_FREQUENCY 914.0
+#endif
+
 
 void SetLed(uint8_t val)
 {
@@ -50,10 +58,12 @@ void setup ()
 
 	if (!g_rfRadio.init())
 		Serial.println("rf radio init failed");
-//	if (!g_rfRadio.setFrequency(915.0))
-	if (!g_rfRadio.setFrequency(914.0))
+	if (!g_rfRadio.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf setFrequency failed");
 	g_rfRadio.setHeaderId(BASE_JEENODE);
+	Serial.print("RF69 initialise node: ");
+	Serial.print(TEMPERATURE_JEENODE);
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);

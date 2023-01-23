@@ -15,6 +15,14 @@
 #include <NeoPixelBus.h>
 #include <PinChangeInt.h>
 
+#define HOUSE_BANNER
+//#define BOAT_BANNER
+#ifdef HOUSE_BANNER
+    #define NETWORK_FREQUENCY 915.0
+#elif BOAT_BANNER
+    #define NETWORK_FREQUENCY 914.0
+#endif
+
 # define NUM_FONTS 3
 
 const byte digits[NUM_FONTS][11][5]=
@@ -137,9 +145,13 @@ RH_RF69 g_rf69;
 PayloadBase g_basePayload;
 PayloadGPS g_payloadGPS;
 PayloadTemperature g_payloadTemperature;
+PayloadBase g_payloadBase;
+PayloadPulse g_payloadPulse;
+
 
 OneWire oneWire(4); //Pin 4
 DallasTemperature temperatureSensor(&oneWire);
+
 
 uint8_t readLDR()
 {
@@ -364,7 +376,7 @@ void setup()
 
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(914.0))
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf69 setFrequency failed");
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -381,7 +393,7 @@ void setup()
 
 	Serial.print("RF69 initialise node: ");
 	Serial.print(TEMPERATURE_JEENODE);
-	Serial.println(" Freq: 914MHz");
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 	EmonSerial::PrintGPSPayload(NULL);
     memset(&g_payloadGPS, 0, sizeof(PayloadGPS));
 
@@ -452,6 +464,14 @@ void loop()
 			EmonSerial::PrintBasePayload(&g_basePayload);			 // print data to serial
 			setTime(g_basePayload.time);
 		}
+
+		if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
+		{
+			g_payloadPulse = *(PayloadPulse*)buf;							// get payload data
+
+			EmonSerial::PrintPulsePayload(&g_payloadPulse);				// print data to serial
+		}
+
     }
 
     if( millis()-temperatureUpdateTime > 60000 && g_payloadTemperature.numSensors !=0 )
@@ -502,7 +522,18 @@ void loop()
         Serial.println("Auto turn off from full light mode");
         g_displayMode = 0;
     }
-
+#ifdef HOUSE_BANNER
+    if( displayToggle %2 == 0)
+    {
+        //Produced is green
+        printValue( g_payloadPulse.power[1], RgbColor(0,255,0), -1, readLDR());
+    }    
+    else
+    {
+        //Consumed is pink
+        printValue(g_payloadPulse.power[2], RgbColor(255,128,128), -1, readLDR());
+    }
+#else
     if( displayToggle %2 == 0)
     {
         //Course is green
@@ -513,6 +544,7 @@ void loop()
         //speed is blue
         printValue(g_payloadGPS.speed, 2, RgbColor(0,0,255), -1, readLDR());
     }
+#endif
 
     digitalWrite(LED_PIN, LOW);
     if( g_displayMode == 0)
