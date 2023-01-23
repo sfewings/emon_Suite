@@ -454,7 +454,7 @@ void loop()
 		}
     }
 
-    if( millis()-temperatureUpdateTime > 60000)
+    if( millis()-temperatureUpdateTime > 60000 && g_payloadTemperature.numSensors !=0 )
 	{
         digitalWrite(LED_PIN, HIGH);
 
