@@ -19,6 +19,14 @@
 	#define RFM69_RST     	4
 #endif
 
+//#define HOUSE_BANNER
+#define BOAT_BANNER
+#ifdef HOUSE_BANNER
+    #define NETWORK_FREQUENCY 915.0
+#elif defined(BOAT_BANNER)
+    #define NETWORK_FREQUENCY 914.0
+#endif
+
 
 void SetLed(uint8_t val)
 {
@@ -50,9 +58,12 @@ void setup ()
 
 	if (!g_rfRadio.init())
 		Serial.println("rf radio init failed");
-	if (!g_rfRadio.setFrequency(915.0))
+	if (!g_rfRadio.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf setFrequency failed");
 	g_rfRadio.setHeaderId(BASE_JEENODE);
+	Serial.print("RF69 initialise node: ");
+	Serial.print(TEMPERATURE_JEENODE);
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 
 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
@@ -67,6 +78,8 @@ void setup ()
 	EmonSerial::PrintBeehivePayload(NULL);
 	EmonSerial::PrintAirQualityPayload(NULL);
 	EmonSerial::PrintLeafPayload(NULL);
+	EmonSerial::PrintGPSPayload(NULL);
+	EmonSerial::PrintPressurePayload(NULL);
 
 #ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
@@ -162,6 +175,14 @@ void loop ()
 			if (node_id == LEAF_NODE  && len == sizeof(PayloadLeaf))
 			{
 				SERIAL_OUT(Leaf, Payload);
+			}
+			if (node_id == GPS_NODE  && len == sizeof(PayloadGPS))
+			{
+				SERIAL_OUT(GPS, Payload);
+			}
+			if (node_id == PRESSURE_NODE  && len == sizeof(PayloadPressure))
+			{
+				SERIAL_OUT(Pressure, Payload);
 			}
 		}
 

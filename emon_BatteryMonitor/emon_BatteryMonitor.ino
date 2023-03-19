@@ -237,7 +237,7 @@ double ReadingDifferential(const char* shuntName, uint8_t ads, uint8_t channel, 
 
 	if(stats.stdDev > 4.0) //4.0
 	{
-		//noisyData = true;
+		noisyData = true;
 		Serial.print(F("current vals,"));
 		for (int i = 0; i < SAMPLES; i++)
 		{

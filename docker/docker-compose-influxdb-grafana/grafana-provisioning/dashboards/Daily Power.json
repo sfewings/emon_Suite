@@ -21,10 +21,11 @@
       }
     ]
   },
+  "description": "Daily Consumed, Produced, Import and Car",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 26,
+  "id": 33,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -45,21 +46,21 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "bars",
-            "fillOpacity": 0,
+            "fillOpacity": 15,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "lineInterpolation": "stepAfter",
+            "lineInterpolation": "linear",
             "lineWidth": 1,
-            "pointSize": 5,
+            "pointSize": 4,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "never",
-            "spanNulls": true,
+            "showPoints": "auto",
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -69,6 +70,7 @@
             }
           },
           "mappings": [],
+          "max": 45000,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -81,45 +83,65 @@
                 "value": 80
               }
             ]
-          },
-          "unit": "short"
+          }
         },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "Hot water"
+              "options": "Car"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "semi-dark-red",
+                  "fixedColor": "semi-dark-blue",
                   "mode": "fixed"
                 }
               }
             ]
           },
           {
-            "__systemRef": "hideSeriesFrom",
             "matcher": {
-              "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "Mains"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
+              "id": "byName",
+              "options": "Imported"
             },
             "properties": [
               {
-                "id": "custom.hideFrom",
+                "id": "color",
                 "value": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": true
+                  "fixedColor": "semi-dark-orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar production (Schneider)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "semi-dark-green",
+                  "mode": "fixed"
                 }
               }
             ]
@@ -127,8 +149,8 @@
         ]
       },
       "gridPos": {
-        "h": 22,
-        "w": 14,
+        "h": 23,
+        "w": 17,
         "x": 0,
         "y": 0
       },
@@ -145,7 +167,6 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "8.3.4",
       "targets": [
         {
           "alias": "$tag_sensorName",
@@ -156,7 +177,7 @@
           "groupBy": [
             {
               "params": [
-                "1m"
+                "1d"
               ],
               "type": "time"
             },
@@ -173,9 +194,11 @@
               "type": "fill"
             }
           ],
-          "measurement": "water",
+          "measurement": "pulse",
           "orderByTime": "ASC",
           "policy": "default",
+          "query": "SELECT difference(mean(\"value\")) FROM \"pulse\" WHERE (\"sensorName\" = 'Imported' OR \"sensorName\" = 'Solar production (Schneider)' OR \"sensorName\" = 'Car' OR \"sensorName\" = 'Consumed') AND $timeFilter GROUP BY time(1d), \"sensorName\" fill(null)",
+          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -196,106 +219,38 @@
               }
             ]
           ],
-          "tags": []
+          "tags": [
+            {
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Imported"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Solar production (Schneider)"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Car"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Consumed"
+            }
+          ]
         }
       ],
-      "title": "Water usage",
+      "title": "Daily Power",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "P951FEA4DE68E13C5"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mains"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "light-blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Hot water"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 11,
-        "w": 3,
-        "x": 14,
-        "y": 0
-      },
-      "id": 4,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "value_and_name"
-      },
-      "pluginVersion": "9.3.1",
-      "targets": [
-        {
-          "alias": "$tag_sensorName",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "P951FEA4DE68E13C5"
-          },
-          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"water\" WHERE $timeFilter GROUP BY time($__interval)))GROUP BY \"sensorName\" fill(null)",
-          "rawQuery": true,
-          "refId": "A",
-          "resultFormat": "time_series"
-        }
-      ],
-      "title": "Cummulative water usage",
-      "type": "stat"
     }
   ],
-  "refresh": false,
+  "refresh": "",
   "schemaVersion": 37,
   "style": "dark",
   "tags": [],
@@ -303,13 +258,13 @@
     "list": []
   },
   "time": {
-    "from": "now-7d",
+    "from": "now/y",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Water Usage",
-  "uid": "DDIibaZgz",
-  "version": 7,
+  "title": "Daily Power",
+  "uid": "2K_KVNzRz",
+  "version": 4,
   "weekStart": ""
 }
