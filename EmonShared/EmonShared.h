@@ -38,7 +38,6 @@ typedef unsigned char byte;
 #define GPS_NODE 25					//Node for GPS unit
 #define PRESSURE_NODE 26			//Node for BM unit
 
-
 #define MAX_SUBNODES	4			//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4		//Maximum number of water pulse and water height metres
 
@@ -188,6 +187,8 @@ typedef struct PayloadGPS : PayloadRelay {
 	float longitude;
 	float course;
 	float speed;
+	unsigned short numSatellites;
+	float hdop;
 } PayloadGPS;
 
 typedef struct PayloadPressure : PayloadRelay {

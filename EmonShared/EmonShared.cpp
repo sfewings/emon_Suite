@@ -534,11 +534,12 @@ void EmonSerial::PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsign
 {
 	if (pPayloadGPS == NULL)
 	{
-		stream.print(F("gps,subnode,latitude,longitude,course,speed"));
+		//stream.print(F("gps,subnode,latitude,longitude,course,speed"));
+		stream.print(F("gps2,subnode,latitude,longitude,course,speed,numSatellites,hdop"));
 	}
 	else
 	{
-		stream.print(F("gps,"));
+		stream.print(F("gps2,"));
 		stream.print(pPayloadGPS->subnode);
 		stream.print(F(","));
 		stream.print(pPayloadGPS->latitude,9);
@@ -548,6 +549,10 @@ void EmonSerial::PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsign
 		stream.print(pPayloadGPS->course);
 		stream.print(F(","));
 		stream.print(pPayloadGPS->speed);
+		stream.print(F(","));
+		stream.print(pPayloadGPS->numSatellites);
+		stream.print(F(","));
+		stream.print(pPayloadGPS->hdop);
 		PrintRelay(stream, pPayloadGPS);
 		if (timeSinceLast != 0)
 		{
@@ -1225,6 +1230,8 @@ int EmonSerial::ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS)
 	int version = 0;
 	if (0 == strcmp(pch, "gps"))
 		version = 1;
+	if (0 == strcmp(pch, "gps2"))
+		version = 2;
 
 	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 	pPayloadGPS->subnode = atoi(pch);
@@ -1236,6 +1243,13 @@ int EmonSerial::ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS)
 	pPayloadGPS->course = atof(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadGPS->speed = atof(pch);
+	if(version >= 2)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadGPS->numSatellites = atoi(pch);
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadGPS->hdop = atof(pch);
+	}
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadGPS, pch);

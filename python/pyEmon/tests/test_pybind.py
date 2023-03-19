@@ -174,6 +174,22 @@ def test1():
     print(f"batteryWH={payload.batteryWH}")
     print(f"batteryChargeBars={payload.batteryChargeBars}")
 
+    GPS_MESSAGE = "gps2,1,-31.946300506,115.794441223,1000.00,-1.00,10,1.02"
+    print(GPS_MESSAGE)
+    payload = emonSuite.PayloadGPS()
+    retval = emonSuite.EmonSerial.ParseGPSPayload(GPS_MESSAGE, payload)
+    print('returnVal={}'.format(retVal))
+    print(f"subnode={payload.subnode}")
+    print(f"latitude={payload.latitude}")
+    print(f"latitude={payload.longitude}")
+    print(f"speed={payload.speed}")
+    print(f"course={payload.course}")
+    print(f"satellites={payload.satellites}")
+    print(f"hdop={payload.hdop}")
+
+    #todo PTH_MESSAGE= ""
+
+
 if __name__ == '__main__':
     test1()
 

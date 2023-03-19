@@ -24,6 +24,8 @@ class emon_mqtt:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
+            "gps"  : self.GPSMessage,
+            "pth"  : self.pthMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
@@ -227,6 +229,33 @@ class emon_mqtt:
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("leafException", reading, ex)
+
+    def GPSMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadGPS()
+        if( emonSuite.EmonSerial.ParseGPS(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"gps/latitude/{payload.subnode}",payload.latitude)
+                self.mqttClient.publish(f"gps/longitude/{payload.subnode}",payload.longitude)
+                self.mqttClient.publish(f"gps/speed/{payload.subnode}",payload.speed)
+                self.mqttClient.publish(f"gps/course/{payload.subnode}",payload.course)
+                self.mqttClient.publish(f"gps/satellites/{payload.subnode}",payload.satellites)
+                self.mqttClient.publish(f"gps/hdop/{payload.subnode}",payload.hdop)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("GPSException", reading, ex)
+
+    def pthMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadPressure()
+        if( emonSuite.EmonSerial.ParsePressure(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"temperature/pth/{payload.subnode}",payload.temperature)
+                self.mqttClient.publish(f"pth/pressure/{payload.subnode}",payload.pressure)
+                self.mqttClient.publish(f"pth/humidity/{payload.subnode}",payload.humiduty)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("pthException", reading, ex)
 
     def otherMessage(self, reading, nodeSettings ):
         print(reading)
