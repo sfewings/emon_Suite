@@ -64,7 +64,7 @@ services:
       - mosquitto
     environment:
       - MQTT_IP=mqtt
-      - TZ=Australia/Perth
+      - TZ=${TIMEZONE}
     restart: always
 
   emon_serial_to_mqtt:
@@ -76,7 +76,7 @@ services:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB0
       - MQTT_IP=mqtt
-      - TZ=Australia/Perth
+      - TZ=${TIMEZONE}
     volumes:
       - /share/emon_Suite/python:/data
     depends_on:
@@ -92,7 +92,7 @@ services:
       - SETTINGS_PATH=/data/emon_config.yml
       - SERIAL_PORT=/dev/ttyUSB1
       - MQTT_IP=mqtt
-      - TZ=Australia/Perth
+      - TZ=${TIMEZONE}
     volumes:
       - /share/emon_Suite/python:/data
     depends_on:
@@ -116,7 +116,7 @@ services:
     image: nodered/node-red:latest
     container_name: node_red
     environment:
-      - TZ=Australia/Perth
+      - TZ=${TIMEZONE}
     entrypoint: /data/entrypoint.sh
     ports:
       - "1880:1880"
@@ -134,7 +134,7 @@ services:
     volumes:
       - /share:/share
     environment:
-      - TZ=Australia/Perth
+      - TZ=${TIMEZONE}
       - MQTT_IP=mqtt
       - REPROCESS_LOGS_FROM_YEAR=this
     depends_on:
