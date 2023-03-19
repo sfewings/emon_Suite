@@ -16,8 +16,8 @@
 #include <Wire.h>
 
 /////////////////////////////////////////
-//#define     GPS_RX_PIN              5               // Rx from PMS (== PMS Tx)
-//#define     GPS_TX_PIN              6               // Tx to PMS (== PMS Rx)
+#define     GPS_RX_PIN              8               // Rx from PMS (== PMS Tx)
+#define     GPS_TX_PIN              9               // Tx to PMS (== PMS Rx)
 #define     GPS_BAUD_RATE         9600               // PMS5003 uses 9600bps
 #define     LED                     13               // Built-in LED pin
 
@@ -83,10 +83,12 @@ const uint8_t LED_PIN = A3;  //Pin 17
 const uint8_t NUM_BUTTONS = 2;
 const uint8_t  g_buttons[NUM_BUTTONS] = { A1, A2 };	//pin number for each input A1, A2.  Pins 15 & 16
 const uint16_t NUM_PIXELS = 256;
+const uint8_t NUM_DISPLAY_TYPES = 6;
 
 volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
 
 volatile uint8_t g_displayMode = 1; //0 is off, 1 is dimmed text, 2 is white light
+volatile uint8_t g_displayType = 0; //0 is off, 1 is dimmed text, 2 is white light
 
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
 
@@ -126,7 +128,7 @@ void interruptHandlerIR()
 
     if( button == 0)
     {
-       
+        g_displayType = ((g_displayType+1)% NUM_DISPLAY_TYPES);
     }
 
     if( button == 1)
@@ -137,7 +139,7 @@ void interruptHandlerIR()
 
 void bannerDigit(int digit, int offset, RgbColor colour)
 {
-    if(digit <0 || digit>10)
+    if(digit <0 || digit>11)
         return;
 
     for(int i=0; i <5;i++)
@@ -262,21 +264,33 @@ void printValue(int value, RgbColor inColour, int offset = 0, uint8_t intensity 
     strip.Show();
 }
 
-// void printTime(uint8_t hours, uint8_t mins, uint8_t secs, RgbColor inColour, uint8_t intensity = 255)
-// {
-//     RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
+void printTime(RgbColor inColour, int offset = 0, uint8_t intensity = 255)
+{
+    static bool toggleColon = true;
+    toggleColon = ! toggleColon;
 
-//     for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
-//     {
-//         strip.SetPixelColor(pixel, (g_displayMode==2?RgbColor(255, 255, 255):RgbColor(0, 0, 0)));
-//     }
+    RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
 
-//     int places = 5;
-//     if( hours > 9)
-//       places += 1;
+    for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
+    {
+        strip.SetPixelColor(pixel, (g_displayMode==2?RgbColor(255, 255, 255):RgbColor(0, 0, 0)));
+    }
 
-//     int offset = NUM_PIXELS/8/2 - (places+1)*(5+1)/2;
-// }
+    if( g_displayMode != 0 )
+    {
+        if( hour() > 9)
+            bannerDigit( hour()/10, 24, colour);
+        bannerDigit( hour()%10, 18, colour);
+
+        if( toggleColon)
+            bannerDigit( 11, 13, colour);
+
+        bannerDigit( minute()/10, 9, colour);
+        bannerDigit( minute()%10, 3, colour);
+    }
+    strip.Show();
+}
+
 
 void Blink(byte PIN, byte DELAY_MS, byte loops) 
 {
@@ -367,21 +381,23 @@ int freeMemory()
   return &top - __brkval;
 }
 
-void digitalClockDisplay() {
- // digital clock display of the time
- Serial.print(hour());
- printDigits(minute());
- printDigits(second());
- Serial.print(F(" "));
- Serial.print(day());
- Serial.print(F(" "));
- Serial.print(month());
- Serial.print(F(" "));
- Serial.print(year());
- Serial.println();
-}
+// void digitalClockDisplay() 
+// {
+//  // digital clock display of the time
+//  Serial.print(hour());
+//  printDigits(minute());
+//  printDigits(second());
+//  Serial.print(F(" "));
+//  Serial.print(day());
+//  Serial.print(F(" "));
+//  Serial.print(month());
+//  Serial.print(F(" "));
+//  Serial.print(year());
+//  Serial.println();
+// }
 
-void printDigits(int digits) {
+void printDigits(int digits)
+{
  // utility function for digital clock display: prints preceding colon and leading 0
  Serial.print(F(":"));
  if (digits < 10)
@@ -422,6 +438,7 @@ void testBanner()
 }
 
 
+
 void setup()
 {
     pinMode(LED, OUTPUT);    
@@ -438,20 +455,8 @@ void setup()
     //have to set SoftwareSerial.h _SS_MAX_RX_BUFF 64 to 128 to receive more than one NMEA string
     // Open a connection to the PMS and put it into passive mode
     gpsSerial.begin(GPS_BAUD_RATE);
-
     delay(1000);
-    //SelectSentences();
     SelectRMConly();
-    //AllSentences();
-    //  gpsSerial.println(GSV_DISABLE);
-    //  delay(100);
-    //  gpsSerial.println(RMC_DISABLE);
-    //  delay(100);
-    //  gpsSerial.println(GLL_DISABLE);
-    //  delay(100);
-    
-    //gpsBufPos = 0;
-    
 
     Wire.begin();
 
@@ -472,7 +477,7 @@ void setup()
       Serial.println(F("Could not find BME280 sensor!"));
     }
 
-    setTime(9,0,0,1,1,2023);
+    setTime(9,12,0,12,3,2023);
 
     strip.Begin();
     for(uint16_t ui=0; ui<NUM_PIXELS; ui++)
@@ -495,16 +500,20 @@ void loop()
     //reset the watchdog timer
     //wdt_reset();
     static uint32_t lastSendPressureTime = millis();
-    static int displayToggle = 0;
+    static int displayToggle = 2;
     static unsigned long displayToggleTime = millis();
 
     bool newData = false;
+    //Need to reset the serial after each call to NeoPixel as neoPixel stops interrupts breaks AltSoftSerial
+    //Delay 1100 to fill serial buffer (1 message/second)
+    //gpsSerial.begin(GPS_BAUD_RATE);
+    delay(1000);
     
     while (gpsSerial.available())
     {
         char ch = gpsSerial.read();
         Serial.print(ch); // uncomment this line if you want to see the GPS data flowing
-        
+      
         if (gpsNMEA.encode(ch)) // Did a new valid sentence come in?
         {
             digitalWrite(LED_PIN,HIGH);
@@ -519,7 +528,7 @@ void loop()
               // set the Time to the latest GPS reading
               setTime(Hour, Minute, Second, Day, Month, Year);
               adjustTime(TIME_ZONE_OFFSET * SECS_PER_HOUR);
-              digitalClockDisplay();
+              //digitalClockDisplay();
             }
 
             gpsNMEA.f_get_position(&g_latitude, &g_longitude, &age);
@@ -527,23 +536,25 @@ void loop()
             g_course = gpsNMEA.f_course();
 
 
-            Serial.println(F("==>Received GPS"));
-            Serial.print(F(" LAT="));
-            Serial.print(g_latitude == TinyNMEA::GPS_INVALID_F_ANGLE ? 0.0 : g_latitude, 6);
-            Serial.print(F(" LON="));
-            Serial.print(g_longitude == TinyNMEA::GPS_INVALID_F_ANGLE ? 0.0 : g_longitude, 6);
-            Serial.print(F(" SAT="));
-            Serial.print(gpsNMEA.satellites() == TinyNMEA::GPS_INVALID_SATELLITES ? 0 : gpsNMEA.satellites());
-            Serial.print(F(" PREC="));
-            Serial.print(gpsNMEA.hdop() == TinyNMEA::GPS_INVALID_HDOP ? 0 : gpsNMEA.hdop());
-            Serial.print(F(" SPEED="));
-            Serial.print(g_speed == TinyNMEA::GPS_INVALID_SPEED ? 0 : g_speed/100.0,1);
-            Serial.print(F(" HEADING="));
-            Serial.println(g_course == TinyNMEA::GPS_INVALID_ANGLE ? 0 : g_course/100.0,1);
+            // Serial.println(F("==>Received GPS"));
+            // Serial.print(F(" LAT="));
+            // Serial.print(g_latitude == TinyNMEA::GPS_INVALID_F_ANGLE ? 0.0 : g_latitude, 6);
+            // Serial.print(F(" LON="));
+            // Serial.print(g_longitude == TinyNMEA::GPS_INVALID_F_ANGLE ? 0.0 : g_longitude, 6);
+            // Serial.print(F(" SAT="));
+            // Serial.print(gpsNMEA.satellites() == TinyNMEA::GPS_INVALID_SATELLITES ? 0 : gpsNMEA.satellites());
+            // Serial.print(F(" PREC="));
+            // Serial.print(gpsNMEA.hdop() == TinyNMEA::GPS_INVALID_HDOP ? 0 : gpsNMEA.hdop());
+            // Serial.print(F(" SPEED="));
+            // Serial.print(g_speed == TinyNMEA::GPS_INVALID_SPEED ? 0 : g_speed/100.0,1);
+            // Serial.print(F(" HEADING="));
+            // Serial.println(g_course == TinyNMEA::GPS_INVALID_ANGLE ? 0 : g_course/100.0,1);
         }
     }
 
-    //Serial.print("Free mem(");Serial.print(freeMemory());Serial.println(")");
+    //Serial.print(F("Free mem("));Serial.print(freeMemory());Serial.println(F(")"));
+    Serial.print(F("displayMode="));Serial.println(g_displayMode);
+    Serial.print(F("displayType="));Serial.println(g_displayType);
 
     if( millis() - lastSendPressureTime > 15000 )
     {
@@ -555,15 +566,33 @@ void loop()
       bme.read(g_pressure, g_temperature, g_humidity, tempUnit, presUnit);
       g_pressure = g_pressure/100;
 
-      // Serial.println(F("==>Read BME280"));
-      // Serial.print(F(" Pressure="));
-      // Serial.print(g_pressure, 1);
-      // Serial.print(F(" Temperature="));
-      // Serial.print(g_temperature, 1);
-      // Serial.print(F(" Humidity="));
-      // Serial.print(g_humidity, 1);
-      // Serial.println();
+      Serial.println(F("==>Read BME280"));
+      Serial.print(F(" Pressure="));
+      Serial.print(g_pressure, 1);
+      Serial.print(F(" Temperature="));
+      Serial.print(g_temperature, 1);
+      Serial.print(F(" Humidity="));
+      Serial.print(g_humidity, 1);
+      Serial.println();
     }
+
+    if( g_displayType == 0)
+    {
+        if( millis() - displayToggleTime >3000 )
+        {
+            if( displayToggle+1 >= NUM_DISPLAY_TYPES)
+                displayToggle = 1;
+            else
+                displayToggle +=1;
+
+            displayToggleTime = millis();
+        }
+    }
+    else
+    {
+        displayToggle = g_displayType;
+    }
+
 
     switch( displayToggle)
     {
@@ -586,23 +615,8 @@ void loop()
         //Serial.println(g_course,1);
         break;
       case 4:
-        printValue(hour(), RgbColor(255,0,255), (hour()<=9?6:1), readLDR());
-        if( minute() <=9 )
-        {
-            printValue(0, RgbColor(255,0,255), 14, readLDR());
-            printValue(0, RgbColor(255,0,255), 20, readLDR());
-        }
-        else
-          printValue(minute(), RgbColor(255,0,255), 14, readLDR());
-
-        //Serial.println(millis());
+        printTime(RgbColor(255,0,255),0, readLDR());
         break;
     }
     digitalWrite(LED_PIN,LOW);
-
-    if( millis() - displayToggleTime >1000 )
-    {
-      displayToggle = (displayToggle+1) % 5;
-      displayToggleTime = millis();
-    }
 }
