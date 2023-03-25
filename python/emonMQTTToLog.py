@@ -2,7 +2,7 @@ import argparse
 import datetime
 import pytz
 from pathlib import Path
-from pyemonlib import emon_influx
+#from pyemonlib import emon_influx
 import paho.mqtt.client as mqtt
 
 # The callback function of connection
@@ -24,10 +24,10 @@ def on_message(client, logPath, msg):
     f.close()
     print(logLine)
 
-def subscribe_mqtt( mqttServer, emonInflux ):   
+def subscribe_mqtt( mqttServer, logPath ):   
 
     mqttClient = mqtt.Client()
-    mqttClient.user_data_set( emonInflux )
+    mqttClient.user_data_set( logPath )
 
     mqttClient.on_connect = on_connect
     mqttClient.on_message = on_message
