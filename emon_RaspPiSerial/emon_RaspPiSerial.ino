@@ -24,7 +24,7 @@
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
-    #define NETWORK_FREQUENCY 914.0
+    #define NETWORK_FREQUENCY 916.0
 #endif
 
 
