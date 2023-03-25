@@ -145,4 +145,18 @@ bee:
 leaf:
   0:
     name: Leaf
+gps:
+  0:
+    name: Enchantee unit
+  1:
+    name: Moteino GPS board
+  2:
+    name: Banner GPS
+pth:
+  0:
+    name: Enchantee unit
+  1:
+    name: Moteino GPS board
+  2:
+    name: Banner GPS
 
