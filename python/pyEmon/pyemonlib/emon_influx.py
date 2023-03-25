@@ -34,8 +34,8 @@ class emon_influx:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
-            "gps"  : self.GPSMessage,
-            "pth"  : self.pthMessage,
+            'gps'  : self.GPSMessage,
+            'pth'  : self.pthMessage,
             'other': self.otherMessage
         }
 
@@ -428,7 +428,7 @@ class emon_influx:
 
     def GPSMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadGPS()
-        if( emonSuite.EmonSerial.ParseGPS(reading,payload) ):
+        if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
             try:
                 p = Point("gps").tag("sensor",f"gps/latitude/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
@@ -453,7 +453,7 @@ class emon_influx:
                 p = Point("gps").tag("sensor",f"gps/satellites/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - Satellites")\
-                                .field("value",payload.satellites).time(time)
+                                .field("value",payload.numSatellites/1).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("gps").tag("sensor",f"gps/hdop/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
@@ -467,7 +467,7 @@ class emon_influx:
 
     def pthMessage(self, reading, nodeSettings ):
         payload = emonSuite.PayloadPressure()
-        if( emonSuite.EmonSerial.ParsePressure(reading,payload) ):
+        if( emonSuite.EmonSerial.ParsePressurePayload(reading,payload) ):
             try:
                 p = Point("pth").tag("sensor",f"pth/temperature/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
@@ -493,8 +493,12 @@ class emon_influx:
 
 
     def process_line(self, command, time, line ):
-        if(command in self.dispatch.keys()):
-            self.dispatch[command](time, line, self.settings[command])
+        try:
+            if(command in self.dispatch.keys()):
+                self.dispatch[command](time, line, self.settings[command])
+        except Exception as ex:
+            self.printException("process_line", reading, ex)
+        
 
 
     def process_file(self, path):

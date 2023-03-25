@@ -186,7 +186,6 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadGPS.def_readwrite("longitude", &PayloadGPS::longitude, "Longitude");
     payloadGPS.def_readwrite("course", &PayloadGPS::course, "Course in degrees");
     payloadGPS.def_readwrite("speed", &PayloadGPS::speed, "Speed in knots");
-    payloadGPS.def_readwrite("batteryWH", &PayloadGPS::batteryWH, "Battery WH remaining");
     payloadGPS.def_readwrite("numSatellites", &PayloadGPS::numSatellites, "Number of satellites of reading. May not be valid");
     payloadGPS.def_readwrite("hdop", &PayloadGPS::hdop, "Horizontal dilution of precision. May not be valid");
 
@@ -197,7 +196,7 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadPressure.def_readwrite("subnode", &PayloadPressure::subnode, "allow multiple pressure nodes on the network");
     payloadPressure.def_readwrite("pressure", &PayloadPressure::pressure, "Pressure in hPa");
     payloadPressure.def_readwrite("temperature", &PayloadPressure::temperature, "Temperature");
-    payloadPressure.def_readwrite("humidity", &PayloadPressure::course, "Humidity");
+    payloadPressure.def_readwrite("humidity", &PayloadPressure::humidity, "Humidity");
 
 
     //Parse function calls
@@ -216,6 +215,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
     emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
     emonSerial.def_static("ParseGPSPayload", &EmonSerial::ParseGPSPayload, "Parses from string to PayloadGPS",py::arg("string"), py::arg("PayloadGPS"));
+    emonSerial.def_static("ParsePressurePayload", &EmonSerial::ParsePressurePayload, "Parses from string to PayloadPressure",py::arg("string"), py::arg("PayloadPressure"));
 }
 
 

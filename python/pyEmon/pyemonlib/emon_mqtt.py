@@ -24,8 +24,8 @@ class emon_mqtt:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
-            "gps"  : self.GPSMessage,
-            "pth"  : self.pthMessage,
+            'gps'  : self.GPSMessage,
+            'pth'  : self.pthMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
@@ -41,7 +41,7 @@ class emon_mqtt:
 
     def on_disconnect(self, client, userdata,rc=0):
         print("DisConnected result code {rc}")
-        self.mqttClient.loop_stop()
+        #self.mqttClient.loop_stop()
     
     def printException(self, exceptionSource, reading, ex):
         if( self.lineNumber == -1):
@@ -232,13 +232,13 @@ class emon_mqtt:
 
     def GPSMessage(self, reading, nodeSettings ):
         payload = emonSuite.PayloadGPS()
-        if( emonSuite.EmonSerial.ParseGPS(reading,payload) ):
+        if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
             try:
                 self.mqttClient.publish(f"gps/latitude/{payload.subnode}",payload.latitude)
                 self.mqttClient.publish(f"gps/longitude/{payload.subnode}",payload.longitude)
                 self.mqttClient.publish(f"gps/speed/{payload.subnode}",payload.speed)
                 self.mqttClient.publish(f"gps/course/{payload.subnode}",payload.course)
-                self.mqttClient.publish(f"gps/satellites/{payload.subnode}",payload.satellites)
+                self.mqttClient.publish(f"gps/satellites/{payload.subnode}",payload.numSatellites/1)
                 self.mqttClient.publish(f"gps/hdop/{payload.subnode}",payload.hdop)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
@@ -247,7 +247,7 @@ class emon_mqtt:
 
     def pthMessage(self, reading, nodeSettings ):
         payload = emonSuite.PayloadPressure()
-        if( emonSuite.EmonSerial.ParsePressure(reading,payload) ):
+        if( emonSuite.EmonSerial.ParsePressurePayload(reading,payload) ):
             try:
                 self.mqttClient.publish(f"temperature/pth/{payload.subnode}",payload.temperature)
                 self.mqttClient.publish(f"pth/pressure/{payload.subnode}",payload.pressure)
@@ -262,7 +262,10 @@ class emon_mqtt:
 
 
     def process_line(self, command, line ):
-        if(command in self.dispatch.keys()):
-            self.dispatch[command](line, self.settings[command])
-            # Now publish the entire string
-            self.mqttClient.publish("EmonLog",line)
+        try:
+            if(command in self.dispatch.keys()):
+                self.dispatch[command](line, self.settings[command])
+                # Now publish the entire string
+                self.mqttClient.publish("EmonLog",line)
+        except Exception as ex:
+            self.printException("process_line", reading, ex)

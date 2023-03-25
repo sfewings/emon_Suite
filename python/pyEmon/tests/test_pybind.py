@@ -184,7 +184,7 @@ def test1():
     print(f"latitude={payload.longitude}")
     print(f"speed={payload.speed}")
     print(f"course={payload.course}")
-    print(f"satellites={payload.satellites}")
+    print(f"satellites={payload.numSatellites}")
     print(f"hdop={payload.hdop}")
 
     #todo PTH_MESSAGE= ""
