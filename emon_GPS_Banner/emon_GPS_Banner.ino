@@ -9,6 +9,10 @@
 #include <NeoPixelBus.h>
 #include <PinChangeInt.h>
 
+#include <EEPROM.h>
+#include <util/crc16.h>
+#include <util/parity.h>
+
 #include <SPI.h>
 //#include <avr/wdt.h>
 #include <TimeLib.h>
@@ -25,25 +29,84 @@
 #define GLL_DISABLE F("$PUBX,40,GLL,0,0,0,0,0,0*5C")
 #define RMC_DISABLE F("$PUBX,40,RMC,0,0,0,0,0,0*47")
 
-const int TIME_ZONE_OFFSET = 8;  // AWST Perth
+enum eDisplayType { eAutoRotate = 0,
+                    eTemp, 
+                    eTime, 
+                    ePressure, 
+                    eSpeed, 
+                    eHeading, 
+                    eEndDisplayType = eHeading
+                };
+
+enum eDisplayMode { eOff = 0,
+                    eText, 
+                    eHalfLight, 
+                    eFullLight,
+                    eEndDisplayMode = eFullLight
+                };
+
+typedef struct {
+  unsigned long pinDownTime;
+  bool pinDown;
+  bool settingTime;
+  unsigned long settingTimeTimeout;
+} SettingTime;
+
+//Setting stored to EEPROM
+//EEPROM settings stored for an individual node.
+const uint8_t EEPROM_SETTINGS_BASE = 100; //260 is already used by EmonEEPROM
+const uint8_t EEPROM_VERSION = 1;     
+typedef struct {
+    uint8_t version;
+    uint8_t gmtOffsetHours;
+    uint8_t displayType;
+    uint8_t displayMode;
+	word crc;						//crc checksum.
+} EEPROMConfig;
+
+typedef struct {
+    byte bits[5];       //bitmap of the char
+    byte width;         //font width, maximum of 5
+    char refChar;       //Char it references, and char to use to write
+} LEDChar;
 
 
+//const int TIME_ZONE_OFFSET = 8;  // AWST Perth
 
-// #define SERIAL_BUF_LEN 200
-// int gpsBufPos = 0;
-// char gpsBuf[SERIAL_BUF_LEN];
+const uint8_t NUM_CHARS = 17;
+const LEDChar LEDChars[NUM_CHARS] = 
+{
+    { {0x3E,0x51,0x49,0x45,0x3E}, 5, '0' },
+    { {0x00,0x01,0x7F,0x21,0x00}, 5, '1' },
+    { {0x31,0x49,0x45,0x43,0x21}, 5, '2' },
+    { {0x46,0x69,0x51,0x41,0x42}, 5, '3' },
+    { {0x04,0x7F,0x24,0x14,0x0C}, 5, '4' },
+    { {0x4E,0x51,0x51,0x51,0x72}, 5, '5' },
+    { {0x06,0x49,0x49,0x29,0x1E}, 5, '6' },
+    { {0x60,0x50,0x48,0x47,0x40}, 5, '7' },
+    { {0x36,0x49,0x49,0x49,0x36}, 5, '8' },
+    { {0x3C,0x4A,0x49,0x49,0x30}, 5, '9' },
+    { {0x00,0x08,0x08,0x08,0x00}, 5, '-' },     //minus char
+    { {0x00,0x00,0x00,0x00,0x00}, 3, ' ' },     //space char
+    { {0x00,0x24,0x00,0x00,0x00}, 3, ':' },     //colon char
+    { {0x00,0x01,0x00,0x00,0x00}, 2, '.' },     //decimal point char
+    { {0x02,0x05,0x00,0x00,0x00}, 4, 'c' },     //degree C char
+    { {0x02,0x05,0x02,0x00,0x00}, 4, 'o' },     //degree Heading char
+    { {0x8A,0x40,0xC0,0x00,0x00}, 4, 'k' },     //knots speed
+};
 
+const uint8_t LDR_PIN = A0;
+const uint8_t PIXEL_PIN = 3;
+const uint8_t LED_PIN = A3;  //Pin 17
+const uint8_t NUM_BUTTONS = 2;
+const uint8_t  g_buttons[NUM_BUTTONS] = { A1, A2 };	//pin number for each input A1, A2.  Pins 15 & 16
+const uint16_t NUM_PIXELS = 256;
 
-// #define SERIAL_BUF_LEN 200
-// int gpsBufPos;
-// char gpsBuf[SERIAL_BUF_LEN];
-TinyNMEA gpsNMEA;
-//PayloadGPS g_payloadGPS;
-//PayloadPressure g_payloadPressure;
+volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
+volatile bool g_configChanged = false;
+volatile SettingTime g_settingTime = { 0, false, false, 0 };
 
-//RH_RF69 g_rf69;
-
-//EEPROMSettings  eepromSettings;
+EEPROMConfig g_config = {0,0,0,0};
 
 // Software serial port
 //SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);
@@ -51,7 +114,7 @@ AltSoftSerial gpsSerial;  //pin 8 and 9
 
 BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
                   // Oversampling = pressure ×1, temperature ×1, humidity ×1, filter off,
-
+TinyNMEA gpsNMEA;
 
 float g_latitude = 0;
 float g_longitude = 0;
@@ -61,36 +124,10 @@ float g_pressure = 0;
 float g_temperature = 0;
 float g_humidity = 0;
 
-
-const byte digits[12][5]={  //5*8
-                            {0x3E,0x51,0x49,0x45,0x3E}, //0
-                            {0x00,0x01,0x7F,0x21,0x00}, //1
-                            {0x31,0x49,0x45,0x43,0x21}, //2
-                            {0x46,0x69,0x51,0x41,0x42}, //3
-                            {0x04,0x7F,0x24,0x14,0x0C}, //4
-                            {0x4E,0x51,0x51,0x51,0x72}, //5
-                            {0x06,0x49,0x49,0x29,0x1E}, //6
-                            {0x60,0x50,0x48,0x47,0x40}, //7
-                            {0x36,0x49,0x49,0x49,0x36}, //8
-                            {0x3C,0x4A,0x49,0x49,0x30}, //9    
-                            {0x00,0x08,0x08,0x08,0x00}, //-
-                            {0x00,0x00,0x24,0x00,0x00}, //:
-                                
-    };
-const uint8_t LDR_PIN = A0;
-const uint8_t PIXEL_PIN = 3;
-const uint8_t LED_PIN = A3;  //Pin 17
-const uint8_t NUM_BUTTONS = 2;
-const uint8_t  g_buttons[NUM_BUTTONS] = { A1, A2 };	//pin number for each input A1, A2.  Pins 15 & 16
-const uint16_t NUM_PIXELS = 256;
-const uint8_t NUM_DISPLAY_TYPES = 6;
-
-volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
-
-volatile uint8_t g_displayMode = 1; //0 is off, 1 is dimmed text, 2 is white light
-volatile uint8_t g_displayType = 0; //0 is off, 1 is dimmed text, 2 is white light
+bool g_clockSet = false;
 
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
+
 
 
 uint8_t readLDR()
@@ -118,176 +155,204 @@ void interruptHandlerIR()
     while(g_buttons[button] != PCintPort::arduinoPin)
     {
         if( ++button == NUM_BUTTONS)
-            return;		// we only support 3 buttons though we could get an interrupt for more!
+            return;		// we only support 2 buttons though we could get an interrupt for more!
     }
-    unsigned long msSinceLastButton = millis()- g_lastButtonPush[button];
-    g_lastButtonPush[button] = millis();
 
-    if(msSinceLastButton <20)
-        return;     //button debounce
 
-    if( button == 0)
+    if( PCintPort::pinState == HIGH)
     {
-        g_displayType = ((g_displayType+1)% NUM_DISPLAY_TYPES);
+        unsigned long msSinceLastButton = millis()- g_lastButtonPush[button];
+        g_lastButtonPush[button] = millis();
+
+        if(msSinceLastButton <20)
+            return;     //button debounce
+    }
+
+    if( button == 0 && PCintPort::pinState == HIGH )
+    {
+        g_config.displayType = ((g_config.displayType+1)% eDisplayType::eEndDisplayType);
+        g_configChanged = true;
     }
 
     if( button == 1)
     {
-        g_displayMode = ( (g_displayMode+1) % 3);
+        if(g_config.displayType == eDisplayType::eTime )
+        {
+            if( PCintPort::pinState == HIGH )
+            {
+                if( g_settingTime.settingTime )
+                {
+                    //increment the hour on a button down while setting time
+                    g_config.gmtOffsetHours = (g_config.gmtOffsetHours+1)%24;
+                    g_settingTime.settingTimeTimeout = millis();    //reset on each button press
+                    g_configChanged = true;
+                }
+                else
+                {
+                    //start the timer for holding hte button down to setTime mode
+                    g_settingTime.pinDownTime = millis();
+                    g_settingTime.pinDown = true;
+                }
+                return; //when in eTime displayType, don't do anything on the button press
+            }
+            else
+            {
+                //stop any chance of moving into setTime mode
+                g_settingTime.pinDown = false;
+                if( g_settingTime.settingTime)
+                    return; //Only allow moving to change the displayType if not setTime mode
+            }
+        }
+
+        g_config.displayMode = ( (g_config.displayMode+1) % eDisplayMode::eEndDisplayMode);
+        g_configChanged = true;
     }
 }
 
-void bannerDigit(int digit, int offset, RgbColor colour)
+word CalcCrc(const void* ptr, byte len)
 {
-    if(digit <0 || digit>11)
-        return;
+	word crc = ~0;
+	for (byte i = 0; i < len; ++i)
+		crc = _crc16_update(crc, ((const byte*)ptr)[i]);
+	return crc;
+}
 
-    for(int i=0; i <5;i++)
+bool ReadEEPROMSettings(EEPROMConfig& config)
+{
+	char* pc = (char*)& config;
+
+	for (long l = 0; l < sizeof(config); l++)
+	{
+		*(pc + l) = EEPROM.read(EEPROM_SETTINGS_BASE + l);
+	}
+	if (config.crc != CalcCrc(&config, sizeof(config) - 2))
+	{
+		//no config. Set to defaults
+		memset(&config, 0, sizeof(config));
+        config.version = EEPROM_VERSION;
+        config.displayType = eDisplayType::eAutoRotate;
+        config.gmtOffsetHours = 8;
+		return 0;
+	}
+	if (config.version != EEPROM_VERSION)
+	{
+		//todo: deal with version conversion when required
+	}
+
+	return config.version;
+}
+
+void WriteEEPROMSettings(EEPROMConfig & config)
+{
+	char* pc = (char*)& config;
+	config.version = EEPROM_VERSION;
+	config.crc = CalcCrc(&config, sizeof(config) - 2);
+
+	for (long l = 0; l < sizeof(config); l++)
+	{
+		EEPROM.write(EEPROM_SETTINGS_BASE + l, *(pc + l));
+	}
+
+#ifndef ARDUINO_ARCH_AVR
+	EEPROM.commit();
+#endif
+}
+
+
+RgbColor GetBackgroundColour()
+{
+    switch( g_config.displayMode)
+    {
+        case eDisplayMode::eHalfLight:
+            return RgbColor(128, 128, 128);
+        case eDisplayMode::eFullLight:
+            return RgbColor(256, 256, 256);
+        case eDisplayMode::eOff:    //note: We should get here if off!
+        case eDisplayMode::eText:
+        default:
+            return RgbColor(0, 0, 0);
+    }
+}
+
+void clearBanner()
+{
+    RgbColor colour = GetBackgroundColour();
+    for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
+    {
+        strip.SetPixelColor(pixel, colour);
+    }
+}
+
+short LEDCharsIndex(char ch)
+{
+    for(short i=0; i< NUM_CHARS; i++)
+    {
+        if( LEDChars[i].refChar == ch)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+//refChar is the char to write
+//offset is lines of 8 leds from 0 along the Banner bar
+//colour is the colour of the text
+short bannerChar(char ch, int offset, RgbColor colour)
+{
+    short index = LEDCharsIndex(ch);
+    if(index < 0)   //not found
+        return 0;
+
+    for(int i=0; i <LEDChars[index].width;i++)
     {
         if(offset+i >= 0 )
         {
-            int index = (offset+i)*8;
+            int ledIndex = (offset+i)*8;
             for(int b=0; b<8;b++)
             {
-                // RgbColor onColour = g_displayMode==2? RgbColor(0, 0, 0) : colour;
-                // RgbColor offColour = g_displayMode==2? colour : RgbColor(0, 0, 0);
                 RgbColor onColour = colour;
-                RgbColor offColour = g_displayMode==2? RgbColor(255, 255, 255) : RgbColor(0, 0, 0);
+                RgbColor offColour = GetBackgroundColour();
                 RgbColor pixelColour;
-                if( (offset+i) %2 == 0)
-                    pixelColour = digits[digit][i] & 1<<b ? onColour : offColour;
+                if( (offset+i) %2 == 0) // the LEDS go alternat direction each line of the bar!
+                    pixelColour = LEDChars[ledIndex].bits[i] & 1<<b ? onColour : offColour;
                 else
-                    pixelColour = digits[digit][i] & 1<<(7-b) ? onColour : offColour;
-                strip.SetPixelColor(index+b, pixelColour);
+                    pixelColour = LEDChars[ledIndex].bits[i] & 1<<(7-b) ? onColour : offColour;
+                strip.SetPixelColor(ledIndex+b, pixelColour);
             }
         }
     }
+    return LEDChars[index].width;
 }
 
-void printValue(float value, int decimals, RgbColor inColour, int offset = 0, uint8_t intensity = 255)
+short bannerDigit(uint8_t digit, int offset, RgbColor colour)
 {
-    RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
-
-    for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
-    {
-        strip.SetPixelColor(pixel, (g_displayMode==2?RgbColor(255, 255, 255):RgbColor(0, 0, 0)));
-    }
-
-    if( g_displayMode != 0 )
-    {
-
-        bool negative = value < 0.0;
-        int places = log10(fabs(value)) + decimals;
-        if( (int)value == 0 )
-            places = 1+decimals;
-
-        int whole = (int) fabs(value);
-        int fraction = (int) fabs(( value - (float)whole)*pow(10.0,decimals));
-
-        // Serial.print(F("value:   ")); Serial.println(value);
-        // Serial.print(F("whole:   ")); Serial.println(whole);
-        // Serial.print(F("fraction:")); Serial.println(fraction);
-        // Serial.print(F("places:  ")); Serial.println(places);
-        // Serial.print(F("decimals:")); Serial.println(decimals);
-        // Serial.print(F("negative:")); Serial.println(negative);
-        
-        //use -1 as indication to align to centre
-        if(offset == -1)
-            offset = NUM_PIXELS/8/2 - (places + negative + 1)*(5+1)/2;
-
-        if(decimals > 0)
-        {
-            for (int i = 0; i < decimals; i++)
-            {
-                int digit = fraction % 10;
-                bannerDigit(digit, offset, colour);
-                fraction = fraction/10;
-                offset += 5+1;
-            }
-            
-            //decimal point
-            int pos = offset*8;
-            if( offset %2 == 1)
-                pos+= 7;
-            strip.SetPixelColor(pos, colour);
-            offset += 2;
-        }
-
-        if(whole == 0)
-            places = 1;
-        else
-            places = log10(whole)+1;
-
-        for (int i=0; i<places; i++)
-        {
-            int digit = whole % 10;
-            bannerDigit(digit, offset, colour);
-            whole = whole/10;
-            offset += 5+1;
-        }
-
-        if(negative)
-        {
-            bannerDigit(10, offset, colour);
-            offset += 5+1;
-        }
-    }
-
-    strip.Show();
+    return bannerChar('0'+digit, offset, colour);
 }
 
-void printValue(int value, RgbColor inColour, int offset = 0, uint8_t intensity = 255)
+void printString(char* str, RgbColor inColour, uint8_t intensity = 255, short offset = -1)
 {
+    Serial.println(str);
+    
     RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
-
-    for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
+    clearBanner();
+    if(offset == -1)        //center text on banner
     {
-        strip.SetPixelColor(pixel, (g_displayMode==2?RgbColor(255, 255, 255):RgbColor(0, 0, 0)));
-    }
-
-    if( g_displayMode != 0 )
-    {
-        int places = log10(abs(value));
-
-        //use -1 as indication to align to centre
-        if(offset == -1)
-            offset = NUM_PIXELS/8/2 - (places+1)*(5+1)/2;
-
-        for (int i = 0; i <= places; i++)
+        short width = 0;
+        for(int i=0; i< strlen(str); i++)
         {
-            int digit = value % 10;
-            bannerDigit(digit, offset, colour);
-            value = value/10;
-            offset += 5+1;
+            short index = LEDCharsIndex(str[i]);
+            if( index >=0 )
+                width + LEDChars[index].width;
         }
+        offset = 16 - width/2;
     }
-    strip.Show();
-}
 
-void printTime(RgbColor inColour, int offset = 0, uint8_t intensity = 255)
-{
-    static bool toggleColon = true;
-    toggleColon = ! toggleColon;
-
-    RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
-
-    for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
+    for(short i=0; i< strlen(str); i++)
     {
-        strip.SetPixelColor(pixel, (g_displayMode==2?RgbColor(255, 255, 255):RgbColor(0, 0, 0)));
+        offset += bannerChar(str[i],offset, colour);
     }
 
-    if( g_displayMode != 0 )
-    {
-        if( hour() > 9)
-            bannerDigit( hour()/10, 24, colour);
-        bannerDigit( hour()%10, 18, colour);
-
-        if( toggleColon)
-            bannerDigit( 11, 13, colour);
-
-        bannerDigit( minute()/10, 9, colour);
-        bannerDigit( minute()%10, 3, colour);
-    }
     strip.Show();
 }
 
@@ -381,32 +446,6 @@ int freeMemory()
   return &top - __brkval;
 }
 
-// void digitalClockDisplay() 
-// {
-//  // digital clock display of the time
-//  Serial.print(hour());
-//  printDigits(minute());
-//  printDigits(second());
-//  Serial.print(F(" "));
-//  Serial.print(day());
-//  Serial.print(F(" "));
-//  Serial.print(month());
-//  Serial.print(F(" "));
-//  Serial.print(year());
-//  Serial.println();
-// }
-
-void printDigits(int digits)
-{
- // utility function for digital clock display: prints preceding colon and leading 0
- Serial.print(F(":"));
- if (digits < 10)
-    Serial.print('0');
- Serial.print(digits);
-}
-
-
-
 void testBanner()
 {
 
@@ -451,6 +490,16 @@ void setup()
     Serial.begin(9600); 
     Serial.println(F("GPS sketch"));
 
+    ReadEEPROMSettings( g_config );
+    Serial.print(F("EEPROM version="));
+    Serial.print(g_config.version);
+    Serial.print(F(",DisplayType="));
+    Serial.print( g_config.displayType);
+    Serial.print(F(",DisplayMode="));
+    Serial.print( g_config.displayType);
+    Serial.print(F(",GMT offset="));
+    Serial.print( g_config.gmtOffsetHours);
+    Serial.println();
 
     //have to set SoftwareSerial.h _SS_MAX_RX_BUFF 64 to 128 to receive more than one NMEA string
     // Open a connection to the PMS and put it into passive mode
@@ -477,7 +526,7 @@ void setup()
       Serial.println(F("Could not find BME280 sensor!"));
     }
 
-    setTime(9,12,0,12,3,2023);
+    //setTime(9,12,0,12,3,2023);
 
     strip.Begin();
     for(uint16_t ui=0; ui<NUM_PIXELS; ui++)
@@ -487,7 +536,7 @@ void setup()
 
     for(uint8_t button = 0; button < NUM_BUTTONS; button++)
     {
-        attachPinChangeInterrupt(g_buttons[button], interruptHandlerIR, RISING);
+        attachPinChangeInterrupt(g_buttons[button], interruptHandlerIR, CHANGE);
     }
 
 //    Serial.println(F("Watchdog timer set for 8 seconds"));
@@ -501,64 +550,65 @@ void loop()
     //wdt_reset();
     static uint32_t lastSendPressureTime = millis();
     static int displayToggle = 2;
-    static unsigned long displayToggleTime = millis();
+    static unsigned long displayRotateTime = millis();
 
-    bool newData = false;
-    //Need to reset the serial after each call to NeoPixel as neoPixel stops interrupts breaks AltSoftSerial
-    //Delay 1100 to fill serial buffer (1 message/second)
-    //gpsSerial.begin(GPS_BAUD_RATE);
-    delay(1000);
-    
-    while (gpsSerial.available())
+    //deal with the time setting mode. 
+    //  Hold button down for 3000 ms to enter into mode
+    //  Move out of mode if no button pressed for 5 seconds
+    if( g_settingTime.pinDown && millis() - g_settingTime.pinDownTime > 3000 && !g_settingTime.settingTime)
     {
-        char ch = gpsSerial.read();
-        Serial.print(ch); // uncomment this line if you want to see the GPS data flowing
-      
-        if (gpsNMEA.encode(ch)) // Did a new valid sentence come in?
+        //move into the setTime mode
+        g_settingTime.settingTime = true;
+        g_settingTime.settingTimeTimeout = millis();
+    }
+    if(g_settingTime.settingTime && millis() - g_settingTime.settingTimeTimeout >5000)
+    {
+        //move out of setTime mode
+        g_settingTime.settingTime = false;
+    }
+
+    if( !g_settingTime.settingTime)
+    {
+        //Need to reset the serial after each call to NeoPixel as neoPixel stops interrupts breaks AltSoftSerial
+        //Delay 1100 to fill serial buffer (1 message/second)
+        //gpsSerial.begin(GPS_BAUD_RATE);
+        delay(1000);
+        
+        while (gpsSerial.available())
         {
-            digitalWrite(LED_PIN,HIGH);
-            newData = true;
-            unsigned long age;
-            int Year;
-            byte Month, Day, Hour, Minute, Second;
-    
-            gpsNMEA.crack_datetime(&Year, &Month, &Day, &Hour, &Minute, &Second, NULL, &age);
-            if (age < 1000) 
+            char ch = gpsSerial.read();
+            Serial.print(ch); // uncomment this line if you want to see the GPS data flowing
+        
+            if (gpsNMEA.encode(ch)) // Did a new valid sentence come in?
             {
-              // set the Time to the latest GPS reading
-              setTime(Hour, Minute, Second, Day, Month, Year);
-              adjustTime(TIME_ZONE_OFFSET * SECS_PER_HOUR);
-              //digitalClockDisplay();
+                digitalWrite(LED_PIN,HIGH);
+                unsigned long age;
+                int Year;
+                byte Month, Day, Hour, Minute, Second;
+        
+                gpsNMEA.crack_datetime(&Year, &Month, &Day, &Hour, &Minute, &Second, NULL, &age);
+                if (age < 1000) 
+                {
+                // set the Time to the latest GPS reading
+                setTime(Hour, Minute, Second, Day, Month, Year);
+                g_clockSet = true;
+                //digitalClockDisplay();
+                }
+
+                gpsNMEA.f_get_position(&g_latitude, &g_longitude, &age);
+                g_speed = gpsNMEA.f_speed_knots();
+                g_course = gpsNMEA.f_course();
             }
-
-            gpsNMEA.f_get_position(&g_latitude, &g_longitude, &age);
-            g_speed = gpsNMEA.f_speed_knots();
-            g_course = gpsNMEA.f_course();
-
-
-            // Serial.println(F("==>Received GPS"));
-            // Serial.print(F(" LAT="));
-            // Serial.print(g_latitude == TinyNMEA::GPS_INVALID_F_ANGLE ? 0.0 : g_latitude, 6);
-            // Serial.print(F(" LON="));
-            // Serial.print(g_longitude == TinyNMEA::GPS_INVALID_F_ANGLE ? 0.0 : g_longitude, 6);
-            // Serial.print(F(" SAT="));
-            // Serial.print(gpsNMEA.satellites() == TinyNMEA::GPS_INVALID_SATELLITES ? 0 : gpsNMEA.satellites());
-            // Serial.print(F(" PREC="));
-            // Serial.print(gpsNMEA.hdop() == TinyNMEA::GPS_INVALID_HDOP ? 0 : gpsNMEA.hdop());
-            // Serial.print(F(" SPEED="));
-            // Serial.print(g_speed == TinyNMEA::GPS_INVALID_SPEED ? 0 : g_speed/100.0,1);
-            // Serial.print(F(" HEADING="));
-            // Serial.println(g_course == TinyNMEA::GPS_INVALID_ANGLE ? 0 : g_course/100.0,1);
         }
     }
 
     //Serial.print(F("Free mem("));Serial.print(freeMemory());Serial.println(F(")"));
-    Serial.print(F("displayMode="));Serial.println(g_displayMode);
-    Serial.print(F("displayType="));Serial.println(g_displayType);
+    Serial.print(F("displayMode="));Serial.println(g_config.displayMode);
+    Serial.print(F("displayType="));Serial.println(g_config.displayType);
 
     if( millis() - lastSendPressureTime > 15000 )
     {
-       digitalWrite(LED_PIN,HIGH);
+      digitalWrite(LED_PIN,HIGH);
       lastSendPressureTime = millis();
 
       BME280::TempUnit tempUnit(BME280::TempUnit_Celsius);
@@ -576,46 +626,75 @@ void loop()
       Serial.println();
     }
 
-    if( g_displayType == 0)
+    if(g_configChanged)
     {
-        if( millis() - displayToggleTime >3000 )
+        //the button was pressed. Need to store to EEPROM
+        WriteEEPROMSettings( g_config );
+        g_configChanged = false;
+    }
+
+    if( g_config.displayType == eDisplayType::eAutoRotate)
+    {
+        if( millis() - displayRotateTime >3000 )
         {
-            if( displayToggle+1 >= NUM_DISPLAY_TYPES)
-                displayToggle = 1;
+            if( displayToggle+1 >= eDisplayType::eEndDisplayType)
+                displayToggle = eDisplayType::eAutoRotate+1;
             else
                 displayToggle +=1;
 
-            displayToggleTime = millis();
+            displayRotateTime = millis();
         }
     }
     else
     {
-        displayToggle = g_displayType;
+        displayToggle = g_config.displayType;
     }
 
-
+    char chVal[10];
+    char str[10];
     switch( displayToggle)
     {
       case 0:
         //Produced is green
-        printValue( g_pressure,1, RgbColor(0,255,0), -1, readLDR());
+        dtostrf( g_pressure, 7, 1, chVal );
+        Serial.println( chVal );
+        snprintf_P(str,8,"%so",chVal);
+        Serial.println( str);
+        printString(str,RgbColor(0,255,0), readLDR());
         //Serial.println(g_pressure,1);
         break;
       case 1:
         //Consumed is pink
-        printValue(g_temperature,1, RgbColor(255,0,0), -1, readLDR());
+        dtostrf( g_temperature, 7, 1, chVal );
+        snprintf_P(str,8,"%sc",chVal);
+        printString(str,RgbColor(255,0,0), readLDR());
         //Serial.println(g_temperature,1);
         break;
       case 2:
-        printValue(g_speed,1, RgbColor(0,0,255), -1, readLDR());
+        dtostrf( g_speed, 7, 1, chVal );
+        snprintf_P(str,8,"%sk",chVal);
+        printString(str,RgbColor(0,0,255), readLDR());
         //Serial.println(g_speed,1);
         break;
       case 3:
-        printValue(g_course,1, RgbColor(255,255,0), -1, readLDR());
+        dtostrf( g_course, 7, 1, chVal );
+        snprintf_P(str,8,"%s",chVal);
+        printString(str,RgbColor(255,255,0), readLDR());
         //Serial.println(g_course,1);
         break;
       case 4:
-        printTime(RgbColor(255,0,255),0, readLDR());
+        if(g_clockSet)
+        {
+          if( g_settingTime.settingTime)
+            snprintf_P(str,8,"%2d%s%2d",(hour()+g_config.gmtOffsetHours)%24, (second()%2?':':' '),minute());
+          else
+            snprintf_P(str,8,"%2d:%2d",(second()%2?(hour()+g_config.gmtOffsetHours)%24:'  '),minute());
+        }
+        else
+        {
+           snprintf_P(str,8,"--%s--",(second()%2?':':' '));
+        }
+        printString(str,RgbColor(255,0,255), readLDR());
         break;
     }
     digitalWrite(LED_PIN,LOW);
