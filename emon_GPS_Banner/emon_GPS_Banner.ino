@@ -30,19 +30,19 @@
 #define RMC_DISABLE F("$PUBX,40,RMC,0,0,0,0,0,0*47")
 
 enum eDisplayType { eAutoRotate = 0,
-                    eTemp, 
                     eTime, 
+                    eTemp, 
                     ePressure, 
                     eSpeed, 
                     eHeading, 
-                    eEndDisplayType = eHeading
+                    eEndDisplayType
                 };
 
 enum eDisplayMode { eOff = 0,
                     eText, 
                     eHalfLight, 
                     eFullLight,
-                    eEndDisplayMode = eFullLight
+                    eEndDisplayMode
                 };
 
 typedef struct {
@@ -129,6 +129,14 @@ bool g_clockSet = false;
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
 
 
+extern char *__brkval;
+
+int freeMemory()
+{
+  char top;
+  return &top - __brkval;
+}
+
 
 uint8_t readLDR()
 {
@@ -168,17 +176,18 @@ void interruptHandlerIR()
             return;     //button debounce
     }
 
-    if( button == 0 && PCintPort::pinState == HIGH )
+    if( button == 1 && PCintPort::pinState == HIGH )
     {
-        g_config.displayType = ((g_config.displayType+1)% eDisplayType::eEndDisplayType);
+        g_config.displayMode = ( (g_config.displayMode+1) % eDisplayMode::eEndDisplayMode);
         g_configChanged = true;
     }
 
-    if( button == 1)
+    if( button == 0)
     {
-        if(g_config.displayType == eDisplayType::eTime )
+        bool incDisplayType=false;
+        if( PCintPort::pinState == HIGH )
         {
-            if( PCintPort::pinState == HIGH )
+            if(g_config.displayType == eDisplayType::eTime )
             {
                 if( g_settingTime.settingTime )
                 {
@@ -193,19 +202,25 @@ void interruptHandlerIR()
                     g_settingTime.pinDownTime = millis();
                     g_settingTime.pinDown = true;
                 }
-                return; //when in eTime displayType, don't do anything on the button press
             }
             else
             {
-                //stop any chance of moving into setTime mode
-                g_settingTime.pinDown = false;
-                if( g_settingTime.settingTime)
-                    return; //Only allow moving to change the displayType if not setTime mode
+                incDisplayType = true;
             }
         }
+        else //LOW
+        {
+            if(g_config.displayType == eDisplayType::eTime && !g_settingTime.settingTime &&  millis() - g_settingTime.pinDownTime <1000)
+                 incDisplayType = true;
+            //stop any chance of moving into setTime mode
+            g_settingTime.pinDown = false;
+        }
 
-        g_config.displayMode = ( (g_config.displayMode+1) % eDisplayMode::eEndDisplayMode);
-        g_configChanged = true;
+        if( incDisplayType )
+        {
+            g_config.displayType = ((g_config.displayType+1)% eDisplayType::eEndDisplayType);
+            g_configChanged = true;
+        }
     }
 }
 
@@ -267,7 +282,7 @@ RgbColor GetBackgroundColour()
             return RgbColor(128, 128, 128);
         case eDisplayMode::eFullLight:
             return RgbColor(256, 256, 256);
-        case eDisplayMode::eOff:    //note: We should get here if off!
+        case eDisplayMode::eOff:    //note: We shouldn't get here if "off"!
         case eDisplayMode::eText:
         default:
             return RgbColor(0, 0, 0);
@@ -276,19 +291,24 @@ RgbColor GetBackgroundColour()
 
 void clearBanner()
 {
+    Serial.println("clearBanner");
     RgbColor colour = GetBackgroundColour();
     for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
     {
+        Serial.print(freeMemory()), Serial.print(",");
         strip.SetPixelColor(pixel, colour);
     }
+    Serial.print("color:");Serial.print(colour.R);Serial.print(colour.G);Serial.print(colour.B);Serial.println();
 }
 
 short LEDCharsIndex(char ch)
 {
     for(short i=0; i< NUM_CHARS; i++)
     {
+        Serial.print(LEDChars[i].refChar);Serial.print(","); Serial.println(i);
         if( LEDChars[i].refChar == ch)
         {
+            Serial.print("LEDCharsIndex ");Serial.print(ch);Serial.print(","); Serial.println(i);
             return i;
         }
     }
@@ -301,8 +321,12 @@ short LEDCharsIndex(char ch)
 short bannerChar(char ch, int offset, RgbColor colour)
 {
     short index = LEDCharsIndex(ch);
-    if(index < 0)   //not found
+
+    if(index < 0 || index >= NUM_CHARS )  //not found
+    {
+        Serial.print("Reject (");Serial.print(index); Serial.print(")");Serial.println(ch);
         return 0;
+    }
 
     for(int i=0; i <LEDChars[index].width;i++)
     {
@@ -341,12 +365,15 @@ void printString(char* str, RgbColor inColour, uint8_t intensity = 255, short of
         short width = 0;
         for(int i=0; i< strlen(str); i++)
         {
+            Serial.println(str[i]);
             short index = LEDCharsIndex(str[i]);
             if( index >=0 )
                 width + LEDChars[index].width;
         }
         offset = 16 - width/2;
+        Serial.print("w/o"); Serial.print(width); Serial.print(","); Serial.println(offset);
     }
+    Serial.print("offset="); Serial.println(offset);
 
     for(short i=0; i< strlen(str); i++)
     {
@@ -438,14 +465,6 @@ void SelectSentences()
   
 }
 
-extern char *__brkval;
-
-int freeMemory()
-{
-  char top;
-  return &top - __brkval;
-}
-
 void testBanner()
 {
 
@@ -491,6 +510,7 @@ void setup()
     Serial.println(F("GPS sketch"));
 
     ReadEEPROMSettings( g_config );
+    g_config.displayType = eDisplayType::ePressure;
     Serial.print(F("EEPROM version="));
     Serial.print(g_config.version);
     Serial.print(F(",DisplayType="));
@@ -543,6 +563,19 @@ void setup()
 //    wdt_enable(WDTO_8S);  
 }
 
+
+char* my_dtostrf(float val, signed char width, unsigned char prec, char* str)
+{
+    dtostrf( val, width, prec, str );
+    for(signed char i=width-1;i>=0;i--)
+    {
+        if(str[i]==' ' || str[i]=='\0')
+            str[i] = '\0';
+        else
+            break;
+    }
+    return str;
+}
 
 void loop()
 {    
@@ -650,49 +683,60 @@ void loop()
         displayToggle = g_config.displayType;
     }
 
-    char chVal[10];
-    char str[10];
+    Serial.print(F("displayToggle="));Serial.println(displayToggle);
+
+    #define BUF_SIZE 8
+    char chVal[BUF_SIZE];
+    char str[BUF_SIZE];
+
+    Serial.print(F("Free mem="));
+    Serial.println(freeMemory());
+
     switch( displayToggle)
     {
-      case 0:
+      case eDisplayType::ePressure:
         //Produced is green
-        dtostrf( g_pressure, 7, 1, chVal );
-        Serial.println( chVal );
-        snprintf_P(str,8,"%so",chVal);
+        my_dtostrf( g_pressure, -BUF_SIZE, 1, chVal );
+        snprintf_P(str,BUF_SIZE,PSTR("%so"),chVal);
         Serial.println( str);
         printString(str,RgbColor(0,255,0), readLDR());
         //Serial.println(g_pressure,1);
         break;
-      case 1:
+      case eDisplayType::eTemp:
         //Consumed is pink
-        dtostrf( g_temperature, 7, 1, chVal );
-        snprintf_P(str,8,"%sc",chVal);
+        my_dtostrf( g_temperature, -BUF_SIZE, 1, chVal );
+        snprintf_P(str,BUF_SIZE,PSTR("%sc"),chVal);
         printString(str,RgbColor(255,0,0), readLDR());
         //Serial.println(g_temperature,1);
         break;
-      case 2:
-        dtostrf( g_speed, 7, 1, chVal );
-        snprintf_P(str,8,"%sk",chVal);
+      case eDisplayType::eSpeed:
+        my_dtostrf( g_speed, -BUF_SIZE, 1, chVal );
+        snprintf_P(str,BUF_SIZE,PSTR("%s k"),chVal);
         printString(str,RgbColor(0,0,255), readLDR());
         //Serial.println(g_speed,1);
         break;
-      case 3:
-        dtostrf( g_course, 7, 1, chVal );
-        snprintf_P(str,8,"%s",chVal);
+      case eDisplayType::eHeading:
+        my_dtostrf( g_course, -BUF_SIZE, 1, chVal );
+        snprintf_P(str, BUF_SIZE,PSTR("%s"),chVal);
         printString(str,RgbColor(255,255,0), readLDR());
         //Serial.println(g_course,1);
         break;
-      case 4:
+      case eDisplayType::eTime:
         if(g_clockSet)
         {
           if( g_settingTime.settingTime)
-            snprintf_P(str,8,"%2d%s%2d",(hour()+g_config.gmtOffsetHours)%24, (second()%2?':':' '),minute());
+          {
+            if( second()%2 == 1)
+                snprintf_P(str,BUF_SIZE,PSTR("--:%2d"),minute());
+            else
+                snprintf_P(str,BUF_SIZE,PSTR("%2d:%2d"),(hour()+g_config.gmtOffsetHours)%24,minute());
+          }
           else
-            snprintf_P(str,8,"%2d:%2d",(second()%2?(hour()+g_config.gmtOffsetHours)%24:'  '),minute());
+            snprintf_P(str,BUF_SIZE,PSTR("%2d%s%2d"),(hour()+g_config.gmtOffsetHours)%24, (second()%2?':':' '),minute());
         }
         else
         {
-           snprintf_P(str,8,"--%s--",(second()%2?':':' '));
+           snprintf_P(str,BUF_SIZE,PSTR("--%s--"),(second()%2?':':' '));
         }
         printString(str,RgbColor(255,0,255), readLDR());
         break;
