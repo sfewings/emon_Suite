@@ -25,16 +25,13 @@
 #define     GPS_BAUD_RATE         9600               // PMS5003 uses 9600bps
 #define     LED                     13               // Built-in LED pin
 
-#define GSV_DISABLE F("$PUBX,40,GSV,0,0,0,0,0,0*59")
-#define GLL_DISABLE F("$PUBX,40,GLL,0,0,0,0,0,0*5C")
-#define RMC_DISABLE F("$PUBX,40,RMC,0,0,0,0,0,0*47")
 
 enum eDisplayType { eAutoRotate = 0,
                     eTime, 
                     eTemp, 
                     ePressure, 
                     eSpeed, 
-                    eHeading, 
+                    eHeading,
                     eEndDisplayType
                 };
 
@@ -73,7 +70,7 @@ typedef struct {
 
 //const int TIME_ZONE_OFFSET = 8;  // AWST Perth
 
-const uint8_t NUM_CHARS = 17;
+const uint8_t NUM_CHARS = 24;
 const LEDChar LEDChars[NUM_CHARS] PROGMEM = 
 {
     { {0x3E,0x45,0x49,0x51,0x3E}, 5, '0' },
@@ -93,6 +90,13 @@ const LEDChar LEDChars[NUM_CHARS] PROGMEM =
     { {0x20,0x50,0x20,0x00,0x00}, 3, 'o' },     //degree Heading char
     { {0x20,0x50,0x50,0x00,0x00}, 3, 'c' },     //degree C char
     { {0x00,0x00,0x7C,0x08,0x14}, 5, 'k' },     //knots speed
+    { {0x20,0x40,0xFF,0x40,0x20}, 5, 'A' },     //large up arrow 
+    { {0x08,0x10,0x3F,0x10,0x08}, 5, 'B' },     //moderate up arrow
+    { {0x02,0x04,0x0F,0x04,0x02}, 5, 'C' },     //small up arrow
+    { {0x08,0x08,0x08,0x08,0x08}, 5, 'D' },     //No change - horizontal bar
+    { {0x40,0x20,0xF0,0x20,0x40}, 5, 'E' },     //small down arrow
+    { {0x10,0x08,0xFC,0x08,0x10}, 5, 'F' },     //moderate down arrow
+    { {0x04,0x02,0xFF,0x02,0x04}, 5, 'G' },     //large down arrow
 };
 
 const uint8_t LDR_PIN = A0;
@@ -116,18 +120,21 @@ BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
                   // Oversampling = pressure ×1, temperature ×1, humidity ×1, filter off,
 TinyNMEA gpsNMEA;
 
-float g_latitude = 0;
-float g_longitude = 0;
 float g_course = 0;
 float g_speed = 0;
 float g_pressure = 0;
 float g_temperature = 0;
 float g_humidity = 0;
-
 bool g_clockSet = false;
 
-NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
+//storing the last 4 hours of pressures
+const uint8_t PRESSURE_HISORY_SIZE = 4;
+float g_pressureHistory[PRESSURE_HISORY_SIZE];
+int8_t g_pressureHistoryIndex = 0;
+int g_thisHour;
 
+
+NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
 
 extern char *__brkval;
 
@@ -387,23 +394,20 @@ void printString(char* str, RgbColor inColour, uint8_t intensity = 255, short of
                 width += ledChar.width+1;
             }
             offset = 16 - width/2;
-            Serial.print(F("str,l,w,o="));
-            Serial.print(str);
-            Serial.print(F(","));
-            Serial.print(strlen(str));
-            Serial.print(F(","));
-            Serial.print(width);
-            Serial.print(F(","));
-            Serial.println(offset);
+            // Serial.print(F("str,l,w,o="));
+            // Serial.print(str);
+            // Serial.print(F(","));
+            // Serial.print(strlen(str));
+            // Serial.print(F(","));
+            // Serial.print(width);
+            // Serial.print(F(","));
+            // Serial.println(offset);
         }
-        //Serial.print(F("Str "));
         for(short i=0;i<strlen(str); i++)
         {
-        //Serial.print(str[i]);Serial.print(F(":"));Serial.print(offset);Serial.print(F(","));
             offset += bannerChar(str[i], offset, colour);
             offset += 1;
         }
-        //Serial.println();
     }    
     strip.Show();
 }
@@ -433,104 +437,54 @@ void Blink(byte PIN, byte DELAY_MS, byte loops)
   }
 }
 
-void SelectRMConly()
+void SelectSentences(bool RMC, bool GGA, bool GSA, bool GLL, bool VTG, bool GSV)
 {
-  // NMEA_GLL output interval - Geographic Position - Latitude longitude
-  // NMEA_RMC output interval - Recommended Minimum Specific GNSS Sentence
-  // NMEA_VTG output interval - Course Over Ground and Ground Speed
-  // NMEA_GGA output interval - GPS Fix Data
-  // NMEA_GSA output interval - GNSS DOPS and Active Satellites
-  // NMEA_GSV output interval - GNSS Satellites in View
+    // See http://cdn.sparkfun.com/datasheets/Sensors/GPS/760.pdf
+    // Also https://www.roboticboat.uk/Microcontrollers/Uno/GPS-PAM7Q/GPS-PAM7Q.html for enable/disable NMEA strings
 
-  gpsSerial.println(F("$PUBX,40,GGA,0,0,0,0*5A"));
-  delay(100);
+    // NMEA_GLL output interval - Geographic Position - Latitude longitude
+    // NMEA_RMC output interval - Recommended Minimum Specific GNSS Sentence
+    // NMEA_VTG output interval - Course Over Ground and Ground Speed
+    // NMEA_GGA output interval - GPS Fix Data
+    // NMEA_GSA output interval - GNSS DOPS and Active Satellites
+    // NMEA_GSV output interval - GNSS Satellites in View
 
-  gpsSerial.println(F("$PUBX,40,RMC,0,1,0,0*46"));
-  delay(100);
+    if( RMC )
+        gpsSerial.println(F("$PUBX,40,RMC,0,1,0,0*46"));
+    else
+        gpsSerial.println(F("$PUBX,40,RMC,0,0,0,0*47"));
+    delay(100);
 
-  // disable $PUBX,40,GLL,0,0,0,0*5C
-  gpsSerial.println(F("$PUBX,40,GLL,0,0,0,0*5C"));
-  delay(100);
+    if( GGA )
+        gpsSerial.println(F("$PUBX,40,GGA,0,1,0,0*5B"));
+    else
+        gpsSerial.println(F("$PUBX,40,GGA,0,0,0,0*5A"));
+    delay(100);
 
-  // disable $PUBX,40,VTG,0,0,0,0*5E
-  gpsSerial.println(F("$PUBX,40,VTG,0,0,0,0*5E"));
-  delay(100);
+    if( GLL )
+        gpsSerial.println(F("$PUBX,40,GLL,0,1,0,0*5D"));
+    else
+        gpsSerial.println(F("$PUBX,40,GLL,0,0,0,0*5C"));
+    delay(100);
+
+    if( VTG )
+        gpsSerial.println(F("$PUBX,40,VTG,0,1,0,0*5F"));
+    else
+        gpsSerial.println(F("$PUBX,40,VTG,0,0,0,0*5E"));
+    delay(100);
+
+    if( GSA )
+        gpsSerial.println(F("$PUBX,40,GSA,0,1,0,0*4F"));
+    else
+        gpsSerial.println(F("$PUBX,40,GSA,0,0,0,0*4E"));
+    delay(100);  
+
+    if( GSV )
+        gpsSerial.println(F("$PUBX,40,GSV,0,5,0,0*5C"));
+    else
+        gpsSerial.println(F("$PUBX,40,GSV,0,0,0,0*59"));
+    delay(100);
   
-  // disable $PUBX,40,GSA,0,0,0,0*4E
-  gpsSerial.println(F("$PUBX,40,GSA,0,0,0,0*4E"));
-  delay(100);  
-
-  // disable $PUBX,40,GSV,0,0,0,0*59
-  gpsSerial.println(F("$PUBX,40,GSV,0,0,0,0*59"));
-  delay(100);
-  
-}
-
-void SelectSentences()
-{
-  // See http://cdn.sparkfun.com/datasheets/Sensors/GPS/760.pdf
-  // Also https://www.roboticboat.uk/Microcontrollers/Uno/GPS-PAM7Q/GPS-PAM7Q.html for enable/disable NMEA strings
-  // NMEA_GLL output interval - Geographic Position - Latitude longitude
-  // NMEA_RMC output interval - Recommended Minimum Specific GNSS Sentence
-  // NMEA_VTG output interval - Course Over Ground and Ground Speed
-  // NMEA_GGA output interval - GPS Fix Data
-  // NMEA_GSA output interval - GNSS DOPS and Active Satellites
-  // NMEA_GSV output interval - GNSS Satellites in View
-
-  // Enable $PUBX,40,RMC,0,1,0,0*46
-  gpsSerial.println(F("$PUBX,40,RMC,0,1,0,0*46"));
-  delay(100);
-
-  // Enable $PUBX,40,GGA,0,1,0,0*5B
-  gpsSerial.println(F("$PUBX,40,GGA,0,1,0,0*5B"));
-  delay(100);
-
-  // disable $PUBX,40,GLL,0,0,0,0*5C
-  gpsSerial.println(F("$PUBX,40,GLL,0,0,0,0*5C"));
-  delay(100);
-  
-  // disable $PUBX,40,VTG,0,0,0,0*5E
-  gpsSerial.println(F("$PUBX,40,VTG,0,0,0,0*5E"));
-  delay(100);
-  
-  // disable $PUBX,40,GSA,0,0,0,0*4E
-  gpsSerial.println(F("$PUBX,40,GSA,0,0,0,0*4E"));
-  delay(100);  
-
-  // disable $PUBX,40,GSV,0,0,0,0*59
-  gpsSerial.println(F("$PUBX,40,GSV,0,0,0,0*59"));
-  delay(100);
-  
-}
-
-void testBanner()
-{
-
-    for(int digit=0; digit<10;digit++)
-    {
-        for(int offset=0;offset<NUM_PIXELS/8;offset++)
-        {
-            bannerDigit( digit, offset, readLDR() );
-            strip.Show();
-            delay(20);
-        }
-    }
-
-    for(int offset = 0; offset<NUM_PIXELS/8;offset++)
-    {  
-        bannerDigit( 0, offset+0, readLDR());
-        bannerDigit( 1, offset+5, readLDR());
-        bannerDigit( 2, offset+10, readLDR());
-        bannerDigit( 3, offset+15, readLDR() );
-        bannerDigit( 4, offset+20, readLDR() );
-        bannerDigit( 5, offset+25, readLDR() );
-        bannerDigit( 6, offset+30, readLDR() );
-        bannerDigit( 7, offset+35, readLDR() );
-        bannerDigit( 8, offset+40, readLDR() );
-        bannerDigit( 9, offset+45, readLDR() );
-        strip.Show();
-        delay(20);
-    }
 }
 
 
@@ -558,11 +512,10 @@ void setup()
     Serial.print( g_config.gmtOffsetHours);
     Serial.println();
 
-    //have to set SoftwareSerial.h _SS_MAX_RX_BUFF 64 to 128 to receive more than one NMEA string
-    // Open a connection to the PMS and put it into passive mode
+    //Note: To reduce the RAM used, change TX_BUFFER_SIZE from 68 to 32 in AltSoftSerial.cpp
     gpsSerial.begin(GPS_BAUD_RATE);
-    delay(1000);
-    SelectRMConly();
+    delay(100);
+    SelectSentences(true, false, false, false, false, false);
 
     Wire.begin();
 
@@ -593,34 +546,47 @@ void setup()
         attachPinChangeInterrupt(g_buttons[button], interruptHandlerIR, CHANGE);
     }
 
+    //initialise pressure history
+    for(int i=0; i<PRESSURE_HISORY_SIZE;i++)
+        g_pressureHistory[i] = __FLT_MAX__;
+    g_thisHour = -1;
+    g_pressureHistoryIndex = 0;
+
     Serial.println("Exit setup()");
 //    Serial.println(F("Watchdog timer set for 8 seconds"));
 //    wdt_enable(WDTO_8S);  
 }
 
+
+
 void loop()
 {    
     //reset the watchdog timer
     //wdt_reset();
-    static uint32_t lastSendPressureTime = millis();
+    #define BUF_SIZE 8
+    static char chVal[BUF_SIZE];
+    static char str[BUF_SIZE];
+    static uint32_t lastSendPressureTime = millis() - 15000;
     static int displayToggle = 2;
     static unsigned long displayRotateTime = millis();
+    //static bool toggleTestPressure = false;
+    static char ch;
 
     //deal with the time setting mode. 
     //  Hold button down for 3000 ms to enter into mode
-    //  Move out of mode if no button pressed for 5 seconds
+    //  Move out of mode if no button pressed for 10 seconds
     if( g_settingTime.pinDown && millis() - g_settingTime.pinDownTime > 3000 && !g_settingTime.settingTime)
     {
         //move into the setTime mode
         g_settingTime.settingTime = true;
         g_settingTime.settingTimeTimeout = millis();
-        Serial.println(F("Setting time"));
+        //Serial.println(F("Setting time"));
     }
-    if(g_settingTime.settingTime && millis() - g_settingTime.settingTimeTimeout >15000)
+    if(g_settingTime.settingTime && millis() - g_settingTime.settingTimeTimeout >10000)
     {
         //move out of setTime mode
         g_settingTime.settingTime = false;
-        Serial.println(F("Finished setting time"));
+        //Serial.println(F("Finished setting time"));
     }
 
     if( !g_settingTime.settingTime)
@@ -628,11 +594,11 @@ void loop()
         //Need to reset the serial after each call to NeoPixel as neoPixel stops interrupts breaks AltSoftSerial
         //Delay 1100 to fill serial buffer (1 message/second)
         //gpsSerial.begin(GPS_BAUD_RATE);
-        delay(1000);
+        delay(900);
         
         while (gpsSerial.available())
         {
-            char ch = gpsSerial.read();
+            ch = gpsSerial.read();
             Serial.print(ch); // uncomment this line if you want to see the GPS data flowing
         
             if (gpsNMEA.encode(ch)) // Did a new valid sentence come in?
@@ -650,7 +616,7 @@ void loop()
                     g_clockSet = true;
                 }
 
-                gpsNMEA.f_get_position(&g_latitude, &g_longitude, &age);
+                //gpsNMEA.f_get_position(&g_latitude, &g_longitude, &age);
                 g_speed = gpsNMEA.f_speed_knots();
                 g_course = gpsNMEA.f_course();
             }
@@ -659,22 +625,45 @@ void loop()
 
     if( millis() - lastSendPressureTime > 15000 )
     {
-      digitalWrite(LED_PIN,HIGH);
-      lastSendPressureTime = millis();
+        digitalWrite(LED_PIN,HIGH);
+        lastSendPressureTime = millis();
 
-      BME280::TempUnit tempUnit(BME280::TempUnit_Celsius);
-      BME280::PresUnit presUnit(BME280::PresUnit_Pa);
-      bme.read(g_pressure, g_temperature, g_humidity, tempUnit, presUnit);
-      g_pressure = g_pressure/100;
+        bme.read(g_pressure, g_temperature, g_humidity); //, tempUnit, presUnit);
+ 
 
-      Serial.println(F("==>Read BME280"));
-      Serial.print(F(" Pressure="));
-      Serial.print(g_pressure, 1);
-      Serial.print(F(" Temperature="));
-      Serial.print(g_temperature, 1);
-      Serial.print(F(" Humidity="));
-      Serial.print(g_humidity, 1);
-      Serial.println();
+        if( g_clockSet )
+        {
+            //g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
+            //update the pressure history every hour
+            g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
+            if(g_thisHour != hour())
+            {
+                //Every hour, move the index along 1
+                g_pressureHistoryIndex = (g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE;
+                g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
+                g_thisHour = hour();
+            }
+            // else
+            // {
+            //     if( fabs(g_pressure - g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE]) > 4 )
+            //         toggleTestPressure = !toggleTestPressure;
+            //     if( toggleTestPressure )
+            //         g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE] -= 1.0;
+            //     else
+            //         g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE] += 1.0;
+            //     Serial.print(F("LastPressure="));
+            //     Serial.println(g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE],1);
+            // }
+        }
+
+
+        Serial.print(F("Pressure,Temperature="));
+        Serial.print(g_pressure, 1);
+        Serial.print(F(","));
+        Serial.print(g_temperature, 1);
+        Serial.print(F(","));
+        Serial.print(g_humidity, 1);
+        Serial.println();
     }
 
     if(g_configChanged)
@@ -701,7 +690,7 @@ void loop()
         displayToggle = g_config.displayType;
     }
 
-    Serial.print(F("Free mem,mode,type,toggle="));
+    Serial.print(F("freeMemory,displayMode,displayType,displayToggle="));
     Serial.print(freeMemory());
     Serial.print(F(","));
     Serial.print(g_config.displayMode);
@@ -710,15 +699,43 @@ void loop()
     Serial.print(F(","));
     Serial.println(displayToggle);
 
-    #define BUF_SIZE 10
-    char chVal[BUF_SIZE];
-    char str[BUF_SIZE];
-
     switch( displayToggle)
     {
       case eDisplayType::ePressure:        
+        ch = ' ';
+        if(g_pressureHistory[(g_pressureHistoryIndex-1)%PRESSURE_HISORY_SIZE] != __FLT_MAX__ &&
+           g_pressureHistory[(g_pressureHistoryIndex  )%PRESSURE_HISORY_SIZE] != __FLT_MAX__  )
+        {
+            float pressureChange = g_pressureHistory[(g_pressureHistoryIndex)%PRESSURE_HISORY_SIZE] - g_pressureHistory[(g_pressureHistoryIndex-1)%PRESSURE_HISORY_SIZE];
+            if(      pressureChange >4)
+                ch = 'A';
+            else if( pressureChange >2)
+                ch = 'B';
+            else if( pressureChange >1)
+                ch = 'C';
+            else if( pressureChange <-4)
+                ch = 'G';
+            else if( pressureChange <-2)
+                ch = 'F';
+            else if( pressureChange <-1)
+                ch = 'E';
+        }
         my_dtostrf( g_pressure, -BUF_SIZE, 1, chVal );
-        snprintf_P(str,BUF_SIZE,PSTR("%s"),chVal);
+        if( ch != ' ' && second()%2==0)
+        {
+            memset(str,0,BUF_SIZE);
+            strncpy(str,chVal,5);
+            memset(chVal,0,BUF_SIZE);
+            strncpy(chVal,str,5);
+            snprintf_P(str,BUF_SIZE,PSTR("%s%c"),chVal,ch);
+        }
+        else
+        {
+            snprintf_P(str,BUF_SIZE,PSTR("%s"),chVal);
+        }
+
+        //my_dtostrf( g_pressure, -BUF_SIZE, 1, chVal );
+        //snprintf_P(str,BUF_SIZE,PSTR("%s"),chVal);
         printString(str,RgbColor(0,255,0), readLDR()); //Green
         break;
       case eDisplayType::eTemp:
@@ -727,13 +744,27 @@ void loop()
         printString(str,RgbColor(255,0,0), readLDR()); //Red
         break;
       case eDisplayType::eSpeed:
-        my_dtostrf( g_speed, -BUF_SIZE, 1, chVal );
+        if( g_speed < 0.2)
+        {
+            my_dtostrf( 0.0, -BUF_SIZE, 1, chVal );
+        }
+        else
+        {
+            my_dtostrf( g_speed, -BUF_SIZE, 1, chVal );
+        }
         snprintf_P(str,BUF_SIZE,PSTR("%sk"),chVal);
         printString(str,RgbColor(0,0,255), readLDR()); //Blue
         break;
       case eDisplayType::eHeading:
-        my_dtostrf( g_course, -BUF_SIZE, 1, chVal );
-        snprintf_P(str, BUF_SIZE,PSTR("%so"),chVal);
+        if( g_speed < 0.2 || g_course >=360.0)
+        {
+            snprintf_P(str, BUF_SIZE,PSTR("-.-o"));
+        }
+        else
+        {
+            my_dtostrf( g_course, -BUF_SIZE, 1, chVal );
+            snprintf_P(str, BUF_SIZE,PSTR("%so"),chVal);
+        }
         printString(str,RgbColor(255,255,0), readLDR());
         break;
       case eDisplayType::eTime:
