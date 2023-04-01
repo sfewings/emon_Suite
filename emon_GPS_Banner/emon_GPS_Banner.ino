@@ -74,25 +74,25 @@ typedef struct {
 //const int TIME_ZONE_OFFSET = 8;  // AWST Perth
 
 const uint8_t NUM_CHARS = 17;
-const LEDChar LEDChars[NUM_CHARS] = 
+const LEDChar LEDChars[NUM_CHARS] PROGMEM = 
 {
-    { {0x3E,0x51,0x49,0x45,0x3E}, 5, '0' },
-    { {0x00,0x01,0x7F,0x21,0x00}, 5, '1' },
-    { {0x31,0x49,0x45,0x43,0x21}, 5, '2' },
-    { {0x46,0x69,0x51,0x41,0x42}, 5, '3' },
-    { {0x04,0x7F,0x24,0x14,0x0C}, 5, '4' },
-    { {0x4E,0x51,0x51,0x51,0x72}, 5, '5' },
-    { {0x06,0x49,0x49,0x29,0x1E}, 5, '6' },
-    { {0x60,0x50,0x48,0x47,0x40}, 5, '7' },
+    { {0x3E,0x45,0x49,0x51,0x3E}, 5, '0' },
+    { {0x00,0x21,0x7F,0x01,0x00}, 5, '1' },
+    { {0x21,0x43,0x45,0x49,0x31}, 5, '2' },
+    { {0x42,0x41,0x51,0x69,0x46}, 5, '3' },
+    { {0x0C,0x14,0x24,0x7F,0x04}, 5, '4' },
+    { {0x72,0x51,0x51,0x51,0x4E}, 5, '5' },
+    { {0x1E,0x29,0x49,0x49,0x06}, 5, '6' },
+    { {0x40,0x47,0x48,0x50,0x60}, 5, '7' },
     { {0x36,0x49,0x49,0x49,0x36}, 5, '8' },
-    { {0x3C,0x4A,0x49,0x49,0x30}, 5, '9' },
+    { {0x30,0x49,0x49,0x4A,0x3C}, 5, '9' },
+    { {0x00,0x00,0x00,0x00,0x00}, 1, ' ' },     //space char
+    { {0x01,0x00,0x00,0x00,0x00}, 1, '.' },     //decimal point char
+    { {0x14,0x00,0x00,0x00,0x00}, 1, ':' },     //colon char
     { {0x00,0x08,0x08,0x08,0x00}, 5, '-' },     //minus char
-    { {0x00,0x00,0x00,0x00,0x00}, 3, ' ' },     //space char
-    { {0x00,0x24,0x00,0x00,0x00}, 3, ':' },     //colon char
-    { {0x00,0x01,0x00,0x00,0x00}, 2, '.' },     //decimal point char
-    { {0x02,0x05,0x00,0x00,0x00}, 4, 'c' },     //degree C char
-    { {0x02,0x05,0x02,0x00,0x00}, 4, 'o' },     //degree Heading char
-    { {0x8A,0x40,0xC0,0x00,0x00}, 4, 'k' },     //knots speed
+    { {0x20,0x50,0x20,0x00,0x00}, 3, 'o' },     //degree Heading char
+    { {0x20,0x50,0x50,0x00,0x00}, 3, 'c' },     //degree C char
+    { {0x00,0x00,0x7C,0x08,0x14}, 5, 'k' },     //knots speed
 };
 
 const uint8_t LDR_PIN = A0;
@@ -135,6 +135,32 @@ int freeMemory()
 {
   char top;
   return &top - __brkval;
+}
+
+
+LEDChar* LEDChar_F(uint8_t index, LEDChar* pLedChar)
+{
+    if( index < 0 || index > NUM_CHARS )
+    {
+        Serial.print(F("LEDChar index out-of-range-"));
+        Serial.println(index);
+        index = 12; //substitute the '-' char if an out-of-range index is used
+    }
+    memcpy_P(pLedChar,&LEDChars[index], sizeof(LEDChar));
+    return pLedChar;
+}
+
+LEDChar* GetLEDChar(char ch, LEDChar* pLedChar)
+{
+    for(short i=0; i< NUM_CHARS; i++)
+    {
+        LEDChar_F(i, pLedChar);
+        if( pLedChar->refChar == ch)
+        {
+            return pLedChar;
+        }
+    }
+    return pLedChar;
 }
 
 
@@ -192,7 +218,7 @@ void interruptHandlerIR()
                 if( g_settingTime.settingTime )
                 {
                     //increment the hour on a button down while setting time
-                    g_config.gmtOffsetHours = (g_config.gmtOffsetHours+1)%24;
+                    g_config.gmtOffsetHours = (g_config.gmtOffsetHours+1)%12;   //we only do a 12 hour clock!
                     g_settingTime.settingTimeTimeout = millis();    //reset on each button press
                     g_configChanged = true;
                 }
@@ -218,7 +244,10 @@ void interruptHandlerIR()
 
         if( incDisplayType )
         {
-            g_config.displayType = ((g_config.displayType+1)% eDisplayType::eEndDisplayType);
+            if(g_config.displayMode == eDisplayMode::eOff)
+                g_config.displayMode++; //turn the unit on when either button is pressed!
+            else
+                g_config.displayType = ((g_config.displayType+1)% eDisplayType::eEndDisplayType);
             g_configChanged = true;
         }
     }
@@ -246,7 +275,7 @@ bool ReadEEPROMSettings(EEPROMConfig& config)
 		memset(&config, 0, sizeof(config));
         config.version = EEPROM_VERSION;
         config.displayType = eDisplayType::eAutoRotate;
-        config.gmtOffsetHours = 8;
+        config.gmtOffsetHours = 8;      //default to AWST (Perth) offset
 		return 0;
 	}
 	if (config.version != EEPROM_VERSION)
@@ -279,9 +308,10 @@ RgbColor GetBackgroundColour()
     switch( g_config.displayMode)
     {
         case eDisplayMode::eHalfLight:
-            return RgbColor(128, 128, 128);
+            //return RgbColor(64, 64, 64);
+            return RgbColor(32, 32, 32);
         case eDisplayMode::eFullLight:
-            return RgbColor(256, 256, 256);
+            return RgbColor(255, 255, 255);
         case eDisplayMode::eOff:    //note: We shouldn't get here if "off"!
         case eDisplayMode::eText:
         default:
@@ -291,44 +321,23 @@ RgbColor GetBackgroundColour()
 
 void clearBanner()
 {
-    Serial.println("clearBanner");
     RgbColor colour = GetBackgroundColour();
     for(uint16_t pixel=0; pixel <NUM_PIXELS; pixel++)
     {
-        Serial.print(freeMemory()), Serial.print(",");
         strip.SetPixelColor(pixel, colour);
     }
-    Serial.print("color:");Serial.print(colour.R);Serial.print(colour.G);Serial.print(colour.B);Serial.println();
 }
 
-short LEDCharsIndex(char ch)
-{
-    for(short i=0; i< NUM_CHARS; i++)
-    {
-        Serial.print(LEDChars[i].refChar);Serial.print(","); Serial.println(i);
-        if( LEDChars[i].refChar == ch)
-        {
-            Serial.print("LEDCharsIndex ");Serial.print(ch);Serial.print(","); Serial.println(i);
-            return i;
-        }
-    }
-    return -1;
-}
 
 //refChar is the char to write
 //offset is lines of 8 leds from 0 along the Banner bar
 //colour is the colour of the text
 short bannerChar(char ch, int offset, RgbColor colour)
 {
-    short index = LEDCharsIndex(ch);
+    LEDChar ledChar;
+    GetLEDChar(ch, &ledChar);
 
-    if(index < 0 || index >= NUM_CHARS )  //not found
-    {
-        Serial.print("Reject (");Serial.print(index); Serial.print(")");Serial.println(ch);
-        return 0;
-    }
-
-    for(int i=0; i <LEDChars[index].width;i++)
+    for(int i=0; i < ledChar.width;i++)
     {
         if(offset+i >= 0 )
         {
@@ -338,15 +347,22 @@ short bannerChar(char ch, int offset, RgbColor colour)
                 RgbColor onColour = colour;
                 RgbColor offColour = GetBackgroundColour();
                 RgbColor pixelColour;
-                if( (offset+i) %2 == 0) // the LEDS go alternat direction each line of the bar!
-                    pixelColour = LEDChars[ledIndex].bits[i] & 1<<b ? onColour : offColour;
+                if( (offset+i) %2 == 1) // the LEDS go alternat direction each line of the bar!
+                    pixelColour = ledChar.bits[i] & 1<<b ? onColour : offColour;
                 else
-                    pixelColour = LEDChars[ledIndex].bits[i] & 1<<(7-b) ? onColour : offColour;
-                strip.SetPixelColor(ledIndex+b, pixelColour);
+                    pixelColour = ledChar.bits[i] & 1<<(7-b) ? onColour : offColour;
+                if( ledIndex+b < 0 || ledIndex+b >= NUM_PIXELS)
+                {
+                    Serial.print(F("Bad Pixel("));Serial.print(ledIndex+b);Serial.println(F(")"));
+                }
+                else
+                {
+                    strip.SetPixelColor(ledIndex+b, pixelColour);
+                }
             }
         }
     }
-    return LEDChars[index].width;
+    return ledChar.width;
 }
 
 short bannerDigit(uint8_t digit, int offset, RgbColor colour)
@@ -356,33 +372,55 @@ short bannerDigit(uint8_t digit, int offset, RgbColor colour)
 
 void printString(char* str, RgbColor inColour, uint8_t intensity = 255, short offset = -1)
 {
-    Serial.println(str);
-    
-    RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
     clearBanner();
-    if(offset == -1)        //center text on banner
+    if( g_config.displayMode != eDisplayMode::eOff)
     {
-        short width = 0;
-        for(int i=0; i< strlen(str); i++)
+        RgbColor colour = RgbColor(inColour.R*intensity/255,inColour.G*intensity/255,inColour.B*intensity/255);
+        LEDChar ledChar;
+
+        if(offset == -1)        //center text on banner
         {
-            Serial.println(str[i]);
-            short index = LEDCharsIndex(str[i]);
-            if( index >=0 )
-                width + LEDChars[index].width;
+            short width = 0;
+            for(int i=0; i< strlen(str); i++)
+            {
+                GetLEDChar(str[i], &ledChar);
+                width += ledChar.width+1;
+            }
+            offset = 16 - width/2;
+            Serial.print(F("str,l,w,o="));
+            Serial.print(str);
+            Serial.print(F(","));
+            Serial.print(strlen(str));
+            Serial.print(F(","));
+            Serial.print(width);
+            Serial.print(F(","));
+            Serial.println(offset);
         }
-        offset = 16 - width/2;
-        Serial.print("w/o"); Serial.print(width); Serial.print(","); Serial.println(offset);
-    }
-    Serial.print("offset="); Serial.println(offset);
-
-    for(short i=0; i< strlen(str); i++)
-    {
-        offset += bannerChar(str[i],offset, colour);
-    }
-
+        //Serial.print(F("Str "));
+        for(short i=0;i<strlen(str); i++)
+        {
+        //Serial.print(str[i]);Serial.print(F(":"));Serial.print(offset);Serial.print(F(","));
+            offset += bannerChar(str[i], offset, colour);
+            offset += 1;
+        }
+        //Serial.println();
+    }    
     strip.Show();
 }
 
+char* my_dtostrf(float val, signed char width, unsigned char prec, char* str)
+{
+    dtostrf( val, width, prec, str );
+    //assume width is -ve. i.e. strip from end
+    for(signed char i=(-1*width)-1;i>=0;i--)
+    {
+        if(str[i]==' ' || str[i]=='\0')
+            str[i] = '\0';
+        else
+            break;
+    }
+    return str;
+}
 
 void Blink(byte PIN, byte DELAY_MS, byte loops) 
 {
@@ -496,7 +534,6 @@ void testBanner()
 }
 
 
-
 void setup()
 {
     pinMode(LED, OUTPUT);    
@@ -510,7 +547,7 @@ void setup()
     Serial.println(F("GPS sketch"));
 
     ReadEEPROMSettings( g_config );
-    g_config.displayType = eDisplayType::ePressure;
+    
     Serial.print(F("EEPROM version="));
     Serial.print(g_config.version);
     Serial.print(F(",DisplayType="));
@@ -546,12 +583,9 @@ void setup()
       Serial.println(F("Could not find BME280 sensor!"));
     }
 
-    //setTime(9,12,0,12,3,2023);
-
     strip.Begin();
     for(uint16_t ui=0; ui<NUM_PIXELS; ui++)
         strip.SetPixelColor(ui, RgbColor(0,0,0));
-
     strip.Show();
 
     for(uint8_t button = 0; button < NUM_BUTTONS; button++)
@@ -559,22 +593,9 @@ void setup()
         attachPinChangeInterrupt(g_buttons[button], interruptHandlerIR, CHANGE);
     }
 
+    Serial.println("Exit setup()");
 //    Serial.println(F("Watchdog timer set for 8 seconds"));
 //    wdt_enable(WDTO_8S);  
-}
-
-
-char* my_dtostrf(float val, signed char width, unsigned char prec, char* str)
-{
-    dtostrf( val, width, prec, str );
-    for(signed char i=width-1;i>=0;i--)
-    {
-        if(str[i]==' ' || str[i]=='\0')
-            str[i] = '\0';
-        else
-            break;
-    }
-    return str;
 }
 
 void loop()
@@ -593,11 +614,13 @@ void loop()
         //move into the setTime mode
         g_settingTime.settingTime = true;
         g_settingTime.settingTimeTimeout = millis();
+        Serial.println(F("Setting time"));
     }
-    if(g_settingTime.settingTime && millis() - g_settingTime.settingTimeTimeout >5000)
+    if(g_settingTime.settingTime && millis() - g_settingTime.settingTimeTimeout >15000)
     {
         //move out of setTime mode
         g_settingTime.settingTime = false;
+        Serial.println(F("Finished setting time"));
     }
 
     if( !g_settingTime.settingTime)
@@ -622,10 +645,9 @@ void loop()
                 gpsNMEA.crack_datetime(&Year, &Month, &Day, &Hour, &Minute, &Second, NULL, &age);
                 if (age < 1000) 
                 {
-                // set the Time to the latest GPS reading
-                setTime(Hour, Minute, Second, Day, Month, Year);
-                g_clockSet = true;
-                //digitalClockDisplay();
+                    // set the Time to the latest GPS reading
+                    setTime(Hour, Minute, Second, Day, Month, Year);
+                    g_clockSet = true;
                 }
 
                 gpsNMEA.f_get_position(&g_latitude, &g_longitude, &age);
@@ -634,10 +656,6 @@ void loop()
             }
         }
     }
-
-    //Serial.print(F("Free mem("));Serial.print(freeMemory());Serial.println(F(")"));
-    Serial.print(F("displayMode="));Serial.println(g_config.displayMode);
-    Serial.print(F("displayType="));Serial.println(g_config.displayType);
 
     if( millis() - lastSendPressureTime > 15000 )
     {
@@ -683,56 +701,58 @@ void loop()
         displayToggle = g_config.displayType;
     }
 
-    Serial.print(F("displayToggle="));Serial.println(displayToggle);
+    Serial.print(F("Free mem,mode,type,toggle="));
+    Serial.print(freeMemory());
+    Serial.print(F(","));
+    Serial.print(g_config.displayMode);
+    Serial.print(F(","));
+    Serial.print(g_config.displayType);
+    Serial.print(F(","));
+    Serial.println(displayToggle);
 
-    #define BUF_SIZE 8
+    #define BUF_SIZE 10
     char chVal[BUF_SIZE];
     char str[BUF_SIZE];
 
-    Serial.print(F("Free mem="));
-    Serial.println(freeMemory());
-
     switch( displayToggle)
     {
-      case eDisplayType::ePressure:
-        //Produced is green
+      case eDisplayType::ePressure:        
         my_dtostrf( g_pressure, -BUF_SIZE, 1, chVal );
-        snprintf_P(str,BUF_SIZE,PSTR("%so"),chVal);
-        Serial.println( str);
-        printString(str,RgbColor(0,255,0), readLDR());
-        //Serial.println(g_pressure,1);
+        snprintf_P(str,BUF_SIZE,PSTR("%s"),chVal);
+        printString(str,RgbColor(0,255,0), readLDR()); //Green
         break;
       case eDisplayType::eTemp:
-        //Consumed is pink
         my_dtostrf( g_temperature, -BUF_SIZE, 1, chVal );
         snprintf_P(str,BUF_SIZE,PSTR("%sc"),chVal);
-        printString(str,RgbColor(255,0,0), readLDR());
-        //Serial.println(g_temperature,1);
+        printString(str,RgbColor(255,0,0), readLDR()); //Red
         break;
       case eDisplayType::eSpeed:
         my_dtostrf( g_speed, -BUF_SIZE, 1, chVal );
-        snprintf_P(str,BUF_SIZE,PSTR("%s k"),chVal);
-        printString(str,RgbColor(0,0,255), readLDR());
-        //Serial.println(g_speed,1);
+        snprintf_P(str,BUF_SIZE,PSTR("%sk"),chVal);
+        printString(str,RgbColor(0,0,255), readLDR()); //Blue
         break;
       case eDisplayType::eHeading:
         my_dtostrf( g_course, -BUF_SIZE, 1, chVal );
-        snprintf_P(str, BUF_SIZE,PSTR("%s"),chVal);
+        snprintf_P(str, BUF_SIZE,PSTR("%so"),chVal);
         printString(str,RgbColor(255,255,0), readLDR());
-        //Serial.println(g_course,1);
         break;
       case eDisplayType::eTime:
         if(g_clockSet)
         {
-          if( g_settingTime.settingTime)
-          {
-            if( second()%2 == 1)
-                snprintf_P(str,BUF_SIZE,PSTR("--:%2d"),minute());
+            int h = (hour()+g_config.gmtOffsetHours)%12;
+            if(h == 0)
+                h=12;
+            if( g_settingTime.settingTime)
+            {
+                if( second()%2 == 1)
+                    snprintf_P(str,BUF_SIZE,PSTR("--:%02i"),minute());
+                else
+                    snprintf_P(str,BUF_SIZE,PSTR("%02i:%02i"),h,minute());
+            }
             else
-                snprintf_P(str,BUF_SIZE,PSTR("%2d:%2d"),(hour()+g_config.gmtOffsetHours)%24,minute());
-          }
-          else
-            snprintf_P(str,BUF_SIZE,PSTR("%2d%s%2d"),(hour()+g_config.gmtOffsetHours)%24, (second()%2?':':' '),minute());
+            {      
+                snprintf_P(str,BUF_SIZE,PSTR("%2i%c%02i"),h, (second()%2?':':' '),minute());
+            }
         }
         else
         {
