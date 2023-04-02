@@ -128,6 +128,7 @@ float g_humidity = 0;
 bool g_clockSet = false;
 
 //storing the last 4 hours of pressures
+const int PRESURE_UPDATE_PERIOD = 5000; //ms
 const uint8_t PRESSURE_HISORY_SIZE = 4;
 float g_pressureHistory[PRESSURE_HISORY_SIZE];
 int8_t g_pressureHistoryIndex = 0;
@@ -566,7 +567,7 @@ void loop()
     #define BUF_SIZE 8
     static char chVal[BUF_SIZE];
     static char str[BUF_SIZE];
-    static uint32_t lastSendPressureTime = millis() - 15000;
+    static uint32_t lastSendPressureTime = millis() - PRESURE_UPDATE_PERIOD;
     static int displayToggle = 2;
     static unsigned long displayRotateTime = millis();
     //static bool toggleTestPressure = false;
@@ -591,10 +592,10 @@ void loop()
 
     if( !g_settingTime.settingTime)
     {
-        //Need to reset the serial after each call to NeoPixel as neoPixel stops interrupts breaks AltSoftSerial
-        //Delay 1100 to fill serial buffer (1 message/second)
-        //gpsSerial.begin(GPS_BAUD_RATE);
-        delay(900);
+        // Need to wait for the buffer to fill. Neopixel and Serial read both use the 16bit timer 
+        // and serial buffer corrupts if the Neopixel writes while serial receives.
+        //delay 950 should do it!
+        delay(950);
         
         while (gpsSerial.available())
         {
@@ -623,36 +624,43 @@ void loop()
         }
     }
 
-    if( millis() - lastSendPressureTime > 15000 )
+    if( millis() - lastSendPressureTime > PRESURE_UPDATE_PERIOD )
     {
         digitalWrite(LED_PIN,HIGH);
         lastSendPressureTime = millis();
 
-        bme.read(g_pressure, g_temperature, g_humidity); //, tempUnit, presUnit);
+        bme.read(g_pressure, g_temperature, g_humidity);
  
 
         if( g_clockSet )
         {
-            //g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
-            //update the pressure history every hour
             g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
             if(g_thisHour != hour())
             {
                 //Every hour, move the index along 1
                 g_pressureHistoryIndex = (g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE;
-                g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
+                
+                //initialise 4 hour history of readings with the current reading.
+                // For the first 4 hours of operation, the change will be relative to the power-on time
+                for(int i=0; i<PRESSURE_HISORY_SIZE;i++)
+                {
+                    if(g_pressureHistory[i] == __FLT_MAX__ )
+                    {
+                        g_pressureHistory[i] = g_pressure;
+                    }
+                }
                 g_thisHour = hour();
             }
-            // else
+            // else //for testing
             // {
-            //     if( fabs(g_pressure - g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE]) > 4 )
+            //     if( fabs(g_pressure - g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE]) > 4 )
             //         toggleTestPressure = !toggleTestPressure;
             //     if( toggleTestPressure )
-            //         g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE] -= 1.0;
+            //         g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE] -= 1.0;
             //     else
-            //         g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE] += 1.0;
+            //         g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE] += 1.0;
             //     Serial.print(F("LastPressure="));
-            //     Serial.println(g_pressureHistory[(g_pressureHistoryIndex-1)% PRESSURE_HISORY_SIZE],1);
+            //     Serial.println(g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE],1);
             // }
         }
 
@@ -703,10 +711,9 @@ void loop()
     {
       case eDisplayType::ePressure:        
         ch = ' ';
-        if(g_pressureHistory[(g_pressureHistoryIndex-1)%PRESSURE_HISORY_SIZE] != __FLT_MAX__ &&
-           g_pressureHistory[(g_pressureHistoryIndex  )%PRESSURE_HISORY_SIZE] != __FLT_MAX__  )
+        if(g_pressureHistory[(g_pressureHistoryIndex+1)%PRESSURE_HISORY_SIZE] != __FLT_MAX__ )
         {
-            float pressureChange = g_pressureHistory[(g_pressureHistoryIndex)%PRESSURE_HISORY_SIZE] - g_pressureHistory[(g_pressureHistoryIndex-1)%PRESSURE_HISORY_SIZE];
+            float pressureChange = g_pressure - g_pressureHistory[(g_pressureHistoryIndex+1)%PRESSURE_HISORY_SIZE];
             if(      pressureChange >4)
                 ch = 'A';
             else if( pressureChange >2)
@@ -723,6 +730,7 @@ void loop()
         my_dtostrf( g_pressure, -BUF_SIZE, 1, chVal );
         if( ch != ' ' && second()%2==0)
         {
+            //replace the last digit with a fall/rising arrow showing the rate of change
             memset(str,0,BUF_SIZE);
             strncpy(str,chVal,5);
             memset(chVal,0,BUF_SIZE);
@@ -733,9 +741,6 @@ void loop()
         {
             snprintf_P(str,BUF_SIZE,PSTR("%s"),chVal);
         }
-
-        //my_dtostrf( g_pressure, -BUF_SIZE, 1, chVal );
-        //snprintf_P(str,BUF_SIZE,PSTR("%s"),chVal);
         printString(str,RgbColor(0,255,0), readLDR()); //Green
         break;
       case eDisplayType::eTemp:
