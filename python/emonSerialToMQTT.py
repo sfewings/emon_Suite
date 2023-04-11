@@ -13,9 +13,14 @@ class SerialInput:
         self.ser = ser 
         self.queue = queue.Queue(1000)
         self.rssi = 0
+        self._running = True
+
+    def terminate(self):
+        self._running = False
+        self.ser.close()        
 
 def serial_read(serialInput):
-    while True:
+    while True and serialInput._running:
         line = serialInput.ser.readline().decode('utf-8')
         serialInput.queue.put(line)
 
@@ -91,4 +96,5 @@ if __name__ == "__main__":
     
     print(f"emonSerialToMQTT closing. No serial recieved for {(datetime.datetime.now()-lastReceivedDataPacket).total_seconds()} seconds.")
 
-
+    for ser in serInputs:
+        ser.terminate()
