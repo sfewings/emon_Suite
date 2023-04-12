@@ -82,3 +82,11 @@ To drop a single value from a sensor in a given time range
     DELETE FROM rain WHERE time > '2023-04-08 02:25:00' and time < '2023-04-08 02:25:04'
 5. See if the data was deleted
     SELECT * FROM rain WHERE time > '2023-04-08 02:25:00' and time < '2023-04-08 02:25:04'
+ or
+4. Show all rain values above a realistic values
+    SELECT * FROM rain WHERE value > 5000
+        time                sensor sensorGroup sensorName value
+        ----                ------ ----------- ---------- -----
+        1666951561713521000 rain   rain gauge  Rain gauge 395986585.8
+5. Delete each value based on the time from the SELECT results
+    DELETE FROM rain WHERE time = 1666951561713521000
