@@ -69,3 +69,16 @@ To drop the sensor database from influx and create a new one
     DROP DATABASE sensors
 4. Create a new sensors database
     CREATE DATABASE sensors
+
+To drop a single value from a sensor in a given time range
+==========================================================
+1. exec influx inside the influx container
+    docker exec -it 999fca3ed0cd sh
+2. start the influx cli
+    influx
+3. Use the sensors database
+    use sensors
+4. Delete the records within a range based on UTC time
+    DELETE FROM rain WHERE time > '2023-04-08 02:25:00' and time < '2023-04-08 02:25:04'
+5. See if the data was deleted
+    SELECT * FROM rain WHERE time > '2023-04-08 02:25:00' and time < '2023-04-08 02:25:04'
