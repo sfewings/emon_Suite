@@ -16,8 +16,11 @@
 #include <Wire.h>
 
 /////////////////////////////////////////
-#define     GPS_RX_PIN              6               // Rx from PMS (== PMS Tx)
-#define     GPS_TX_PIN              5               // Tx to PMS (== PMS Rx)
+//  Moteino GPS BME280 CY271 board : rx=5, tx= 6
+//  Breadboard Enchantee V1        : rx=6, tx=5
+//  LED banner                     : rx=8, tx=9
+#define     GPS_RX_PIN              5               // Rx from PMS (== PMS Tx)
+#define     GPS_TX_PIN              6               // Tx to PMS (== PMS Rx)
 #define     GPS_BAUD_RATE         9600               // PMS5003 uses 9600bps
 #define     LED                     13               // Built-in LED pin
 
