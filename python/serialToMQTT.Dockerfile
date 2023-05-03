@@ -8,6 +8,5 @@ RUN pip3 install pyemonlib-0.1.0-cp37-cp37m-linux_armv7l.whl
 RUN pip3 install numpy
 ENV MQTT_IP=localhost
 ENV SERIAL_PORT=/dev/ttyUSB0
-ENV SERIAL_PORT2=none
-CMD python ./emonSerialToMQTT.py -m $MQTT_IP -c $SERIAL_PORT -c2 $SERIAL_PORT2 -s $SETTINGS_PATH
+CMD python ./emonSerialToMQTT.py -m $MQTT_IP -c $SERIAL_PORT -s $SETTINGS_PATH
 #CMD ["sh"]
