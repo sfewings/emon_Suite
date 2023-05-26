@@ -130,7 +130,7 @@ const uint8_t TEMPERATURE_PIN = 4;
 const uint8_t PIXEL_PIN = 3;
 const uint8_t LED_PIN = A3;  //Pin 17
 const uint8_t NUM_BUTTONS = 2;
-const uint8_t  g_buttons[NUM_BUTTONS] = { A1, A2 };	//pin number for each input A1, A2.  Pins 15 & 16
+const uint8_t  g_buttons[NUM_BUTTONS] = { A2, A1 };	//pin number for each input A1, A2.  Pins 15 & 16
 const uint16_t NUM_PIXELS = 256;
 
 volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
@@ -138,15 +138,22 @@ volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
 volatile uint8_t g_displayMode = 0; //0 is off, 1 is dimmed text, 2 is white light
 volatile uint8_t g_fontIndex = 0;
 
+volatile uint8_t g_numInterupts = 0;
+
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(NUM_PIXELS,PIXEL_PIN);
 
 RH_RF69 g_rf69;
 
-PayloadBase g_basePayload;
-PayloadGPS g_payloadGPS;
-PayloadTemperature g_payloadTemperature;
-PayloadBase g_payloadBase;
-PayloadPulse g_payloadPulse;
+PayloadGPS          g_payloadGPS;
+PayloadTemperature  g_payloadTemperature;
+PayloadBase         g_payloadBase;
+PayloadPulse        g_payloadPulse;
+PayloadRain         g_payloadRain;
+PayloadBattery      g_payloadBattery;
+
+time_t	g_startTime = 0;
+int    g_currentDay = 0;
+unsigned long g_rainStartOfToday = 0;
 
 
 OneWire oneWire(4); //Pin 4
@@ -173,7 +180,8 @@ void interruptHandlerIR()
     * D8-D13 = PCINT 0-5 = PCIR0 = PB = PCIE0 = pcmsk0
     * A0-A5 (D14-D19) = PCINT 8-13 = PCIR1 = PC = PCIE1 = pcmsk1
     */
-
+    g_numInterupts = PCintPort::arduinoPin;
+    
     uint8_t button = 0;
     while(g_buttons[button] != PCintPort::arduinoPin)
     {
@@ -186,12 +194,12 @@ void interruptHandlerIR()
     if(msSinceLastButton <20)
         return;     //button debounce
 
-    if( button == 0)
+    if( button == 1)
     {
         g_fontIndex = ((g_fontIndex+1) % NUM_FONTS);
     }
 
-    if( button == 1)
+    if( button == 0)
     {
         g_displayMode = ( (g_displayMode+1) % 3);
     }
@@ -386,7 +394,6 @@ void setup()
 
     g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-
     pinMode( LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
 
@@ -397,13 +404,27 @@ void setup()
 	EmonSerial::PrintGPSPayload(NULL);
     memset(&g_payloadGPS, 0, sizeof(PayloadGPS));
 
-    strip.Begin();
-    strip.Show();
+    EmonSerial::PrintBasePayload(NULL);
+    EmonSerial::PrintRainPayload(NULL);
+	EmonSerial::PrintBatteryPayload(NULL);
 
     for(uint8_t button = 0; button < NUM_BUTTONS; button++)
+    //for(uint8_t button = NUM_BUTTONS-1; button >=0 ; button--)
     {
         attachPinChangeInterrupt(g_buttons[button], interruptHandlerIR, RISING);
     }
+
+
+    memset( &g_payloadGPS,0, sizeof(PayloadGPS));
+    memset( &g_payloadTemperature,0, sizeof(PayloadTemperature));
+    memset( &g_payloadBase,0, sizeof(PayloadBase));
+    memset( &g_payloadPulse,0, sizeof(PayloadPulse));
+    memset( &g_payloadRain,0, sizeof(PayloadRain));
+    memset( &g_payloadBattery,0, sizeof(PayloadBattery));
+
+
+    strip.Begin();
+    strip.Show();
 
 	//Temperature sensor setup
     g_payloadTemperature.subnode = 0;
@@ -458,20 +479,40 @@ void loop()
 			EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
 		}
 
-		if ( node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
-		{
-			g_basePayload = *((PayloadBase*)buf);
-			EmonSerial::PrintBasePayload(&g_basePayload);			 // print data to serial
-			setTime(g_basePayload.time);
-		}
-
 		if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
 		{
 			g_payloadPulse = *(PayloadPulse*)buf;							// get payload data
 
-			EmonSerial::PrintPulsePayload(&g_payloadPulse);				// print data to serial
+			EmonSerial::PrintPulsePayload(&g_payloadPulse);
 		}
 
+		if (node_id == RAIN_NODE && len == sizeof(PayloadRain))						// ==== RainGauge Jeenode ====
+		{
+			g_payloadRain = *(PayloadRain*)buf;	// get emonbase payload data
+			
+			if (g_rainStartOfToday == 0)
+			{
+				g_rainStartOfToday = g_payloadRain.rainCount;
+			}
+			EmonSerial::PrintRainPayload(&g_payloadRain);
+		}
+
+		if ( node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
+		{
+			g_payloadBase = *((PayloadBase*)buf);
+			setTime(g_payloadBase.time);
+			if (g_currentDay == -1)
+			{
+				//first time received from base
+				g_currentDay = day();
+			}
+			EmonSerial::PrintBasePayload(&g_payloadBase);
+		}
+		if ( node_id == BATTERY_NODE && len == sizeof(PayloadBattery))						// jeenode base Receives the time
+		{
+			g_payloadBattery = *((PayloadBattery*)buf);
+			EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+		}
     }
 
     if( millis()-temperatureUpdateTime > 60000 && g_payloadTemperature.numSensors !=0 )
@@ -505,6 +546,18 @@ void loop()
 
     if( millis()-displayToggleTime > 3000)
     {
+		//update 24hr tallies
+		if ((timeStatus() == timeSet))
+		{
+            if (day() != g_currentDay)
+            {
+				//reset the rain for the new day
+                g_rainStartOfToday = g_payloadRain.rainCount;
+                g_currentDay = day();
+			}
+		}        
+        
+        
         displayToggle++;
         displayToggleTime = millis();
         if( g_displayMode == 0)
@@ -525,8 +578,21 @@ void loop()
 #ifdef HOUSE_BANNER
     if( displayToggle %2 == 0)
     {
-        //Produced is green
-        printValue( g_payloadPulse.power[1], RgbColor(0,255,0), -1, readLDR());
+        if (g_payloadRain.rainCount - g_rainStartOfToday != 0)
+        {
+            //rainfall is blue
+            printValue((float)(g_payloadRain.rainCount - g_rainStartOfToday)/5.0, 1, RgbColor(0,0,255),-1, readLDR());
+        }
+        else if( g_payloadPulse.power[1] > 5 )
+        {
+            //Produced is green
+            printValue( g_payloadPulse.power[1], RgbColor(0,255,0), -1, readLDR());
+        }
+        else
+        {
+            //print the battery voltage. Red
+            printValue( (float) g_payloadBattery.voltage[0]/100.0, 1, RgbColor(255,0,0), -1, readLDR());
+        }
     }    
     else
     {
@@ -545,6 +611,8 @@ void loop()
         printValue(g_payloadGPS.speed, 2, RgbColor(0,0,255), -1, readLDR());
     }
 #endif
+    
+    //Serial.print(F("Num interrupts=")); Serial.println(g_numInterupts);
 
     digitalWrite(LED_PIN, LOW);
     if( g_displayMode == 0)
