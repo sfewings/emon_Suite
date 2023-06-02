@@ -28,7 +28,7 @@ class emon_mqtt:
         }
         self.mqttClient = mqtt.Client()
         self.mqttClient.on_connect = self.on_connect
-        self.mqttClient.connect(mqtt_server, mqtt_port, 60)
+        self.mqttClient.connect(mqtt_server, mqtt_port, 120)
         self.mqttClient.loop_start()
 
     # def __del__(self):
@@ -39,7 +39,7 @@ class emon_mqtt:
 
     def on_disconnect(self, client, userdata,rc=0):
         print("DisConnected result code {rc}")
-        self.mqttClient.loop_stop()
+        #self.mqttClient.loop_stop()
     
     def printException(self, exceptionSource, reading, ex):
         if( self.lineNumber == -1):
