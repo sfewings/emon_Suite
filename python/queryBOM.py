@@ -1,7 +1,7 @@
 import sys
 import time
 import argparse
-from weather_au import api
+#from weather_au import api
 from weather_au import observations
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
@@ -20,10 +20,10 @@ def writeValue(sensorName, temperatureValue, BOM_id, url ):
   print(f"Write to influx: {ret}")
   client.close()
 
-def getPerthTemperature():
-  w = api.WeatherApi(search='perth+wa', debug=0)
-  observations = w.observations()
-  return observations['temp']
+# def getPerthTemperature():
+#   w = api.WeatherApi(search='perth+wa', debug=0)
+#   observations = w.observations()
+#   return observations['temp']
 
 print("Query BOM Perth temperature and publish to influxdb:8086")
 
@@ -34,8 +34,8 @@ influxURL = f"http://{args.influx}:8086"
 
 
 while 1:
-  temperature = getPerthTemperature()
-  writeValue("Perth BOM", temperature, 94608, influxURL)
+#  temperature = getPerthTemperature()
+#  writeValue("Perth BOM", temperature, 94608, influxURL)
 
   obs_data = observations.Observations('WA')
   writeValue("Murchison",    float(obs_data.air_temperature(94422)), 94422, influxURL)
