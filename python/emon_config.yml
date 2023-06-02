@@ -17,6 +17,9 @@ temp:
     t1: Work area - Front of office
     t2: Office room 2
     t3: Office room 1
+  3:
+    name: QV1 Unit
+    t0: QV1
 hws:
   0:
     name: Hot water system
