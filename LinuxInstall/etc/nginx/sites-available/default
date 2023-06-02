@@ -82,6 +82,7 @@ server {
  
   location /grafana/ {
     proxy_pass http://192.168.1.121:3000/grafana/;
+	proxy_set_header Host $http_host;
   }
 
   location /grafana2/ {

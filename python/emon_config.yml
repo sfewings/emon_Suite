@@ -19,7 +19,11 @@ temp:
     t3: Office room 1
   3:
     name: QV1 Unit
+<<<<<<< HEAD
     t0: QV1
+=======
+    t0: QV1_onsite
+>>>>>>> dd40a8f3b586d0349f15a25ec1744e863308a63b
 hws:
   0:
     name: Hot water system

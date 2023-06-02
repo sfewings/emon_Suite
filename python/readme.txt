@@ -36,6 +36,13 @@ To build docker file and run
 6. docker build -f MQTTToInflux.Dockerfile -t "emon_mqtt_to_influx:v1" .
 7. docker run --rm -it -e "MQTT_IP=mqtt" -e "INFLUX_IP=influxdb" -v /share/emon_Suite/python:/share/config --name emon_influx --network=docker-compose-influxdb-grafana_default emon_mqtt_to_influx:v1
 
+To build multiplatform container (emonSerialToMQTT.py) Needs pyemonlib for all platforms in python/pyEmon/dist 
+======================================================
+docker buildx create --name emonbuilder --driver docker-container --bootstrap
+docker buildx use emonbuilder
+docker buildx inspect
+docker buildx build --platform linux/amd64,linux/arm/v7 -f serialToMQTT.Dockerfile -t "sfewings32/emon_serial_to_mqtt:latest" --push . 
+
 Useful docker commands
 ======================
 docker logs --details -f emon_log
