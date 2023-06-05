@@ -68,7 +68,7 @@ if __name__ == "__main__":
                     if(RSSIvalue!=0):
                         line = f"{line}:{RSSIvalue}"
                     emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
-                    writeLog(logPath, line)
+                    #writeLog(logPath, line)
                     #print(line)
                     RSSIvalue = 0
                     lastReceivedDataPacket = datetime.datetime.now()
