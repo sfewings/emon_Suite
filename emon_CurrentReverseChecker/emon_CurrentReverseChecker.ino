@@ -396,7 +396,8 @@ void loop()
 	g_lastMillis = now;
 	bool bNoisyData = false;
 	double v_current = ReadingDifferential(0, bNoisyData);
-	double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	double amps = v_current * 50.0 / 50.0; // //shunt is 50Amps for 50mV;  Li ion
+	//double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	//double watts = voltage * amps/1000.0;
 
 
@@ -433,7 +434,7 @@ void loop()
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
 	//--------------------------------------------------------------------------------------------	
-	//if(millis() - g_lastSendTime > SEND_PERIOD)
+	if(millis() - g_lastSendTime > SEND_PERIOD)
 	{
 		g_lastSendTime = millis();
 		digitalWrite(LED_PIN, HIGH);
