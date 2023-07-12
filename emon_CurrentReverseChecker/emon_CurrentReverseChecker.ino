@@ -396,7 +396,7 @@ void loop()
 	g_lastMillis = now;
 	bool bNoisyData = false;
 	double v_current = ReadingDifferential(0, bNoisyData);
-	double amps = v_current * 50.0 / 50.0; // //shunt is 50Amps for 50mV;  Li ion
+	double amps = v_current * 150.0 / 50.0; // //shunt is 150Amps for 50mV;  Li ion
 	//double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	//double watts = voltage * amps/1000.0;
 
@@ -411,7 +411,8 @@ void loop()
 	g_payloadBattery.pulseOut[0] = g_mWH_Out;
 
 	double v_current1 = ReadingDifferential(1, bNoisyData);
-	double amps1 = v_current1 * 90.0 / 100.0; //shunt is 90Amps for 100mV;
+	double amps1 = v_current1 * 150.0 / 50.0; // //shunt is 150Amps for 50mV;  Li ion
+	//double amps1 = v_current1 * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 
 	g_payloadBattery.power[1] = 50 * amps1;  //convert mV to mW @ 50v
 	if (g_payloadBattery.power[1] < 0)
