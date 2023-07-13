@@ -38,10 +38,10 @@ while 1:
 #  writeValue("Perth BOM", temperature, 94608, influxURL)
 
   obs_data = observations.Observations('WA')
-  writeValue("Murchison",    float(obs_data.air_temperature(94422)), 94422, influxURL)
+  writeValue("Perth",        float(obs_data.air_temperature(94608)), 94608, influxURL)
   writeValue("Meekatharra",  float(obs_data.air_temperature(94430)), 94430, influxURL)
   writeValue("Mount Magnet", float(obs_data.air_temperature(94429)), 94429, influxURL)
-  writeValue("Perth",        float(obs_data.air_temperature(94608)), 94608, influxURL)
+  writeValue("Murchison",    float(obs_data.air_temperature(94422)), 94422, influxURL)
 
   sys.stdout.flush()
 
