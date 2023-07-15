@@ -31,8 +31,8 @@ volatile unsigned long	g_RGlastTick = 0;
 unsigned long  g_lastMillis;
 PayloadBattery  g_payloadBattery;
 
-double g_mWH_In;
-double g_mWH_Out;
+double g_mWH_In[BATTERY_SHUNTS] = { 0.0, 0.0, 0.0 };
+double g_mWH_Out[BATTERY_SHUNTS] = { 0.0, 0.0, 0.0 };
 unsigned long g_lastSendTime;
 
 typedef struct {
@@ -327,9 +327,9 @@ void setup()
 	Serial.println(F("Current reverse checker"));
 
 	if (!g_rf69.init())
-		Serial.println("rf69 init failed");
+		Serial.println(F("rf69 init failed"));
 	if (!g_rf69.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
+		Serial.println(F("rf69 setFrequency failed"));
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -337,18 +337,21 @@ void setup()
 	g_rf69.setHeaderId(BATTERY_NODE);
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-	Serial.print("RF69 initialise node: ");
+	Serial.print(F("RF69 initialise node: "));
 	Serial.print(BATTERY_NODE);
-	Serial.println(" Freq: 915MHz");
+	Serial.println(F(" Freq: 915MHz"));
 
-	Serial.println("Getting single-ended readings from AIN0..3");
-	Serial.println("ADC Range: +/- 6.144V (1 bit = 3mV)");
+	Serial.println(F("Getting single-ended readings from AIN0..3"));
+	Serial.println(F("ADC Range: +/- 6.144V (1 bit = 3mV)"));
 	ads1115.begin();
 
 	
 	g_lastMillis = millis();
-	g_mWH_In = 0.0;
-	g_mWH_Out = 0.0;
+	for(int i = 0; i < BATTERY_SHUNTS; i++)
+	{
+		g_mWH_In[i] = 0.0;
+		g_mWH_Out[i] = 0.0;
+	}
 	g_lastSendTime = millis();
 
 	memset(&g_payloadBattery, 0, sizeof(g_payloadBattery));
@@ -394,43 +397,23 @@ void loop()
 	unsigned long now = millis();
 	unsigned long period = now - g_lastMillis;
 	g_lastMillis = now;
+
 	bool bNoisyData = false;
-	double v_current = ReadingDifferential(0, bNoisyData);
-	double amps = v_current * 150.0 / 50.0; // //shunt is 150Amps for 50mV;  Li ion
-	//double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-	//double watts = voltage * amps/1000.0;
-
-
-	g_payloadBattery.power[0] = 50 * amps;  //convert mV to mW @ 50V
-	if (g_payloadBattery.power[0] < 0)
-		g_mWH_Out += -1.0 * g_payloadBattery.power[0] * period / (60 * 60 * 1000.0); //convert to wH
-	else
-		g_mWH_In += g_payloadBattery.power[0] * period / (60 * 60 * 1000.0);
-	//this will do the rounding to units of pulses
-	g_payloadBattery.pulseIn[0] = g_mWH_In;
-	g_payloadBattery.pulseOut[0] = g_mWH_Out;
-
-	double v_current1 = ReadingDifferential(1, bNoisyData);
-	double amps1 = v_current1 * 150.0 / 50.0; // //shunt is 150Amps for 50mV;  Li ion
-	//double amps1 = v_current1 * 90.0 / 100.0; //shunt is 90Amps for 100mV;
-
-	g_payloadBattery.power[1] = 50 * amps1;  //convert mV to mW @ 50v
-	if (g_payloadBattery.power[1] < 0)
-		g_mWH_Out += -1.0 * g_payloadBattery.power[1] * period / (60 * 60 * 1000.0); //convert to wH
-	else
-		g_mWH_In += g_payloadBattery.power[1] * period / (60 * 60 * 1000.0);
-	//this will do the rounding to units of pulses
-	g_payloadBattery.pulseIn[1] = g_mWH_In;
-	g_payloadBattery.pulseOut[1] = g_mWH_Out;
-
-
-	//Serial.print("A0: (vIn) "); Serial.print(aRead); Serial.print(","); Serial.println(measuredvbat,3);
-	delay(1);
-	Serial.print("DIFF0:    "); Serial.print(v_current,3); Serial.print(","); Serial.println(amps,3);
-	delay(1);
-	Serial.print("DIFF0:    "); Serial.print(v_current1,3); Serial.print(","); Serial.println(amps1,3);
-	delay(1);
-	Serial.println(" ");
+	for(int i=0; i<2; i++)
+	{
+		double v_current = ReadingDifferential(i, bNoisyData);
+		double amps = v_current * 150.0 / 50.0; // //shunt is 150Amps for 50mV;  Li ion
+		g_payloadBattery.power[i] = 50 * amps;  //convert mV to mW @ 50V
+		if (g_payloadBattery.power[i] < 0)
+			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
+		else
+			g_mWH_In[i] += g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
+		//this will do the rounding to units of pulses
+		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
+		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
+		Serial.print(F("DIFF"));Serial.print(i);Serial.print(F(":    ")); Serial.print(v_current,3); Serial.print(","); Serial.println(amps,3);
+	}
+	Serial.println();
 
 	//--------------------------------------------------------------------------------------------
 	// 1. On RF recieve
