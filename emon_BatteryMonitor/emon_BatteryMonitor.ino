@@ -42,7 +42,6 @@ double g_mWH_In[BATTERY_SHUNTS] = { 0.0, 0.0, 0.0 };
 double g_mWH_Out[BATTERY_SHUNTS] = { 0.0, 0.0, 0.0 };
 unsigned long  g_lastMillis;
 PayloadBattery g_payloadBattery;
-//unsigned long g_lastSendTime;
 
 typedef struct {
 	double mean;
@@ -271,9 +270,9 @@ void setup()
 	EmonSerial::PrintRF12Init(g_rf12Init);
 #else
 	if (!g_rf69.init())
-		Serial.println("rf69 init failed");
+		Serial.println(F("rf69 init failed"));
 	if (!g_rf69.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
+		Serial.println(F("rf69 setFrequency failed"));
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -281,9 +280,9 @@ void setup()
 	g_rf69.setHeaderId(BATTERY_NODE);
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-	Serial.print("RF69 initialise node: ");
+	Serial.print(F("RF69 initialise node: "));
 	Serial.print(BATTERY_NODE);
-	Serial.println(" Freq: 915MHz");
+	Serial.println(F(" Freq: 915MHz"));
 #endif
 
 	EmonSerial::PrintBatteryPayload(NULL);
@@ -299,9 +298,9 @@ void setup()
 	// for (int i = 0; i < BATTERY_SHUNTS; i++)
 	// {
 	// 	g_mWH_In[i] = 0.0; 
-	// 	writeEEPROM(i, 0.0);
-	// 	g_mWH_Out[i] = 0.0;
-	// 	writeEEPROM(i + BATTERY_SHUNTS, 0.0);
+	//  	writeEEPROM(i, 0.0);
+	//  	g_mWH_Out[i] = 0.0;
+	//  	writeEEPROM(i + BATTERY_SHUNTS, 0.0);
 	// }
 
 	//Get double g_mWH_In and g_mWH_Out from eeprom
@@ -311,12 +310,24 @@ void setup()
 		g_mWH_Out[i] = readEEPROM(i + BATTERY_SHUNTS);
 	}
 
+	Serial.print(F("pulseIn[]"));
+	for (int i = 0; i < BATTERY_SHUNTS; i++)
+	{
+		Serial.print(F(","));Serial.print(g_mWH_In[i]); 
+	}
+	Serial.println();
+	Serial.print(F("pulseOut[]"));
+	for (int i = 0; i < BATTERY_SHUNTS; i++)
+	{
+		Serial.print(F(","));Serial.print(g_mWH_Out[i]); 
+	}
+	Serial.println();
+
 	g_lastMillis = millis();
-	//g_lastSendTime = millis();
 
   
-  Serial.println(F("Watchdog timer set for 8 seconds"));
-  wdt_enable(WDTO_8S);
+  	Serial.println(F("Watchdog timer set for 8 seconds"));
+  	wdt_enable(WDTO_8S);
   
 	delay(1000);
 	digitalWrite(LED_PIN, LOW);
@@ -378,7 +389,7 @@ void loop()
 		if(g_payloadBattery.power[i] < 0)
 			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
 		else
-			g_mWH_In[i] += g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
+			g_mWH_In[i] += 1.0* g_payloadBattery.power[i] * period / (60 * 60 * 1000.0);
 		//this will do the rounding to units of pulses
 		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
 		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
@@ -422,7 +433,7 @@ void loop()
 	uint32_t millisTaken = millis()- millisStart; 
 	Serial.print( F("loop_ms,") );
 	Serial.println( millisTaken );
-  wdt_reset();
+  	wdt_reset();
 	if( millisTaken < SEND_PERIOD )
 		delay( SEND_PERIOD - millisTaken);
 }
