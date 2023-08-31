@@ -13,3 +13,9 @@ Traceback (most recent call last):
   File "/home/pi/.local/lib/python3.7/site-packages/paho/mqtt/client.py", line 2911, in _packet_queue
     self._sockpairW.send(sockpair_data)
 TimeoutError: [Errno 110] Connection timed out
+
+31/08/2023, letsencrypt certbot renewal fails with "Failed to renew certificate shannstainable.fewings.org with error: Problem binding to port 80: Could not bind to IPv4 or IPv6."
+run sudo certbot renew --nginx
+Note: Added pre-hook = service nginx stop , post-hook = service nginx restart to /etc/letsencrypt/renewal/shannstainable.fewings.org.conf. To see if this works!
+
+
