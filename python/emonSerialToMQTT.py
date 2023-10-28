@@ -18,15 +18,15 @@ def check_int(s):
 
 def writeLog(logPath, line):
     time = datetime.datetime.now()
+    #09/07/2021 00:00:22
+    logLine = f"{time.strftime('%d/%m/%Y %H:%M:%S')},{line}"
+    print(logLine)
     if os.path.exists(logPath):
         filePath = f"{logPath}/{time.strftime('%Y%m%d_emonSerialToMQTT.TXT')}"
-        #09/07/2021 00:00:22
-        logLine = f"{time.strftime('%d/%m/%Y %H:%M:%S')},{line}"
         f=open(filePath, "a+", encoding= 'utf-8')
         f.write(logLine)
         f.write('\n')
         f.close()
-        print(logLine)
 
 
 if __name__ == "__main__":
