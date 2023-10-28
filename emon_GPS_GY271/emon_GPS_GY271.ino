@@ -22,7 +22,8 @@
 #define     GPS_RX_PIN              5               // Rx from PMS (== PMS Tx)
 #define     GPS_TX_PIN              6               // Tx to PMS (== PMS Rx)
 #define     GPS_BAUD_RATE         9600               // PMS5003 uses 9600bps
-#define     LED                     13               // Built-in LED pin
+#define     LED                     9               // Built-in LED pin
+//#define     LED                     13               // Built-in LED pin
 
 #define GSV_DISABLE F("$PUBX,40,GSV,0,0,0,0,0,0*59")
 #define GLL_DISABLE F("$PUBX,40,GLL,0,0,0,0,0,0*5C")
@@ -326,7 +327,7 @@ void loop()
     static uint32_t lastSendPressureTime = millis();
 
     bool newData = false;
-    
+   
 
     while (gpsSerial.available())
     {
