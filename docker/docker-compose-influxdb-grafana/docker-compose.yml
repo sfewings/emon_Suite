@@ -142,6 +142,20 @@ services:
       - mosquitto
     restart: always
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer-data:/data
+    ports:
+      - 9000:9000
+      - 9443:9443
+
 #   nginx-proxy:
 #     image: nginx
 #     container_name: nginx-proxy
@@ -182,3 +196,4 @@ volumes:
   mosquitto-data:
   mosquitto-logs:
   mosquitto-conf:
+  portainer-data:
