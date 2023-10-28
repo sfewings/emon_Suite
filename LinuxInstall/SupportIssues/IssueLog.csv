@@ -18,4 +18,7 @@ TimeoutError: [Errno 110] Connection timed out
 run sudo certbot renew --nginx
 Note: Added pre-hook = service nginx stop , post-hook = service nginx restart to /etc/letsencrypt/renewal/shannstainable.fewings.org.conf. To see if this works!
 
+29/10/2023  running Portainer docker image
+docker volume create portainer_data
+docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest
 
