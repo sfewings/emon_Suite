@@ -2,43 +2,45 @@ import argparse
 import datetime
 import time
 import serial
+import os
 import yaml
 from pyemonlib import emon_mqtt
 
 import queue
 import threading
 
-class SerialInput:
-    def __init__(self, ser):
-        self.ser = ser 
-        self.queue = queue.Queue(1000)
-        self.rssi = 0
-        self._running = True
-
-    def terminate(self):
-        self._running = False
-        self.ser.close()        
-
-def serial_read(serialInput):
-    while True and serialInput._running:
-        line = serialInput.ser.readline().decode('utf-8')
-        serialInput.queue.put(line)
 
 def check_int(s):
     if s[0] in ('-', '+'):
         return s[1:].isdigit()
     return s.isdigit()
 
+
+def writeLog(logPath, line):
+    time = datetime.datetime.now()
+    #09/07/2021 00:00:22
+    logLine = f"{time.strftime('%d/%m/%Y %H:%M:%S')},{line}"
+    print(logLine)
+    if os.path.exists(logPath):
+        filePath = f"{logPath}/{time.strftime('%Y%m%d_emonSerialToMQTT.TXT')}"
+        f=open(filePath, "a+", encoding= 'utf-8')
+        f.write(logLine)
+        f.write('\n')
+        f.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Connect emonRaspPiSerial to serial port and publish to MQTT")
     parser.add_argument("-c", "--Serial", help= "serial port to listen", default="/dev/ttyUSB0")
-    parser.add_argument("-c2", "--Serial2", help= "serial port 2 to listen", default="none")
     parser.add_argument("-s", "--settingsPath", help= "Path to emon_config.yml containing emon configuration", default="/share/emon_Suite/python/emon_config.yml")
+    parser.add_argument("-l", "--logPath", help= "Path to log", default="/share/Output/emonSerialToMQTT")
     parser.add_argument("-m", "--MQTT", help= "IP address of MQTT server", default="localhost")
     args = parser.parse_args()
     mqttServer = str(args.MQTT)
     serialPort = str(args.Serial)
-    serialPort2 = str(args.Serial2)
+    logPath = str(args.logPath)
+    
+    writeLog(logPath, args)
 
     # get the node names from the settings file
     # nodes = ['rain','temp','disp','pulse','hws','wtr','scl','bat','inv','bee','air','leaf']
@@ -54,47 +56,36 @@ if __name__ == "__main__":
     lastSentTimeUpdate = datetime.datetime.now()
     lastReceivedDataPacket = datetime.datetime.now()
 
-    serInputs = []
-    
-    serInputs.append( SerialInput( serial.Serial(serialPort, 9600, timeout=1) ))
-    threadA = threading.Thread(target=serial_read, args=(serInputs[0],),).start()
-    threadB = None
+    RSSIvalue = 0
 
-    if(serialPort2 != "none"):
-        serInputs.append( SerialInput( serial.Serial(serialPort2, 9600, timeout=1) ))
-        threadB = threading.Thread(target=serial_read, args=(serInputs[1],),).start()
-
-
-    while ((datetime.datetime.now()-lastReceivedDataPacket).total_seconds() < 600):
-        for ser in serInputs:
-            if( ser.queue.empty() ):
-                pass
+    with serial.Serial(serialPort, 9600, timeout=5) as ser:
+        while ((datetime.datetime.now()-lastReceivedDataPacket).total_seconds() < 600):
+            line = ser.readline().decode('utf-8').rstrip('\r\n')
+            writeLog(logPath, line)
+            if(line.startswith("RSSI")):
+                RSSIvalue = int(line[6:])     #parse -36 from "RSSI: -36"
             else:
-                line = ser.queue.get(True,1).rstrip('\r\n')
-                #print(line)
-                if(line.startswith("RSSI")):
-                    ser.rssi = int(line[6:])     #parse -36 from "RSSI: -36"
-                else:
-                    lineFields = line.split(',',2)
-                    if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
-                        if(ser.rssi!=0):
-                            line = f"{line}:{ser.rssi}"
-                        emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
-                        print(line)
-                        ser.rssi = 0
-                        lastReceivedDataPacket = datetime.datetime.now()
+                lineFields = line.split(',',2)
+                if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
+                    if(RSSIvalue!=0):
+                        line = f"{line}:{RSSIvalue}"
+                    emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
+                    #writeLog(logPath, line)
+                    #print(line)
+                    RSSIvalue = 0
+                    lastReceivedDataPacket = datetime.datetime.now()
 
-        #send a time update every 30 seconds
-        t = datetime.datetime.now()
-        if( (t-lastSentTimeUpdate).total_seconds() >30):
-            lastSentTimeUpdate = t
-            for ser in serInputs:
+            #send a time update every 30 seconds
+            t = datetime.datetime.now()
+            if( (t-lastSentTimeUpdate).total_seconds() >30):
+                lastSentTimeUpdate = t
                 offset = time.timezone if (time.localtime().tm_isdst == 0) else time.altzone
                 baseMsg = f"base,{int(t.timestamp())-offset}"
-                ser.ser.write(baseMsg.encode('utf-8'))
-                print(baseMsg)
+                ser.write(baseMsg.encode('utf-8'))
+                writeLog(logPath, baseMsg)
+                #print(baseMsg)
     
-    print(f"emonSerialToMQTT closing. No serial recieved for {(datetime.datetime.now()-lastReceivedDataPacket).total_seconds()} seconds.")
+    writeLog(logPath, f"emonSerialToMQTT closing. No serial recieved for {(datetime.datetime.now()-lastReceivedDataPacket).total_seconds()} seconds.")
+    #print(f"emonSerialToMQTT closing. No serial recieved for {(datetime.datetime.now()-lastReceivedDataPacket).total_seconds()} seconds.")
 
-    for ser in serInputs:
-        ser.terminate()
+    writeLog(logPath, "Terminating" )

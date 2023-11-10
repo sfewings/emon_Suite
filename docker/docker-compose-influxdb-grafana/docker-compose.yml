@@ -79,6 +79,7 @@ services:
       - TZ=${TIMEZONE}
     volumes:
       - /share/emon_Suite/python:/data
+      - /share/Output:/share/Output
     depends_on:
       - mosquitto
     restart: always
