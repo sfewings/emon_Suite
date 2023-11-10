@@ -83,21 +83,21 @@ services:
       - mosquitto
     restart: always
 
-  emon_serial_to_mqtt_lora:
-    image: sfewings32/emon_serial_to_mqtt:latest
-    container_name: emon_serial_lora
-    devices:
-      - /dev/ttyUSB1
-    environment:
-      - SETTINGS_PATH=/data/emon_config.yml
-      - SERIAL_PORT=/dev/ttyUSB1
-      - MQTT_IP=mqtt
-      - TZ=${TIMEZONE}
-    volumes:
-      - /share/emon_Suite/python:/data
-    depends_on:
-      - mosquitto
-    restart: always
+  # emon_serial_to_mqtt_lora:
+  #   image: sfewings32/emon_serial_to_mqtt:latest
+  #   container_name: emon_serial_lora
+  #   devices:
+  #     - /dev/ttyUSB1
+  #   environment:
+  #     - SETTINGS_PATH=/data/emon_config.yml
+  #     - SERIAL_PORT=/dev/ttyUSB1
+  #     - MQTT_IP=mqtt
+  #     - TZ=${TIMEZONE}
+  #   volumes:
+  #     - /share/emon_Suite/python:/data
+  #   depends_on:
+  #     - mosquitto
+  #   restart: always
       
   emon_mqtt_to_influx:
     image: sfewings32/emon_mqtt_to_influx:latest
@@ -141,6 +141,20 @@ services:
       - mosquitto
     restart: always
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer-data:/data
+    ports:
+      - 9000:9000
+      - 9443:9443
+
 #   nginx-proxy:
 #     image: nginx
 #     container_name: nginx-proxy
@@ -181,3 +195,4 @@ volumes:
   mosquitto-data:
   mosquitto-logs:
   mosquitto-conf:
+  portainer-data:
