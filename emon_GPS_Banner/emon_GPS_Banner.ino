@@ -1,10 +1,70 @@
 #include <Time.h>
 
 /*--------------------------- Libraries ----------------------------------*/
+//#define GPS_EMBEDDED
+#undef GPS_EMBEDDED
 
-#include <AltSoftSerial.h>
-//#include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
-#include <TinyNMEA.h>
+#ifdef GPS_EMBEDDED
+
+    #include <AltSoftSerial.h>
+    //#include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
+    #include <TinyNMEA.h>
+
+    #include <SPI.h>
+    //#include <avr/wdt.h>
+    #include <TimeLib.h>
+    #include <BME280I2C.h>
+    #include <Wire.h>
+
+    #define     GPS_RX_PIN              8               // Rx from GPS (== GPS Tx)
+    #define     GPS_TX_PIN              9               // Tx to GPS (== GPS Rx)
+    #define     GPS_BAUD_RATE         9600              // GPS uses 9600bps
+
+    // Software serial port
+    //SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);
+    AltSoftSerial gpsSerial;  //pin 8 and 9
+
+    BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
+                    // Oversampling = pressure ×1, temperature ×1, humidity ×1, filter off,
+    TinyNMEA gpsNMEA;
+#else
+
+    //#define HOUSE_BANNER
+    #undef HOUSE_BANNER
+    #ifdef HOUSE_BANNER
+        #define NETWORK_FREQUENCY 915.0
+    #else // BOAT_BANNER
+        #define NETWORK_FREQUENCY 914.0
+    #endif
+
+    #include <EmonShared.h>
+
+    #include <SPI.h>
+    #include <RH_RF69.h>
+    #include <OneWire.h>
+    #include <DallasTemperature.h>
+
+    RH_RF69 g_rf69;
+
+    PayloadGPS          g_payloadGPS;
+    PayloadTemperature  g_payloadTemperature;
+    PayloadBase         g_payloadBase;
+    PayloadPulse        g_payloadPulse;
+    PayloadRain         g_payloadRain;
+    PayloadBattery      g_payloadBattery;
+    PayloadPressure     g_payloadPressure;
+
+    OneWire oneWire(4); //Pin 4
+    DallasTemperature temperatureSensor(&oneWire);
+
+    time_t	g_startTime = 0;
+    int    g_currentDay = 0;
+    unsigned long g_rainStartOfToday = 0;
+    
+    const uint8_t VOLTAGE_MEASURE_PIN = A5;
+
+#endif
+
 
 #include <NeoPixelBus.h>
 #include <PinChangeInt.h>
@@ -13,18 +73,11 @@
 #include <util/crc16.h>
 #include <util/parity.h>
 
-#include <SPI.h>
-//#include <avr/wdt.h>
-#include <TimeLib.h>
-#include <BME280I2C.h>
-#include <Wire.h>
+
 
 #include "font_6x8.h"
 
 /////////////////////////////////////////
-#define     GPS_RX_PIN              8               // Rx from GPS (== GPS Tx)
-#define     GPS_TX_PIN              9               // Tx to GPS (== GPS Rx)
-#define     GPS_BAUD_RATE         9600              // GPS uses 9600bps
 #define     LED                     13              // Built-in LED pin
 
 
@@ -39,6 +92,8 @@ enum eDisplayType { eAutoRotate = 0,
 
 enum eDisplayMode { eOff = 0,
                     eText, 
+                    eEightLight,
+                    eQuarterLight,
                     eHalfLight, 
                     eFullLight,
                     eEndDisplayMode
@@ -47,9 +102,9 @@ enum eDisplayMode { eOff = 0,
 typedef struct {
   unsigned long pinDownTime;
   bool pinDown;
-  bool settingTime;
-  unsigned long settingTimeTimeout;
-} SettingTime;
+  bool settingMode;
+  unsigned long settingModeTimeout;
+} SettingMode;
 
 //Setting stored to EEPROM
 //EEPROM settings stored for an individual node.
@@ -88,17 +143,11 @@ const uint16_t NUM_PIXELS = 256;
 volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
 volatile unsigned long	g_changeDisplayTypePushTime = 0;
 volatile bool g_configChanged = false;
-volatile SettingTime g_settingTime = { 0, false, false, 0 };
+volatile SettingMode g_settingTime = { 0, false, false, 0 };
+volatile SettingMode g_settingLight = { 0, false, false, 0 };
 
 EEPROMConfig g_config = {0,0,0,0};
 
-// Software serial port
-//SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);
-AltSoftSerial gpsSerial;  //pin 8 and 9
-
-BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
-                  // Oversampling = pressure ×1, temperature ×1, humidity ×1, filter off,
-TinyNMEA gpsNMEA;
 
 float g_course = 0;
 float g_speed = 0;
@@ -177,11 +226,11 @@ void interruptHandlerIR()
         {
             if(g_config.displayType == eDisplayType::eTime )
             {
-                if( g_settingTime.settingTime )
+                if( g_settingTime.settingMode )
                 {
                     //increment the hour on a button down while setting time
                     g_config.gmtOffsetHours = (g_config.gmtOffsetHours+1)%12;   //we only do a 12 hour clock!
-                    g_settingTime.settingTimeTimeout = millis();    //reset on each button press
+                    g_settingTime.settingModeTimeout = millis();    //reset on each button press
                     g_configChanged = true;
                 }
                 else
@@ -198,7 +247,7 @@ void interruptHandlerIR()
         }
         else //LOW
         {
-            if(g_config.displayType == eDisplayType::eTime && !g_settingTime.settingTime &&  millis() - g_settingTime.pinDownTime <1000)
+            if(g_config.displayType == eDisplayType::eTime && !g_settingTime.settingMode &&  millis() - g_settingTime.pinDownTime <1000)
                  incDisplayType = true;
             //stop any chance of moving into setTime mode
             g_settingTime.pinDown = false;
@@ -270,6 +319,10 @@ RgbColor GetBackgroundColour()
 {
     switch( g_config.displayMode)
     {
+        case eDisplayMode::eEightLight:
+            return RgbColor(8, 8, 8);
+        case eDisplayMode::eQuarterLight:
+            return RgbColor(16, 16, 16);
         case eDisplayMode::eHalfLight:
             return RgbColor(32, 32, 32);
         case eDisplayMode::eFullLight:
@@ -413,55 +466,107 @@ void Blink(byte PIN, byte DELAY_MS, byte loops)
     delay(DELAY_MS);
   }
 }
+#ifdef GPS_EMBEDDED
 
-void SelectSentences(bool RMC, bool GGA, bool GSA, bool GLL, bool VTG, bool GSV)
+    void SelectSentences(bool RMC, bool GGA, bool GSA, bool GLL, bool VTG, bool GSV)
+    {
+        // See http://cdn.sparkfun.com/datasheets/Sensors/GPS/760.pdf
+        // Also https://www.roboticboat.uk/Microcontrollers/Uno/GPS-PAM7Q/GPS-PAM7Q.html for enable/disable NMEA strings
+
+        // NMEA_GLL output interval - Geographic Position - Latitude longitude
+        // NMEA_RMC output interval - Recommended Minimum Specific GNSS Sentence
+        // NMEA_VTG output interval - Course Over Ground and Ground Speed
+        // NMEA_GGA output interval - GPS Fix Data
+        // NMEA_GSA output interval - GNSS DOPS and Active Satellites
+        // NMEA_GSV output interval - GNSS Satellites in View
+
+        if( RMC )
+            gpsSerial.println(F("$PUBX,40,RMC,0,1,0,0*46"));
+        else
+            gpsSerial.println(F("$PUBX,40,RMC,0,0,0,0*47"));
+        delay(100);
+
+        if( GGA )
+            gpsSerial.println(F("$PUBX,40,GGA,0,1,0,0*5B"));
+        else
+            gpsSerial.println(F("$PUBX,40,GGA,0,0,0,0*5A"));
+        delay(100);
+
+        if( GLL )
+            gpsSerial.println(F("$PUBX,40,GLL,0,1,0,0*5D"));
+        else
+            gpsSerial.println(F("$PUBX,40,GLL,0,0,0,0*5C"));
+        delay(100);
+
+        if( VTG )
+            gpsSerial.println(F("$PUBX,40,VTG,0,1,0,0*5F"));
+        else
+            gpsSerial.println(F("$PUBX,40,VTG,0,0,0,0*5E"));
+        delay(100);
+
+        if( GSA )
+            gpsSerial.println(F("$PUBX,40,GSA,0,1,0,0*4F"));
+        else
+            gpsSerial.println(F("$PUBX,40,GSA,0,0,0,0*4E"));
+        delay(100);  
+
+        if( GSV )
+            gpsSerial.println(F("$PUBX,40,GSV,0,5,0,0*5C"));
+        else
+            gpsSerial.println(F("$PUBX,40,GSV,0,0,0,0*59"));
+        delay(100);
+    
+    }
+#else
+    void PrintAddress(uint8_t deviceAddress[8])
+    {
+        Serial.print("{ ");
+        for (uint8_t i = 0; i < 8; i++)
+        {
+            // zero pad the address if necessary
+            Serial.print("0x");
+            if (deviceAddress[i] < 16) Serial.print("0");
+            Serial.print(deviceAddress[i], HEX);
+            if (i<7) Serial.print(", ");
+        }
+        Serial.print(" }");
+    }
+#endif
+
+void SetPressureHistory(float pressure)
 {
-    // See http://cdn.sparkfun.com/datasheets/Sensors/GPS/760.pdf
-    // Also https://www.roboticboat.uk/Microcontrollers/Uno/GPS-PAM7Q/GPS-PAM7Q.html for enable/disable NMEA strings
-
-    // NMEA_GLL output interval - Geographic Position - Latitude longitude
-    // NMEA_RMC output interval - Recommended Minimum Specific GNSS Sentence
-    // NMEA_VTG output interval - Course Over Ground and Ground Speed
-    // NMEA_GGA output interval - GPS Fix Data
-    // NMEA_GSA output interval - GNSS DOPS and Active Satellites
-    // NMEA_GSV output interval - GNSS Satellites in View
-
-    if( RMC )
-        gpsSerial.println(F("$PUBX,40,RMC,0,1,0,0*46"));
-    else
-        gpsSerial.println(F("$PUBX,40,RMC,0,0,0,0*47"));
-    delay(100);
-
-    if( GGA )
-        gpsSerial.println(F("$PUBX,40,GGA,0,1,0,0*5B"));
-    else
-        gpsSerial.println(F("$PUBX,40,GGA,0,0,0,0*5A"));
-    delay(100);
-
-    if( GLL )
-        gpsSerial.println(F("$PUBX,40,GLL,0,1,0,0*5D"));
-    else
-        gpsSerial.println(F("$PUBX,40,GLL,0,0,0,0*5C"));
-    delay(100);
-
-    if( VTG )
-        gpsSerial.println(F("$PUBX,40,VTG,0,1,0,0*5F"));
-    else
-        gpsSerial.println(F("$PUBX,40,VTG,0,0,0,0*5E"));
-    delay(100);
-
-    if( GSA )
-        gpsSerial.println(F("$PUBX,40,GSA,0,1,0,0*4F"));
-    else
-        gpsSerial.println(F("$PUBX,40,GSA,0,0,0,0*4E"));
-    delay(100);  
-
-    if( GSV )
-        gpsSerial.println(F("$PUBX,40,GSV,0,5,0,0*5C"));
-    else
-        gpsSerial.println(F("$PUBX,40,GSV,0,0,0,0*59"));
-    delay(100);
-  
+    if( g_clockSet )
+    {
+        g_pressureHistory[g_pressureHistoryIndex] = pressure;
+        if(g_thisHour != hour())
+        {
+            //Every hour, move the index along 1
+            g_pressureHistoryIndex = (g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE;
+            
+            //initialise 4 hour history of readings with the current reading.
+            // For the first 4 hours of operation, the change will be relative to the power-on time
+            for(int i=0; i<PRESSURE_HISORY_SIZE;i++)
+            {
+                if(g_pressureHistory[i] == __FLT_MAX__ )
+                {
+                    g_pressureHistory[i] = pressure;
+                }
+            }
+            g_thisHour = hour();
+        }
+        // else //for testing
+        // {
+        //     static bool toggleTestPressure = true;
+        //     if( fabs(g_pressure - g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE]) > 4 )
+        //         toggleTestPressure = !toggleTestPressure;
+        //     if( toggleTestPressure )
+        //         g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE] -= 1.0;
+        //     else
+        //         g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE] += 1.0;
+        //     Serial.print(F("LastPressure="));
+        //     Serial.println(g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE],1);
+        // }
+    }
 }
 
 
@@ -489,6 +594,7 @@ void setup()
     Serial.print( g_config.gmtOffsetHours);
     Serial.println();
 
+#ifdef GPS_EMBEDDED
     //Note: To reduce the RAM used, change TX_BUFFER_SIZE from 68 to 32 in AltSoftSerial.cpp
     gpsSerial.begin(GPS_BAUD_RATE);
     delay(100);
@@ -512,6 +618,63 @@ void setup()
     {
       Serial.println(F("Could not find BME280 sensor!"));
     }
+#else
+	if (!g_rf69.init())
+		Serial.println("rf69 init failed");
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
+		Serial.println("rf69 setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rf69.setEncryptionKey(key);
+	g_rf69.setHeaderId(TEMPERATURE_JEENODE);
+
+    g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+	Serial.print("RF69 initialise node: ");
+	Serial.print(TEMPERATURE_JEENODE);
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
+
+    memset( &g_payloadGPS,0, sizeof(PayloadGPS));
+    memset( &g_payloadTemperature,0, sizeof(PayloadTemperature));
+    memset( &g_payloadBase,0, sizeof(PayloadBase));
+    memset( &g_payloadPulse,0, sizeof(PayloadPulse));
+    memset( &g_payloadRain,0, sizeof(PayloadRain));
+    memset( &g_payloadBattery,0, sizeof(PayloadBattery));
+    memset( &g_payloadPressure,0, sizeof(PayloadPressure));
+
+
+	EmonSerial::PrintGPSPayload(NULL);
+    EmonSerial::PrintBasePayload(NULL);
+    EmonSerial::PrintRainPayload(NULL);
+	EmonSerial::PrintBatteryPayload(NULL);
+	EmonSerial::PrintTemperaturePayload(NULL);
+	EmonSerial::PrintPressurePayload(NULL);
+
+	//Temperature sensor setup
+    g_payloadTemperature.subnode = 0;
+	temperatureSensor.begin();
+    g_payloadTemperature.numSensors = min(temperatureSensor.getDeviceCount(), MAX_TEMPERATURE_SENSORS);
+	if (g_payloadTemperature.numSensors)
+	{
+		Serial.print(F("Temperature sensors "));
+
+		for (int i = 0; i< g_payloadTemperature.numSensors; i++)
+		{
+			uint8_t tmp_address[8];
+			temperatureSensor.getAddress(tmp_address, i);
+			Serial.print(F("Sensor address "));
+			Serial.print(i + 1);
+			Serial.print(F(": "));
+			PrintAddress(tmp_address);
+			Serial.println();
+		}
+	}
+	else
+	{
+		Serial.println(F("No temperature sensors found"));
+	}
+#endif
 
     strip.Begin();
     for(uint16_t ui=0; ui<NUM_PIXELS; ui++)
@@ -530,8 +693,6 @@ void setup()
     g_pressureHistoryIndex = 0;
 
     Serial.println("Exit setup()");
-//    Serial.println(F("Watchdog timer set for 8 seconds"));
-//    wdt_enable(WDTO_8S);  
 }
 
 
@@ -551,22 +712,24 @@ void loop()
     //deal with the time setting mode. 
     //  Hold button down for 3000 ms to enter into mode
     //  Move out of mode if no button pressed for 10 seconds
-    if( g_settingTime.pinDown && millis() - g_settingTime.pinDownTime > 3000 && !g_settingTime.settingTime)
+    if( g_settingTime.pinDown && millis() - g_settingTime.pinDownTime > 3000 && !g_settingTime.settingMode)
     {
         //move into the setTime mode
-        g_settingTime.settingTime = true;
-        g_settingTime.settingTimeTimeout = millis();
+        g_settingTime.settingMode = true;
+        g_settingTime.settingModeTimeout = millis();
         //Serial.println(F("Setting time"));
     }
-    if(g_settingTime.settingTime && millis() - g_settingTime.settingTimeTimeout >10000)
+    if(g_settingTime.settingMode && millis() - g_settingTime.settingModeTimeout >10000)
     {
         //move out of setTime mode after 10 seconds without a button press
-        g_settingTime.settingTime = false;
+        g_settingTime.settingMode = false;
         //Serial.println(F("Finished setting time"));
     }
 
+
+#ifdef GPS_EMBEDDED
     //read GPS if not setting time && not recently pressed the changedisplayType button
-    if( !g_settingTime.settingTime && millis() - g_changeDisplayTypePushTime > 2000)
+    if( !g_settingTime.settingMode && millis() - g_changeDisplayTypePushTime > 2000)
     {
         // Need to wait for the buffer to fill. Neopixel and Serial read both use the 16bit timer 
         // and serial buffer corrupts if the Neopixel writes while serial receives.
@@ -606,40 +769,8 @@ void loop()
         lastSendPressureTime = millis();
 
         bme.read(g_pressure, g_temperature, g_humidity);
- 
 
-        if( g_clockSet )
-        {
-            g_pressureHistory[g_pressureHistoryIndex] = g_pressure;
-            if(g_thisHour != hour())
-            {
-                //Every hour, move the index along 1
-                g_pressureHistoryIndex = (g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE;
-                
-                //initialise 4 hour history of readings with the current reading.
-                // For the first 4 hours of operation, the change will be relative to the power-on time
-                for(int i=0; i<PRESSURE_HISORY_SIZE;i++)
-                {
-                    if(g_pressureHistory[i] == __FLT_MAX__ )
-                    {
-                        g_pressureHistory[i] = g_pressure;
-                    }
-                }
-                g_thisHour = hour();
-            }
-            // else //for testing
-            // {
-            //     static bool toggleTestPressure = true;
-            //     if( fabs(g_pressure - g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE]) > 4 )
-            //         toggleTestPressure = !toggleTestPressure;
-            //     if( toggleTestPressure )
-            //         g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE] -= 1.0;
-            //     else
-            //         g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE] += 1.0;
-            //     Serial.print(F("LastPressure="));
-            //     Serial.println(g_pressureHistory[(g_pressureHistoryIndex+1)% PRESSURE_HISORY_SIZE],1);
-            // }
-        }
+        SetPressureHistory(g_pressure);
 
         Serial.print(F("P,T,H="));
         Serial.print(g_pressure, 1);
@@ -649,6 +780,104 @@ void loop()
         Serial.print(g_humidity, 1);
         Serial.println();
     }
+#else
+	if (g_rf69.available())
+	{
+        digitalWrite(LED_PIN, HIGH);
+        byte len = RH_RF69_MAX_MESSAGE_LEN;
+        uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+        int node_id= -1;
+        
+		if (g_rf69.recv(buf, &len))
+		{
+			node_id = g_rf69.headerId();
+		}
+
+		if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
+		{
+			g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
+			EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
+            g_speed = g_payloadGPS.speed;
+            g_course = g_payloadGPS.course;
+		}
+
+		if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
+		{
+			g_payloadPulse = *(PayloadPulse*)buf;							// get payload data
+
+			EmonSerial::PrintPulsePayload(&g_payloadPulse);
+		}
+
+		if (node_id == RAIN_NODE && len == sizeof(PayloadRain))						// ==== RainGauge Jeenode ====
+		{
+			g_payloadRain = *(PayloadRain*)buf;	// get emonbase payload data
+			
+			if (g_rainStartOfToday == 0)
+			{
+				g_rainStartOfToday = g_payloadRain.rainCount;
+			}
+			EmonSerial::PrintRainPayload(&g_payloadRain);
+		}
+
+		if ( node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
+		{
+			g_payloadBase = *((PayloadBase*)buf);
+			setTime(g_payloadBase.time);
+            g_clockSet = true;
+
+			if (g_currentDay == -1)
+			{
+				//first time received from base
+				g_currentDay = day();
+			}
+			EmonSerial::PrintBasePayload(&g_payloadBase);
+		}
+		if ( node_id == BATTERY_NODE && len == sizeof(PayloadBattery))						// jeenode base Receives the time
+		{
+			g_payloadBattery = *((PayloadBattery*)buf);
+			EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+		}
+        if ( node_id == PRESSURE_NODE && len == sizeof(PayloadPressure))
+        {
+            g_payloadPressure =  *((PayloadPressure*)buf);
+            g_pressure = g_payloadPressure.pressure/100.0;
+            SetPressureHistory(g_pressure);
+
+            EmonSerial::PrintPressurePayload(&g_payloadPressure);
+        }
+    }
+
+    static unsigned long temperatureUpdateTime = millis();
+    if( millis()-temperatureUpdateTime > 60000 && g_payloadTemperature.numSensors !=0 )
+	{
+        digitalWrite(LED_PIN, HIGH);
+
+        temperatureUpdateTime = millis();
+		//get the temperature of this unit (inside temperature)
+		temperatureSensor.requestTemperatures();
+        for(int i=0; i< g_payloadTemperature.numSensors; i++ )
+        {
+            g_temperature = temperatureSensor.getTempCByIndex(0);       //only use the last temperature. There should only be one!
+		    g_payloadTemperature.temperature[i] =  g_temperature * 100; // stored as 100ths of degrees
+        }
+		//voltage divider is 1M and 1M. Reference voltage is 3.3v. AD range is 1024
+		//voltage divider current draw is 29 uA
+		float measuredvbat = analogRead(VOLTAGE_MEASURE_PIN);
+		measuredvbat = (measuredvbat/1024.0 * 3.3) * (1000000.0+1000000.0)/1000000.0;
+		g_payloadTemperature.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
+
+		g_rf69.send((const uint8_t*) &g_payloadTemperature, sizeof(PayloadTemperature));
+		if( g_rf69.waitPacketSent() )
+		{
+			EmonSerial::PrintTemperaturePayload(&g_payloadTemperature);
+		}
+		else
+		{
+			Serial.println(F("No packet sent"));
+		}
+        delay(500); //So the LED stays on a little longer 
+	}
+#endif
 
     if(g_configChanged)
     {
@@ -659,7 +888,7 @@ void loop()
 
     if( g_config.displayType == eDisplayType::eAutoRotate)
     {
-        if( millis() - displayRotateTime >3000 )
+        if( millis() - displayRotateTime >1000 )
         {
             if( displayToggle+1 >= eDisplayType::eEndDisplayType)
                 displayToggle = eDisplayType::eAutoRotate+1;
@@ -682,6 +911,8 @@ void loop()
     // Serial.print(g_config.displayType);
     // Serial.print(F(","));
     // Serial.println(displayToggle);
+
+    digitalWrite(LED_PIN,LOW);//turn off the LED before any readLDR() as light effects the LDR reading
 
     //display text of the selected mode for 2 seconds after the button was pressed
     if( millis() - g_changeDisplayTypePushTime < 2000 )
@@ -733,11 +964,11 @@ void loop()
         case eDisplayType::eSpeed:
             if( g_speed < 0.2)
             {
-                my_dtostrf( 0.0, -BUF_SIZE, 1, str );
+                my_dtostrf( 0.0, -BUF_SIZE, 2, str );
             }
             else
             {
-                my_dtostrf( g_speed, -BUF_SIZE, 1, str );
+                my_dtostrf( g_speed, -BUF_SIZE, 2, str );
             }
             break;
         case eDisplayType::eHeading:
@@ -756,7 +987,7 @@ void loop()
                 int h = (hour()+g_config.gmtOffsetHours)%12;
                 if(h == 0)
                     h=12;
-                if( g_settingTime.settingTime)
+                if( g_settingTime.settingMode)
                 {
                     if( second()%2 == 1)
                         snprintf_P(str,BUF_SIZE,PSTR("--:%02i"),minute());
@@ -777,5 +1008,4 @@ void loop()
         //print to the display
         printString(str,displayTypeColor[displayToggle], readLDR());
     }
-    digitalWrite(LED_PIN,LOW);
 }

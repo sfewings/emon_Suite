@@ -19,8 +19,8 @@
 	#define RFM69_RST     	4
 #endif
 
-//#define HOUSE_BANNER
-#define BOAT_BANNER
+#define HOUSE_BANNER
+//#define BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
