@@ -689,6 +689,15 @@ int EmonSerial::ParseRainPayload(char* str, PayloadRain *pPayloadRain)
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadRain->supplyV = atol(pch);
 
+	if( pPayloadRain->rainCount > 300000 || 	// only 24000 after 6+ years of rainfall!
+		pPayloadRain->temperature > 20000 || 	// temperature > 200c
+		pPayloadRain->supplyV > 100000)			// supply voltage > 100v
+	{
+		//rain often gets very bad values. Filter them out here
+		return 0;
+	}
+
+
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadRain, pch);
