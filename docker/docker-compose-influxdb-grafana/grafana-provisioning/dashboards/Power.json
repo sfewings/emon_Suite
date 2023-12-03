@@ -238,7 +238,7 @@
             "uid": "P951FEA4DE68E13C5"
           },
           "hide": false,
-          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\")/1000 FROM \"pulse\" WHERE (\"sensorName\" = 'Imported' OR \"sensorName\" = 'Consumed' OR \"sensorName\" = 'HWS' OR \"sensorName\" = 'Car') AND $timeFilter GROUP BY time($__interval))) GROUP BY \"sensorName\"",
+          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\")/1000 FROM \"pulse\" WHERE (\"sensorName\" = 'Imported' OR \"sensorName\" = 'Consumed' OR \"sensorName\" = 'HWS' OR \"sensorName\" = 'Car' OR \"sensorName\" =~ /Solar/) AND $timeFilter GROUP BY time($__interval))) GROUP BY \"sensorName\"",
           "rawQuery": true,
           "refId": "B",
           "resultFormat": "time_series"
@@ -796,7 +796,13 @@
       }
     },
     {
-      "aliasColors": {},
+      "aliasColors": {
+        "Bank 1": "dark-orange",
+        "Bank 1 - Forward": "super-light-yellow",
+        "Bank 1 - Rev": "semi-dark-yellow",
+        "Bank 2": "dark-blue",
+        "Bank 3 (old batteries)": "dark-green"
+      },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
@@ -830,7 +836,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "8.3.4",
+      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -886,27 +892,15 @@
           ],
           "tags": [
             {
-              "key": "sensorName",
+              "key": "sensorGroup",
               "operator": "=",
-              "value": "Bank 1 - Forward"
+              "value": "Reverse Current Tester"
             },
             {
               "condition": "OR",
-              "key": "sensorName",
+              "key": "sensorGroup",
               "operator": "=",
-              "value": "Bank 1 - Rev"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Bank 1"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Bank 2"
+              "value": "Main battery monitor"
             }
           ]
         }
@@ -942,9 +936,149 @@
       "yaxis": {
         "align": false
       }
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "sensorName"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "pulse",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "last"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "sensorGroup",
+              "operator": "=",
+              "value": "Main battery monitor"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorGroup",
+              "operator": "=",
+              "value": "Reverse Current Tester"
+            }
+          ]
+        }
+      ],
+      "title": "Battery pulse",
+      "type": "timeseries"
     }
   ],
-  "refresh": "30s",
+  "refresh": false,
   "schemaVersion": 37,
   "style": "dark",
   "tags": [],
@@ -952,13 +1086,13 @@
     "list": []
   },
   "time": {
-    "from": "now/d",
-    "to": "now/d"
+    "from": "now-2d",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "Australia/Perth",
   "title": "Power",
   "uid": "4z66RJWgk",
-  "version": 5,
+  "version": 12,
   "weekStart": ""
 }

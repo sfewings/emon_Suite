@@ -4,8 +4,8 @@
       {
         "builtIn": 1,
         "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
+          "type": "grafana",
+          "uid": "-- Grafana --"
         },
         "enable": true,
         "hide": true,
@@ -24,7 +24,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 26,
+  "id": 37,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -44,22 +44,22 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 13,
+            "drawStyle": "line",
+            "fillOpacity": 5,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 2,
-            "pointSize": 9,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "always",
-            "spanNulls": true,
+            "showPoints": "auto",
+            "spanNulls": 300000,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -81,30 +81,13 @@
                 "value": 80
               }
             ]
-          },
-          "unit": "litre"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Hot water"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
           }
-        ]
+        },
+        "overrides": []
       },
       "gridPos": {
-        "h": 22,
-        "w": 14,
+        "h": 19,
+        "w": 24,
         "x": 0,
         "y": 0
       },
@@ -121,7 +104,6 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "8.3.4",
       "targets": [
         {
           "alias": "$tag_sensorName",
@@ -132,7 +114,7 @@
           "groupBy": [
             {
               "params": [
-                "1h"
+                "$__interval"
               ],
               "type": "time"
             },
@@ -149,11 +131,9 @@
               "type": "fill"
             }
           ],
-          "measurement": "water",
+          "measurement": "gps",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT difference(mean(\"value\")) FROM \"water\" WHERE $timeFilter GROUP BY time(24h), \"sensorName\" fill(null)",
-          "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -167,17 +147,32 @@
               {
                 "params": [],
                 "type": "mean"
-              },
-              {
-                "params": [],
-                "type": "difference"
               }
             ]
           ],
-          "tags": []
+          "tags": [
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Enchantee unit - Satellites"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Moteino GPS board - Satellites"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Banner GPS - Satellites"
+            }
+          ]
         }
       ],
-      "title": "Water usage",
+      "title": "GPS board test",
       "type": "timeseries"
     },
     {
@@ -188,7 +183,37 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
@@ -197,65 +222,35 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mains"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "light-blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Hot water"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
-        "h": 11,
-        "w": 3,
-        "x": 14,
-        "y": 0
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 19
       },
       "id": 4,
       "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
-        "textMode": "value_and_name"
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
-      "pluginVersion": "9.3.1",
       "targets": [
         {
           "alias": "$tag_sensorName",
@@ -263,14 +258,68 @@
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"water\" WHERE $timeFilter GROUP BY time($__interval)))GROUP BY \"sensorName\" fill(null)",
-          "rawQuery": true,
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "sensorName"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "gps",
+          "orderByTime": "ASC",
+          "policy": "default",
           "refId": "A",
-          "resultFormat": "time_series"
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Banner GPS - hdop"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Moteino GPS board - hdop"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName",
+              "operator": "=",
+              "value": "Enchantee unit - hdop"
+            }
+          ]
         }
       ],
-      "title": "Cummulative water usage",
-      "type": "stat"
+      "title": "GPS HDOP",
+      "type": "timeseries"
     }
   ],
   "refresh": false,
@@ -281,13 +330,13 @@
     "list": []
   },
   "time": {
-    "from": "now-7d",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Water Usage",
-  "uid": "DDIibaZgz",
-  "version": 10,
+  "title": "GPS",
+  "uid": "tgx4vmgRk",
+  "version": 8,
   "weekStart": ""
 }
