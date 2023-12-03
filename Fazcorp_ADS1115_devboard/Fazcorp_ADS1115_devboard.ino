@@ -96,11 +96,12 @@ double Reading(uint8_t channel, double scaleFactor, bool &noisyData )
 	stats_t stats = GetStats(samples, SAMPLES);
 
 	Serial.print(F("Voltage channel,"));
-	Serial.print( channel);		Serial.print(F(","));
+	Serial.print( channel);			Serial.print(F(","));
 	Serial.print( stats.median,0 );	Serial.print(F(",")); 
-	Serial.print( stats.mean,0 );		Serial.print(F(",")); 
+	Serial.print( stats.mean,0 );	Serial.print(F(",")); 
 	Serial.print( stats.stdDev );
-	Serial.println();
+	Serial.print(F(" | ")); 
+	//Serial.println();
 
 	// if(stats.stdDev > 30.0) //30 = 0.3v
 	// {
@@ -217,21 +218,25 @@ void setup()
 }
 
 
+
 void loop()
 {
+	digitalWrite(LED_PIN, HIGH);
 	uint32_t millisStart = millis();
 	
-	digitalWrite(LED_PIN, HIGH);
+	digitalWrite(LED_PIN, LOW);
 
-	bool noisyData = false;
+	//for(int i=0; i<4;i++)
+	//{
+		bool noisyData = false;
+		double voltage;
 
-	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
-	//double currentDiffertial = ReadingDifferential(0, noisyData ); // * 150.0 / 50.0; //shunt is 150Amps for 90mV; Bank 2
-	double voltage;
-	voltage = Reading(0, 1, noisyData );	
-	voltage = Reading(1, 1, noisyData );
-	voltage = Reading(2, 1, noisyData );
-	voltage = Reading(3, 1, noisyData );
+		//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
+		//double currentDiffertial = ReadingDifferential(0, noisyData ); // * 150.0 / 50.0; //shunt is 150Amps for 90mV; Bank 2
+		//voltage = Reading( 0, 1, noisyData );	
+		voltage = Reading( 0, 0.1875, noisyData );	
+	//}
+	
 	//double currentSingle = Reading( 3, 1,  noisyData);
 
 	//if( noisyData )
@@ -239,12 +244,10 @@ void loop()
 	//	Serial.println("High std dev on a reading. Noisy data.");
 	//}
 
-	digitalWrite(LED_PIN, LOW);
-
 	uint32_t millisTaken = millis()- millisStart; 
 	Serial.print( F("loop_ms,") );
 	Serial.println( millisTaken );
 
-	if( millisTaken < SEND_PERIOD )
-		delay( SEND_PERIOD - millisTaken);
+	// if( millisTaken < SEND_PERIOD )
+	// 	delay( SEND_PERIOD - millisTaken);
 }

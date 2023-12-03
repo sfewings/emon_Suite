@@ -41,6 +41,7 @@ const int TIME_ZONE_OFFSET = 8;  // AWST Perth
 // int gpsBufPos;
 // char gpsBuf[SERIAL_BUF_LEN];
 TinyNMEA gpsNMEA;
+PayloadBase g_payloadBase;
 PayloadGPS g_payloadGPS;
 PayloadPressure g_payloadPressure;
 
@@ -282,10 +283,14 @@ void setup()
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
     g_rf69.setEncryptionKey(key);
 
-	  EmonSerial::PrintGPSPayload(NULL);
+
+    memset(&g_payloadBase,0, sizeof(PayloadBase));
     memset(&g_payloadGPS, 0, sizeof(PayloadGPS));
     memset(&g_payloadPressure, 0, sizeof(PayloadPressure));
 
+	  EmonSerial::PrintGPSPayload(NULL);
+    EmonSerial::PrintBasePayload(NULL);
+    EmonSerial::PrintPressurePayload(NULL);
 
     Wire.begin();
 
@@ -308,7 +313,7 @@ void setup()
 
 
 
-    setTime(9,0,0,1,1,2023);
+    //setTime(9,0,0,1,1,2023);
 
     // float lat, lon;
     // gpsNMEA.f_get_position(&lat, &lon);
@@ -324,7 +329,9 @@ void loop()
 {
     //reset the watchdog timer
     //wdt_reset();
+    static bool clockSet = false;
     static uint32_t lastSendPressureTime = millis();
+    static uint32_t lastSendTimeTime = millis();
 
     bool newData = false;
    
@@ -363,6 +370,11 @@ void loop()
             gpsNMEA.crack_datetime(&Year, &Month, &Day, &Hour, &Minute, &Second, NULL, &age);
             if (age < 1000) 
             {
+              if(!clockSet)
+              {
+                lastSendTimeTime = 0; //ensure we send the time straight away after we set this clock
+                clockSet = true;
+              }
               // set the Time to the latest GPS reading
               setTime(Hour, Minute, Second, Day, Month, Year);
               adjustTime(TIME_ZONE_OFFSET * SECS_PER_HOUR);
@@ -378,7 +390,7 @@ void loop()
             if( g_rf69.waitPacketSent() )
             {
               EmonSerial::PrintGPSPayload(&g_payloadGPS);
-              Serial.print("Free mem(");Serial.print(freeMemory());Serial.println(")");
+              //Serial.print("Free mem(");Serial.print(freeMemory());Serial.println(")");
             }
             else
             {
@@ -404,6 +416,25 @@ void loop()
         }
     }
 
+    if( clockSet && millis() - lastSendTimeTime > 15000 )
+    {
+      digitalWrite(LED,HIGH);
+      lastSendTimeTime = millis();
+
+      g_payloadBase.time = now();
+      g_rf69.setHeaderId(BASE_JEENODE);
+      g_rf69.send((const uint8_t*) &g_payloadBase, sizeof(g_payloadBase));
+      if( g_rf69.waitPacketSent() )
+      {
+          EmonSerial::PrintBasePayload(&g_payloadBase);
+      }
+      else
+      {
+          Serial.println(F("No packet sent"));
+      }
+
+    }
+
 
     if( millis() - lastSendPressureTime > 15000 )
     {
@@ -425,7 +456,7 @@ void loop()
           Serial.println(F("No packet sent"));
       }
 
-      Serial.print("Free mem(");Serial.print(freeMemory());Serial.println(")");
+      //Serial.print("Free mem(");Serial.print(freeMemory());Serial.println(")");
 
       //SendSignalKDataPressure(g_payloadPressure.pressure, g_payloadPressure.temperature, g_payloadPressure.humidity );
     }
