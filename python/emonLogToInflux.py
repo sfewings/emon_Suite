@@ -17,7 +17,7 @@ def process_files(path, fromFile="", toFile="", influxURL="", settingsPath = "")
     if( len(toFile) != 0 ):
         end = files.index(toFile)
     
-    for i in range(start, end):
+    for i in range(start, end+1):
         file = files[i]
         if file.endswith(".TXT"):
             print(f"{datetime.datetime.now()}, {i-start} of {end-start}, {file}")

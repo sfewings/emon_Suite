@@ -141,7 +141,6 @@ inv: #inverters
     name: Inverter 2
 bee:
   0:
-    name: Beehive
 leaf:
   0:
     name: Leaf

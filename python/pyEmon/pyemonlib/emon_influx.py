@@ -432,7 +432,11 @@ class emon_influx:
         if(command in self.dispatch.keys()):
             self.dispatch[command](time, line, self.settings[command])
 
-
+    def replace_at_position_with_comma(self, line, position):
+        s = list(line)
+        s[position] = ','
+        return ''.join(s)
+    
     def process_file(self, path):
         try:
             #LOCAL_TIMEZONE = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
@@ -445,6 +449,11 @@ class emon_influx:
             for line in f:
                 try:
                     self.lineNumber = self.lineNumber+1
+                    colonPositionAfterDateTime = line[19:].find(":")
+                    if(colonPositionAfterDateTime != -1):     # 20190314.TXT to 20190624.TXT used : to separate node name from values
+                        line = self.replace_at_position_with_comma(line, colonPositionAfterDateTime+19)
+                    if (line[19] != ',' and line[19] == ' '): # 20211231.TXT to 20220116.TXT had a space instead of comma after the date-time
+                        line = self.replace_at_position_with_comma(line, 19)
                     dateAndNode = line.split(',',3)
                     node = dateAndNode[1].rstrip('0123456789')
                     time = datetime.datetime.now()
