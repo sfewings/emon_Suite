@@ -63,6 +63,10 @@
     
     const uint8_t VOLTAGE_MEASURE_PIN = A5;
 
+    const uint8_t LDR_MOVING_AVERAGE_WINDOWN_SIZE = 20; 
+    uint8_t g_LDR_movingAverage[LDR_MOVING_AVERAGE_WINDOWN_SIZE];
+    uint8_t g_LDR_movingAverage_index = 0;
+
 #endif
 
 
@@ -172,19 +176,6 @@ int freeMemory()
 {
   char top;
   return &top - __brkval;
-}
-
-
-uint8_t readLDR()
-{
-    const int NUM_LOOPS = 10;
-    long l = 0;
-    for(int i=0; i <NUM_LOOPS; i++)
-        l += analogRead( LDR_PIN );
-    float value = l/NUM_LOOPS;
-    uint8_t intensity = 1+(uint8_t) sqrt(62.5*value);
-    //Serial.print(value);Serial.print(", ");Serial.println(intensity);
-    return intensity;    
 }
 
 // routine called when external interrupt is triggered
@@ -315,14 +306,53 @@ void WriteEEPROMSettings(EEPROMConfig & config)
 }
 
 
+uint8_t  readLDR()
+{
+    //note the moving average contrast timing depends on readLDR() being read at regular intervals
+    const int NUM_LOOPS = 10;
+    long l = 0;
+    for(int i=0; i <NUM_LOOPS; i++)
+        l += analogRead( LDR_PIN );
+    float value = l/NUM_LOOPS;
+    uint8_t intensity = 1+(uint8_t) sqrt(62.5*value);
+    //Serial.print(value);Serial.print(", ");Serial.println(intensity);
+    g_LDR_movingAverage[g_LDR_movingAverage_index] = intensity;
+    g_LDR_movingAverage_index = (g_LDR_movingAverage_index +1 ) % LDR_MOVING_AVERAGE_WINDOWN_SIZE;
+    uint16_t sum = 0;
+    for(int i=0; i<LDR_MOVING_AVERAGE_WINDOWN_SIZE; i++)
+        sum+=g_LDR_movingAverage[i];
+
+    return (uint8_t) (sum/LDR_MOVING_AVERAGE_WINDOWN_SIZE);
+}
+
+uint8_t GetCharIntensity()
+{
+    switch( g_config.displayMode)
+    {
+        case eDisplayMode::eOff:
+            return 0;
+        case eDisplayMode::eEightLight:
+            return 2;
+        case eDisplayMode::eQuarterLight:
+            return 4;
+        case eDisplayMode::eHalfLight:
+            return 32;
+        case eDisplayMode::eFullLight:
+            return 255;
+        case eDisplayMode::eText:
+            return readLDR();
+    }
+}
+
+
 RgbColor GetBackgroundColour()
 {
     switch( g_config.displayMode)
     {
         case eDisplayMode::eEightLight:
-            return RgbColor(8, 8, 8);
+            return RgbColor(2, 2, 2);
         case eDisplayMode::eQuarterLight:
-            return RgbColor(16, 16, 16);
+            return RgbColor(4, 4, 4);
         case eDisplayMode::eHalfLight:
             return RgbColor(32, 32, 32);
         case eDisplayMode::eFullLight:
@@ -589,7 +619,7 @@ void setup()
     Serial.print(F(",DisplayType="));
     Serial.print( g_config.displayType);
     Serial.print(F(",DisplayMode="));
-    Serial.print( g_config.displayType);
+    Serial.print( g_config.displayMode);
     Serial.print(F(",GMT offset="));
     Serial.print( g_config.gmtOffsetHours);
     Serial.println();
@@ -692,6 +722,11 @@ void setup()
     g_thisHour = -1;
     g_pressureHistoryIndex = 0;
 
+    //initialise the LDR history to 0
+    for(int i=0; i<LDR_MOVING_AVERAGE_WINDOWN_SIZE; i++)
+        g_LDR_movingAverage[i] = 0;
+
+
     Serial.println("Exit setup()");
 }
 
@@ -783,7 +818,8 @@ void loop()
 #else
 	if (g_rf69.available())
 	{
-        digitalWrite(LED_PIN, HIGH);
+        Blink(LED_PIN, 1, 1);
+        delay(5); //allow time for the LED blink to fade!
         byte len = RH_RF69_MAX_MESSAGE_LEN;
         uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
         int node_id= -1;
@@ -850,7 +886,7 @@ void loop()
     static unsigned long temperatureUpdateTime = millis();
     if( millis()-temperatureUpdateTime > 60000 && g_payloadTemperature.numSensors !=0 )
 	{
-        digitalWrite(LED_PIN, HIGH);
+        //Blink(LED_PIN, 100, 2);
 
         temperatureUpdateTime = millis();
 		//get the temperature of this unit (inside temperature)
@@ -875,7 +911,6 @@ void loop()
 		{
 			Serial.println(F("No packet sent"));
 		}
-        delay(500); //So the LED stays on a little longer 
 	}
 #endif
 
@@ -912,14 +947,12 @@ void loop()
     // Serial.print(F(","));
     // Serial.println(displayToggle);
 
-    digitalWrite(LED_PIN,LOW);//turn off the LED before any readLDR() as light effects the LDR reading
-
     //display text of the selected mode for 2 seconds after the button was pressed
     if( millis() - g_changeDisplayTypePushTime < 2000 )
     {
         //display the reading name
         strcpy_P(str,displayTypeName[g_config.displayType]);
-        printString(str,displayTypeColor[g_config.displayType], readLDR());
+        printString(str,displayTypeColor[g_config.displayType], GetCharIntensity() );
     }
     else
     {
@@ -1006,6 +1039,6 @@ void loop()
             break;
         }
         //print to the display
-        printString(str,displayTypeColor[displayToggle], readLDR());
+        printString(str,displayTypeColor[displayToggle], GetCharIntensity());
     }
 }
