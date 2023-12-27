@@ -22,3 +22,4 @@ Note: Added pre-hook = service nginx stop , post-hook = service nginx restart to
 docker volume create portainer_data
 docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest
 
+27/12/2023 dropping wifi connection on Raspbian arm64 https://www.reddit.com/r/selfhosted/comments/pkeqh7/raspberry_pi_4_randomly_dropping_wired_network/

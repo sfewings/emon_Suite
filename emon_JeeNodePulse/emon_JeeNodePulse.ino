@@ -4,20 +4,44 @@
 #include <PinChangeInt.h>
 #include <EEPROM.h>
 #include <SPI.h>
-#include <RH_RF69.h>
+
+#define HARVEY_FARM
+
+#define LORA_RF95
+
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define GREEN_LED 		9
+	#define RFM69_RST     	4
+	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
+#endif
+
 
 
 //--------------------------------------------------------------------------------------
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
 
-RH_RF69 g_rf69;
 
-volatile unsigned long 	g_pulseCount[PULSE_MAX_SENSORS]	= { 0,0,0,0,0,0 };	//pulses since recording started
+volatile unsigned long 	g_pulseCount[PULSE_MAX_SENSORS]	= { 0,0,0,0,0,0 };			//pulses since recording started
 volatile unsigned long	g_lastTick[PULSE_MAX_SENSORS]		= { 0,0,0,0,0,0 };		//millis() value at last pulse
 volatile unsigned long	g_period[PULSE_MAX_SENSORS]			= { 0,0,0,0,0,0 };		//ms between last two pulses
-const		double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 2.0,2.0,0.4,1.0,2.0,1.0};		//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
-const    uint8_t		g_pin[PULSE_MAX_SENSORS]			= { 4,5,6,7,14,15 };	//pin number for each input
+
+#ifdef HARVEY_FARM
+const	double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 0.5,1.0,1.0,1.0,1.0,1.0};	//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
+const	uint8_t		g_pin[PULSE_MAX_SENSORS]		= { 4,3,0,0,0,0 };			//pin number for each input
+#else
+const	double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 2.0,2.0,0.4,1.0,2.0,1.0};	//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
+const	uint8_t		g_pin[PULSE_MAX_SENSORS]		= { 4,5,6,7,14,15 };			//pin number for each input
+#endif
 PayloadPulse g_pulsePayload;
 
 int g_currentHour;
@@ -125,22 +149,25 @@ void setup()
 
 
 //for reset to 0.	
-//	for (int i = 0; i < PULSE_MAX_SENSORS; i++)
-//	{
-//		writeEEPROM(i * sizeof(unsigned long), 0);
-//	}
+	// for (int i = 0; i < PULSE_MAX_SENSORS; i++)
+	// {
+	// 	writeEEPROM(i * sizeof(unsigned long), 0);
+	// }
 
-	if (!g_rf69.init())
-		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
+	if (!g_rfRadio.init())
+		Serial.println(	NODE_INITIALISED_STRING );
+	if (!g_rfRadio.setFrequency(915.0))
+		Serial.println("rfRadio setFrequency failed");
+	g_rfRadio.setHeaderId(PULSE_JEENODE);
+
+#ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(PULSE_JEENODE);
+	g_rfRadio.setEncryptionKey(key);
+#endif
 
-	Serial.print("RF69 initialise node: ");
+	Serial.print("Node: ");
 	Serial.print(PULSE_JEENODE);
 	Serial.println(" Freq: 915MHz");
 
@@ -152,9 +179,16 @@ void setup()
 		g_pulsePayload.power[i] = 0;
 		g_pulseCount[i] = readEEPROM(i * sizeof(unsigned long));
 		g_pulsePayload.pulse[i] = (unsigned long) (g_pulseCount[i] / g_pulsePerWH[i]); // convert from number of pulses since recoding started to wHrs since start
-
 		pinMode(g_pin[i], INPUT_PULLUP);
-		attachPinChangeInterrupt(g_pin[i], interruptHandlerIR, RISING);
+		if(g_pin[i] != 0 )
+		{
+			attachPinChangeInterrupt(g_pin[i], interruptHandlerIR, RISING);
+		}
+		Serial.print(F("Pulse:"));Serial.print(i);
+		Serial.print(F(" Pin:"));Serial.print(g_pin[i]);
+		Serial.print(F(" Count:"));Serial.print(g_pulseCount[i]);
+		Serial.print(F(" WHrs:"));Serial.print(g_pulsePayload.pulse[i]);
+		Serial.println();
 	}
 	g_pulsePayload.subnode = 0;
 	g_pulsePayload.supplyV = 0;
@@ -163,7 +197,7 @@ void setup()
 
 	EmonSerial::PrintPulsePayload(NULL);
 	
-	Serial.println("---------------------------------------");
+	Serial.println(F("---------------------------------------"));
 }
 
 
@@ -196,8 +230,8 @@ void loop()
 		}
 	}
 
-	g_rf69.send((const uint8_t*) &g_pulsePayload, sizeof (PayloadPulse));
-	if( g_rf69.waitPacketSent() )
+	g_rfRadio.send((const uint8_t*) &g_pulsePayload, sizeof (PayloadPulse));
+	if( g_rfRadio.waitPacketSent() )
 	{
 		EmonSerial::PrintPulsePayload(&g_pulsePayload);
 	}

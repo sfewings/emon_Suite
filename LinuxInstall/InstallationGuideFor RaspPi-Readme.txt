@@ -133,6 +133,7 @@
 21.	Create SSL certificate for shannstainable.fewings.org using letsencrypt
 	/etc/letsencrypt/live/shannstainable.fewings.org/cert.pem
 	Set up renewal every 40 days by placing /etc/letsencrypt/renewal/shannstainable.fewings.org.conf
+	cp LinuxInstall/etc/letsencrypt/renewal/shannstainable.fewings.org.conf /etc/letsencrypt/renewal/shannstainable.fewings.org.conf
 	Maybe required?? install sudo apt-get install python3-certbot-nginx
 	Add this to the crontab file. Run crontab -e 
 	# run the certbot renewal on the 1st day of each month. Be sure to start and stop nginx so certbot can use port 80

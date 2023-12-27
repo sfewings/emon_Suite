@@ -23,13 +23,23 @@
 #include <EmonEEPROM.h>
 
 #include <SPI.h>
-#include <RH_RF69.h>
+
+#define LORA_RF95
+
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define GREEN_LED 		9
+	#define RFM69_RST     	4
+#endif
+
 #include <avr/wdt.h>    //watchdog timer
-
-
-// Singleton instance of the radio driver
-RH_RF69 g_rf69;
-
 
 LiquidCrystal lcd(A2,4, 8,7,6,5);
 
@@ -102,14 +112,14 @@ ButtonDisplayMode lastPushButton = eDiagnosisEEPROMSettings;
 //---------------------------------------------------------------------------------------------------
 // Dallas temperature sensor	on pin 5, Jeenode port 2
 //---------------------------------------------------------------------------------------------------
-OneWire oneWire(A4);
+OneWire oneWire(3); //A4 before move to Moteino Display PCB
 DallasTemperature temperatureSensor(&oneWire);
 int numberOfTemperatureSensors = 0;
 
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-#define  SEND_UPDATE_PERIOD			60  //60	//seconds between updates
+#define  SEND_UPDATE_PERIOD			2  //60	//seconds between updates
 
 time_t slow_update;									// Used to count time for slow 10s events
 time_t average_update;							// Used to store averages and totals
@@ -341,19 +351,34 @@ void setup()
 		dispPayload[eepromSettings.subnode].subnode = eepromSettings.subnode;
 	}
 
-	if (!g_rf69.init())
-		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
-	// The encryption key has to be the same as the one in the client
-	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(DISPLAY_NODE);
 
-	Serial.print("RF69 initialise node: ");
+#ifndef LORA_RF95
+	pinMode(RFM69_RST, OUTPUT);
+	digitalWrite(RFM69_RST, LOW);
+	delay(1);
+	digitalWrite(RFM69_RST, HIGH);
+	delay(10);
+	delay(10);
+	Serial.print(F("Initialise RF69 node: "));
+#else
+	Serial.print(F("Initialise LORA_RF95 node: "));
+#endif
 	Serial.print(DISPLAY_NODE);
 	Serial.println(" Freq: 915MHz");
+
+
+	if (!g_rfRadio.init())
+		Serial.println("rfRadio init failed");
+	if (!g_rfRadio.setFrequency(915.0))
+		Serial.println("rfRadio setFrequency failed");
+	// The encryption key has to be the same as the one in the client
+#ifndef LORA_RF95
+	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rfRadio.setEncryptionKey(key);
+#endif
+	g_rfRadio.setHeaderId(DISPLAY_NODE);
+
 
 
 	for (int i = 0; i< MAX_NODES; i++)
@@ -438,12 +463,12 @@ void loop ()
 	byte len = 0;
 	bool okToRelay = false;
 
-	if (g_rf69.available())
+	if (g_rfRadio.available())
 	{
-		len = RH_RF69_MAX_MESSAGE_LEN;  //ASSERT( len <= sizeof(buf));
-		if (g_rf69.recv(buf, &len))
+		len = RADIO_BUF_LEN;  //ASSERT( len <= sizeof(buf));
+		if (g_rfRadio.recv(buf, &len))
 		{
-			node_id = g_rf69.headerId();
+			node_id = g_rfRadio.headerId();
 			//Serial.print("RSSI: ");
 			//Serial.print(g_rf69.lastRssi(), DEC);
 			//Serial.print(", node: ");
@@ -617,13 +642,13 @@ void loop ()
 				{
 					delay(10);
 					// switch the outgoing node to the incoming node ID.
-					g_rf69.setHeaderId(node_id);
+					g_rfRadio.setHeaderId(node_id);
 					Serial.print("Relay packet "); EmonEEPROM::PrintNode(Serial, node_id); Serial.println();
 					//set the bit in the relay byte to our relayNumber ID
 					pRelayPayload->relay |= (1 << (eepromSettings.relayNumber-1));
 
-					g_rf69.send((const uint8_t*) buf, len);
-					if( g_rf69.waitPacketSent() )
+					g_rfRadio.send((const uint8_t*) buf, len);
+					if( g_rfRadio.waitPacketSent() )
 					{
 						Serial.println("Packet Resent");
 					}
@@ -632,7 +657,7 @@ void loop ()
 						Serial.println(F("No packet sent"));
 					}
 					//reset our node ID
-					g_rf69.setHeaderId(DISPLAY_NODE);
+					g_rfRadio.setHeaderId(DISPLAY_NODE);
 				}
 			}
 		}
@@ -685,25 +710,11 @@ void loop ()
 		}
 		if (numberOfTemperatureSensors)
 		{
-#ifdef USE_JEELIB
-			int wait = 1000;
-			while (!rf12_canSend() && --wait)
-				;
-			if (wait)
-			{
-				//send the temperature every 60 seconds
-				dispPayload[eepromSettings.subnode].temperature = temperature[eInside];
-
-				rf12_sendStart(0, &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
-				rf12_sendWait(0);
-				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
-			}
-#else
 			//send the temperature every 60 seconds
 			dispPayload[eepromSettings.subnode].temperature = temperature[eInside];
 			
-			g_rf69.send((const uint8_t*) &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
-			if( g_rf69.waitPacketSent() )
+			g_rfRadio.send((const uint8_t*) &dispPayload[eepromSettings.subnode], sizeof(PayloadDisp));
+			if( g_rfRadio.waitPacketSent() )
 			{
 				EmonSerial::PrintDispPayload(&dispPayload[eepromSettings.subnode], SEND_UPDATE_PERIOD);
 			}
@@ -711,7 +722,6 @@ void loop ()
 			{
 				Serial.println(F("No packet sent"));
 			}
-#endif
 		}
 	}
 	//--------------------------------------------------------------------

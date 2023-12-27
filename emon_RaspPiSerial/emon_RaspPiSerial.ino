@@ -4,7 +4,7 @@
 #include <EmonShared.h>
 #include <SPI.h>
 
-#undef LORA_RF95
+#define LORA_RF95
 
 #ifdef LORA_RF95
 	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards

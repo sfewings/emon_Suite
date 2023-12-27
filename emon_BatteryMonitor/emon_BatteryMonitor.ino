@@ -1,20 +1,25 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 // emon BatteryMonitor
 //-------------------------------------------------------------------------------------------------------------------------------------------------
-//#define USE_JEELIB
+#include <SPI.h>
 
+#define HARVEY_FARM
 
-#ifdef USE_JEELIB
-  #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-  #include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
+#define LORA_RF95
 
-  #define RF69_COMPAT 1
-	RF12Init g_rf12Init = { BATTERY_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
 #else
-	#include <SPI.h>
 	#include <RH_RF69.h>
-	// Singleton instance of the radio driver
-	RH_RF69 g_rf69;
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define GREEN_LED 		9
+	#define RFM69_RST     	4
+	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
 #endif
 
 #include <avr/wdt.h>    //watchdog timer
@@ -208,18 +213,18 @@ double ReadingDifferential(const char* shuntName, uint8_t ads, uint8_t channel, 
 	ads1115[ads].setGain(GAIN_TWOTHIRDS);
 
 	//print before sorting!
-	// Serial.print(F("current vals,"));
-	// for (int i = 0; i < SAMPLES; i++)
-	// {
-	// 	Serial.print(samples[i]);
-	// 	Serial.print(",");
-	// }
-	// Serial.println();
+	Serial.print(F("current vals,"));
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		Serial.print(samples[i]);
+		Serial.print(",");
+	}
+	Serial.println();
 
 
 	stats_t stats = GetStats(samples, SAMPLES);
 
-	//Serial.println(F("current,shuntNum,gain,factor,median,mean,stdDev"));
+	Serial.println(F("current,shuntNum,gain,factor,median,mean,stdDev"));
 	Serial.print(F("current,"));
 	Serial.print(shuntName);	Serial.print(F(",")); 
 	Serial.print(gain);		Serial.print(F(",")); 
@@ -264,26 +269,32 @@ void setup()
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	g_payloadBattery.subnode = eepromSettings.subnode;
 
-#ifdef USE_JLIB
-	Serial.println("rf12_initialize");
-	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
-	EmonSerial::PrintRF12Init(g_rf12Init);
-#else
-	if (!g_rf69.init())
-		Serial.println(F("rf69 init failed"));
-	if (!g_rf69.setFrequency(915.0))
-		Serial.println(F("rf69 setFrequency failed"));
+#ifndef LORA_RF95
+	pinMode(RFM69_RST, OUTPUT);
+	digitalWrite(RFM69_RST, LOW);
+	delay(1);
+	digitalWrite(RFM69_RST, HIGH);
+	delay(10);
+#endif
+
+	if (!g_rfRadio.init())
+		Serial.println(F("rfRadio init failed"));
+	if (!g_rfRadio.setFrequency(915.0))
+		Serial.println(F("rfRadio setFrequency failed"));
+	g_rfRadio.setHeaderId(BATTERY_NODE);
+
+#ifndef LORA_RF95
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(BATTERY_NODE);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	 				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	g_rfRadio.setEncryptionKey(key);
+#endif
 
-	Serial.print(F("RF69 initialise node: "));
+	Serial.print(NODE_INITIALISED_STRING);
 	Serial.print(BATTERY_NODE);
 	Serial.println(F(" Freq: 915MHz"));
-#endif
 
 	EmonSerial::PrintBatteryPayload(NULL);
 
@@ -336,12 +347,31 @@ void setup()
 
 void loop()
 {
-  wdt_reset();
+  	wdt_reset();
 
 	uint32_t millisStart = millis();
 	
 	bool noisyData = false;
 
+	double amps[BATTERY_SHUNTS];
+	for(int i=0; i< BATTERY_SHUNTS;i++)
+		amps[i] = 0.0;
+
+	for(int i=0; i<MAX_VOLTAGES;i++)
+	{
+		g_payloadBattery.voltage[i] =0.0;
+	}
+#ifdef HARVEY_FARM
+	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
+	double railVoltage = Reading(0, 0, 0, 0.1875 * (10000 + 500) / 500 / 10, noisyData );
+
+	g_payloadBattery.voltage[0] = (short) railVoltage;
+  //All the rest are 10k/1k voltage divider to measure ~24v
+	g_payloadBattery.voltage[1] = (short) Reading(1, 0, 1, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 1 - row 4 (bottom)
+  	wdt_reset();
+  
+	amps[0] = ReadingDifferential("Shunt"  , 0, 1, noisyData ) * 500.0 / 75.0; //shunt is 500Amps for 75mV; Shunt
+#else
 	//main rail voltage, should be around 52v. Voltage divider is 10k/500 ohms
 	double railVoltage = Reading(0, 0, 2, 0.1875 * (10000 + 500) / 500 / 10, noisyData );
 
@@ -357,15 +387,16 @@ void loop()
     g_payloadBattery.voltage[8] = (short) Reading(8, 3, 3, 0.1875 * (10000 + 1000) / 1000 / 10, noisyData );  //Bank 2 - row 1 (top)
   	wdt_reset();
   
-	double amps[BATTERY_SHUNTS];
 	amps[0] = ReadingDifferential("Bank2"  , 1, 0, noisyData ) * 90.0 / 100.0; //shunt is 150Amps for 90mV; Bank 2
   	wdt_reset();
 	amps[1] = ReadingDifferential("Bank1"  , 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV; Bank 1
   	wdt_reset();
 	amps[2] = ReadingDifferential("LiFePo1", 1, 1, noisyData ) * 150.0 / 50.0; //shunt is 50Amps for 75mV;  Li ion
   	wdt_reset();
+#endif
 
-	if( noisyData || railVoltage > 10000)
+
+	if( noisyData ) //|| railVoltage > 10000)
 	{
 		digitalWrite(LED_PIN, HIGH);
 		Serial.println("High std dev on a reading. Noisy data. Exiting without sending.");
@@ -381,7 +412,7 @@ void loop()
 	unsigned long period = now - g_lastMillis;
 	g_lastMillis = now;
 
-	//Serial.println(F("shunt,#,railv,amps,power,totalOut,totalIn,pulseOut,pulseIn"));
+	Serial.println(F("shunt,#,railv,amps,power,totalOut,totalIn,pulseOut,pulseIn"));
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
 		g_payloadBattery.power[i] = railVoltage * amps[i] / 100.0;  //convert mV to mW
@@ -394,16 +425,16 @@ void loop()
 		g_payloadBattery.pulseIn[i] = g_mWH_In[i];
 		g_payloadBattery.pulseOut[i] = g_mWH_Out[i];
 
-		// Serial.print("shunt,"); 
-		// Serial.print(i); 							Serial.print(",");
-		// Serial.print(railVoltage, 2); 				Serial.print(",");
-		// Serial.print(amps[i]); 						Serial.print(",");
-		// Serial.print(g_payloadBattery.power[i]); 	Serial.print(",");
-		// Serial.print(g_mWH_Out[i]); 				Serial.print(",");
-		// Serial.print(g_mWH_In[i]); 					Serial.print(",");
-		// Serial.print(g_payloadBattery.pulseOut[i]); Serial.print(",");
-		// Serial.print(g_payloadBattery.pulseIn[i]); 
-		// Serial.println();
+		Serial.print("shunt,"); 
+		Serial.print(i); 							Serial.print(",");
+		Serial.print(railVoltage, 2); 				Serial.print(",");
+		Serial.print(amps[i]); 						Serial.print(",");
+		Serial.print(g_payloadBattery.power[i]); 	Serial.print(",");
+		Serial.print(g_mWH_Out[i]); 				Serial.print(",");
+		Serial.print(g_mWH_In[i]); 					Serial.print(",");
+		Serial.print(g_payloadBattery.pulseOut[i]); Serial.print(",");
+		Serial.print(g_payloadBattery.pulseIn[i]); 
+		Serial.println();
 	}
 
 	//write g_mWH_In and g_mWH_Out to eeprom
@@ -416,9 +447,17 @@ void loop()
 	//Send packet 
 	digitalWrite(LED_PIN, HIGH);
 
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-	g_rf69.send((const uint8_t*) &g_payloadBattery, sizeof(g_payloadBattery));
-	if( g_rf69.waitPacketSent() )
+#ifndef LORA_RF95
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+#endif
+
+	Serial.print(F("Size of PayloadBattery:")); Serial.println(sizeof(g_payloadBattery));
+	EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+
+	delay(100);
+
+	g_rfRadio.send((const uint8_t*) &g_payloadBattery, sizeof(g_payloadBattery));
+	if( g_rfRadio.waitPacketSent() )
 	{
 		EmonSerial::PrintBatteryPayload(&g_payloadBattery);
 	}
@@ -426,7 +465,13 @@ void loop()
 	{
 		Serial.println(F("No packet sent"));
 	}
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+#ifdef LORA_RF95
+ 	g_rfRadio.sleep();
+#else
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
+	
 	
 	digitalWrite(LED_PIN, LOW);
 
