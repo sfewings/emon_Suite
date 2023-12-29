@@ -9,27 +9,53 @@
 #include <RH_RF69.h>
 #include <avr/wdt.h>    //watchdog timer
 
+#define LORA_RF95
+
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define GREEN_LED 		9
+	#define RFM69_RST     	4
+	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
+#endif
+
+
+
+#define HARVEY_FARM
+
+#ifdef HARVEY_FARM
+	#define	DS1603_L_RX SDA
+	#define	DS1603_L_TX SCL
+	#define FLOW_METER_PIN 3
+	#define PULSES_PER_DECILITRE  (12/10.0)	//1 litre = 12 pulses
+#else
+	#define	DS1603_L_RX A1
+	#define	DS1603_L_TX A0
+	#define FLOW_METER_PIN 3
+	#define PULSES_PER_DECILITRE  100
+#endif
 
 #define GREEN_LED 9			// Green LED on emonTx
-bool g_toggleLED = false;
+#define EEPROM_BASE 0x10						//where the water count is stored
 
 
-SoftwareSerial g_sensorSerial(A1, A0);	//A1=rx, A0=tx
-
-
-// If your sensor is connected to Serial, Serial1, Serial2, AltSoftSerial, etc. pass that object to the sensor constructor.
+SoftwareSerial g_sensorSerial(DS1603_L_RX, DS1603_L_TX);	//A1=rx, A0=tx
 DS1603L g_waterHeightSensor(g_sensorSerial);
 
-#define EEPROM_BASE 0x10			//where the water count is stored
-#define PULSES_PER_DECILITRE  100
 
 volatile unsigned long	g_flowCount = 0;		//number of pulses in total since installation
-volatile unsigned long	g_period = 0;				//ms between last two pulses
-
-RH_RF69 g_rf69;
+volatile unsigned long	g_period = 0;			//ms between last two pulses
 
 PayloadWater g_waterPayload;
 bool		 g_previousActivity = false;	//true if the last loop had activity. Allow transmit 1 second after flow activity has stopped
+bool 		 g_toggleLED = false;
 
 unsigned long readEEPROM(int offset)
 {
@@ -86,25 +112,28 @@ long readVcc() {
 //--------------------------------------------------------------------------------------------
 void setup()
 {
-	pinMode(GREEN_LED, OUTPUT);
-	digitalWrite(GREEN_LED, HIGH);		//LED has inverted logic. LOW is on, HIGH is off!
+	wdt_reset();
 
 	Serial.begin(9600);
 
 	Serial.println(F("Water sensor start"));
 
-	if (!g_rf69.init())
-		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
+
+	if (!g_rfRadio.init())
+		Serial.println(F("rfRadio init failed"));
+	if (!g_rfRadio.setFrequency(915.0))
+		Serial.println(F("rfRadio setFrequency failed"));
+	g_rfRadio.setHeaderId(WATERLEVEL_NODE);
+
+#ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(WATERLEVEL_NODE);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	g_rfRadio.setEncryptionKey(key);
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 
-	Serial.print("RF69 initialise node: ");
+	Serial.print(NODE_INITIALISED_STRING);
 	Serial.print(WATERLEVEL_NODE);
 	Serial.println(" Freq: 915MHz");
 
@@ -123,19 +152,18 @@ void setup()
 	EmonSerial::PrintWaterPayload(NULL);
 
 	//water flow rate setup
-	//writeEEPROM(0, 0);					//reset the flash
+	writeEEPROM(0, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
 	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
 	g_waterPayload.flowCount[0] = (unsigned long) ( g_flowCount/PULSES_PER_DECILITRE);
 
-	pinMode(3, INPUT_PULLUP);
-	attachInterrupt(digitalPinToInterrupt(3), interruptHandlerWaterFlow, CHANGE);
+	pinMode(FLOW_METER_PIN, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(FLOW_METER_PIN), interruptHandlerWaterFlow, CHANGE);
 
   	Serial.println(F("Watchdog timer set for 8 seconds"));
   	wdt_enable(WDTO_8S);
   	delay(100);	
-	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
 
 //--------------------------------------------------------------------------------------------
@@ -178,11 +206,13 @@ void loop ()
 	}
 	Serial.println(s);
 
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+#ifndef LORA_RF95
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+#endif
 	PayloadWater packed;
 	int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
-	g_rf69.send((const uint8_t*) &packed, size);
-	if( g_rf69.waitPacketSent() )
+	g_rfRadio.send((const uint8_t*) &packed, size);
+	if( g_rfRadio.waitPacketSent() )
 	{
 		//unpack and print. To make sure we sent correctly
 		memset(&g_waterPayload, 0, sizeof(g_waterPayload));
@@ -193,13 +223,19 @@ void loop ()
 	{
 		Serial.println(F("No packet sent"));
 	}
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+#ifdef LORA_RF95
+ 	g_rfRadio.sleep();
+#else
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 
 	int waitMS;
 	if (activity || g_previousActivity)
 		waitMS = 1000;  //keep sending if there is water movement
 	else
-		waitMS = 30000; //wait 30 seconds before sending a new update
+//		waitMS = 30000; //wait 30 seconds before sending a new update
+		waitMS = 3000; //wait 30 seconds before sending a new update
 	while(waitMS >= 0)
 	{
 		delay(1000);

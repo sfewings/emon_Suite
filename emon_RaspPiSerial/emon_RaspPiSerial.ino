@@ -30,6 +30,7 @@
 
 void SetLed(uint8_t val)
 {
+//Pin 9 conflicts with the Lora 8MHz board
 #ifndef LORA_RF95
 	pinMode(GREEN_LED, OUTPUT);
 	digitalWrite(GREEN_LED, val );

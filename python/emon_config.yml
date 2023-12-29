@@ -1,43 +1,147 @@
 temp:
   0:
     name: House temperatures
-    t0: Outside
+    t0: Under roof
+    t1: Living room slab
+    t2: Living room
+    t3: Ceiling space
+  1:
+    name: Fridge temperatures
+    t0: On top of fridge
+    t1: Big Fridge
+    t2: Small Fridge
+  2:
+    name: inside
+    t0: sensor 1
+    t1: sensor 2
+    t2: sensor 3
+    t3: sensor 4
+  3:
+    name: Solar tester
+    t0: Test 1
+    t1: Test 2
+hws:
+  0:
+    name: Hot water system
+    t0: Top of Panel (T1)
+    t1: Water (T3)
+    t2: Inlet (T6)
+    t3: Water 2 (T2)
+    t4: Water 3 (T5)
+    t5: (T4)
+    t6: PCB
+    p0: Solar pump
+    p1: Heat Exchange pump
+    p2: Heat pump booster
 disp:
   0:
     name: Kitchen
+  1:
+    name: Office
+  2:
+    name: Unused
+  3:
+    name: Upstairs
 wtr:
   0:
-    name: Rain tank
-    f0: Water Used
-    f0_litresPerPulse: 0.2
+    name: Rain tank and HWS
+    f0: Hot water
+    f0_litresPerPulse: 0.1
     h0: Rain water tank
+  1:
+    name: Front yard
+    f0: Mains
+    f0_litresPerPulse: 0.1
+    f1: Bore
+    f1_litresPerPulse: 0.1
+  3:
+    name: Testing
+    f0: Tester
+    f0_litresPerPulse: 0.1
+rain:
+  0:
+    name: Rain gauge
+    mmPerPulse: 0.2
+scl:
+  0:
+    name: Dog food
+  1:
+    name: Food scraps
+  4:
+    name: Testing scale
 pulse:
   0:
     name: Power board
-    p0: Consumed
-    p1: Produced
-    p0_wPerPulse: 1
+    p0: HWS
+    p1: Solar production (Schneider)
+    p2: Consumed
+    p3: Imported
+    p4: Car
+    p5: Unused
+    p0_wPerPulse: 0.25
     p1_wPerPulse: 0.25
+    p2_wPerPulse: 2.5
+    p3_wPerPulse: 1
+    p4_wPerPulse: 0.25
+    p5_wPerPulse: 1
 bat:
   0:
     name: Main battery monitor
-    s0: Bank 1
-    s1: Unused
-    s2: Unused
+    s0: Bank 2
+    s1: Bank 1
+    s2: Bank 3 (old batteries)
     v0: Rail
     v0_reference: true
-    v1: Mid-voltage
+    v1: B1-4
+    v2: B1-3
+    v3: B1-2
+    v4: B1-1
+    v5: B2-4
+    v6: B2-3
+    v7: B2-2
+    v8: B2-1 
+  1:
+    name: Battery Tester
+    s0: Test battery
+    s1: Unused
+    s2: Unused
+    v0: Battery
+    v1: Unused
     v2: Unused
     v3: Unused
     v4: Unused
     v5: Unused
     v6: Unused
     v7: Unused
+    v8: Arduino
+  2:
+    name: Reverse Current Tester
+    s0: Bank 1 - Rev
+    s1: Bank 1 - Forward
+    s2: Unused
+    v0: 50v ref
+    v0_reference: true
+    v1: V_In
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Arduino
 air:
   0:
-    name: Outside
+    name: Kitchen
   1:
-    name: Inside
+    name: Garage
 inv: #inverters
   0:
-    name: Giant
+    name: Inverter 1
+  1:
+    name: Inverter 2
+bee:
+  0:
+leaf:
+  0:
+    name: Leaf
+

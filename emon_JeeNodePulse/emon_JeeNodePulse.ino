@@ -36,8 +36,8 @@ volatile unsigned long	g_lastTick[PULSE_MAX_SENSORS]		= { 0,0,0,0,0,0 };		//mill
 volatile unsigned long	g_period[PULSE_MAX_SENSORS]			= { 0,0,0,0,0,0 };		//ms between last two pulses
 
 #ifdef HARVEY_FARM
-const	double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 0.5,1.0,1.0,1.0,1.0,1.0};	//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
-const	uint8_t		g_pin[PULSE_MAX_SENSORS]		= { 4,3,0,0,0,0 };			//pin number for each input
+const	double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 2.0,2.0,0.4,1.0,1.0,1.0};	//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
+const	uint8_t		g_pin[PULSE_MAX_SENSORS]		= { 0,3,4,0,0,0 };				//pin number for each input
 #else
 const	double		g_pulsePerWH[PULSE_MAX_SENSORS]	= { 2.0,2.0,0.4,1.0,2.0,1.0};	//number of pulses per wH for each input. Some are 2, some are 1, some are 0.4
 const	uint8_t		g_pin[PULSE_MAX_SENSORS]		= { 4,5,6,7,14,15 };			//pin number for each input
@@ -155,9 +155,9 @@ void setup()
 	// }
 
 	if (!g_rfRadio.init())
-		Serial.println(	NODE_INITIALISED_STRING );
+		Serial.println(F("rfRadio init failed"));
 	if (!g_rfRadio.setFrequency(915.0))
-		Serial.println("rfRadio setFrequency failed");
+		Serial.println(F("rfRadio setFrequency failed"));
 	g_rfRadio.setHeaderId(PULSE_JEENODE);
 
 #ifndef LORA_RF95
@@ -167,7 +167,7 @@ void setup()
 	g_rfRadio.setEncryptionKey(key);
 #endif
 
-	Serial.print("Node: ");
+	Serial.print(NODE_INITIALISED_STRING);
 	Serial.print(PULSE_JEENODE);
 	Serial.println(" Freq: 915MHz");
 
