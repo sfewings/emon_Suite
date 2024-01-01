@@ -24,6 +24,9 @@
 
 #include <SPI.h>
 
+#define HARVEY_FARM
+
+
 #define LORA_RF95
 
 #ifdef LORA_RF95
@@ -50,8 +53,8 @@ double wh_gen, wh_consuming;
 unsigned long whtime;						//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	17				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
-enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode0, eWaterNode1, eWaterNode2, eWaterNode3 , eScale};	//index into txReceived and lastReceived
+#define MAX_NODES	18				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode0, eWaterNode1, eWaterNode2, eWaterNode3 , eScale, eBattery};	//index into txReceived and lastReceived
 enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
@@ -67,6 +70,7 @@ PayloadWater waterPayload[MAX_SUBNODES];
 PayloadScale scalePayload;
 PayloadDisp dispPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
+PayloadBattery batteryPayload;
 
 
 EEPROMSettings  eepromSettings;
@@ -119,7 +123,7 @@ int numberOfTemperatureSensors = 0;
 //-------------------------------------------------------------------------------------------- 
 // Flow control
 //-------------------------------------------------------------------------------------------- 
-#define  SEND_UPDATE_PERIOD			2  //60	//seconds between updates
+#define  SEND_UPDATE_PERIOD			60	//seconds between updates
 
 time_t slow_update;									// Used to count time for slow 10s events
 time_t average_update;							// Used to store averages and totals
@@ -425,15 +429,16 @@ void setup()
 	//pushbutton configuration
 	pinMode(A3, INPUT_PULLUP);
 	//attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
-  attachPCINT(digitalPinToPCINT(A3),interruptHandlerPushButton, RISING);
+  	attachPCINT(digitalPinToPCINT(A3),interruptHandlerPushButton, RISING);
   
-  EmonSerial::PrintRainPayload(NULL);
+  	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
 	EmonSerial::PrintScalePayload(NULL);
+	EmonSerial::PrintBatteryPayload(NULL);
 
 	average_update = now();
 	slow_update = now();
@@ -599,6 +604,14 @@ void loop ()
 			okToRelay = true;
 		}
 
+		if ( node_id == BATTERY_NODE && len == sizeof(PayloadBattery))
+		{
+			batteryPayload = *((PayloadBattery*)buf);
+			EmonSerial::PrintBatteryPayload(&batteryPayload, (now() - lastReceived[eBattery]));			 // print data to serial
+			txReceived[eBattery]++;
+			lastReceived[eBattery] = now();
+		}
+
 		if ( node_id == BASE_JEENODE && len == sizeof(PayloadBase))						// jeenode base Receives the time
 		{
 			basePayload = *((PayloadBase*)buf);
@@ -751,9 +764,16 @@ void loop ()
 		{
 		case eSummary:
 			{
+#ifdef HARVEY_FARM
+				lcdUint(0, 0, (unsigned int)pulsePayload.power[2]);
+				lcd.print(F("w"));
+				lcd.setCursor(8, 0);
+				lcd.print(TemperatureString(str, batteryPayload.voltage[0]));
+				lcd.print(F("v"));
+#else
 				lcdUint(0, 0, (unsigned int)pulsePayload.power[2]);
 				lcdUint(5, 0, (unsigned int)pulsePayload.power[1]);
-
+#endif
 				lcd.setCursor(0,0);
 				lcd.print( txReceived[ePulse]%2 ? "*" : (dogHasBeenFed ? "+" : " ")); //toggle "*" every time a pulseNodeTx received. Every second
 
@@ -763,7 +783,19 @@ void loop ()
 					lcd.print(RainString(str, rainPayload.rainCount - rainStartOfToday));
 					lcd.print(F("mm"));
 				}
+#ifdef HARVEY_FARM
 
+				//print temperatures
+				lcd.setCursor(0, 1);
+				//water temperatre
+				lcd.print(TemperatureString(str, temperature[eInside]));
+				lcd.print(F("c"));
+
+				//inside temperature
+				lcd.setCursor(6, 1);
+				lcd.print(TemperatureString(str, temperature[eOutside]));
+				lcd.print(F("c"));
+#else
 				//print temperatures
 				lcd.setCursor(0, 1);
 				//water temperatre
@@ -776,6 +808,7 @@ void loop ()
 				//outside temperature
 				lcd.setCursor(12, 1);
 				lcd.print(TemperatureString(str, temperature[eOutside]));
+#endif
 				break;
 			}
 		case eCurrentPower:

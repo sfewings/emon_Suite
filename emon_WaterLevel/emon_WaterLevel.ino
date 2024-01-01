@@ -44,7 +44,7 @@
 
 #define GREEN_LED 9			// Green LED on emonTx
 #define EEPROM_BASE 0x10						//where the water count is stored
-
+#define VOLTAGE_MEASURE_PIN A0
 
 SoftwareSerial g_sensorSerial(DS1603_L_RX, DS1603_L_TX);	//A1=rx, A0=tx
 DS1603L g_waterHeightSensor(g_sensorSerial);
@@ -152,7 +152,7 @@ void setup()
 	EmonSerial::PrintWaterPayload(NULL);
 
 	//water flow rate setup
-	writeEEPROM(0, 0);					//reset the flash
+	//writeEEPROM(0, 0);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
 
 	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
@@ -186,7 +186,12 @@ void loop ()
 		writeEEPROM(0, g_flowCount);
 	}
 
-	g_waterPayload.supplyV = readVcc();
+
+	//voltage divider is 1Mohm and 1Mohm. Atmega reference voltage is 3.3v. AD range is 1024
+	//voltage divider current draw is 29 uA. See https://jeelabs.org/2013/05/16/measuring-the-battery-without-draining-it/index.html
+	float measuredvbat = analogRead(VOLTAGE_MEASURE_PIN);
+	measuredvbat = (measuredvbat/1024.0 * 3.3) * (1000000.0+1000000.0)/1000000.0;
+	g_waterPayload.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 	g_waterPayload.flowCount[0] = flowCount;
 	g_waterPayload.waterHeight[0] = waterHeight;
 
@@ -234,8 +239,7 @@ void loop ()
 	if (activity || g_previousActivity)
 		waitMS = 1000;  //keep sending if there is water movement
 	else
-//		waitMS = 30000; //wait 30 seconds before sending a new update
-		waitMS = 3000; //wait 30 seconds before sending a new update
+		waitMS = 30000; //wait 30 seconds before sending a new update
 	while(waitMS >= 0)
 	{
 		delay(1000);
