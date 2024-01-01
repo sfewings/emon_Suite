@@ -131,6 +131,7 @@
             enabled: true
 			
 21.	Create SSL certificate for shannstainable.fewings.org using letsencrypt
+	sudo apt install certbot
 	/etc/letsencrypt/live/shannstainable.fewings.org/cert.pem
 	Set up renewal every 40 days by placing /etc/letsencrypt/renewal/shannstainable.fewings.org.conf
 	cp LinuxInstall/etc/letsencrypt/renewal/shannstainable.fewings.org.conf /etc/letsencrypt/renewal/shannstainable.fewings.org.conf

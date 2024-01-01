@@ -44,39 +44,18 @@ disp:
     name: Upstairs
 wtr:
   0:
-    name: Rain tank and HWS
-    f0: Hot water
-    f0_litresPerPulse: 0.1
-    h0: Rain water tank
-  1:
-    name: Front yard
-    f0: Mains
-    f0_litresPerPulse: 0.1
-    f1: Bore
-    f1_litresPerPulse: 0.1
-  3:
-    name: Testing
-    f0: Tester
-    f0_litresPerPulse: 0.1
-rain:
-  0:
-    name: Rain gauge
-    mmPerPulse: 0.2
-scl:
-  0:
-    name: Dog food
-  1:
-    name: Food scraps
-  4:
-    name: Testing scale
+    name: Garden water tank
+    f0: Water Used
+    f0_litresPerPulse: 1
+    h0: Tank water height
 pulse:
   0:
     name: Power board
-    p0: HWS
-    p1: Solar production (Schneider)
+    p0: Unused
+    p1: Produced
     p2: Consumed
-    p3: Imported
-    p4: Car
+    p3: Unused
+    p4: Unused
     p5: Unused
     p0_wPerPulse: 0.25
     p1_wPerPulse: 0.25
@@ -84,25 +63,14 @@ pulse:
     p3_wPerPulse: 1
     p4_wPerPulse: 0.25
     p5_wPerPulse: 1
+    p2_wPerPulse: 2.5
+    p3_wPerPulse: 1
+    p4_wPerPulse: 0.25
+    p5_wPerPulse: 1
 bat:
   0:
-    name: Main battery monitor
-    s0: Bank 2
-    s1: Bank 1
-    s2: Bank 3 (old batteries)
-    v0: Rail
-    v0_reference: true
-    v1: B1-4
-    v2: B1-3
-    v3: B1-2
-    v4: B1-1
-    v5: B2-4
-    v6: B2-3
-    v7: B2-2
-    v8: B2-1 
-  1:
-    name: Battery Tester
-    s0: Test battery
+    name: Battery monitor
+    s0: Bank 1
     s1: Unused
     s2: Unused
     v0: Battery
@@ -128,7 +96,7 @@ bat:
     v5: Unused
     v6: Unused
     v7: Unused
-    v8: Arduino
+    v8: Unused
 air:
   0:
     name: Kitchen

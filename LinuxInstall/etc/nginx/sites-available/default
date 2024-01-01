@@ -22,15 +22,15 @@
 #redirect http traffic to https
 server {
     listen 80;
-    server_name shannstainable.fewings.org;
+    server_name harvey.fewings.org;
     return 301 https://$server_name$request_uri;
 }
 
 server {
   listen 443 default ssl;
   #ssl on;
-  ssl_certificate_key /etc/letsencrypt/live/shannstainable.fewings.org/privkey.pem;
-  ssl_certificate /etc/letsencrypt/live/shannstainable.fewings.org/cert.pem;
+  ssl_certificate_key /etc/letsencrypt/live/harvey.fewings.org/privkey.pem;
+  ssl_certificate /etc/letsencrypt/live/harvey.fewings.org/cert.pem;
 
   ssl_verify_depth 3;
   ssl_protocols TLSv1.1 TLSv1.2;
@@ -46,7 +46,7 @@ server {
   }
  
   location /grafana/ {
-    proxy_pass http://192.168.1.121:3000/grafana/;
+    proxy_pass http://192.168.1.93:3000/grafana/;
   }
 
 #  location /grafana2/ {
@@ -54,6 +54,10 @@ server {
 #  }
 
   location /other/ {
-    proxy_pass http://192.168.1.121:1880/ui/;
+    proxy_pass http://192.168.1.93:1880/ui/;
+
+  location /nodered/ {
+    proxy_pass http://192.168.1.93:1880;
+
   }
 }
