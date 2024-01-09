@@ -1,3 +1,24 @@
+To use pyEnv to install multiple version of python to RaspPi
+============================================================
+1.See instructions at https://www.samwestby.com/tutorials/rpi-pyenv.html
+2. curl https://pyenv.run | bash
+3. sudo nano ~/.bashrc and add the follwoing lines to the end of .bashrc
+    > export PATH="$HOME/.pyenv/bin:$PATH"
+    > eval "$(pyenv init --path)"
+    > eval "$(pyenv virtualenv-init -)"
+4. Rerun shell
+    > exec $SHELL
+5. sudo apt-get install --yes libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libgdbm-dev lzma lzma-dev tcl-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev wget curl make build-essential openssl
+6. Setup pyenv
+    > pyenv update
+7. List availalbe pyenv versions
+    > pyenv install --list
+8. Install the version you are after
+    > pyenv install 3.11.0
+9. Run this new version of python from the current shell. Options 'shell', 'local', 'global' 
+    > pyenv shell 3.11.0
+10. Create a venv using this version of python as below
+
 To create pyemonlib
 ===================
 Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-library-7d5aea80cc3f 
