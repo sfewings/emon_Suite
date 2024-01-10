@@ -5,31 +5,44 @@
 #include <EEPROM.h>
 #include <Time.h>			// needed for EmonShared
 #include <EmonShared.h>
-
-//---------------------------------------------------------------------------------------------------
-// Dallas temperature sensor	on pin 5, Jeenode port 2
-//---------------------------------------------------------------------------------------------------
-OneWire oneWire(5);
-DallasTemperature temperatureSensor(&oneWire);
-
-//---------------------------------------------------------------------------------------------------
-//Radiohead RF_69 support
-//---------------------------------------------------------------------------------------------------
 #include <SPI.h>
-#include <RH_RF69.h>
 
-RH_RF69 g_rf69;
 
 #define INTERRUPT_IR				1	// ATmega 168 and 328 - interrupt 0 = pin 2, 1 = pin 3
 #define RAIN_GAUGE_PIN				3
+#define TEMPERATURE_PIN				5
 #define MINUTES_BETWEEN_TRANSMIT  	5
-#define VOLTAGE_MEASURE_PIN 		A2
+#define VOLTAGE_MEASURE_PIN 		A0	// Original Jeenode used A2. Temperature uses A0
 #define EEPROM_BASE 				0x10
+
+#define LORA_RF95
+
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define GREEN_LED 		9
+	#define RFM69_RST     	4
+	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
+#endif
 
 volatile unsigned long	g_rainCount;			//The count from the rain gauge
 volatile unsigned long	g_transmitCount;		//Increment for each time the rainCount is transmitted. When rainCount is changed, this value is 0 
 volatile unsigned long	g_minuteCount = 0;		//How many minutes since the last transmit
 volatile unsigned long	g_RGlastTick = 0;		//Clock count of last interrupt
+
+//---------------------------------------------------------------------------------------------------
+// Dallas temperature sensor	on pin 5, Jeenode port 2
+//---------------------------------------------------------------------------------------------------
+OneWire oneWire(TEMPERATURE_PIN);
+DallasTemperature temperatureSensor(&oneWire);
+
 //--------------------------------------------------------------------------------------------------
 
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
@@ -65,18 +78,21 @@ void setup()
 
 	Serial.println(F("Fewings rain gauge Jeenode Tx"));
 
-	if (!g_rf69.init())
+	if (!g_rfRadio.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rfRadio.setFrequency(915.0))
 		Serial.println("rf69 setFrequency failed");
+	
+#ifndef LORA_RF95
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(RAIN_NODE);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	g_rfRadio.setEncryptionKey(key);
+#endif
+	g_rfRadio.setHeaderId(RAIN_NODE);
 
-	Serial.print("RF69 initialise node: ");
+	Serial.print(NODE_INITIALISED_STRING);
 	Serial.print(RAIN_NODE);
 	Serial.println(" Freq: 915MHz");
 
@@ -101,8 +117,10 @@ void setup()
 
 
 	// Initialise 
-	//writeEEPROM(0, 16453);					//reset the flash
+	//writeEEPROM(0, 0);					//reset the flash
 	g_rainCount = readEEPROM(0);	//read last reading from flash
+	Serial.print(F("Rain count=")); 
+	Serial.println(g_rainCount);
 	g_transmitCount = 1;
 	g_RGlastTick = millis();
 
@@ -129,14 +147,14 @@ void loop()
 
 	if (doTransmit)
 	{
-    if( g_transmitCount == 0)
-    {
-      writeEEPROM(0, g_rainCount);    //update eeprom
-    }
-		g_transmitCount++;
-		rainPayload.rainCount = g_rainCount;
-		rainPayload.transmitCount = g_transmitCount;
-	}
+		if( g_transmitCount == 0)
+		{
+		writeEEPROM(0, g_rainCount);    //update eeprom
+		}
+			g_transmitCount++;
+			rainPayload.rainCount = g_rainCount;
+			rainPayload.transmitCount = g_transmitCount;
+		}
 	SREG = oldSREG;					// restore interrupts
 
 
@@ -152,9 +170,11 @@ void loop()
 		measuredvbat = (measuredvbat/1024.0 * 3.3) * (1000000.0+1000000.0)/1000000.0;
 		rainPayload.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 
-		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-		g_rf69.send((const uint8_t*) &rainPayload, sizeof(PayloadRain));
-		if( g_rf69.waitPacketSent() )
+#ifndef LORA_RF95
+		g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+#endif
+		g_rfRadio.send((const uint8_t*) &rainPayload, sizeof(PayloadRain));
+		if( g_rfRadio.waitPacketSent() )
 		{
 			EmonSerial::PrintRainPayload(&rainPayload);
 		}
@@ -162,7 +182,11 @@ void loop()
 		{
 			Serial.println(F("No packet sent"));
 		}
-		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#ifdef LORA_RF95
+		g_rfRadio.sleep();
+#else
+		g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 
 		g_minuteCount = 0;
 
@@ -197,22 +221,6 @@ void printAddress(uint8_t deviceAddress[8])
 }
 
 
-//--------------------------------------------------------------------------------------------------
-// Read current emonTx battery voltage - not main supplyV!
-//--------------------------------------------------------------------------------------------------
-long readVcc() 
-{
-	long result;
-	// Read 1.1V reference against AVcc
-	ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-	delay(2); // Wait for Vref to settle
-	ADCSRA |= _BV(ADSC); // Convert
-	while (bit_is_set(ADCSRA, ADSC));
-	result = ADCL;
-	result |= ADCH << 8;
-	result = 1126400L / result; // Back-calculate AVcc in mV
-	return result;
-}
 //--------------------------------------------------------------------------------------------------
 unsigned long readEEPROM(int offset)
 {
