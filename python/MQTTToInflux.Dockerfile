@@ -1,10 +1,14 @@
-# Python Base Image from https://hub.docker.com/r/arm32v7/python/
-FROM arm64v8/python:3.11
-
+FROM --platform=$TARGETPLATFORM python:3.11
+ARG TARGETARCH
+COPY ./platform.sh ./
+#writes platform specific wheel filename to /.platform_whl
+COPY ./pyEmon/dist/* ./
+RUN ./platform.sh 
 COPY ./emonMQTTToInflux.py ./
 COPY ./emonLogToInflux.py ./
-COPY ./pyEmon/dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl ./
-RUN pip install pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl
+RUN pip install $(cat /.platform_whl)
+#update for numpy dependencies
+RUN apt-get update && apt-get install -y cmake
 RUN pip3 install numpy pytz
 RUN mkdir -p /share/config
 ENV INFLUX_IP=localhost
