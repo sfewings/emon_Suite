@@ -1,6 +1,7 @@
 To use pyEnv to install multiple version of python to RaspPi
 ============================================================
-1.See instructions at https://www.samwestby.com/tutorials/rpi-pyenv.html
+1.See instructions at https://www.samwestby.com/tutorials/rpi-pyenv.html. 
+            Windows - https://github.com/pyenv-win/pyenv-win
 2. curl https://pyenv.run | bash
 3. sudo nano ~/.bashrc and add the follwoing lines to the end of .bashrc
     > export PATH="$HOME/.pyenv/bin:$PATH"
