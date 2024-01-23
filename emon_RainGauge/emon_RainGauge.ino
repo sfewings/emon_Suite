@@ -79,9 +79,9 @@ void setup()
 	Serial.println(F("Fewings rain gauge Jeenode Tx"));
 
 	if (!g_rfRadio.init())
-		Serial.println("rf69 init failed");
+		Serial.println("rfRadio init failed");
 	if (!g_rfRadio.setFrequency(915.0))
-		Serial.println("rf69 setFrequency failed");
+		Serial.println("rfRadio setFrequency failed");
 	
 #ifndef LORA_RF95
 	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
