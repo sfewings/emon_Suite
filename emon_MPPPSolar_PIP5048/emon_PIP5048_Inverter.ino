@@ -5,7 +5,7 @@
 #ifdef LORA_RF95
 	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
 	#include <RH_RF95.h>
-	RH_RF95 g_rfRadio;
+	RH_RF95 g_rfRadio(4,2);
 	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
 	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
 #else
@@ -17,9 +17,8 @@
 	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
 #endif
 
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 #include <EmonShared.h>
-
 
 String QPI = "\x51\x50\x49\xBE\xAC\x0D";                    //Query Device Protocol ID Inquiry
 String QPIRI = "\x51\x50\x49\x52\x49\xF8\x54\x0D";          //Query Device Rating Information inquiry
@@ -230,7 +229,7 @@ void setup()
 		Serial.println(F("rfRadio init failed"));
 	if (!g_rfRadio.setFrequency(915.0))
 		Serial.println(F("rfRadio setFrequency failed"));
-	g_rfRadio.setHeaderId(PULSE_JEENODE);
+	g_rfRadio.setHeaderId(INVERTER_NODE);
 
 #ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
@@ -252,8 +251,8 @@ void setup()
 
 void SendPacket()
 {
-  // g_rfRadio.send((const uint8_t*) &g_payloadInverter, sizeof(g_payloadInverter));
-  // g_rfRadio.waitPacketSent();
+  g_rfRadio.send((const uint8_t*) &g_payloadInverter, sizeof(g_payloadInverter));
+  g_rfRadio.waitPacketSent();
 
   EmonSerial::PrintInverterPayload(&g_payloadInverter);
 }

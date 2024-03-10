@@ -787,11 +787,9 @@ void loop ()
 
 				//print temperatures
 				lcd.setCursor(0, 1);
-				//water temperatre
 				lcd.print(TemperatureString(str, temperature[eInside]));
 				lcd.print(F("c"));
 
-				//inside temperature
 				lcd.setCursor(6, 1);
 				lcd.print(TemperatureString(str, temperature[eOutside]));
 				lcd.print(F("c"));
