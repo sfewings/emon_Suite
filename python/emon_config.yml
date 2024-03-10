@@ -46,8 +46,13 @@ wtr:
   0:
     name: Garden water tank
     f0: Water Used
-    f0_litresPerPulse: 1
+    f0_litresPerPulse: 0.2
     h0: Tank water height
+  1:
+    name: Green water tank
+    f0: Green tank
+    f0_litresPerPulse: 0.2
+    h0: Green tank water height    
 pulse:
   0:
     name: Power board
@@ -74,14 +79,15 @@ bat:
     s1: Unused
     s2: Unused
     v0: Battery
-    v1: Unused
+    v0_reference: true
+    v1: Mid-voltage
     v2: Unused
     v3: Unused
     v4: Unused
     v5: Unused
     v6: Unused
     v7: Unused
-    v8: Arduino
+    v8: Unused
   2:
     name: Reverse Current Tester
     s0: Bank 1 - Rev
@@ -99,7 +105,7 @@ bat:
     v8: Unused
 air:
   0:
-    name: Kitchen
+    name: Outside
   1:
     name: Garage
 inv: #inverters
@@ -107,6 +113,10 @@ inv: #inverters
     name: Inverter 1
   1:
     name: Inverter 2
+rain:
+  0:
+    name: Rain gauge
+    mmPerPulse: 0.2
 bee:
   0:
 leaf:
