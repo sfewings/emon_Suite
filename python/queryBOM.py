@@ -32,6 +32,7 @@ parser.add_argument("-i", "--influx", help= "IP address of influxDB server", def
 args = parser.parse_args()
 influxURL = f"http://{args.influx}:8086"
 
+start_time = time.time()
 
 while 1:
 #  temperature = getPerthTemperature()
@@ -46,3 +47,7 @@ while 1:
   sys.stdout.flush()
 
   time.sleep(120)
+
+  #run for 24 hours
+  if time.time() - start_time >= 24*60*60:
+    break
