@@ -134,7 +134,7 @@ void setup()
 
   	Serial.println(F("Watchdog timer set for 8 seconds"));
   	wdt_enable(WDTO_8S);
-  	delay(100);	
+  	delay(2000);	//Give time for the water sensor to fill the serial buffer before the first read
 	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
 }
 
@@ -181,7 +181,7 @@ void loop ()
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 	PayloadWater packed;
 	int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
-	g_rf69.send((const uint8_t*) &packed, size);
+	//g_rf69.send((const uint8_t*) &packed, size);
 	if( g_rf69.waitPacketSent() )
 	{
 		//unpack and print. To make sure we sent correctly
