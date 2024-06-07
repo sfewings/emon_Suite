@@ -9,7 +9,7 @@
 #include <RH_RF69.h>
 #include <avr/wdt.h>    //watchdog timer
 
-#define LORA_RF95
+#undef LORA_RF95
 
 #ifdef LORA_RF95
 	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
@@ -28,7 +28,7 @@
 
 
 
-#define HARVEY_FARM
+#undef HARVEY_FARM
 
 #ifdef HARVEY_FARM
 	#define	DS1603_L_RX SDA
@@ -36,8 +36,8 @@
 	#define FLOW_METER_PIN 3
 	#define PULSES_PER_DECILITRE  (12/10.0)	//1 litre = 12 pulses
 #else
-	#define	DS1603_L_RX A1
-	#define	DS1603_L_TX A0
+	#define	DS1603_L_RX SDA
+	#define	DS1603_L_TX SCL
 	#define FLOW_METER_PIN 3
 	#define PULSES_PER_DECILITRE  100
 #endif
@@ -46,7 +46,7 @@
 #define EEPROM_BASE 0x10						//where the water count is stored
 #define VOLTAGE_MEASURE_PIN A0
 
-SoftwareSerial g_sensorSerial(DS1603_L_RX, DS1603_L_TX);	//A1=rx, A0=tx
+SoftwareSerial g_sensorSerial(DS1603_L_RX, DS1603_L_TX);
 DS1603L g_waterHeightSensor(g_sensorSerial);
 
 
@@ -152,8 +152,9 @@ void setup()
 	EmonSerial::PrintWaterPayload(NULL);
 
 	//water flow rate setup
-	//writeEEPROM(0, 0);					//reset the flash
+	//writeEEPROM(0, 150085827);					//reset the flash
 	g_flowCount = readEEPROM(0);	//read last reading from flash
+	Serial.println( g_flowCount);
 
 	g_waterPayload.numSensors = 0x11; //one pulse counter and one height sensor 00010001;
 	g_waterPayload.flowCount[0] = (unsigned long) ( g_flowCount/PULSES_PER_DECILITRE);
@@ -163,7 +164,7 @@ void setup()
 
   	Serial.println(F("Watchdog timer set for 8 seconds"));
   	wdt_enable(WDTO_8S);
-  	delay(100);	
+  	delay(2000);	
 }
 
 //--------------------------------------------------------------------------------------------
