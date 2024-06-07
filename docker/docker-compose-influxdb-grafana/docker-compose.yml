@@ -14,18 +14,18 @@ services:
       - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_HTTP_FLUX_ENABLED=true
     restart: always
-  chronograf:
-    image: chronograf:latest
-    ports:
-      - '127.0.0.1:8888:8888'
-    volumes:
-      - chronograf-storage:/var/lib/chronograf
-    depends_on:
-      - influxdb
-    environment:
-      - INFLUXDB_URL=http://influxdb:8086
-      - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
-      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
+  # chronograf:
+  #   image: chronograf:latest
+  #   ports:
+  #     - '127.0.0.1:8888:8888'
+  #   volumes:
+  #     - chronograf-storage:/var/lib/chronograf
+  #   depends_on:
+  #     - influxdb
+  #   environment:
+  #     - INFLUXDB_URL=http://influxdb:8086
+  #     - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
+  #     - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
   grafana:
     image: grafana/grafana:latest
     container_name: grafana1
@@ -156,17 +156,17 @@ services:
       - 9000:9000
       - 9443:9443
 
-  onedrive:
-    image: driveone/onedrive:edge
-    restart: unless-stopped
-    environment:
-      - ONEDRIVE_UID=${PUID}
-      - ONEDRIVE_GID=${PGID}
-      - ONEDRIVE_SINGLE_DIRECTORY= RaspPi/shannstainable
-      - ONEDRIVE_UPLOADONLY=1
-    volumes: 
-      - onedrive_conf:/onedrive/conf
-      - ${ONEDRIVE_DATA_DIR}:/onedrive/data      
+  # onedrive:
+  #   image: driveone/onedrive:edge
+  #   restart: unless-stopped
+  #   environment:
+  #     - ONEDRIVE_UID=${PUID}
+  #     - ONEDRIVE_GID=${PGID}
+  #     - ONEDRIVE_SINGLE_DIRECTORY= RaspPi/shannstainable
+  #     - ONEDRIVE_UPLOADONLY=1
+  #   volumes: 
+  #     - onedrive_conf:/onedrive/conf
+  #     - ${ONEDRIVE_DATA_DIR}:/onedrive/data      
 
 #   nginx-proxy:
 #     image: nginx
@@ -203,10 +203,10 @@ services:
 
 volumes:
   influxdb-storage:
-  chronograf-storage:
+ # chronograf-storage:
   grafana-storage:
   mosquitto-data:
   mosquitto-logs:
   mosquitto-conf:
   portainer-data:
-  onedrive_conf:
+ # onedrive_conf:
