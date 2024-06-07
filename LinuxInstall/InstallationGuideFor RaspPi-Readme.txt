@@ -144,6 +144,7 @@
 	Add this line to the crontab file. Run crontab -e
 	#run the dyndns every 30 minutes
 	30 * * * * date >> /share/log/curl_cron.log && /usr/bin/curl --insecure -d "u=steve&p=5yufdsHyf6" https://mike.fewings.org/dyndns.php >> /share/log/curl_cron.log 2>&1;echo "" >> /share/log/curl_cron.log
+	30 * * * * date >> /share/log/curl_cron.log && /usr/bin/curl --insecure -d "u=nick&p=65849Huf6s" https://mike.fewings.org/dyndns.php >> /share/log/curl_cron.log 2>&1;echo "" >> /share/log/curl_cron.log
 	Note that it logs each execution in the file /share/log/curl_cron.log
 	
 23. Update NodeRed GIT repo from RaspPi

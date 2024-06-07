@@ -18,7 +18,6 @@
 # Please see /usr/share/doc/nginx-doc/examples/ for more detailed examples.
 ##
 
-
 #redirect http traffic to https
 server {
     listen 80;
@@ -27,7 +26,7 @@ server {
 }
 
 server {
-  listen 443 default ssl;
+ listen 443 default ssl;
   #ssl on;
   ssl_certificate_key /etc/letsencrypt/live/harvey.fewings.org/privkey.pem;
   ssl_certificate /etc/letsencrypt/live/harvey.fewings.org/cert.pem;
@@ -46,18 +45,28 @@ server {
   }
  
   location /grafana/ {
-    proxy_pass http://192.168.1.92:3000/grafana/;
+    proxy_pass http://192.168.1.97:3000;
+    proxy_set_header Host $http_host;
   }
-
-#  location /grafana2/ {
-#    proxy_pass http://192.168.1.131:3000;
-#  }
 
   location /other/ {
-    proxy_pass http://192.168.1.92:1880/ui/;
+    proxy_pass http://192.168.1.97:1880/ui/;
+  }
 
   location /nodered/ {
-    proxy_pass http://192.168.1.92:1880;
+    proxy_pass http://192.168.1.97:1880/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
 
   }
+  
+  location /portainer/ {
+    proxy_pass http://192.168.1.97:9000/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+    proxy_set_header Host $host;
+  }
+
 }
