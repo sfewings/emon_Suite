@@ -769,7 +769,7 @@ void loop ()
 				lcd.print(F("w"));
 				lcd.setCursor(8, 0);
 				lcd.print(TemperatureString(str, batteryPayload.voltage[0]));
-				lcd.print(F("v"));
+				lcd.print(F("v   "));
 #else
 				lcdUint(0, 0, (unsigned int)pulsePayload.power[2]);
 				lcdUint(5, 0, (unsigned int)pulsePayload.power[1]);
@@ -777,11 +777,11 @@ void loop ()
 				lcd.setCursor(0,0);
 				lcd.print( txReceived[ePulse]%2 ? "*" : (dogHasBeenFed ? "+" : " ")); //toggle "*" every time a pulseNodeTx received. Every second
 
-				if (rainPayload.rainCount - rainStartOfToday != 0)
+				if (rainPayload.rainCount - rainStartOfToday != 0 && second()%2==0)
 				{
-					lcd.setCursor(11, 0);
+					lcd.setCursor(8, 0);
 					lcd.print(RainString(str, rainPayload.rainCount - rainStartOfToday));
-					lcd.print(F("mm"));
+					lcd.print(F("mm   "));
 				}
 #ifdef HARVEY_FARM
 
