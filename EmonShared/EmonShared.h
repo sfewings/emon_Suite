@@ -145,6 +145,7 @@ typedef struct PayloadInverter : PayloadRelay {
 	unsigned short batteryCharging;           // A
 	unsigned short pvInputPower;              // W
 	uint8_t batteryCapacity;                  // %
+	unsigned long pulse;					  //total accumulated watt hours 
 } PayloadInverter;
 
 #pragma pack(push, 1)

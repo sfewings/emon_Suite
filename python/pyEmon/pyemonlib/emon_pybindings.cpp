@@ -138,6 +138,7 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadInverter.def_readwrite("batteryCharging", &PayloadInverter::batteryCharging , "A");
     payloadInverter.def_readwrite("pvInputPower", &PayloadInverter::pvInputPower    , "watts");
     payloadInverter.def_readwrite("batteryCapacity", &PayloadInverter::batteryCapacity , "percentage");
+    payloadInverter.def_readwrite("pulse", &PayloadInverter::pulse , "wH");
 
     //PayloadBeehive
     py::class_<PayloadBeehive, PayloadRelay> payloadBeehive(m, "PayloadBeehive");
