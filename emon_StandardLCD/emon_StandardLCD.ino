@@ -40,9 +40,12 @@ double wh_gen, wh_consuming;
 unsigned long whtime;						//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
-#define MAX_NODES	17				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
-#define NUM_INVERTERS 3				//number of supported inverters
-enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode0, eWaterNode1, eWaterNode2, eWaterNode3 , eScale};	//index into txReceived and lastReceived
+#define MAX_NODES	20				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+#define MAX_INVERTERS 3				//number of supported inverters
+enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, 
+	   eDisp1, eDisp2, eDisp3, eRain, eBase, 
+	   ePulse, eHWS, eWaterNode0, eWaterNode1, eWaterNode2, 
+	   eWaterNode3, eScale, eInverter0, eInverter1, eInverter2};	//index into txReceived and lastReceived
 enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
 unsigned int txReceived[MAX_NODES];
@@ -58,7 +61,7 @@ PayloadWater waterPayload[MAX_SUBNODES];
 PayloadScale scalePayload;
 PayloadDisp dispPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
-PayloadInverter inverterPayload[NUM_INVERTERS];
+PayloadInverter inverterPayload[MAX_INVERTERS];
 
 
 EEPROMSettings  eepromSettings;
@@ -70,6 +73,7 @@ byte    currentDay = 0;
 byte	currentRainDay = 0;
 
 unsigned long rainStartOfToday;
+unsigned long whInverterStartOfToday[MAX_INVERTERS];
 
 time_t		lastUpdateTime;
 bool		refreshScreen = false;	//set true when time to completely redraw the screen
@@ -92,6 +96,7 @@ typedef enum {
 	eDiagnosisDisp,
 	eDiagnosisTempEmons,
 	eDiagnosisWater,
+	eDiagnosisInverter,	
 	eDiagnosisScale,
 	eDiagnosisEEPROMSettings
 }  ButtonDisplayMode;
@@ -396,21 +401,27 @@ void setup()
 	temperature[eInside] = 0;
 	temperature[eOutside] = 0;
 
+	for(int i=0; i<MAX_INVERTERS;i++)
+	{
+		whInverterStartOfToday[i] = 0;
+	}
+
 	wh_gen = 0;
 	wh_consuming = 0;
 
 	//pushbutton configuration
 	pinMode(A3, INPUT_PULLUP);
 	//attachPinChangeInterrupt(A3, interruptHandlerPushButton, RISING);
-  attachPCINT(digitalPinToPCINT(A3),interruptHandlerPushButton, RISING);
+  	attachPCINT(digitalPinToPCINT(A3),interruptHandlerPushButton, RISING);
   
-  EmonSerial::PrintRainPayload(NULL);
+ 	EmonSerial::PrintRainPayload(NULL);
 	EmonSerial::PrintBasePayload(NULL);
 	EmonSerial::PrintDispPayload(NULL);
 	EmonSerial::PrintPulsePayload(NULL);
 	EmonSerial::PrintHWSPayload(NULL);
 	EmonSerial::PrintWaterPayload(NULL);
 	EmonSerial::PrintScalePayload(NULL);
+	EmonSerial::PrintInverterPayload(NULL);
 
 	average_update = now();
 	slow_update = now();
@@ -467,6 +478,26 @@ void loop ()
 			power_calculations_pulse();							// do the power calculations
 			okToRelay = true;
 		}
+		if (node_id == INVERTER_NODE && len == sizeof(PayloadInverter)) // === INVERTER NODE ====
+		{
+			PayloadInverter inv = *(PayloadInverter*)buf;							// get payload data
+			byte subnode = inv.subnode;
+			if (subnode >= MAX_INVERTERS)
+			{
+				Serial.print(F("Invalid inverter subnode. Exiting"));
+				return;
+			}
+			memcpy(&inverterPayload[subnode], &inv, sizeof(PayloadInverter));
+			EmonSerial::PrintInverterPayload(&inverterPayload[subnode]);			 // print data to serial
+
+			txReceived[eInverter0+subnode]++;
+			lastReceived[eInverter0+subnode] = now();				// set time of last update to now
+
+			if( whInverterStartOfToday[subnode] == 0)
+				whInverterStartOfToday[subnode] = inverterPayload[subnode].pulse;
+
+			okToRelay = true;
+		}		
 		if (node_id == TEMPERATURE_JEENODE && len == sizeof(PayloadTemperature))
 		{
 			PayloadTemperature tpl = *((PayloadTemperature*)buf);
@@ -592,9 +623,14 @@ void loop ()
 				currentDay = day() - 1;        //note day() base 1, currentDay base 0
 				currentRainDay = currentDay;    //note the rainDay and rainMonth change at 9am!
 				dogHasBeenFed = false;
+
+				for(int i=0; i<MAX_INVERTERS;i++)
+					whInverterStartOfToday[i] = inverterPayload[i].pulse;
+
+
 				if (currentHour < 9 && currentDay > 0)
 				{
-					//correct if turned on before 9am! n.b don't wory if the month is wrong!
+					//correct if turned on before 9am! n.b don't worry if the month is wrong!
 					currentRainDay = day() - 2;
 				}
 
@@ -743,8 +779,12 @@ void loop ()
 		{
 		case eSummary:
 			{
-				lcdUint(0, 0, (unsigned int)pulsePayload.power[2]);
-				lcdUint(5, 0, (unsigned int)pulsePayload.power[1]);
+				unsigned int inverterProduction = 0;
+				for(int i=0; i<MAX_INVERTERS;i++)
+					inverterProduction+= inverterPayload[i].pvInputPower;
+				inverterProduction += (unsigned int)pulsePayload.power[1];
+				lcdUint(0, 0, (unsigned int)pulsePayload.power[2]);		//consuming
+				lcdUint(5, 0, inverterProduction );		//producing
 
 				lcd.setCursor(0,0);
 				lcd.print( txReceived[ePulse]%2 ? "*" : (dogHasBeenFed ? "+" : " ")); //toggle "*" every time a pulseNodeTx received. Every second
@@ -775,7 +815,12 @@ void loop ()
 			lcd.setCursor(0, 0);
 			lcd.print(F("Cur: Consmd Prod"));
 			lcdUint(0, 1, (unsigned int)pulsePayload.power[2]);
-			lcdUint(8, 1, (unsigned int)pulsePayload.power[1]);
+
+			unsigned int inverterProduction = 0;
+			for(int i=0; i<MAX_INVERTERS;i++)
+				inverterProduction+= inverterPayload[i].pvInputPower;
+			inverterProduction += (unsigned int)pulsePayload.power[1];
+			lcdUint(8, 1, inverterProduction);
 			break;
 		}
 		case eTotalPower:
@@ -783,7 +828,15 @@ void loop ()
 				lcd.setCursor(0, 0);
 				lcd.print(F("Tot: Consmd Prod"));
 				lcdUint(0, 1, (unsigned int)wh_consuming);
-				lcdUint(8, 1, (unsigned int)wh_gen);
+				unsigned int totalGenerated = wh_gen;
+				for(int i =0; i< MAX_INVERTERS; i++)
+				{
+					if( whInverterStartOfToday[i] != 0)
+					{
+						totalGenerated += (inverterPayload[i].pulse - whInverterStartOfToday[i]);
+					}
+				}
+				lcdUint(8, 1, totalGenerated );
 				break;
 		}
 			case eCurrentTemperatures:
@@ -847,9 +900,16 @@ void loop ()
 				lcdDiagnosis(1, F("HWS"), eHWS);
 				break;
 			}
+			case eDiagnosisInverter:
+			{
+				lcdDiagnosis(0, F("Inv0"), eInverter0);
+				lcdDiagnosis(1, F("Inv1"), eInverter1);
+				break;
+			}
 			case eDiagnosisScale:
 			{
-				lcdDiagnosis(0, F("Scl"), eScale);
+				lcdDiagnosis(0, F("Inv1"), eInverter2);
+				lcdDiagnosis(1, F("Scl"), eScale);
 				break;
 			}
 			case eDiagnosisDisp:

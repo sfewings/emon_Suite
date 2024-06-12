@@ -16,7 +16,7 @@
 #include <PinChangeInt.h>
 
 #define HOUSE_BANNER
-//#define BOAT_BANNER
+#undef BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif BOAT_BANNER
@@ -132,10 +132,11 @@ const uint8_t LED_PIN = A3;  //Pin 17
 const uint8_t NUM_BUTTONS = 2;
 const uint8_t  g_buttons[NUM_BUTTONS] = { A2, A1 };	//pin number for each input A1, A2.  Pins 15 & 16
 const uint16_t NUM_PIXELS = 256;
+const uint8_t MAX_INVERTERS = 3;
 
 volatile unsigned long	g_lastButtonPush[NUM_BUTTONS]	= { 0,0 };
 
-volatile uint8_t g_displayMode = 0; //0 is off, 1 is dimmed text, 2 is white light
+volatile uint8_t g_displayMode = 1; //0 is off, 1 is dimmed text, 2 is white light
 volatile uint8_t g_fontIndex = 0;
 
 volatile uint8_t g_numInterupts = 0;
@@ -150,6 +151,7 @@ PayloadBase         g_payloadBase;
 PayloadPulse        g_payloadPulse;
 PayloadRain         g_payloadRain;
 PayloadBattery      g_payloadBattery;
+PayloadInverter     g_payloadInverter[MAX_INVERTERS];
 
 time_t	g_startTime = 0;
 int    g_currentDay = 0;
@@ -409,7 +411,6 @@ void setup()
 	EmonSerial::PrintBatteryPayload(NULL);
 
     for(uint8_t button = 0; button < NUM_BUTTONS; button++)
-    //for(uint8_t button = NUM_BUTTONS-1; button >=0 ; button--)
     {
         attachPinChangeInterrupt(g_buttons[button], interruptHandlerIR, RISING);
     }
@@ -421,7 +422,10 @@ void setup()
     memset( &g_payloadPulse,0, sizeof(PayloadPulse));
     memset( &g_payloadRain,0, sizeof(PayloadRain));
     memset( &g_payloadBattery,0, sizeof(PayloadBattery));
-
+    for(int i=0; i<MAX_INVERTERS;i++)
+    {
+        memset( &g_payloadInverter[i],0, sizeof(PayloadInverter) );        
+    }
 
     strip.Begin();
     strip.Show();
@@ -513,6 +517,18 @@ void loop()
 			g_payloadBattery = *((PayloadBattery*)buf);
 			EmonSerial::PrintBatteryPayload(&g_payloadBattery);
 		}
+        if ( node_id == INVERTER_NODE && len == sizeof(PayloadInverter))
+        {
+            PayloadInverter inv = *((PayloadInverter*)buf);
+			byte subnode = inv.subnode;
+			if (subnode >= MAX_INVERTERS)
+			{
+				Serial.print(F("Invalid inverter subnode. Exiting"));
+				return;
+			}
+			memcpy(&g_payloadInverter[subnode], &inv, sizeof(PayloadInverter));
+			EmonSerial::PrintInverterPayload(&g_payloadInverter[subnode]);			 // print data to serial
+        }
     }
 
     if( millis()-temperatureUpdateTime > 60000 && g_payloadTemperature.numSensors !=0 )
@@ -578,15 +594,21 @@ void loop()
 #ifdef HOUSE_BANNER
     if( displayToggle %2 == 0)
     {
+        int totalPower = g_payloadPulse.power[1];
+        for(int i=0; i<MAX_INVERTERS;i++)
+        {
+            totalPower += g_payloadInverter[i].pvInputPower;
+        }
+
         if (g_payloadRain.rainCount - g_rainStartOfToday != 0)
         {
             //rainfall is blue
             printValue((float)(g_payloadRain.rainCount - g_rainStartOfToday)/5.0, 1, RgbColor(0,0,255),-1, readLDR());
         }
-        else if( g_payloadPulse.power[1] > 5 )
+        else if( totalPower > 10 )
         {
             //Produced is green
-            printValue( g_payloadPulse.power[1], RgbColor(0,255,0), -1, readLDR());
+            printValue( totalPower, RgbColor(0,255,0), -1, readLDR());
         }
         else
         {
