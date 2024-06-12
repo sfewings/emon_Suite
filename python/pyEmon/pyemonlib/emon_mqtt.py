@@ -175,6 +175,7 @@ class emon_mqtt:
                 self.mqttClient.publish(f"inverter/batteryCharging/{payload.subnode}",payload.batteryCharging/1)
                 self.mqttClient.publish(f"inverter/pvInputPower/{payload.subnode}",payload.pvInputPower/1)
                 self.mqttClient.publish(f"inverter/batteryCapacity/{payload.subnode}",payload.batteryCapacity/1)
+                self.mqttClient.publish(f"inverter/pulse/{payload.subnode}",payload.pulse/1)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:

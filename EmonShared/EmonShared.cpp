@@ -370,11 +370,11 @@ void EmonSerial::PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadI
 {
 	if (pPayloadInverter == NULL)
 	{
-		stream.print(F("inv2,subnode,activePower,apparentPower,batteryVoltage,batteryDischargeCurrent,batteryChargingCurrent,pvInputPower,batteryCapacity|ms_since_last_packet"));
+		stream.print(F("inv3,subnode,activePower,apparentPower,batteryVoltage,batteryDischargeCurrent,batteryChargingCurrent,pvInputPower,batteryCapacity,totalWh|ms_since_last_packet"));
 	}
 	else
 	{
-		stream.print(F("inv2,"));
+		stream.print(F("inv3,"));
 		stream.print(pPayloadInverter->subnode);
 		stream.print(F(","));
 		stream.print(pPayloadInverter->activePower);
@@ -390,6 +390,8 @@ void EmonSerial::PrintInverterPayload(Stream& stream, PayloadInverter* pPayloadI
 		stream.print(pPayloadInverter->pvInputPower);
 		stream.print(F(","));
 		stream.print(pPayloadInverter->batteryCapacity);
+		stream.print(F(","));
+		stream.print(pPayloadInverter->pulse);
 
 		PrintRelay(stream, pPayloadInverter);
 
@@ -1077,6 +1079,9 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 		version = 1;
 	else if (0 == strcmp(pch, "inv2"))
 		version = 2;
+	else if (0 == strcmp(pch, "inv3"))
+		version = 3;
+		
 	if (version )
 	{
 		if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
@@ -1097,6 +1102,11 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 		{
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadInverter->batteryCapacity = atoi(pch);
+		}
+		if (version == 3)
+		{
+			if (NULL == (pch = strtok(NULL, tok))) return 0;
+			pPayloadInverter->pulse = atol(pch);
 		}
 
 		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay

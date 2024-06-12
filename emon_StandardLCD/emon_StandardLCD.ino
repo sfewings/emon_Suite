@@ -54,6 +54,7 @@ unsigned long whtime;						//used to calculate energy used per day (kWh/d)
 
 #define NUM_THERMOMETERS	3		//number of temperature temp	1=water(emon), 2=inside(LCD), 3=outside(rain)
 #define MAX_NODES	18				//number of node		1=emon,	2=emonTemperature, 3=rain, 4=base, 5=pulse, 6=hws 
+#define NUM_INVERTERS 3				//number of supported inverters
 enum { eTemp0, eTemp1, eTemp2, eTemp3, eDisp0, eDisp1, eDisp2, eDisp3, eRain, eBase, ePulse, eHWS, eWaterNode0, eWaterNode1, eWaterNode2, eWaterNode3 , eScale, eBattery};	//index into txReceived and lastReceived
 enum { eWaterTemp, eInside, eOutside};								//index to temperature array
 
@@ -71,6 +72,7 @@ PayloadScale scalePayload;
 PayloadDisp dispPayload[MAX_SUBNODES];
 PayloadTemperature temperaturePayload[MAX_SUBNODES];
 PayloadBattery batteryPayload;
+PayloadInverter inverterPayload[NUM_INVERTERS];
 
 
 EEPROMSettings  eepromSettings;

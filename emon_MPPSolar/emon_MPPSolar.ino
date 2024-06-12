@@ -48,8 +48,15 @@ in RF69_avr.h add the following definition for SPI pins
 	RH_RF69 g_rf69(4, 2);
 #endif
 
+#include <EEPROM.h>
 #include <SoftwareSerial.h>
 #include <EmonShared.h>
+
+#define NUM_INVERTERS 2
+#define EEPROM_BASE 0x10	//where the wH readings are stored in EEPROM
+
+double g_mWH_produced[NUM_INVERTERS];
+unsigned long g_lastMillis[NUM_INVERTERS];
 
 
 String P005GS = "\x5E\x50\x30\x30\x35\x47\x53\x58\x14\x0D"; //Query General status
@@ -115,6 +122,30 @@ uint16_t cal_crc_half(uint8_t *pin, uint8_t len)
     crc += bCRCLow;
      return(crc);
 }
+
+double readEEPROM(int offset)
+{
+	double value = 0;
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(double); l++)
+	{
+		*(pc + l) = EEPROM.read(EEPROM_BASE + offset * sizeof(double) + l);
+	}
+
+	return value;
+}
+
+void writeEEPROM(int offset, double value)
+{
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(double); l++)
+	{
+		EEPROM.write(EEPROM_BASE + offset * sizeof(double) + l, *(pc + l));
+	}
+}
+
 
 void CreateCmdString(char* c )
 {
@@ -239,6 +270,26 @@ int ReadFromInverter(Stream& stream, String & s)
   return true;
 }
 
+//calculate the number of watt hours and then store to EEPROM, if changed!
+void calculateWattHoursAndStore(int inverter)
+{
+  double mWH_produced = g_mWH_produced[inverter];
+  unsigned long now = millis();
+  unsigned long period = now - g_lastMillis[inverter];
+
+  g_lastMillis[inverter] = now;
+  g_mWH_produced[inverter] += g_payloadInverter.pvInputPower * period / (60 * 60 * 1000.0); //convert to wH
+
+  //this will do the rounding to units of pulses
+  g_payloadInverter.pulse = g_mWH_produced[inverter];
+
+  //write g_mWH_produced to eeprom, if changed
+  if( mWH_produced != g_mWH_produced[inverter])
+  {
+		writeEEPROM(inverter, g_mWH_produced[inverter]);
+	}
+}
+
 void setup()
 {  
   Serial.begin(9600);
@@ -277,6 +328,24 @@ void setup()
 	g_rf69.setHeaderId(INVERTER_NODE);
 
 #endif
+
+	//reset the counters
+	// for (int i = 0; i < NUM_INVERTERS; i++)
+	// {
+	//   g_mWH_produced[i] = 0.0; 
+	//  	writeEEPROM(i, 0.0);
+	// }
+
+	//Get double g_mWH_In and g_mWH_Out from eeprom
+	for (int i = 0; i < NUM_INVERTERS; i++)
+	{
+		g_mWH_produced[i] = readEEPROM(i);
+    g_lastMillis[i] = millis();
+    Serial.print(F("Inverter ")); Serial.print(i);Serial.print(F(" total pulse (wh) " ));
+    Serial.println(g_mWH_produced[i],1);
+	}
+
+
   EmonSerial::PrintInverterPayload(NULL);
 
   delay(1000);
@@ -318,16 +387,18 @@ void loop()
 
   if( ReadFromInverter( Serial1, P005GS ) )
   {
+    calculateWattHoursAndStore(0);
     g_payloadInverter.subnode = 0;
     SendPacket();
   }
 
   if( ReadFromInverter( g_serialInverter2, P005GS ) )
   {
+    calculateWattHoursAndStore(1);
     g_payloadInverter.subnode = 1;
     SendPacket();
   }
   digitalWrite(LED_PIN, LOW);
-  
+
   delay(13000);
 }
