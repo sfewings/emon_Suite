@@ -1098,12 +1098,12 @@ int EmonSerial::ParseInverterPayload(char* str, PayloadInverter* pPayloadInverte
 		pPayloadInverter->batteryCharging = atoi(pch);
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadInverter->pvInputPower = atoi(pch);
-		if (version == 2)
+		if (version >= 2)
 		{
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadInverter->batteryCapacity = atoi(pch);
 		}
-		if (version == 3)
+		if (version >= 3)
 		{
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadInverter->pulse = atol(pch);

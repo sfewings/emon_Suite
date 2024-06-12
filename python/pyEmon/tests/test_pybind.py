@@ -133,6 +133,21 @@ def test1():
     print(f"pvInputPower={payload.pvInputPower}")
     print(f"batteryCapacity={payload.batteryCapacity}")
 
+    INVERTER_MESSAGE = "inv3,1,58,360,527,0,8,648,95,948"
+    print(INVERTER_MESSAGE)
+    payload = emonSuite.PayloadInverter()
+    retVal = emonSuite.EmonSerial.ParseInverterPayload(INVERTER_MESSAGE,payload)
+    print('returnVal={}'.format(retVal))
+    print(f"subnode={payload.subnode}")
+    print(f"activePower={payload.activePower}")
+    print(f"apparentPower={payload.apparentPower}")
+    print(f"batteryVoltage={payload.batteryVoltage}")
+    print(f"batteryDischarge={payload.batteryDischarge}")
+    print(f"batteryCharging={payload.batteryCharging}")
+    print(f"pvInputPower={payload.pvInputPower}")
+    print(f"batteryCapacity={payload.batteryCapacity}")
+    print(f"pulse={payload.pulse}")
+
 
     BEEHIVE_MESSAGE = "bee,0,19,20,1123456,1234567,3215,2327,20456,4512"
     print(BEEHIVE_MESSAGE)
