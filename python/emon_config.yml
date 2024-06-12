@@ -10,6 +10,7 @@ temp:
     t0: On top of fridge
     t1: Big Fridge
     t2: Small Fridge
+    t3: Floor unit
   2:
     name: inside
     t0: sensor 1
