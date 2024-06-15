@@ -286,6 +286,7 @@ class emon_influx:
                                     .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
                                     .field("value",payload.batteryCapacity/1).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("pulse").tag("sensor",f"inverter/pulse/{payload.subnode}")\
                                     .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                     .tag("sensorName",nodeSettings[payload.subnode]["name"])\
