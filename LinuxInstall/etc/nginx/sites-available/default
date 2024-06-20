@@ -21,6 +21,9 @@
 #redirect http traffic to https
 server {
     listen 80;
+    server_name 192.168.1.92
+    return 301 https://$server_name$request_uri;
+    
     server_name harvey.fewings.org;
     return 301 https://$server_name$request_uri;
 }
@@ -45,16 +48,20 @@ server {
   }
  
   location /grafana/ {
-    proxy_pass http://192.168.1.97:3000;
+    proxy_pass http://localhost:3000;
+
+    proxy_http_version 1.1;
     proxy_set_header Host $http_host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";    
   }
 
   location /other/ {
-    proxy_pass http://192.168.1.97:1880/ui/;
+    proxy_pass http://localhost:1880/ui/;
   }
 
   location /nodered/ {
-    proxy_pass http://192.168.1.97:1880/;
+    proxy_pass http://localhost:1880/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -62,7 +69,7 @@ server {
   }
   
   location /portainer/ {
-    proxy_pass http://192.168.1.97:9000/;
+    proxy_pass http://localhost:9000/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "Upgrade";
