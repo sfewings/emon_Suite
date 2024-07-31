@@ -9,7 +9,7 @@
 #include <RH_RF69.h>
 #include <avr/wdt.h>    //watchdog timer
 
-#undef LORA_RF95
+#define LORA_RF95
 
 #ifdef LORA_RF95
 	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
@@ -28,7 +28,7 @@
 
 
 
-#undef HARVEY_FARM
+#define HARVEY_FARM
 
 #ifdef HARVEY_FARM
 	#define	DS1603_L_RX SDA
