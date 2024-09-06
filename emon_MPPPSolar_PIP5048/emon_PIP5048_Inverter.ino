@@ -23,6 +23,7 @@
 String QPI = "\x51\x50\x49\xBE\xAC\x0D";                    //Query Device Protocol ID Inquiry
 String QPIRI = "\x51\x50\x49\x52\x49\xF8\x54\x0D";          //Query Device Rating Information inquiry
 String QPIGS = "\x51\x50\x49\x47\x53\xB7\xA9\x0D";          //Query Device general status parameters inquiry
+String QPIGS2 = "\x51\x50\x49\x47\x53\x32\x68\x2D\x0D";     //Query Device general status parameters for MPPT PV 2 and 3
 
 PayloadInverter g_payloadInverter;
 
@@ -167,58 +168,93 @@ int ReadFromInverter(Stream& stream, String & cmdString)
   char first ='(';
   char* pch = strtok(buffer-1, &first);
   if(pch == NULL) return 0;
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // BBB.B      Grid voltage              B: 0~9, unit: 0.1V
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // CC.C       Grid frequency            C: 0~9, unit: 0.1Hz
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // DDD.D      AC output voltage         D: 0~9, unit: 0.1V
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // EE.E       AC output frequency       E: 0~9, unit: 0.1Hz
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // FFFF       AC output apparent power  F: 0~9, unit: VA
-  g_payloadInverter.apparentPower = atoi(pch);
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // GGGG      AC output active power     G: 0~9, unit: W
-  g_payloadInverter.activePower = atoi(pch);
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // HHH       Output load percent       H: 0~9, unit: %
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // III       Bus voltage               I: 0~9, unit: 0.1V
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // JJJ       Battery voltage from SCC  J: 0~9, unit: 0.1V
-  g_payloadInverter.batteryVoltage = atoi(pch);
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // KKK       Battery charging current  K: 0~9, unit: A
-  g_payloadInverter.batteryCharging = atoi(pch);
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // OOO       Battery capacity          O: 0~9, unit: %
-	g_payloadInverter.batteryCapacity = atoi(pch);
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // TTTT      Inverter heat sink temperature  T: 0~9, unit: oC
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // EEEE      PV Input current for battery    E: 0~9, unit: A
-  int inputCurrent = atoi(pch);
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // UUU.U     PV1 Input voltage         U: 0~9, unit: 0.1V
-  int inputVoltage = atoi(pch);
-  g_payloadInverter.pvInputPower = inputCurrent * inputVoltage;  
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // WW.WW     Battery voltage from SCC W: 0~9, unit: 0.1V
-  if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // PPPPP     Battery discharge current K: 0~9, unit: A
-  g_payloadInverter.batteryDischarge = atoi(pch);
-  Serial.println(pch);
+  if( 0 == strcmp(cmdString.c_str(), "QPISG"))
+  {
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // BBB.B      Grid voltage              B: 0~9, unit: 0.1V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // CC.C       Grid frequency            C: 0~9, unit: 0.1Hz
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // DDD.D      AC output voltage         D: 0~9, unit: 0.1V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // EE.E       AC output frequency       E: 0~9, unit: 0.1Hz
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // FFFF       AC output apparent power  F: 0~9, unit: VA
+    g_payloadInverter.apparentPower = atoi(pch);
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // GGGG      AC output active power     G: 0~9, unit: W
+    g_payloadInverter.activePower = atoi(pch);
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // HHH       Output load percent       H: 0~9, unit: %
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // III       Bus voltage               I: 0~9, unit: 0.1V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // JJJ       Battery voltage from SCC  J: 0~9, unit: V
+    g_payloadInverter.batteryVoltage = (unsigned short) (atof(pch)*10.0);   //convert V to 0.1V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // KKK       Battery charging current  K: 0~9, unit: A
+    g_payloadInverter.batteryCharging = atoi(pch);
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // OOO       Battery capacity          O: 0~9, unit: %
+    g_payloadInverter.batteryCapacity = atoi(pch);
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // TTTT      Inverter heat sink temperature  T: 0~9, unit: oC
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // EEEE      PV Input current for battery    E: 0~9, unit: A
+    int inputCurrent = atoi(pch);
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // UUU.U     PV1 Input voltage         U: 0~9, unit: 0.1V
+    int inputVoltage = atoi(pch);
+    g_payloadInverter.pvInputPower = inputCurrent * inputVoltage;  
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // WW.WW     Battery voltage from SCC W: 0~9, unit: 0.1V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // PPPPP     Battery discharge current K: 0~9, unit: A
+    g_payloadInverter.batteryDischarge = atoi(pch);
+    Serial.println(pch);
 
-                                                            /*  b7b6b5b4b3b2b1b0  Device status
-                                                                          
-                                                                          b7: add SBU priority version, 1:yes,0:no
-                                                                          b6: configuration status: 1: Change 0:
-                                                                          unchanged
-                                                                          b5: SCC firmware version 1: Updated 0:
-                                                                          unchanged
-                                                                          b4: Load status: 0: Load off 1:Load on
-                                                                          b3: battery voltage to steady while charging
-                                                                          b2: Charging status( Charging on/off)
-                                                                          b1: Charging status( SCC charging on/off)
-                                                                          b0: Charging status(AC charging on/off)
-                                                                          b2b1b0:
-                                                                          000: Do nothing
-                                                                          110: Charging on with SCC charge on
-                                                                          101: Charging on with AC charge on
-                                                                          111: Charging on with SCC and AC charge on*/
+                                                              /*  b7b6b5b4b3b2b1b0  Device status
+                                                                            
+                                                                            b7: add SBU priority version, 1:yes,0:no
+                                                                            b6: configuration status: 1: Change 0:
+                                                                            unchanged
+                                                                            b5: SCC firmware version 1: Updated 0:
+                                                                            unchanged
+                                                                            b4: Load status: 0: Load off 1:Load on
+                                                                            b3: battery voltage to steady while charging
+                                                                            b2: Charging status( Charging on/off)
+                                                                            b1: Charging status( SCC charging on/off)
+                                                                            b0: Charging status(AC charging on/off)
+                                                                            b2b1b0:
+                                                                            000: Do nothing
+                                                                            110: Charging on with SCC charge on
+                                                                            101: Charging on with AC charge on
+                                                                            111: Charging on with SCC and AC charge on*/
+  }
+  else if( 0 == strcmp(cmdString.c_str(), "QPISG2"))
+  {
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N1N2N3N4        PV Input current 2              unit: A
+    int inputCurrent = atoi(pch);
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N6N7N8.N10      PV Input voltage 2              unit: V
+    double inputVoltage = atof(pch);
+    g_payloadInverter.pvInputPower = (unsigned short) (inputCurrent * inputVoltage);  
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N12N13.N15N16   Battery voltage from SCC 2      unit: V
+    g_payloadInverter.batteryVoltage = (unsigned short) (atof(pch)*10.0);   //convert V to 0.1V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N18N19N20N21N22 PV Charging power 2             unit: Watt
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // b24b25b26b27b28b29b30b31  Device status         b24: Charging status( SCC2 charging on/off)
+                                                               //                                                 b25: Charging status( SCC3 charging on/off)
+                                                               //                                                 b26~ b31: Reserved
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N33N34N35N36    AC charging current             unit A
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N38N39N40N41    AC charging power               unit: W
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N42N43N44N45    PV Input current 3              unit: A
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N47N48N49.N51   PV Input voltage 3              unit: V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N53N54.N56N57   Battery voltage from SCC 3      unit: V
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N58N59N60N61    PV Charging power 3             unit: Watt
+    if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N63N64N65N66N67 PV total charging power         unit: Watt
+    Serial.println(pch);
+  }
+  else
+  {
+    return false;
+  }
   return true;
 }
 
 void setup()
 {  
   Serial.begin(9600);
-	Serial1.begin(2400);
-  //g_serialInverter2.begin(2400);
+	
+  // delay(1000);
+  // char cmd[] = {"QPIGS2"};
+  // CreateCmdString(cmd); 
+
+  return;
+
+  Serial1.begin(2400);
 
   pinMode(LED_PIN, OUTPUT);
   
@@ -243,10 +279,6 @@ void setup()
 	Serial.println(" Freq: 915MHz");
 
   EmonSerial::PrintInverterPayload(NULL);
-
-  // delay(1000);
-  // char cmd[] = {"QPI"};
-  // CreateCmdString(cmd); 
 }
 
 void SendPacket()
@@ -264,6 +296,11 @@ void loop()
   if( ReadFromInverter( Serial1, QPIGS ) )
   {
     g_payloadInverter.subnode = 0;
+    SendPacket();
+  }
+  if( ReadFromInverter( Serial1, QPIGS2 ) )
+  {
+    g_payloadInverter.subnode = 1;
     SendPacket();
   }
 
