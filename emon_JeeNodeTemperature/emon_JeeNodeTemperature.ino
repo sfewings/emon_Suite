@@ -14,6 +14,9 @@
 #include <DallasTemperature.h>
 
 
+#define NETWORK_FREQUENCY 914.0		//915.0
+
+
 //---------------------------------------------------------------------------------------------------
 //Radiohead RF_69 support
 //---------------------------------------------------------------------------------------------------
@@ -124,32 +127,41 @@ void setup()
 	{
 		OneWire* pOneWire = new OneWire(port + 3);	//
 		pDallasOneWire[port] = new DallasTemperature(pOneWire);
-		pDallasOneWire[port]->begin();
-		numberOfSensors[port] = pDallasOneWire[port]->getDeviceCount();
-		temperaturePayload.numSensors += numberOfSensors[port];
-		if (numberOfSensors[port])
+		int retry =5;  //some cheaper clone DS18B20 don't respond in first initialise call. Retry a few times!
+		while (retry > 0)
 		{
-			Serial.print(F("Temperature sensors on Jeenode port "));
-			Serial.print(port);
-			Serial.print(F(", arduino pin "));
-			Serial.println(port + 3);
-
-			for (int i = 0; i < numberOfSensors[port]; i++)
+			pDallasOneWire[port]->begin();
+			numberOfSensors[port] = pDallasOneWire[port]->getDeviceCount();
+			temperaturePayload.numSensors += numberOfSensors[port];
+			if (numberOfSensors[port])
 			{
-				uint8_t tmp_address[8];
-				pDallasOneWire[port]->getAddress(tmp_address, i);
-				Serial.print(F("Sensor address "));
-				Serial.print(i + 1);
-				Serial.print(F(": "));
-				printAddress(tmp_address);
-				Serial.println();
+				Serial.print(F("Temperature sensors on Jeenode port "));
+				Serial.print(port);
+				Serial.print(F(", arduino pin "));
+				Serial.print(port + 3);
+				Serial.print(", retry ");
+				Serial.println(retry);
+				retry =0;
+				for (int i = 0; i < numberOfSensors[port]; i++)
+				{
+					uint8_t tmp_address[8];
+					pDallasOneWire[port]->getAddress(tmp_address, i);
+					Serial.print(F("Sensor address "));
+					Serial.print(i + 1);
+					Serial.print(F(": "));
+					printAddress(tmp_address);
+					Serial.println();
+				}
 			}
-		}
-		else
-		{
-			delete pDallasOneWire[port];
-			delete pOneWire;
-			pDallasOneWire[port] = NULL;
+			else
+			{
+				if( -- retry == 0)
+				{
+					delete pDallasOneWire[port];
+					delete pOneWire;
+					pDallasOneWire[port] = NULL;
+				}
+			}
 		}
 	}
 
@@ -190,7 +202,7 @@ void setup()
 	//EmonSerial::PrintRF12Init(rf12Init);
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf69 setFrequency failed");
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -201,7 +213,7 @@ void setup()
 
 	Serial.print("RF69 initialise node: ");
 	Serial.print(TEMPERATURE_JEENODE);
-	Serial.println(" Freq: 915MHz");
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 
 	Serial.println("Initialisation complete");
 
