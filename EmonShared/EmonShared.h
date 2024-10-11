@@ -39,7 +39,7 @@ typedef unsigned char byte;
 #define PRESSURE_NODE 26			//Node for BM unit
 
 
-#define MAX_SUBNODES	4			//Maximum number of disp and temp nodes supported
+#define MAX_SUBNODES	8			//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4		//Maximum number of water pulse and water height metres
 
 #define PULSE_MAX_SENSORS 6			//number of pins and hence, readings on the pulse Jeenode. 6 is max for RF packet size 64 bytes
