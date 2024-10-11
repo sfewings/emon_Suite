@@ -20,6 +20,19 @@ temp:
   3:
     name: QV1 Unit
     t0: QV1
+  4:
+    name: Office Unit 4 - Suite 3
+    t0: Suite 3-1
+    t1: Suite 3-2
+    t2: Suite 3-3
+    t3: Suite 3-4
+  5: 
+    name: Office Unit 5 - Suite 3
+    t0: R&D room rear
+    t1: Open office end
+    t2: R&D room middle
+    t3: Open office middle
+
 hws:
   0:
     name: Hot water system
