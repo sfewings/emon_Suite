@@ -18,7 +18,7 @@ bool g_toggleLED = false;
 //DE = A6
 //RE = A5
 
-#define DE_PIN A6
+#define DE_PIN A4
 #define RE_PIN A5
 
 SoftwareSerial g_sensorSerial(4, 3);	//A1=rx, A0=tx
