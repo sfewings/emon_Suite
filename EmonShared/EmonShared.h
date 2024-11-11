@@ -37,7 +37,7 @@ typedef unsigned char byte;
 #define LEAF_NODE 24				//Node for Nissan Leaf sensor
 #define GPS_NODE 25					//Node for GPS unit
 #define PRESSURE_NODE 26			//Node for BM unit
-
+#define DALY_BMS_NODE 27			//Node for a Daly BMS
 
 #define MAX_SUBNODES	8			//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4		//Maximum number of water pulse and water height metres
