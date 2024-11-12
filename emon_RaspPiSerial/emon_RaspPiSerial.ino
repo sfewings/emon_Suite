@@ -19,8 +19,8 @@
 	#define RFM69_RST     	4
 #endif
 
-//#define HOUSE_BANNER
-#define BOAT_BANNER
+#define HOUSE_BANNER
+//#define BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
@@ -80,6 +80,7 @@ void setup ()
 	EmonSerial::PrintLeafPayload(NULL);
 	EmonSerial::PrintGPSPayload(NULL);
 	EmonSerial::PrintPressurePayload(NULL);
+	EmonSerial::PrintDalyBMSPayload(NULL);
 
 #ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
@@ -183,6 +184,10 @@ void loop ()
 			if (node_id == PRESSURE_NODE  && len == sizeof(PayloadPressure))
 			{
 				SERIAL_OUT(Pressure, Payload);
+			}
+			if (node_id == DALY_BMS_NODE  && len == sizeof(PayloadDalyBMS))
+			{
+				SERIAL_OUT(DalyBMS, Payload);
 			}
 		}
 

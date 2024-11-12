@@ -7,7 +7,7 @@
 #include <SoftwareSerial.h>
 #include <RH_RF69.h>
 #include <avr/wdt.h>    //watchdog timer
-#include <daly-bms-uart.h>			//https://github.com/maland16/daly-bms-uart
+#include <daly-bms-uart.h>			//https://github.com/sfewings/daly-bms-uart
 
 #define GREEN_LED 9			// Green LED on emonTx
 bool g_toggleLED = false;
@@ -15,13 +15,14 @@ bool g_toggleLED = false;
 //Pinout for MAX485
 //DI = TXD = 3
 //RO = RXD = 4
-//DE = A6
+//DE = A4
 //RE = A5
 
 
 SoftwareSerial g_sensorSerial(4, 3);	//A1=rx, A0=tx
 Daly_BMS_UART g_daly_bms(g_sensorSerial, A4, A5);
 
+PayloadDalyBMS g_payloadDalyBMS;
 
 #define EEPROM_BASE 0x10			//where the water count is stored
 
@@ -101,11 +102,11 @@ void setup()
 	EEPROMSettings eepromSettings;
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
-//	g_waterPayload.subnode = eepromSettings.subnode;
+	g_payloadDalyBMS.subnode = eepromSettings.subnode;
 
  	g_daly_bms.Init(); // This call sets up the driver
 
-//	EmonSerial::PrintWaterPayload(NULL);
+	EmonSerial::PrintDalyBMSPayload(NULL);
 
   	// Serial.println(F("Watchdog timer set for 8 seconds"));
   	// wdt_enable(WDTO_8S);
@@ -118,62 +119,78 @@ void setup()
 //--------------------------------------------------------------------------------------------
 void loop () 
 {
-//	wdt_reset();
+	uint32_t millisStart = millis();
+
+	digitalWrite(GREEN_LED, HIGH);
 
 	// This .update() call populates the entire get struct. If you only need certain values (like
 	// SOC & Voltage) you could use other public APIs, like getPackMeasurements(), which only query
 	// specific values from the BMS instead of all.
-	g_daly_bms.update();
-
-	// And print them out!
-	Serial.println("Basic BMS Data:              " + (String)g_daly_bms.get.packVoltage + "V " + (String)g_daly_bms.get.packCurrent + "I " + (String)g_daly_bms.get.packSOC + "\% ");
-	Serial.println("Package Temperature (C):     " + (String)g_daly_bms.get.tempAverage);
-	Serial.println("Highest Cell Voltage:        #" + (String)g_daly_bms.get.maxCellVNum + " with voltage " + (String)(g_daly_bms.get.maxCellmV / 1000));
-	Serial.println("Lowest Cell Voltage:         #" + (String)g_daly_bms.get.minCellVNum + " with voltage " + (String)(g_daly_bms.get.minCellmV / 1000));
-	Serial.println("Number of Cells:             " + (String)g_daly_bms.get.numberOfCells);
-	Serial.println("Number of Temp Sensors:      " + (String)g_daly_bms.get.numOfTempSensors);
-	Serial.println("BMS Chrg / Dischrg Cycles:   " + (String)g_daly_bms.get.bmsCycles);
-	Serial.println("BMS Heartbeat:               " + (String)g_daly_bms.get.bmsHeartBeat); // cycle 0-255
-	Serial.println("Discharge MOSFet Status:     " + (String)g_daly_bms.get.disChargeFetState);
-	Serial.println("Charge MOSFet Status:        " + (String)g_daly_bms.get.chargeFetState);
-	Serial.println("Remaining Capacity mAh:      " + (String)g_daly_bms.get.resCapacitymAh);
-	//... any many many more data
-
-	for (size_t i = 0; i < size_t(g_daly_bms.get.numberOfCells); i++)
+	if( g_daly_bms.update() )
 	{
-		Serial.println("Cell voltage mV:      " + (String)g_daly_bms.get.cellVmV[i]);
+		g_payloadDalyBMS.batteryVoltage = (unsigned short) (g_daly_bms.get.packVoltage*10.0);
+		g_payloadDalyBMS.batterySoC = (short) (g_daly_bms.get.packSOC*10.0);
+		g_payloadDalyBMS.current = g_daly_bms.get.packCurrent;
+		g_payloadDalyBMS.resCapacity = g_daly_bms.get.resCapacitymAh;
+		g_payloadDalyBMS.temperature = g_daly_bms.get.tempAverage;
+		g_payloadDalyBMS.lifetimeCycles = g_daly_bms.get.bmsCycles;
+		int numberOfCells = min(g_daly_bms.get.numberOfCells, MAX_BMS_CELLS) ;
+		for(int i=0; i<numberOfCells;i++)
+		{
+			g_payloadDalyBMS.cellmv[i] = short(g_daly_bms.get.cellVmV[i]);
+		}
+
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
+		if( g_rf69.waitPacketSent() )
+		{
+			EmonSerial::PrintDalyBMSPayload(&g_payloadDalyBMS);
+		}
+		else
+		{
+			Serial.println(F("No packet sent"));
+		}
+		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+		// And print them out!
+		Serial.println("Basic BMS Data:              " + (String)g_daly_bms.get.packVoltage + "V " + (String)g_daly_bms.get.packCurrent + "I " + (String)g_daly_bms.get.packSOC + "\% ");
+		Serial.println("Package Temperature (C):     " + (String)g_daly_bms.get.tempAverage);
+		Serial.println("Highest Cell Voltage:        #" + (String)g_daly_bms.get.maxCellVNum + " with voltage " + (String)(g_daly_bms.get.maxCellmV / 1000));
+		Serial.println("Lowest Cell Voltage:         #" + (String)g_daly_bms.get.minCellVNum + " with voltage " + (String)(g_daly_bms.get.minCellmV / 1000));
+		Serial.println("Number of Cells:             " + (String)g_daly_bms.get.numberOfCells);
+		Serial.println("Number of Temp Sensors:      " + (String)g_daly_bms.get.numOfTempSensors);
+		Serial.println("BMS Chrg / Dischrg Cycles:   " + (String)g_daly_bms.get.bmsCycles);
+		Serial.println("BMS Heartbeat:               " + (String)g_daly_bms.get.bmsHeartBeat); // cycle 0-255
+		Serial.println("Discharge MOSFet Status:     " + (String)g_daly_bms.get.disChargeFetState);
+		Serial.println("Charge MOSFet Status:        " + (String)g_daly_bms.get.chargeFetState);
+		Serial.println("Remaining Capacity mAh:      " + (String)g_daly_bms.get.resCapacitymAh);
+		//... any many many more data
+
+		for (size_t i = 0; i < size_t(g_daly_bms.get.numberOfCells); i++)
+		{
+			Serial.println("Cell voltage mV:      " + (String)g_daly_bms.get.cellVmV[i]);
+		}
+
+		// Alarm flags
+		// These are boolean flags that the BMS will set to indicate various issues.
+		// For all flags see the alarm struct in daly-bms-uart.h and refer to the datasheet
+		//Serial.println("Level one Cell V to High:    " + (String)g_daly_bms.alarm.levelOneCellVoltageTooHigh);
+
+		/**
+		 * Advanced functions:
+		 * g_daly_bms.setBmsReset(); //Reseting the BMS, after reboot the MOS Gates are enabled!
+		 * g_daly_bms.setDischargeMOS(true); Switches on the discharge Gate
+		 * g_daly_bms.setDischargeMOS(false); Switches off thedischarge Gate
+		 * g_daly_bms.setChargeMOS(true); Switches on the charge Gate
+		 * g_daly_bms.setChargeMOS(false); Switches off the charge Gate
+		 */
+	
 	}
 
-	// Alarm flags
-	// These are boolean flags that the BMS will set to indicate various issues.
-	// For all flags see the alarm struct in daly-bms-uart.h and refer to the datasheet
-	Serial.println("Level one Cell V to High:    " + (String)g_daly_bms.alarm.levelOneCellVoltageTooHigh);
+	digitalWrite(GREEN_LED, LOW);
 
-	/**
-	 * Advanced functions:
-	 * g_daly_bms.setBmsReset(); //Reseting the BMS, after reboot the MOS Gates are enabled!
-	 * g_daly_bms.setDischargeMOS(true); Switches on the discharge Gate
-	 * g_daly_bms.setDischargeMOS(false); Switches off thedischarge Gate
-	 * g_daly_bms.setChargeMOS(true); Switches on the charge Gate
-	 * g_daly_bms.setChargeMOS(false); Switches off the charge Gate
-	 */
-	
-	// g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-	// PayloadWater packed;
-	// int size = EmonSerial::PackWaterPayload(&g_waterPayload, (byte*) &packed);
-	// //g_rf69.send((const uint8_t*) &packed, size);
-	// if( g_rf69.waitPacketSent() )
-	// {
-	// 	//unpack and print. To make sure we sent correctly
-	// 	memset(&g_waterPayload, 0, sizeof(g_waterPayload));
-	// 	EmonSerial::UnpackWaterPayload((byte*) &packed, &g_waterPayload);
-	// 	EmonSerial::PrintWaterPayload(&g_waterPayload);
-	// }
-	// else
-	// {
-	// 	Serial.println(F("No packet sent"));
-	// }
-	// g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-
-	delay(3000);
+	const uint32_t SEND_PERIOD = 3000;//60000;
+	uint32_t millisTaken = millis()- millisStart; 
+	if( millisTaken < SEND_PERIOD )
+		delay( SEND_PERIOD - millisTaken);
 }

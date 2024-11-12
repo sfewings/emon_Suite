@@ -50,6 +50,8 @@ typedef unsigned char byte;
 #define BATTERY_SHUNTS	3			//number of battery banks in the system. Each with a shunt for measuring current in and out
 #define MAX_VOLTAGES		9		//number of voltage measurements made on the battery monitoring system
 
+#define MAX_BMS_CELLS	16			//maximum number of cells supported for the Daly BMS
+
 #define FEWINGS_MONITOR_GROUP  211
 #define TESTING_MONITOR_GROUP	 210
 
@@ -198,6 +200,16 @@ typedef struct PayloadPressure : PayloadRelay {
 	float humidity;
 } PayloadPressure;
 
+typedef struct PayloadDalyBMS : PayloadRelay {
+	byte subnode;
+	unsigned short batteryVoltage;            	// 0.01V
+	short batterySoC;                  			// battery state of charge 0.1%
+	float current;								// Current in (+) or out (-) of pack (0.1 A)
+	int resCapacity;							// mAh
+	float temperature;							// pack average temperature in degrees
+	short lifetimeCycles;						// lifetime number of charg/discharge cycles 
+	short cellmv[MAX_BMS_CELLS];				//cell voltages in mv
+} PayloadDalyBMS;
 
 class EmonSerial{
 public:
@@ -219,6 +231,7 @@ public:
 	static void PrintLeafPayload(PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast = 0);
 	static void PrintGPSPayload(PayloadGPS* pPayloadGPS, unsigned long timeSinceLast = 0);
 	static void PrintPressurePayload(PayloadPressure* pPayloadPressure, unsigned long timeSinceLast = 0);
+	static void PrintDalyBMSPayload(PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 	
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -237,7 +250,7 @@ public:
 	static void PrintLeafPayload(Stream& stream, PayloadLeaf* pPayloadLeaf, unsigned long timeSinceLast = 0);
 	static void PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsigned long timeSinceLast = 0);
 	static void PrintPressurePayload(Stream& stream, PayloadPressure* pPayloadPressure, unsigned long timeSinceLast = 0);
-	
+	static void PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 
 #endif
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
@@ -259,6 +272,7 @@ public:
 	static int ParseLeafPayload(char* str, PayloadLeaf* pPayloadLeaf);
 	static int ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS);
 	static int ParsePressurePayload(char* str, PayloadPressure* pPayloadPressure);
+	static int ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS);
 };
 
 
