@@ -18,11 +18,9 @@ bool g_toggleLED = false;
 //DE = A6
 //RE = A5
 
-#define DE_PIN A4
-#define RE_PIN A5
 
 SoftwareSerial g_sensorSerial(4, 3);	//A1=rx, A0=tx
-Daly_BMS_UART g_daly_bms(g_sensorSerial);
+Daly_BMS_UART g_daly_bms(g_sensorSerial, A4, A5);
 
 
 #define EEPROM_BASE 0x10			//where the water count is stored
@@ -99,11 +97,6 @@ void setup()
 	Serial.print(DALY_BMS_NODE);
 	Serial.println(" Freq: 915MHz");
 
-  	pinMode(DE_PIN, OUTPUT);
-  	pinMode(RE_PIN, OUTPUT);
-  	digitalWrite(RE_PIN,LOW);	
-  	digitalWrite(DE_PIN,LOW);	
-
 	//initialise the EEPROMSettings for relay and node number
 	EEPROMSettings eepromSettings;
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
@@ -148,7 +141,7 @@ void loop ()
 
 	for (size_t i = 0; i < size_t(g_daly_bms.get.numberOfCells); i++)
 	{
-		Serial.println("Remaining Capacity mAh:      " + (String)g_daly_bms.get.cellVmV[i]);
+		Serial.println("Cell voltage mV:      " + (String)g_daly_bms.get.cellVmV[i]);
 	}
 
 	// Alarm flags
