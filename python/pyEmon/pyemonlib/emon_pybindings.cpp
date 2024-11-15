@@ -20,6 +20,7 @@ PYBIND11_MODULE(emonSuite, m) {
     m.attr("HWS_PUMPS")                 = py::int_(HWS_PUMPS);          //number of pumps from the hot water system
     m.attr("BATTERY_SHUNTS")            = py::int_(BATTERY_SHUNTS); 	//number of battery banks in the system. Each with a shunt for measuring current in and out
     m.attr("MAX_VOLTAGES")              = py::int_(MAX_VOLTAGES);   	//number of voltage measurements made on the battery monitoring system
+    m.attr("MAX_BMS_CELLS")             = py::int_(MAX_BMS_CELLS);   	//number of cell voltages returned from the BMS
 
     //Relay base payload
     py::class_<PayloadRelay> payloadRelay(m, "PayloadRelay");
@@ -179,6 +180,22 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadLeaf.def_readwrite("chargeTimeRemaining", &PayloadLeaf::chargeTimeRemaining, "Battery charge time remaining in minutes");
 
 
+    //PayloadDalyBMS
+    py::class_<PayloadDalyBMS, PayloadRelay> payloadDalyBMS(m, "PayloadDalyBMS");
+    payloadDalyBMS.def(py::init<>());
+    payloadDalyBMS.def_readwrite("subnode", &PayloadDalyBMS::subnode, "allow multiple Daly BMS nodes on the network");
+    payloadDalyBMS.def_readwrite("batteryVoltage", &PayloadDalyBMS::batteryVoltage, "Battery voltage in 1/10th V");
+    payloadDalyBMS.def_readwrite("batterySoC", &PayloadDalyBMS::batterySoC, 'battery state of charge 0.1%');
+    payloadDalyBMS.def_readwrite("current", &PayloadDalyBMS::current,"Current in (+) or out (-) of pack (0.1 A)");
+    payloadDalyBMS.def_readwrite("resCapacity", &PayloadDalyBMS::resCapacity,"mAh");
+    payloadDalyBMS.def_readwrite("temperature", &PayloadDalyBMS::temperature,"pack average temperature in degrees");
+    payloadDalyBMS.def_readwrite("lifetimeCycles", &PayloadDalyBMS::lifetimeCycles,"lifetime number of charg/discharge cycles");
+
+    payloadDalyBMS.def_property("cellmv", [](PayloadDalyBMS &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<short>::format());
+            return pybind11::array(dtype, { MAX_BMS_CELLS }, { sizeof(short) }, payload.cellmv, nullptr);
+            }, [](PayloadDalyBMS& payload) {});	// cell voltages in mv
+
     //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
     emonSerial.def_static("ParseRainPayload", &EmonSerial::ParseRainPayload, "Parses from string to RainPayload",py::arg("string"), py::arg("PayloadRain"));
@@ -194,6 +211,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseInverterPayload", &EmonSerial::ParseInverterPayload, "Parses from string to PayloadInverter",py::arg("string"), py::arg("PayloadInverter"));
     emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
     emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
+    emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
 }
 
 

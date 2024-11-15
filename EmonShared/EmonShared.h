@@ -202,13 +202,13 @@ typedef struct PayloadPressure : PayloadRelay {
 
 typedef struct PayloadDalyBMS : PayloadRelay {
 	byte subnode;
-	unsigned short batteryVoltage;            	// 0.01V
+	unsigned short batteryVoltage;            	// 0.1V
 	short batterySoC;                  			// battery state of charge 0.1%
 	float current;								// Current in (+) or out (-) of pack (0.1 A)
 	int resCapacity;							// mAh
 	float temperature;							// pack average temperature in degrees
 	short lifetimeCycles;						// lifetime number of charg/discharge cycles 
-	short cellmv[MAX_BMS_CELLS];				//cell voltages in mv
+	short cellmv[MAX_BMS_CELLS];				// cell voltages in mv
 } PayloadDalyBMS;
 
 class EmonSerial{

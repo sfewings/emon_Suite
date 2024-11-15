@@ -34,6 +34,7 @@ class emon_influx:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
+            'bms'  : self.bmsMessage,
             'other': self.otherMessage
         }
 
@@ -424,6 +425,53 @@ class emon_influx:
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Charge time remaining")\
                                 .field("value",payload.chargeTimeRemaining).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("leafException", reading, ex)
+
+    def bmsMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadDalyBMS()
+        if( emonSuite.EmonSerial.ParseDalyBMSPayload(reading,payload) ):
+            try:
+                p = Point("voltage").tag("sensor",f"bms/voltage/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"])\
+                                .field("value",payload.batteryVoltage/10.0).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("bms").tag("sensor",f"bms/SoC/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - SoC")\
+                                .field("value",payload.batterySoC/10.0).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("power").tag("sensor",f"bms/power/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"])\
+                                .field("value",payload.batteryCurrent*payload.batteryVoltage).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("bms").tag("sensor",f"bms/resCapacity/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - Res capacity")\
+                                .field("value",payload.resCapacity).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("temperature").tag("sensor",f"bms/temperature/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"])\
+                                .field("value",payload.temperature).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("bms").tag("sensor",f"bms/lifetimeCycles/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"] + " - Lifetime cycles")\
+                                .field("value",payload.lifetimeCycles).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+                for sensor in range(emonSuite.MAX_BMS_CELLS):
+                    voltage = payload.cellmv[sensor]/100.0
+                    p = Point("voltage").tag("sensor",f"bms/cellVoltage/{sensor}/{payload.subnode}")\
+                                        .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+ f" - cell {sensor}")\
+                                        .field("value", voltage/1).time(time)
+                    self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:

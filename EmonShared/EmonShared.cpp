@@ -1361,6 +1361,7 @@ int EmonSerial::ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS)
 	pPayloadDalyBMS->lifetimeCycles = atoi(pch);
 	for(int i=0; i<MAX_BMS_CELLS; i++)
 	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadDalyBMS->cellmv[i] = (short)(atof(pch)*1000.0f);
 	}
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
