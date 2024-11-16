@@ -189,7 +189,7 @@ void loop ()
 
 	digitalWrite(GREEN_LED, LOW);
 
-	const uint32_t SEND_PERIOD = 3000;//60000;
+	const uint32_t SEND_PERIOD = 10000;
 	uint32_t millisTaken = millis()- millisStart; 
 	if( millisTaken < SEND_PERIOD )
 		delay( SEND_PERIOD - millisTaken);
