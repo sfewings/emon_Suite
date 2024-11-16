@@ -447,30 +447,30 @@ class emon_influx:
                 p = Point("power").tag("sensor",f"bms/power/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"])\
-                                .field("value",payload.batteryCurrent*payload.batteryVoltage).time(time)
+                                .field("value",(payload.current*payload.batteryVoltage)/10.0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("bms").tag("sensor",f"bms/resCapacity/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - Res capacity")\
-                                .field("value",payload.resCapacity).time(time)
+                                .field("value",payload.resCapacity/1.0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("temperature").tag("sensor",f"bms/temperature/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"])\
-                                .field("value",payload.temperature).time(time)
+                                .field("value",payload.temperature/1.0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("bms").tag("sensor",f"bms/lifetimeCycles/{payload.subnode}")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
                                 .tag("sensorName",nodeSettings[payload.subnode]["name"] + " - Lifetime cycles")\
-                                .field("value",payload.lifetimeCycles).time(time)
+                                .field("value",payload.lifetimeCycles/1.0).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
 
-                for sensor in range(emonSuite.MAX_BMS_CELLS):
-                    voltage = payload.cellmv[sensor]/100.0
-                    p = Point("voltage").tag("sensor",f"bms/cellVoltage/{sensor}/{payload.subnode}")\
+                for cell in range(emonSuite.MAX_BMS_CELLS):
+                    voltage = payload.cellmv[cell]/1000.0
+                    p = Point("voltage").tag("sensor",f"bms/cellVoltage/{payload.subnode}/{cell}")\
                                         .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+ f" - cell {sensor}")\
-                                        .field("value", voltage/1).time(time)
+                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+ f" - cell {cell}")\
+                                        .field("value", voltage/1.0).time(time)
                     self.write_api.write(bucket=self.bucket, record=p)
                 if(':' in reading):
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )

@@ -185,7 +185,7 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadDalyBMS.def(py::init<>());
     payloadDalyBMS.def_readwrite("subnode", &PayloadDalyBMS::subnode, "allow multiple Daly BMS nodes on the network");
     payloadDalyBMS.def_readwrite("batteryVoltage", &PayloadDalyBMS::batteryVoltage, "Battery voltage in 1/10th V");
-    payloadDalyBMS.def_readwrite("batterySoC", &PayloadDalyBMS::batterySoC, 'battery state of charge 0.1%');
+    payloadDalyBMS.def_readwrite("batterySoC", &PayloadDalyBMS::batterySoC, "battery state of charge 0.1%");
     payloadDalyBMS.def_readwrite("current", &PayloadDalyBMS::current,"Current in (+) or out (-) of pack (0.1 A)");
     payloadDalyBMS.def_readwrite("resCapacity", &PayloadDalyBMS::resCapacity,"mAh");
     payloadDalyBMS.def_readwrite("temperature", &PayloadDalyBMS::temperature,"pack average temperature in degrees");
