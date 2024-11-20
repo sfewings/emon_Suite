@@ -45,8 +45,11 @@ To create and enable python environment
    > python3 -m venv venv
 2. Activate the environment
    > source venv/bin/activate
+   > (Windows)  venv\Scripts\activate
 3. Deactivate the environment
    > deactivate
+   > (Windows)  venv\Scripts\deactivate
+
 
 To build docker file and run
 ============================
