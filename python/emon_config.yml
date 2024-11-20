@@ -161,4 +161,7 @@ bee:
 leaf:
   0:
     name: Leaf
+bms:
+  0:
+    name: BMS - Bank 1
 

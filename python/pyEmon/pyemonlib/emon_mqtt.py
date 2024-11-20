@@ -24,6 +24,7 @@ class emon_mqtt:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
+            'bms'  : self.bmsMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
@@ -228,6 +229,23 @@ class emon_mqtt:
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("leafException", reading, ex)
+
+    def bmsMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadDalyBMS()
+        if( emonSuite.EmonSerial.ParseDalyBMSPayload(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"bms/voltage{payload.subnode}",payload.batteryVoltage/10.0)
+                self.mqttClient.publish(f"bms/batterySoC/{payload.subnode}",payload.batterySoC/10.0)
+                self.mqttClient.publish(f"bms/power/{payload.subnode}",payload.current*payload.batteryVoltage/10.0)
+                self.mqttClient.publish(f"bms/resCapacity/{payload.subnode}",payload.resCapacity)
+                self.mqttClient.publish(f"temperature/bms/{payload.subnode}",payload.temperature)
+                self.mqttClient.publish(f"bms/lifetimeCycles{payload.subnode}",payload.lifetimeCycles)
+                for cell in range(emonSuite.MAX_BMS_CELLS):
+                    self.mqttClient.publish(f"bms/cellVoltage/{payload.subnode}/{cell}",payload.cellmv[cell]/1000.0)                    
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("DalyBMSException", reading, ex)
 
     def otherMessage(self, reading, nodeSettings ):
         print(reading)

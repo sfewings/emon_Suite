@@ -591,6 +591,49 @@ void EmonSerial::PrintPressurePayload(Stream& stream, PayloadPressure* pPayloadP
 	stream.println();
 }
 
+
+void EmonSerial::PrintDalyBMSPayload(PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast)
+{
+	PrintDalyBMSPayload(Serial, pPayloadDalyBMS, timeSinceLast);
+}
+
+void EmonSerial::PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast)
+{
+	if (pPayloadDalyBMS == NULL)
+	{
+		stream.print(F("bms,subnode,batteryVoltage,batterySoC,current,resCapacity,temperature,lifetimecycles,cellmv[0..15]"));
+	}
+	else
+	{
+		stream.print(F("bms,"));
+		stream.print(pPayloadDalyBMS->subnode);
+		stream.print(F(","));
+		stream.print((float)(pPayloadDalyBMS->batteryVoltage)/10.0f,2);
+		stream.print(F(","));
+		stream.print((float)(pPayloadDalyBMS->batterySoC)/10.0f,1);
+		stream.print(F(","));
+		stream.print(pPayloadDalyBMS->current,2);
+		stream.print(F(","));    
+		stream.print(pPayloadDalyBMS->resCapacity);
+		stream.print(F(","));    
+		stream.print(pPayloadDalyBMS->temperature,2);
+		stream.print(F(","));    
+		stream.print(pPayloadDalyBMS->lifetimeCycles);
+		for(int i=0; i<MAX_BMS_CELLS; i++)
+		{
+			stream.print(F(","));    
+			stream.print((float)(pPayloadDalyBMS->cellmv[i])/1000.0f,3);
+		}
+		PrintRelay(stream, pPayloadDalyBMS);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 
@@ -1286,6 +1329,44 @@ int EmonSerial::ParsePressurePayload(char* str, PayloadPressure* pPayloadPressur
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadPressure, pch);
+	}
+	return version;
+}
+
+int EmonSerial::ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS)
+{
+	memset(pPayloadDalyBMS, 0, sizeof(PayloadDalyBMS));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "bms"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadDalyBMS->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDalyBMS->batteryVoltage = (unsigned short) (atof(pch)*10.0f);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDalyBMS->batterySoC = (short) (atof(pch)*10.0f);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDalyBMS->current = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDalyBMS->resCapacity = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDalyBMS->temperature = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadDalyBMS->lifetimeCycles = atoi(pch);
+	for(int i=0; i<MAX_BMS_CELLS; i++)
+	{
+		if (NULL == (pch = strtok(NULL, tok))) return 0;
+		pPayloadDalyBMS->cellmv[i] = (short)(atof(pch)*1000.0f);
+	}
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadDalyBMS, pch);
 	}
 	return version;
 }
