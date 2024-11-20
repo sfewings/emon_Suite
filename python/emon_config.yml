@@ -130,6 +130,22 @@ bat:
     v6: Unused
     v7: Unused
     v8: Arduino
+  3:
+    name: Moetino Current monitor
+    s0: Bank 3 - Moetino
+    s1: Bank 1 - Moetino
+    s2: Bank 2 - Moetino
+    v0: Rail - Moetino
+    v0_reference: true
+    v1: B3-1 - Moetino
+    v2: gain
+    v3: mean
+    v4: median
+    v5: stdDev
+    v6: Unused
+    v7: Unused
+    v8: Unused
+
 air:
   0:
     name: Kitchen
@@ -145,4 +161,7 @@ bee:
 leaf:
   0:
     name: Leaf
+bms:
+  0:
+    name: BMS - Bank 1
 

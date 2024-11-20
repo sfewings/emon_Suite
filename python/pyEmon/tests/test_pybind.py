@@ -189,6 +189,22 @@ def test1():
     print(f"batteryWH={payload.batteryWH}")
     print(f"batteryChargeBars={payload.batteryChargeBars}")
 
+    DALY_BMS_MESSAGE = "bms,0,52.80,77.5,-25.80,20672,26.00,20,3.306,3.294,3.307,3.293,3.308,3.294,3.307,3.292,3.307,3.294,3.307,3.295,3.308,3.294,3.308,3.294"
+    print(DALY_BMS_MESSAGE)
+    payload = emonSuite.PayloadDalyBMS()
+    retval = emonSuite.EmonSerial.ParseDalyBMSPayload(DALY_BMS_MESSAGE, payload)
+    print('returnVal={}'.format(retVal))
+    print(f"subnode={payload.subnode}")
+    print(f"batteryVoltage={payload.batteryVoltage}")
+    print(f"batterySoC={payload.batterySoC}")
+    print(f"current={payload.current}")
+    print(f"resCapacity={payload.resCapacity}")
+    print(f"temperature={payload.temperature}")
+    print(f"lifetimeCycles={payload.lifetimeCycles}")
+    print("cellmv=", end='')
+    for x in range(emonSuite.MAX_BMS_CELLS):
+        print("{},".format(payload.cellmv[x]), end = '')
+
 if __name__ == '__main__':
     test1()
 
