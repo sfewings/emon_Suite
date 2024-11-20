@@ -21,7 +21,7 @@ Configure the Pantech or Ecowitt weather station using the instructions from the
 
 For docker-compose use the following settings
   ecowitt_to_mqtt:
-    image: bancha/ecowitt2mqtt:latest
+    image: bachya/ecowitt2mqtt:latest
     container_name: ecowitt_to_mqtt
     environment:
       - ECOWITT2MQTT_MQTT_BROKER: mqtt

@@ -114,14 +114,14 @@ services:
     restart: always
 
   ecowitt_to_mqtt:
-    image: bancha/ecowitt2mqtt:latest
+    image: bachya/ecowitt2mqtt:latest
     container_name: ecowitt_to_mqtt
     environment:
-      - ECOWITT2MQTT_MQTT_BROKER: mqtt
-      - ECOWITT2MQTT_MQTT_USERNAME: user
-      - ECOWITT2MQTT_MQTT_PASSWORD: password
-      - ECOWITT2MQTT_OUTPUT_UNIT_SYSTEM: metric
-      - ECOWITT2MQTT_MQTT_TOPIC: pantech
+      - ECOWITT2MQTT_MQTT_BROKER=mqtt
+      - ECOWITT2MQTT_MQTT_USERNAME=user
+      - ECOWITT2MQTT_MQTT_PASSWORD=password
+      - ECOWITT2MQTT_OUTPUT_UNIT_SYSTEM=metric
+      - ECOWITT2MQTT_MQTT_TOPIC=pantech
     ports:
       - 8002:8080
     depends_on:
@@ -131,11 +131,13 @@ services:
 
   pantech_to_influx:
     image: sfewings32/pantech_to_influx:latest
+    volumes:
+      - /share/Input/weather_station:/share/Input/weather_station
     container_name: pantech_to_influx
     environment:
-      - LOG_PATH: /share/Input/weather_station
-      - MQTT_IP: mqtt
-      - INFLUX_IP: influxdb
+      - LOG_PATH=/share/Input/weather_station
+      - MQTT_IP=mqtt
+      - INFLUX_IP=influxdb
       - TZ=${TIMEZONE}
     depends_on:
       - influxdb
