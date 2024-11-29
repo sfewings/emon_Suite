@@ -131,7 +131,7 @@ void loop ()
 		g_payloadDalyBMS.batteryVoltage = (unsigned short) (g_daly_bms.get.packVoltage*10.0);
 		g_payloadDalyBMS.batterySoC = (short) (g_daly_bms.get.packSOC*10.0);
 		g_payloadDalyBMS.current = g_daly_bms.get.packCurrent;
-		g_payloadDalyBMS.resCapacity = g_daly_bms.get.resCapacitymAh;
+		g_payloadDalyBMS.resCapacity = g_daly_bms.get.resCapacitymAh/1000;
 		g_payloadDalyBMS.temperature = g_daly_bms.get.tempAverage;
 		g_payloadDalyBMS.lifetimeCycles = g_daly_bms.get.bmsCycles;
 		int numberOfCells = min(g_daly_bms.get.numberOfCells, MAX_BMS_CELLS) ;
