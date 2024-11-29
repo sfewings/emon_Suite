@@ -15,6 +15,7 @@
 
 
 #define NETWORK_FREQUENCY 915.0
+#define WHISPER_NODE 1
 
 
 //---------------------------------------------------------------------------------------------------
@@ -242,17 +243,28 @@ void loop()
 			pDallasOneWire[i]->requestTemperatures();
 			for (int t = 0; t < numberOfSensors[i]; t++)
 			{
-				readings[readingNum][readingIndex] = pDallasOneWire[i]->getTempCByIndex(t) * 100;
 				int reading = 0;
+				int thisReading = pDallasOneWire[i]->getTempCByIndex(t) * 100;
+				//despike the reading
 				for (int j = 0; j < READING_HISTORY; j++)
 					reading += readings[readingNum][j];
-				temperaturePayload.temperature[readingNum] = reading / READING_HISTORY;
+				if( abs(thisReading - reading / READING_HISTORY) <100)  //if the difference of thisReading < 10c of our history we are good to use the value
+				{
+					readings[readingNum][readingIndex] = thisReading;
+					reading = 0;
+					for (int j = 0; j < READING_HISTORY; j++)
+						reading += readings[readingNum][j];
+					temperaturePayload.temperature[readingNum] = reading / READING_HISTORY;
+				}
 				readingNum++;
 			}
 		}
 	}
 	readingIndex = (++readingIndex) % READING_HISTORY;
 
+#ifdef WHISPER_NODE
+	temperaturePayload.supplyV = readVcc_WhisperNode(); 
+#else
 	//add the current supply voltage at the end
 	//voltage divider is 1M and 1M. Jeenode reference voltage is 3.3v. AD range is 1024
 	//voltage divider current draw is 29 uA
@@ -261,7 +273,7 @@ void loop()
 	temperaturePayload.supplyV =(unsigned long) (measuredvbat*1000);//sent in mV
 
 //	temperaturePayload.supplyV =  readVcc();
-
+#endif
 	//only send as many ints as we have temperatures plus numSensors + Vcc	
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 	g_rf69.send((const uint8_t*) &temperaturePayload, sizeof(temperaturePayload));// - sizeof(int)*(MAX_TEMPERATURE_SENSORS- temperaturePayload.numSensors));
@@ -324,4 +336,31 @@ long readVcc()
 	result |= ADCH << 8;
 	result = 1126400L / result; // Back-calculate AVcc in mV
 	return result;
+}
+
+long readVcc_WhisperNode()
+{
+	//see https://bitbucket.org/talk2/whisper-node-avr/src/master/#markdown-header-buttons-and-leds
+	const uint8_t SAMPLES = 5;
+	const uint32_t MAX_VOLTAGE = 7282;
+	const uint8_t CONTROL_PIN = A0;
+	const uint8_t BAT_VOLTAGE_PIN = A6;
+
+	analogReference(INTERNAL);
+
+	// Turn on the MOSFET via control pin
+	pinMode(CONTROL_PIN, OUTPUT);
+	digitalWrite(CONTROL_PIN, HIGH);
+
+	// Read pin a couple of times and keep adding up.
+	uint32_t readings = 0;
+	for (uint8_t i = 0; i < SAMPLES; i++)
+	{
+		readings += analogRead(BAT_VOLTAGE_PIN);
+	}
+
+	// Turn off the MOSFET
+	digitalWrite(CONTROL_PIN, LOW);
+
+	return (MAX_VOLTAGE * (readings / SAMPLES) / 1023);
 }
