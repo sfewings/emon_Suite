@@ -17,6 +17,14 @@
 #define SERIAL_TX			 		3	//unused
 #define LED_PIN						9
 
+//#define HOUSE_BANNER
+#define BOAT_BANNER
+#ifdef HOUSE_BANNER
+    #define NETWORK_FREQUENCY 915.0
+#elif defined(BOAT_BANNER)
+    #define NETWORK_FREQUENCY 914.0
+#endif
+
 
 RH_RF69 g_rf69;
 SoftwareSerial g_sensorSerial(SERIAL_RX, SERIAL_TX);
@@ -30,19 +38,19 @@ unsigned long g_lastActivityMillis;
 //--------------------------------------------------------------------------------------------------
 // Read current battery voltage - not main supplyV!
 //--------------------------------------------------------------------------------------------------
-long readVcc()
-{
-	long result;
-	// Read 1.1V reference against AVcc
-	ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-	delay(2); // Wait for Vref to settle
-	ADCSRA |= _BV(ADSC); // Convert
-	while (bit_is_set(ADCSRA, ADSC));
-	result = ADCL;
-	result |= ADCH << 8;
-	result = 1126400L / result; // Back-calculate AVcc in mV
-	return result;
-}
+// long readVcc()
+// {
+// 	long result;
+// 	// Read 1.1V reference against AVcc
+// 	ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+// 	delay(2); // Wait for Vref to settle
+// 	ADCSRA |= _BV(ADSC); // Convert
+// 	while (bit_is_set(ADCSRA, ADSC));
+// 	result = ADCL;
+// 	result |= ADCH << 8;
+// 	result = 1126400L / result; // Back-calculate AVcc in mV
+// 	return result;
+// }
 
 
 void SerialOut(long reading)
@@ -163,7 +171,7 @@ void setup()
 
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf69 setFrequency failed");
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -174,7 +182,7 @@ void setup()
 
 	Serial.print("RF69 initialise node: ");
 	Serial.print(SCALE_NODE);
-	Serial.println(" Freq: 915MHz");
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 
 	EmonSerial::PrintScalePayload(NULL);
 
@@ -208,7 +216,7 @@ void loop()
 		digitalWrite(LED_PIN, HIGH);
 		
 		g_scalePayload.grams = g_lastScaleValue;
-		g_scalePayload.supplyV = readVcc();
+		//g_scalePayload.supplyV = readVcc();
 
 		//add the current supply voltage at the end
 		//voltage divider is 1M and 1M. Jeenode reference voltage is 3.3v. AD range is 1024
