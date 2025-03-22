@@ -25,7 +25,7 @@ const double FACTOR[6] = { 0.1875, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125 }
 const int GAIN_VALUE[6] = { GAIN_TWOTHIRDS, GAIN_ONE, GAIN_TWO, GAIN_FOUR, GAIN_EIGHT, GAIN_SIXTEEN };
 const int32_t SAMPLES = 30;
 const uint8_t LED_PIN = 9;
-const unsigned long SEND_PERIOD = 10000;  //ms
+const unsigned long SEND_PERIOD = 2000;//10000;  //ms
 
 Adafruit_ADS1115 ads1115[4] { Adafruit_ADS1115(0x48), Adafruit_ADS1115(0x49), Adafruit_ADS1115(0x4A), Adafruit_ADS1115(0x4B) };
 
@@ -433,14 +433,22 @@ void loop()
 	uint32_t millisStart = millis();
 
 	//main rail voltage, should be around 52v. Voltage divider is 10k/510 ohms. railVoltage is in 100ths of volts, not mV
-	double railVoltage = Reading(0, 0, 0, 0.1875 * (10000 + 510) / 510 / 10, noisyData );
-	if (railVoltage == 0.0 || noisyData)
-	{
-		railVoltage = 5000.0;
-		noisyData = false;
-	}
+	//double railVoltage = Reading(0, 0, 0, 0.1875 * (10000 + 510) / 510 / 10, noisyData );
+	double railVoltage = ReadingDifferential("Rail", 0, 0, 0.0, noisyData ) * (2000000.0 +81000.0)/81000.0;
+	// if (railVoltage == 0.0 || noisyData)
+	// {
+	// 	railVoltage = 5000.0;
+	// 	noisyData = false;
+	// }
 
 	g_payloadBattery.voltage[0] = (short) railVoltage;
+
+
+
+	railVoltage = 5000.0;
+
+
+
    	wdt_reset();
   
 	double amps[BATTERY_SHUNTS*2];
@@ -456,8 +464,11 @@ void loop()
   	wdt_reset();
 	amps[5] = ReadingDifferential("0x4B", 3, 1, g_mvOffset[5], noisyData )*500.0/75.0; // * 90.0 / 150.0;// * 0.197; //shunt is 90Amps for 150mV;
   	wdt_reset();
-	// ReadingDifferential("0x4B", 3, 0, noisyData ) * 150.0 / 50.0; //shunt is 50Amps for 75mV;
-  	// wdt_reset();
+
+	for(int i=0;i<BATTERY_SHUNTS*2;i++)
+	{
+		amps[i] = amps[i]/ 5.0;	//the circuit scalling factor is 5;
+	}
 
 	// amps[1] = ReadingDifferential("Diff"  , 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV; Bank 1
   	// wdt_reset();
