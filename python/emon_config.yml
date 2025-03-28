@@ -145,7 +145,36 @@ bat:
     v6: Unused
     v7: Unused
     v8: Unused
-
+  4:
+    name: LiFePO monitor 4
+    s0: Inverter 1
+    s1: Battery-280Ah
+    s2: Inverter 3
+    v0: Rail-A
+    v0_reference: true
+    v1: Unused
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Unused
+  5:
+    name: LiFePO monitor 5
+    s0: Battery-510Ah
+    s1: Battery-320Ah
+    s2: Inverter 2
+    v0: Rail-B
+    v0_reference: true
+    v1: Unused
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Unused
 air:
   0:
     name: Kitchen
@@ -164,4 +193,6 @@ leaf:
 bms:
   0:
     name: BMS - Bank 1
+  1:
+    name: BMS - Bank 2
 
