@@ -19,8 +19,8 @@ bool g_toggleLED = false;
 //RE = A5
 
 
-SoftwareSerial g_sensorSerial(4, 3);	//A1=rx, A0=tx
-Daly_BMS_UART g_daly_bms(g_sensorSerial, A4, A5);
+SoftwareSerial g_sensorSerial(3,4 );	//A1=rx, A0=tx
+Daly_BMS_UART g_daly_bms(g_sensorSerial); //if using RS485 board directly  , A4, A5);
 
 PayloadDalyBMS g_payloadDalyBMS;
 
@@ -153,17 +153,17 @@ void loop ()
 		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
 		// And print them out!
-		Serial.println("Basic BMS Data:              " + (String)g_daly_bms.get.packVoltage + "V " + (String)g_daly_bms.get.packCurrent + "I " + (String)g_daly_bms.get.packSOC + "\% ");
-		Serial.println("Package Temperature (C):     " + (String)g_daly_bms.get.tempAverage);
-		Serial.println("Highest Cell Voltage:        #" + (String)g_daly_bms.get.maxCellVNum + " with voltage " + (String)(g_daly_bms.get.maxCellmV / 1000));
-		Serial.println("Lowest Cell Voltage:         #" + (String)g_daly_bms.get.minCellVNum + " with voltage " + (String)(g_daly_bms.get.minCellmV / 1000));
-		Serial.println("Number of Cells:             " + (String)g_daly_bms.get.numberOfCells);
-		Serial.println("Number of Temp Sensors:      " + (String)g_daly_bms.get.numOfTempSensors);
-		Serial.println("BMS Chrg / Dischrg Cycles:   " + (String)g_daly_bms.get.bmsCycles);
-		Serial.println("BMS Heartbeat:               " + (String)g_daly_bms.get.bmsHeartBeat); // cycle 0-255
-		Serial.println("Discharge MOSFet Status:     " + (String)g_daly_bms.get.disChargeFetState);
-		Serial.println("Charge MOSFet Status:        " + (String)g_daly_bms.get.chargeFetState);
-		Serial.println("Remaining Capacity mAh:      " + (String)g_daly_bms.get.resCapacitymAh);
+		Serial.print(F("Basic BMS Data:              ")); Serial.println((String)g_daly_bms.get.packVoltage + "V " + (String)g_daly_bms.get.packCurrent + "I " + (String)g_daly_bms.get.packSOC + "\% ");
+		Serial.print(F("Package Temperature (C):     ")); Serial.println((String)g_daly_bms.get.tempAverage);
+		Serial.print(F("Highest Cell Voltage:        #")); Serial.println((String)g_daly_bms.get.maxCellVNum + " with voltage " + (String)(g_daly_bms.get.maxCellmV / 1000));
+		Serial.print(F("Lowest Cell Voltage:         #")); Serial.println((String)g_daly_bms.get.minCellVNum + " with voltage " + (String)(g_daly_bms.get.minCellmV / 1000));
+		Serial.print(F("Number of Cells:             ")); Serial.println((String)g_daly_bms.get.numberOfCells);
+		Serial.print(F("Number of Temp Sensors:      ")); Serial.println((String)g_daly_bms.get.numOfTempSensors);
+		Serial.print(F("BMS Chrg / Dischrg Cycles:   ")); Serial.println((String)g_daly_bms.get.bmsCycles);
+		Serial.print(F("BMS Heartbeat:               ")); Serial.println((String)g_daly_bms.get.bmsHeartBeat); // cycle 0-255
+		Serial.print(F("Discharge MOSFet Status:     ")); Serial.println((String)g_daly_bms.get.disChargeFetState);
+		Serial.print(F("Charge MOSFet Status:        ")); Serial.println((String)g_daly_bms.get.chargeFetState);
+		Serial.print(F("Remaining Capacity mAh:      ")); Serial.println((String)g_daly_bms.get.resCapacitymAh);
 		//... any many many more data
 
 		for (size_t i = 0; i < size_t(g_daly_bms.get.numberOfCells); i++)
@@ -188,6 +188,7 @@ void loop ()
 	}
 	else
 	{
+		Serial.println(F("No comms from BMS"));
 		for(int i=0;i<3;i++)
 		{
 			digitalWrite(GREEN_LED, LOW);
