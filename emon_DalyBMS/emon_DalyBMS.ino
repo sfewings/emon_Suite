@@ -9,6 +9,13 @@
 #include <avr/wdt.h>    //watchdog timer
 #include <daly-bms-uart.h>			//https://github.com/sfewings/daly-bms-uart
 
+//#define BOAT_NETWORK
+#ifdef BOAT_NETWORK
+	#define NETWORK_FREQUENCY 915.0
+#else
+	#define NETWORK_FREQUENCY 914.0
+#endif
+
 #define GREEN_LED 9			// Green LED on emonTx
 bool g_toggleLED = false;
 
@@ -85,7 +92,7 @@ void setup()
 
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf69 setFrequency failed");
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -94,9 +101,9 @@ void setup()
 	g_rf69.setHeaderId(DALY_BMS_NODE);
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-	Serial.print("RF69 initialise node: ");
+	Serial.print(F("RF69 initialise node: "));
 	Serial.print(DALY_BMS_NODE);
-	Serial.println(" Freq: 915MHz");
+	Serial.print(F(" Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println(F("MHz"));
 
 	//initialise the EEPROMSettings for relay and node number
 	EEPROMSettings eepromSettings;
