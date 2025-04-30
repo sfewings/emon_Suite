@@ -53,6 +53,21 @@
    Restart
 	sudo shutdown -r now
 
+///////////////////////
+If using UART connected to HAT COM1
+9. Add following lines to /boot/config.txt to enable the uart on the HAT and disable BT connection to it
+	enable_uart=1
+	dtoverlay=disable-bt
+
+10. Connect Moteino with emon_RapsPiSerial.ino to TX, RX pins GPIO14, GPIO15
+
+11. Set docker/docker-compose-influxdb-grafana/docker-compose.yml
+	emon_serial_to_mqtt:
+		devices:
+      	  - /dev/ttyAMA0
+    	environment:
+      	  - SERIAL_PORT=/dev/ttyAMA0
+		
 //////////////////////
 If using NodeRed	
 
