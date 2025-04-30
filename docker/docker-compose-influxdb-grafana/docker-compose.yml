@@ -1,4 +1,3 @@
-version: '2'
 services:
   influxdb:
     image: arm32v7/influxdb:latest
@@ -14,18 +13,20 @@ services:
       - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_HTTP_FLUX_ENABLED=true
     restart: always
-  chronograf:
-    image: chronograf:latest
-    ports:
-      - '127.0.0.1:8888:8888'
-    volumes:
-      - chronograf-storage:/var/lib/chronograf
-    depends_on:
-      - influxdb
-    environment:
-      - INFLUXDB_URL=http://influxdb:8086
-      - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
-      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
+
+  # chronograf:
+  #   image: chronograf:latest
+  #   ports:
+  #     - '127.0.0.1:8888:8888'
+  #   volumes:
+  #     - chronograf-storage:/var/lib/chronograf
+  #   depends_on:
+  #     - influxdb
+  #   environment:
+  #     - INFLUXDB_URL=http://influxdb:8086
+  #     - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
+  #     - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana1
@@ -44,6 +45,7 @@ services:
       - GF_SERVER_DOMAIN=${DOMAIN_NAME}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
     restart: always
+
   mosquitto:
     image: eclipse-mosquitto
     container_name: mqtt
@@ -71,10 +73,10 @@ services:
     image: sfewings32/emon_serial_to_mqtt:latest
     container_name: emon_serial
     devices:
-      - /dev/ttyUSB0
+      - /dev/ttyAMA0
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
-      - SERIAL_PORT=/dev/ttyUSB0
+      - SERIAL_PORT=/dev/ttyAMA0
       - MQTT_IP=mqtt
       - TZ=${TIMEZONE}
     volumes:
@@ -113,37 +115,37 @@ services:
       - mosquitto
     restart: always
 
-  ecowitt_to_mqtt:
-    image: bachya/ecowitt2mqtt:latest
-    container_name: ecowitt_to_mqtt
-    environment:
-      - ECOWITT2MQTT_MQTT_BROKER=mqtt
-      - ECOWITT2MQTT_MQTT_USERNAME=user
-      - ECOWITT2MQTT_MQTT_PASSWORD=password
-      - ECOWITT2MQTT_OUTPUT_UNIT_SYSTEM=metric
-      - ECOWITT2MQTT_MQTT_TOPIC=pantech
-    ports:
-      - 8002:8080
-    depends_on:
-      - influxdb
-      - mosquitto
-    restart: always
+  # ecowitt_to_mqtt:
+  #   image: bachya/ecowitt2mqtt:latest
+  #   container_name: ecowitt_to_mqtt
+  #   environment:
+  #     - ECOWITT2MQTT_MQTT_BROKER=mqtt
+  #     - ECOWITT2MQTT_MQTT_USERNAME=user
+  #     - ECOWITT2MQTT_MQTT_PASSWORD=password
+  #     - ECOWITT2MQTT_OUTPUT_UNIT_SYSTEM=metric
+  #     - ECOWITT2MQTT_MQTT_TOPIC=pantech
+  #   ports:
+  #     - 8002:8080
+  #   depends_on:
+  #     - influxdb
+  #     - mosquitto
+  #   restart: always
 
-  pantech_to_influx:
-    image: sfewings32/pantech_to_influx:latest
-    volumes:
-      - /share/Input/weather_station:/share/Input/weather_station
-    container_name: pantech_to_influx
-    environment:
-      - LOG_PATH=/share/Input/weather_station
-      - MQTT_IP=mqtt
-      - INFLUX_IP=influxdb
-      - TZ=${TIMEZONE}
-    depends_on:
-      - influxdb
-      - mosquitto
-      - ecowitt_to_mqtt
-    restart: always
+  # pantech_to_influx:
+  #   image: sfewings32/pantech_to_influx:latest
+  #   volumes:
+  #     - /share/Input/weather_station:/share/Input/weather_station
+  #   container_name: pantech_to_influx
+  #   environment:
+  #     - LOG_PATH=/share/Input/weather_station
+  #     - MQTT_IP=mqtt
+  #     - INFLUX_IP=influxdb
+  #     - TZ=${TIMEZONE}
+  #   depends_on:
+  #     - influxdb
+  #     - mosquitto
+  #     - ecowitt_to_mqtt
+  #   restart: always
 
 
   node-red:
@@ -162,18 +164,18 @@ services:
       - mosquitto
     restart: always
 
-  emon_logtojson:
-    image: sfewings32/emon_logtojson:latest
-    container_name: emon_logtojson
-    volumes:
-      - /share:/share
-    environment:
-      - TZ=${TIMEZONE}
-      - MQTT_IP=mqtt
-      - REPROCESS_LOGS_FROM_YEAR=this
-    depends_on:
-      - mosquitto
-    restart: always
+  # emon_logtojson:
+  #   image: sfewings32/emon_logtojson:latest
+  #   container_name: emon_logtojson
+  #   volumes:
+  #     - /share:/share
+  #   environment:
+  #     - TZ=${TIMEZONE}
+  #     - MQTT_IP=mqtt
+  #     - REPROCESS_LOGS_FROM_YEAR=this
+  #   depends_on:
+  #     - mosquitto
+  #   restart: always
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -189,17 +191,17 @@ services:
       - 9000:9000
       - 9443:9443
 
-  onedrive:
-    image: driveone/onedrive:edge
-    restart: unless-stopped
-    environment:
-      - ONEDRIVE_UID=${PUID}
-      - ONEDRIVE_GID=${PGID}
-      - ONEDRIVE_SINGLE_DIRECTORY= RaspPi/shannstainable
-      - ONEDRIVE_UPLOADONLY=1
-    volumes: 
-      - onedrive_conf:/onedrive/conf
-      - ${ONEDRIVE_DATA_DIR}:/onedrive/data      
+  # onedrive:
+  #   image: driveone/onedrive:edge
+  #   restart: unless-stopped
+  #   environment:
+  #     - ONEDRIVE_UID=${PUID}
+  #     - ONEDRIVE_GID=${PGID}
+  #     - ONEDRIVE_SINGLE_DIRECTORY= RaspPi/shannstainable
+  #     - ONEDRIVE_UPLOADONLY=1
+  #   volumes: 
+  #     - onedrive_conf:/onedrive/conf
+  #     - ${ONEDRIVE_DATA_DIR}:/onedrive/data      
 
 #   nginx-proxy:
 #     image: nginx
@@ -236,10 +238,10 @@ services:
 
 volumes:
   influxdb-storage:
-  chronograf-storage:
+#  chronograf-storage:
   grafana-storage:
   mosquitto-data:
   mosquitto-logs:
   mosquitto-conf:
   portainer-data:
-  onedrive_conf:
+#  onedrive_conf:
