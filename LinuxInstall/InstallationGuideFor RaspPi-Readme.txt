@@ -51,11 +51,49 @@
    Add pi user permissions to start containers
 	sudo usermod -aG docker pi
    Restart
-	shutdown -r now
-   Install Docker Compose
-	sudo pip3 install docker-compose
-  or
-    sudo apt install docker-compose	
+	sudo shutdown -r now
+
+//////////////////////
+If using NodeRed	
+
+23. Update NodeRed GIT repo from RaspPi
+	mkdir /share/emon-node-red
+	cd /share/emon-node-red
+	git clone git@github.com:sfewings/emon-node-red.git
+	
+20. 	Enable projects in node-red
+	in /home/pi/.node-red/settings.js     
+	// Customising the editor
+    editorTheme: {
+        projects: {
+            // To enable the Projects feature, set this value to true
+            enabled: true
+
+//////////////////////////////////////////////////
+If hosting on *.fewings.org subdomain
+
+19. 	Install nginx
+	sudo apt install nginx
+	Copy contents of /etc/nginx/sites-available/default
+	This enables shannstainable.fewings.org http and https traffic to node-red on port :1880\ui
+
+21.	Create SSL certificate for shannstainable.fewings.org using letsencrypt
+	/etc/letsencrypt/live/shannstainable.fewings.org/cert.pem
+	Set up renewal every 40 days by placing /etc/letsencrypt/renewal/shannstainable.fewings.org.conf
+	Maybe required?? install sudo apt-get install python3-certbot-nginx
+	Add this to the crontab file. Run crontab -e 
+	# run the certbot renewal on the 1st day of each month. Be sure to start and stop nginx so certbot can use port 80
+	* * * 1 * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx start"
+
+22. Auto DNS shannstainable.fewings.org
+	Add this line to the crontab file. Run crontab -e
+	#run the dyndns every 30 minutes
+	30 * * * * date >> /share/log/curl_cron.log && /usr/bin/curl --insecure -d "u=steve&p=5yufdsHyf6" https://mike.fewings.org/dyndns.php >> /share/log/curl_cron.log 2>&1;echo "" >> /share/log/curl_cron.log
+	Note that it logs each execution in the file /share/log/curl_cron.log
+
+
+///////////////////////////////////////////////
+Older instructions when building paho_mqtt for C MQTT libraries
 
 9. Create a share/lib directory in the home directory (or anywhere. But be sure to expose through samba)
 	mkdir -p /share/libs
@@ -116,36 +154,6 @@
 	#To install 	1. sudo copy to /etc/systemd/system
 	#		2. sudo systemctl enable Emon_LogToJson
 	//note sympolic link to files in /etc/systemd/system/multi-user.target.wants
-
-19. 	Install nginx
-	sudo apt install nginx
-	Copy contents of /etc/nginx/sites-available/default
-	This enables shannstainable.fewings.org http and https traffic to node-red on port :1880\ui
-
-20. 	Enable projects in node-red
-	in /home/pi/.node-red/settings.js     
-	// Customising the editor
-    editorTheme: {
-        projects: {
-            // To enable the Projects feature, set this value to true
-            enabled: true
-			
-21.	Create SSL certificate for shannstainable.fewings.org using letsencrypt
-	/etc/letsencrypt/live/shannstainable.fewings.org/cert.pem
-	Set up renewal every 40 days by placing /etc/letsencrypt/renewal/shannstainable.fewings.org.conf
-	Maybe required?? install sudo apt-get install python3-certbot-nginx
-	Add this to the crontab file. Run crontab -e 
-	# run the certbot renewal on the 1st day of each month. Be sure to start and stop nginx so certbot can use port 80
-	* * * 1 * certbot renew --pre-hook "service nginx stop" --post-hook "service nginx start"
-
-22. Auto DNS shannstainable.fewings.org
-	Add this line to the crontab file. Run crontab -e
-	#run the dyndns every 30 minutes
-	30 * * * * date >> /share/log/curl_cron.log && /usr/bin/curl --insecure -d "u=steve&p=5yufdsHyf6" https://mike.fewings.org/dyndns.php >> /share/log/curl_cron.log 2>&1;echo "" >> /share/log/curl_cron.log
-	Note that it logs each execution in the file /share/log/curl_cron.log
-	
-23. Update NodeRed GIT repo from RaspPi
-	
 
 24. Including InfluxDB library for C++ (Not used for emon_suite)
 	Read instructuons at https://github.com/offa/influxdb-cxx
