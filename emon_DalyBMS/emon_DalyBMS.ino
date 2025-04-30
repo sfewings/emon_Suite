@@ -9,6 +9,9 @@
 #include <avr/wdt.h>    //watchdog timer
 #include <daly-bms-uart.h>			//https://github.com/sfewings/daly-bms-uart
 
+#include <Ports.h>
+ISR(WDT_vect) { Sleepy::watchdogEvent(); }
+
 //#define BOAT_NETWORK
 #ifdef BOAT_NETWORK
 	#define NETWORK_FREQUENCY 915.0
@@ -210,5 +213,7 @@ void loop ()
 	const uint32_t SEND_PERIOD = 10000;
 	uint32_t millisTaken = millis()- millisStart; 
 	if( millisTaken < SEND_PERIOD )
-		delay( SEND_PERIOD - millisTaken);
+	// 	delay( SEND_PERIOD - millisTaken);
+		Sleepy::loseSomeTime(SEND_PERIOD - millisTaken );
+
 }
