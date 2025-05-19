@@ -514,8 +514,13 @@ void loop()
 		}
 		if ( node_id == BATTERY_NODE && len == sizeof(PayloadBattery))						// jeenode base Receives the time
 		{
-			g_payloadBattery = *((PayloadBattery*)buf);
-			EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+            PayloadBattery payloadBattery = *((PayloadBattery*)buf);
+            if( payloadBattery.crc == EmonSerial::CalcCrc(buf, sizeof(PayloadBattery)-2) && payloadBattery.subnode == 0 )
+            {
+                //we only get the voltage from battery node 0
+                g_payloadBattery = *((PayloadBattery*)buf);
+                EmonSerial::PrintBatteryPayload(&g_payloadBattery);
+            }
 		}
         if ( node_id == INVERTER_NODE && len == sizeof(PayloadInverter))
         {
@@ -605,7 +610,7 @@ void loop()
             //rainfall is blue
             printValue((float)(g_payloadRain.rainCount - g_rainStartOfToday)/5.0, 1, RgbColor(0,0,255),-1, readLDR());
         }
-        else if( totalPower > 10 )
+        else if( totalPower > 100 )
         {
             //Produced is green
             printValue( totalPower, RgbColor(0,255,0), -1, readLDR());

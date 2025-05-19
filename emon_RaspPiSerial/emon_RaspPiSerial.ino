@@ -157,9 +157,24 @@ void loop ()
 			{
 				SERIAL_OUT(Scale, Payload);
 			}
-			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery))
+			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery)-2)		//no crc
 			{
 				SERIAL_OUT(Battery, Payload);
+			}
+			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery))		//has crc
+			{
+				PayloadBattery* pPayload = (PayloadBattery*)data;
+				if(pPayload->crc == EmonSerial::CalcCrc((const void *) data, sizeof(PayloadBattery)-2) )
+				{
+					EmonSerial::PrintBatteryPayload(pPayload);
+				}
+				else
+				{
+					Serial.print(F("Battery - Bad CRC. Payload CRC="));
+					Serial.print(pPayload->crc);
+					Serial.print(F(", calculated CRC="));
+					Serial.println( EmonSerial::CalcCrc((const void *) data, sizeof(PayloadBattery)-2) );
+				}
 			}
 			if (node_id == INVERTER_NODE  && len == sizeof(PayloadInverter))
 			{
@@ -185,10 +200,26 @@ void loop ()
 			{
 				SERIAL_OUT(Pressure, Payload);
 			}
-			if (node_id == DALY_BMS_NODE  && len == sizeof(PayloadDalyBMS))
+			if (node_id == DALY_BMS_NODE  && len == sizeof(PayloadDalyBMS)-2)
 			{
 				SERIAL_OUT(DalyBMS, Payload);
 			}
+			if (node_id == DALY_BMS_NODE && len == sizeof(PayloadDalyBMS))		//has crc
+			{
+				PayloadDalyBMS* pPayload = (PayloadDalyBMS*)data;
+				if(pPayload->crc == EmonSerial::CalcCrc((const void *) data, sizeof(PayloadDalyBMS)-2) )
+				{
+					EmonSerial::PrintDalyBMSPayload(pPayload);
+				}
+				else
+				{
+					Serial.print(F("DalyBMS - Bad CRC"));
+					Serial.print(pPayload->crc);
+					Serial.print(F(", calculated CRC="));
+					Serial.println( EmonSerial::CalcCrc((const void *) data, sizeof(PayloadBattery)-2) );
+				}
+			}
+
 		}
 
 		//read the time basePayload 

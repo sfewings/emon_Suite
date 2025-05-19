@@ -12,7 +12,7 @@
 #include <Ports.h>
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
-//#define BOAT_NETWORK
+#define BOAT_NETWORK
 #ifdef BOAT_NETWORK
 	#define NETWORK_FREQUENCY 915.0
 #else
@@ -149,6 +149,8 @@ void loop ()
 		{
 			g_payloadDalyBMS.cellmv[i] = short(g_daly_bms.get.cellVmV[i]);
 		}
+
+		g_payloadDalyBMS.crc = EmonSerial::CalcCrc((const void*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS)-2);
 
 		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));

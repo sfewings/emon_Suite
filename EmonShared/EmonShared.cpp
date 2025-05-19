@@ -5,8 +5,22 @@
 	#include <stddef.h>	 //offsetof()
 #endif
 
+#include <crc16.h>
+#include <parity.h>
+
 char tok[] = ":, | \r\r&";  //tokens used to separate 
 #ifndef MQTT_LIB
+
+
+
+word EmonSerial::CalcCrc(const void* ptr, byte len)
+{
+	word crc = ~0;
+	for (byte i = 0; i < len; ++i)
+		crc = _crc16_update(crc, ((const byte*)ptr)[i]);
+	return crc;
+}
+
 
 void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 {
@@ -324,7 +338,7 @@ void EmonSerial::PrintBatteryPayload(Stream& stream, PayloadBattery* pPayloadBat
 {
 	if (pPayloadBattery == NULL)
 	{
-		stream.print(F("bat2,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..8]|ms_since_last_packet"));
+		stream.print(F("bat3,subnode,power[0..2],pulseIn[0..2],pulseOut[0..2],voltage[0..8]|ms_since_last_packet"));
 	}
 	else
 	{
@@ -1096,6 +1110,8 @@ int EmonSerial::ParseBatteryPayload(char* str, PayloadBattery* pPayloadBattery)
 			if (NULL == (pch = strtok(NULL, tok))) return 0;
 			pPayloadBattery->voltage[i] = atoi(pch);
 		}
+		pPayloadBattery->crc = CalcCrc(pPayloadBattery, sizeof(PayloadBattery)-2);
+
 		if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 		{
 			ParseRelay(pPayloadBattery, pch);
@@ -1364,6 +1380,8 @@ int EmonSerial::ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS)
 		if (NULL == (pch = strtok(NULL, tok))) return 0;
 		pPayloadDalyBMS->cellmv[i] = (short)(atof(pch)*1000.0f);
 	}
+	pPayloadDalyBMS->crc = CalcCrc(pPayloadDalyBMS, sizeof(PayloadDalyBMS)-2);
+
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadDalyBMS, pch);

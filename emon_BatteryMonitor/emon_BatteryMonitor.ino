@@ -416,6 +416,8 @@ void loop()
 	//Send packet 
 	digitalWrite(LED_PIN, HIGH);
 
+	g_payloadBattery.crc = EmonSerial::CalcCrc((const void*) &g_payloadBattery, sizeof(PayloadBattery)-2);
+
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 	g_rf69.send((const uint8_t*) &g_payloadBattery, sizeof(g_payloadBattery));
 	if( g_rf69.waitPacketSent() )
