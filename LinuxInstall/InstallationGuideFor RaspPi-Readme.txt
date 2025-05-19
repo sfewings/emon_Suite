@@ -67,7 +67,17 @@ If using UART connected to HAT COM1
       	  - /dev/ttyAMA0
     	environment:
       	  - SERIAL_PORT=/dev/ttyAMA0
-		
+
+
+12. Install nginx
+	sudo apt install nginx
+	Copy contents of /etc/nginx/sites-available/default
+	This enables shannstainable.fewings.org http and https traffic to node-red on port :1880\ui
+
+13. Restart nginx
+	sudo systemctl restart nginx
+
+
 //////////////////////
 If using NodeRed	
 
@@ -84,13 +94,9 @@ If using NodeRed
             // To enable the Projects feature, set this value to true
             enabled: true
 
+
 //////////////////////////////////////////////////
 If hosting on *.fewings.org subdomain
-
-19. 	Install nginx
-	sudo apt install nginx
-	Copy contents of /etc/nginx/sites-available/default
-	This enables shannstainable.fewings.org http and https traffic to node-red on port :1880\ui
 
 21.	Create SSL certificate for shannstainable.fewings.org using letsencrypt
 	/etc/letsencrypt/live/shannstainable.fewings.org/cert.pem
