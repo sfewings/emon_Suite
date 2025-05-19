@@ -337,15 +337,15 @@ void setup()
 		ads1115[ads].begin();
 
 	//reset the counters
-	for (int i = 0; i < BATTERY_SHUNTS*2; i++)
-	{
-		g_mWH_In[i] = 0.0; 
-	 	writeEEPROM(i, 0.0);
-	 	g_mWH_Out[i] = 0.0;
-	 	writeEEPROM(i + BATTERY_SHUNTS*2, 0.0);
-		g_mvOffset[i] = 0.0;
-	 	writeEEPROM(i + BATTERY_SHUNTS*2*2, 0.0);
-	}
+	// for (int i = 0; i < BATTERY_SHUNTS*2; i++)
+	// {
+	// 	g_mWH_In[i] = 0.0; 
+	//  	writeEEPROM(i, 0.0);
+	//  	g_mWH_Out[i] = 0.0;
+	//  	writeEEPROM(i + BATTERY_SHUNTS*2, 0.0);
+	// 	g_mvOffset[i] = 0.0;
+	//  	writeEEPROM(i + BATTERY_SHUNTS*2*2, 0.0);
+	// }
 
 	//Get double g_mWH_In and g_mWH_Out from eeprom
 	for (int i = 0; i < BATTERY_SHUNTS*2; i++)
