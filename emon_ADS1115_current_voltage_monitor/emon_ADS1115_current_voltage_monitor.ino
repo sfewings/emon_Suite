@@ -191,7 +191,7 @@ double Reading(uint8_t readingNum, uint8_t ads, uint8_t channel, double scaleFac
 	return stats.median;  //median removes chance of spike reading influencing the tallies
 }
 
-double ReadingDifferential(const char* shuntName, uint8_t ads, uint8_t channel, double offset, bool &noisyData)
+double ReadingDifferential(const __FlashStringHelper* shuntName, uint8_t ads, uint8_t channel, double offset, bool &noisyData)
 {
 	int gain;
 	double samples[SAMPLES];
@@ -406,37 +406,38 @@ void loop()
 	bool noisyData = false;
 
 	wdt_reset();
-	if(g_buttonPressed)
-	{
-		digitalWrite(LED_PIN, HIGH);
-		g_mvOffset[0] = ReadingDifferential("0x49", 1, 0, 0, noisyData );
-		wdt_reset();
-		g_mvOffset[1] = ReadingDifferential("0x49", 1, 1, 0, noisyData );
-		wdt_reset();
-		g_mvOffset[2] = ReadingDifferential("0x4A", 2, 0, 0, noisyData );
-		wdt_reset();
-		g_mvOffset[3] = ReadingDifferential("0x4A", 2, 1, 0, noisyData );
-		wdt_reset();
-		g_mvOffset[4] = ReadingDifferential("0x4B", 3, 0, 0, noisyData );
-		wdt_reset();
-		g_mvOffset[5] = ReadingDifferential("0x4B", 3, 1, 0, noisyData );
-		wdt_reset();
-		Serial.print(F("Resetting current offsets."));
-		for (int i = 0; i < BATTERY_SHUNTS*2; i++)
-		{
-			Serial.print(F(","));Serial.print(g_mvOffset[i]); 
-			writeEEPROM(i+BATTERY_SHUNTS*2*2, g_mvOffset[i]);
-		}
-		Serial.println();
-		digitalWrite(LED_PIN, LOW);
-		g_buttonPressed = false;
-	}
+	// if(g_buttonPressed)
+	// {
+	// 	digitalWrite(LED_PIN, HIGH);
+
+	// 	g_mvOffset[0] = ReadingDifferential("0x49", 1, 0, 0, noisyData );		//inverter 1
+	// 	wdt_reset();
+	// 	g_mvOffset[1] = ReadingDifferential("0x49", 1, 1, 0, noisyData );		//Battery-280Ah
+	// 	wdt_reset();
+	// 	g_mvOffset[2] = ReadingDifferential("0x4A", 2, 0, 0, noisyData );
+	// 	wdt_reset();
+	// 	g_mvOffset[3] = ReadingDifferential("0x4A", 2, 1, 0, noisyData );
+	// 	wdt_reset();
+	// 	g_mvOffset[4] = ReadingDifferential("0x4B", 3, 0, 0, noisyData );
+	// 	wdt_reset();
+	// 	g_mvOffset[5] = ReadingDifferential("0x4B", 3, 1, 0, noisyData );
+	// 	wdt_reset();
+	// 	Serial.print(F("Resetting current offsets."));
+	// 	for (int i = 0; i < BATTERY_SHUNTS*2; i++)
+	// 	{
+	// 		Serial.print(F(","));Serial.print(g_mvOffset[i]); 
+	// 		writeEEPROM(i+BATTERY_SHUNTS*2*2, g_mvOffset[i]);
+	// 	}
+	// 	Serial.println();
+	// 	digitalWrite(LED_PIN, LOW);
+	// 	g_buttonPressed = false;
+	// }
 
 	uint32_t millisStart = millis();
 
 	//main rail voltage, should be around 52v. Voltage divider is 10k/510 ohms. railVoltage is in 100ths of volts, not mV
 	//double railVoltage = Reading(0, 0, 0, 0.1875 * (10000 + 510) / 510 / 10, noisyData );
-	double railVoltage = ReadingDifferential("Rail", 0, 0, 0.0, noisyData ) * (2000000.0 +81000.0)/81000.0;
+	double railVoltage = ReadingDifferential(F("Rail"), 0, 0, 0.0, noisyData ) * (2000000.0 +81000.0)/81000.0;
 	// if (railVoltage == 0.0 || noisyData)
 	// {
 	// 	railVoltage = 5000.0;
@@ -452,30 +453,36 @@ void loop()
 
 
    	wdt_reset();
-  
+
+	//note the wiring for the six shunts is a little confusing. 
+	//Correct at this point to simplify all ongoing processing
+	//We want to map these as follows
+	//0 = Inverter 1		= "0x49", 1, 0
+	//5 = Battery 280Ah		= "0x49", 1, 1
+	//2 = Inverter 3		= "0x4A", 2, 0
+	//3 = Battery 510Ah		= "0x4A", 2, 1
+	//4 = Battery 320Ah		= "0x4B", 3, 0
+	//1 = Inverter 2		= "0x4B", 3, 1
+	//Rail voltage  		= "0x48", 0, 0
+	
 	double amps[BATTERY_SHUNTS*2];
-	amps[0] = ReadingDifferential("0x49", 1, 0, g_mvOffset[0], noisyData )*500.0/75.0; // * 150.0 / 50.0;// * 0.197; //shunt is 150Amps for 50mV. 0.197 is the circuit scale factor!
+	amps[0] = ReadingDifferential(F("0x49-Inverter 1   "), 1, 0, g_mvOffset[0], noisyData )*500.0/75.0; //500 amps for 75mv
   	wdt_reset();
-	amps[1] = ReadingDifferential("0x49", 1, 1, g_mvOffset[1], noisyData )*500.0/75.0; // * 90.0 / 150.0;// * 0.197; //shunt is 90Amps for 150mV;
+	amps[5] = ReadingDifferential(F("0x49-Battery 280Ah"), 1, 1, g_mvOffset[1], noisyData )*500.0/75.0; //500 amps for 75mv
   	wdt_reset();
-	amps[2] = ReadingDifferential("0x4A", 2, 0, g_mvOffset[2], noisyData )*500.0/75.0; // * 90.0 / 150.0;// * 0.197; //shunt is 90Amps for 150mV;
+	amps[2] = ReadingDifferential(F("0x4A-Inverter 3   "), 2, 0, g_mvOffset[2], noisyData )*500.0/75.0; //500 amps for 75mv
   	wdt_reset();
-	amps[3] = ReadingDifferential("0x4A", 2, 1, g_mvOffset[3], noisyData )*500.0/75.0; // * 90.0 / 150.0;// * 0.197; //shunt is 90Amps for 150mV;
+	amps[3] = ReadingDifferential(F("0x4A-Battery 510Ah"), 2, 1, g_mvOffset[3], noisyData )*500.0/75.0; //500 amps for 75mv
   	wdt_reset();
-	amps[4] = ReadingDifferential("0x4B", 3, 0, g_mvOffset[4], noisyData )*500.0/75.0; // * 90.0 / 150.0;// * 0.197; //shunt is 90Amps for 150mV;
+	amps[4] = ReadingDifferential(F("0x4B-Battery 310Ah"), 3, 0, g_mvOffset[4], noisyData )*500.0/75.0; //500 amps for 75mv
   	wdt_reset();
-	amps[5] = ReadingDifferential("0x4B", 3, 1, g_mvOffset[5], noisyData )*500.0/75.0; // * 90.0 / 150.0;// * 0.197; //shunt is 90Amps for 150mV;
+	amps[1] = ReadingDifferential(F("0x4B-Inverter 2   "), 3, 1, g_mvOffset[5], noisyData )*500.0/75.0; //500 amps for 75mv
   	wdt_reset();
 
 	for(int i=0;i<BATTERY_SHUNTS*2;i++)
 	{
 		amps[i] = amps[i]/ 5.0;	//the circuit scalling factor is 5;
 	}
-
-	// amps[1] = ReadingDifferential("Diff"  , 0, 0, noisyData ) * 90.0 / 100.0; //shunt is 90Amps for 100mV; Bank 1
-  	// wdt_reset();
-	// amps[2] = ReadingDifferential("LiFePo1", 1, 1, noisyData ) * 150.0 / 50.0; //shunt is 50Amps for 75mV;  Li ion
- 	// wdt_reset();
 
 	if( noisyData ) // || railVoltage > 10000)
 	{
@@ -499,7 +506,6 @@ void loop()
 	for (uint8_t i = 0; i < BATTERY_SHUNTS; i++)
 	{
 		g_payloadBattery.power[i] = railVoltage * amps[i] / 100.0;  //convert mV to mW
-		//g_payloadBattery.power[i] = amps[i]*10.0;  //convert mV to 10ths of mv
 
 		if(g_payloadBattery.power[i] < 0)
 			g_mWH_Out[i] += -1.0 * g_payloadBattery.power[i] * period / (60 * 60 * 1000.0); //convert to wH
