@@ -148,7 +148,7 @@ bat:
   4:
     name: LiFePO monitor 4
     s0: Inverter 1
-    s1: Battery-280Ah
+    s1: Inverter 2
     s2: Inverter 3
     v0: Rail-A
     v0_reference: true
@@ -164,7 +164,7 @@ bat:
     name: LiFePO monitor 5
     s0: Battery-510Ah
     s1: Battery-320Ah
-    s2: Inverter 2
+    s2: Battery-280Ah
     v0: Rail-B
     v0_reference: true
     v1: Unused
