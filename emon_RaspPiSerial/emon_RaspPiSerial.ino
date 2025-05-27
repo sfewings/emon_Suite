@@ -104,6 +104,9 @@ void loop ()
 
 	if(g_rfRadio.available())
 	{
+		//read the nodeID early to prevent overwriting before the buffer is read
+		node_id = g_rfRadio.headerId();
+
 		SetLed(HIGH);
 		uint8_t buf[RADIO_BUF_LEN];
 		memset(buf, 0, RADIO_BUF_LEN);
@@ -117,7 +120,6 @@ void loop ()
 			Serial.print("RSSI: ");
 			Serial.println(g_rfRadio.lastRssi(), DEC);
 
-			node_id = g_rfRadio.headerId();
 			data = buf;
 
 			if (node_id == BASE_JEENODE && len == sizeof(PayloadBase))		
