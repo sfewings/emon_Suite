@@ -136,7 +136,7 @@ typedef struct PayloadBattery : PayloadRelay {
 	unsigned long pulseIn[BATTERY_SHUNTS];				//wH
 	unsigned long pulseOut[BATTERY_SHUNTS];				//wH
 	short voltage[MAX_VOLTAGES];
-	word crc;									//100th of v 
+	uint16_t crc;									//2 byte CRC value 
 }PayloadBattery;
 
 typedef struct PayloadInverter : PayloadRelay {
@@ -210,7 +210,7 @@ typedef struct PayloadDalyBMS : PayloadRelay {
 	float temperature;							// pack average temperature in degrees
 	short lifetimeCycles;						// lifetime number of charg/discharge cycles 
 	short cellmv[MAX_BMS_CELLS];				// cell voltages in mv
-	word crc;
+	uint16_t crc;
 } PayloadDalyBMS;
 
 class EmonSerial{
@@ -255,7 +255,7 @@ public:
 	static void PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 
 #endif
-	static word CalcCrc(const void* ptr, byte len);
+	static uint16_t CalcCrc(const void* ptr, byte len);
 
 	static int PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr);
 	static int UnpackWaterPayload(byte* ptr, PayloadWater* pPayloadWater);

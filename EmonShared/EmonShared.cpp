@@ -5,22 +5,13 @@
 	#include <stddef.h>	 //offsetof()
 #endif
 
-#include <crc16.h>
-#include <parity.h>
+#include "crc16.h"
+#include "parity.h"
 
 char tok[] = ":, | \r\r&";  //tokens used to separate 
+
+//don't compile the Print routines for the python based MQTT_LIB build 
 #ifndef MQTT_LIB
-
-
-
-word EmonSerial::CalcCrc(const void* ptr, byte len)
-{
-	word crc = ~0;
-	for (byte i = 0; i < len; ++i)
-		crc = _crc16_update(crc, ((const byte*)ptr)[i]);
-	return crc;
-}
-
 
 void EmonSerial::PrintRF12Init(const RF12Init &rf12Init)
 {
@@ -649,6 +640,14 @@ void EmonSerial::PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDal
 }
 
 #endif
+
+uint16_t EmonSerial::CalcCrc(const void* ptr, byte len)
+{
+	uint16_t crc = ~0;
+	for (byte i = 0; i < len; ++i)
+		crc = _crc16_update(crc, ((const byte*)ptr)[i]);
+	return crc;
+}
 
 
 int EmonSerial::PackWaterPayload(PayloadWater* pPayloadWater, byte* ptr)

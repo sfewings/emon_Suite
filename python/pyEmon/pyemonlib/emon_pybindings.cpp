@@ -212,6 +212,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
     emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
     emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
+    emonSerial.def_static("CalcCrc", &EmonSerial::CalcCrc, "Calculates Crc on payloads",py::arg("const void*"), py::arg("byte"));
 }
 
 

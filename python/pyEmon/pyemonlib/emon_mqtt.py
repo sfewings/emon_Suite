@@ -171,7 +171,7 @@ class emon_mqtt:
             try:
                 self.mqttClient.publish(f"inverter/power/{payload.subnode}",payload.activePower/1)
                 self.mqttClient.publish(f"inverter/apparentPower/{payload.subnode}",payload.apparentPower/1)
-                self.mqttClient.publish(f"inverter/batteryVoltage/{payload.subnode}",payload.batteryVoltage/1)
+                self.mqttClient.publish(f"inverter/batteryVoltage/{payload.subnode}",payload.batteryVoltage/10)
                 self.mqttClient.publish(f"inverter/batteryDicharge/{payload.subnode}",payload.batteryDischarge/1)
                 self.mqttClient.publish(f"inverter/batteryCharging/{payload.subnode}",payload.batteryCharging/1)
                 self.mqttClient.publish(f"inverter/pvInputPower/{payload.subnode}",payload.pvInputPower/1)
