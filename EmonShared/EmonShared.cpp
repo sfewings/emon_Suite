@@ -639,6 +639,41 @@ void EmonSerial::PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDal
 	stream.println();
 }
 
+void EmonSerial::PrintSevConPayload(PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast)
+{
+	PrintSevConPayload(Serial, pPayloadSevCon, timeSinceLast);
+}
+
+void EmonSerial::PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast)
+{
+	if (pPayloadSevCon == NULL)
+	{
+		stream.print(F("svc,subnode,motorTemperature,controlerTemperature,capVoltage,batteryCurrent,RPM"));
+	}
+	else
+	{
+		stream.print(F("svc,"));
+		stream.print(pPayloadSevCon->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadSevCon->motorTemperature,0);
+		stream.print(F(","));
+		stream.print(pPayloadSevCon->controlerTemperature,0);
+		stream.print(F(","));
+		stream.print(pPayloadSevCon->capVoltage,2);
+		stream.print(F(","));    
+		stream.print(pPayloadSevCon->batteryCurrent,2);
+		stream.print(F(","));    
+		stream.print(pPayloadSevCon->RPM);
+		PrintRelay(stream, pPayloadSevCon);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 uint16_t EmonSerial::CalcCrc(const void* ptr, byte len)
@@ -1384,6 +1419,39 @@ int EmonSerial::ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS)
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadDalyBMS, pch);
+	}
+	return version;
+}
+
+
+int EmonSerial::ParseSevConPayload(char* str, PayloadSevCon* pPayloadSevCon)
+{
+	memset(pPayloadSevCon, 0, sizeof(PayloadSevCon));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "svc"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadSevCon->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadSevCon->motorTemperature = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadSevCon->controlerTemperature = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadSevCon->capVoltage = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadSevCon->batteryCurrent = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadSevCon->RPM = atoi(pch);
+
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadSevCon, pch);
 	}
 	return version;
 }
