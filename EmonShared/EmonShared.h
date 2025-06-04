@@ -217,11 +217,11 @@ typedef struct PayloadDalyBMS : PayloadRelay {
 
 typedef struct PayloadSevCon : PayloadRelay {
 	byte subnode;
-	float motorTemperature;		            	// 
-	float controlerTemperature;                 //
+	int8_t motorTemperature;		            	// 
+	int8_t controllerTemperature;                 //
 	float capVoltage;							//
 	float batteryCurrent;						//
-	int RPM;									//
+	int16_t rpm;									//
 } PayloadSevCon;
 
 class EmonSerial{

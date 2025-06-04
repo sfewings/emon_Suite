@@ -10,11 +10,13 @@ static const auto LED_ACTION_PIN          = 9;
 static const uint32_t SEND_PERIOD         = 1000*30;//30 seconds if no data updates otherwise.
 static const uint32_t DEBUG_TIME_INTERVAL = 1000; //Limit the debug print of each message
 
-static const int ALL_MESSAGE_IDs[]        = {0x80, 0x701, 0x391, 0x441, 0x330, 0x454, 0x271};
+static const int ALL_MESSAGE_IDs[]        = { 0x391, 0x441, 0x330, 0x454, 0x271}; //{0x80 = sync, 0x701 = heartbeat, 
 static const int NUM_MESSAGES             = sizeof(ALL_MESSAGE_IDs)/sizeof(ALL_MESSAGE_IDs[1]);
 
 static unsigned long        lastDebugTime[NUM_MESSAGES];
 CanBusData_asukiaaa::Frame  lastMessage[NUM_MESSAGES];
+
+#define NETWORK_FREQUENCY 914.0   //as used on the boat
 
 RH_RF69         g_rf69;
 PayloadSevCon     g_payloadSevCon;
@@ -40,8 +42,8 @@ bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
   const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
   const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
   CanBusMCP2515_asukiaaa::Settings settings(QUARTZ_FREQUENCY, BITRATE);
-  Serial.print(F("settings for :"));Serial.println(can.CS());
-  Serial.println(settings.toString());
+//  Serial.print(F("settings for :"));Serial.println(can.CS());
+//  Serial.println(settings.toString());
 
   while (true) 
   {
@@ -68,6 +70,9 @@ void setup()
   pinMode(LED_ACTION_PIN, OUTPUT);
   digitalWrite(LED_ACTION_PIN, HIGH);
 
+  delay(500);
+ 	Serial.println(F("SevCon CAN decode"));
+
   for(int i=0; i<NUM_MESSAGES; i++)
   {
     lastDebugTime[i] = millis();
@@ -83,7 +88,7 @@ void setup()
 		Serial.println(F("rf69 init failed"));
     flashErrorToLED(2); //will never return!
   }
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
   {
     Serial.println(F("rf69 setFrequency failed"));
     flashErrorToLED(3); //will never return!
@@ -96,11 +101,10 @@ void setup()
 
 	Serial.print(F("RF69 initialise node: "));
 	Serial.print(SEVCON_CAN_NODE);
-	Serial.println(F(" Freq: 915MHz"));
+	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
   digitalWrite(LED_ACTION_PIN, LOW);
 
   EmonSerial::PrintSevConPayload(NULL);
-  //Serial.println(F("0x5BC,LB_Remain_Capacity,LB_New_Full_Capacity,LB_Remaining_Capacity_Segment,LB_Average_Battery_Temperature,LB_Capacity_Deterioration_Rate,LB_Remaining_Capaci_Segment_Switch,LB_Output_Power_Limit_Reason,LB_Capacity_Bal_Complete_Flag,LB_Remain_charge_time_condition,LB_Remain_charge_time"));
 }
 
 
@@ -124,103 +128,41 @@ void printFrame(CanBusData_asukiaaa::Frame& frame)
 //returns true if any of the elements of the payload packet have changed
 bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayload)
 {
-  // if(frame.id == 0x5B3 )        //1459, VCM relayed and processed data to instrument cluster
-  // {
-  // //  Note: These are all populated from the EV bus from message 0x5BC. Temperature seems different if populated from each.
-  // //  payloadLeaf.batteryTemperature = frame.data[0] / 4;   //in 0.25c units
-  // //  payloadLeaf.batterySOH = frame.data[1] >> 1;          
-  // //  payloadLeaf.batteryWH = (((unsigned long)(frame.data[4] & 0x1))*256  + frame.data[5])*80;   // from GID *80
-  // //  payloadLeaf.batteryChargeBars = frame.data[6] >>3;
-  // //  return true;
-  // }
-  // else 
-  // if (frame.id == 0x5C5)   //1477, Instrument cluster -> BCM / AV / VCM
-  // {
-  //   unsigned long odometer = ((unsigned long)frame.data[1]) *256*256 +  ((unsigned long)frame.data[2]) *256 + ((unsigned long)frame.data[3]);
-  //   if( odometer != g_payloadLeaf.odometer )
-  //   {
-  //     g_payloadLeaf.odometer = odometer;
-  //     return true;
-  //   }
-  // }
-  // //EV bus
-  // else if (frame.id == 0x5A9 )   //1449, 0x5A9 is on both busses!
-  // {
-  //   //range in 200m increments
-  //   short range_200m = (((unsigned long)frame.data[1]) << 4 | frame.data[2] >> 4);
-  //   if(range_200m != 0xFFF )   // 0xFFF while charging
-  //   {
-  //     if( g_payloadLeaf.range != range_200m/5)
-  //     {
-  //       g_payloadLeaf.range = range_200m/5; //return range in km
-  //       return true;
-  //     }
-  //   }
-  // }
-  // else if( frame.id == 0x5B9 )
-  // {
-  //   //EV Bus : charge minutes remaining. Note. These are less regular than 0x5BC messages with the same information
-  //   //unsigned long chargeMinutesRemaining = (((unsigned long)(frame.data[0] & 0x7))<<8) + (unsigned long)(frame.data[1]);
-  //   //Serial.print(F("0x5B9"));
-  //   //Serial.print(F(","));Serial.print(chargeMinutesRemaining);
-  //   //Serial.println();
-  // }
-  // else if( frame.id == 0x5BC )
-  // {
-  //   //EV Bus : remaining capacity, SOH, Charge bars, battery temperature
-  //   unsigned long LB_Remain_Capacity   = ((((unsigned long)(frame.data[0]))<<2)  + (((unsigned long)frame.data[1])>>6) )*80;
-  //   unsigned long LB_New_Full_Capacity = ((((unsigned long)frame.data[1])<<4)  + (((unsigned long)frame.data[2])>>4) )*80;
-  //   unsigned long LB_Remaining_Capacity_Segment = frame.data[2] & 0xf;
-  //   long          LB_Average_Battery_Temperature = frame.data[3]-40;
-  //   unsigned long LB_Capacity_Deterioration_Rate = frame.data[4] >> 1;
-  //   unsigned long LB_Remaining_Capaci_Segment_Switch = frame.data[4] & 0x1;
-  //   unsigned long LB_Output_Power_Limit_Reason = frame.data[5] >> 5;
-  //   unsigned long LB_Capacity_Bal_Complete_Flag = (frame.data[5] >> 2) & 0x1;
-  //   unsigned long LB_Remain_charge_time_condition = (((unsigned long)(frame.data[5] & 0x3 )) << 3) + (unsigned long)(frame.data[6]>>5);
-  //   unsigned long LB_Remain_charge_time           = (((unsigned long)(frame.data[6] & 0x1F)) << 8) + (unsigned long)frame.data[7];
-    
-  //   // Serial.print(F("0x5BC"));
-  //   // Serial.print(F(","));Serial.print(LB_Remain_Capacity);
-  //   // Serial.print(F(","));Serial.print(LB_New_Full_Capacity);
-  //   // Serial.print(F(","));Serial.print(LB_Remaining_Capacity_Segment);
-  //   // Serial.print(F(","));Serial.print(LB_Average_Battery_Temperature);
-  //   // Serial.print(F(","));Serial.print(LB_Capacity_Deterioration_Rate);
-  //   // Serial.print(F(","));Serial.print(LB_Remaining_Capaci_Segment_Switch);
-  //   // Serial.print(F(","));Serial.print(LB_Output_Power_Limit_Reason);
-  //   // Serial.print(F(","));Serial.print(LB_Capacity_Bal_Complete_Flag);
-  //   // Serial.print(F(","));Serial.print(LB_Remain_charge_time_condition);
-  //   // Serial.print(F(","));Serial.print(LB_Remain_charge_time);
-  //   // Serial.println();
-    
-  //   bool updateRequired = false;
-    
-  //   if( LB_Remain_Capacity != ((unsigned long)0x000003FF)*80  &&           // Remain capacity = 0x3FF when charging first starts
-  //       g_payloadLeaf.batteryWH != LB_Remain_Capacity)     
-  //   {
-  //       g_payloadLeaf.batteryWH = LB_Remain_Capacity;
-  //       updateRequired = true;
-  //   }
-  //   if( LB_Remaining_Capaci_Segment_Switch == 0 &&    // 0 = remaining capacity, 1 = full capacity, 
-  //       g_payloadLeaf.batteryChargeBars != LB_Remaining_Capacity_Segment)
-  //   {
-  //     g_payloadLeaf.batteryChargeBars = LB_Remaining_Capacity_Segment;
-  //     updateRequired = true;
-  //   } 
-  //   if( LB_Remain_charge_time_condition == 10 &&      //0b01010 = Normal charge, 200V
-  //       g_payloadLeaf.chargeTimeRemaining != LB_Remain_charge_time)  
-  //   {
-  //     g_payloadLeaf.chargeTimeRemaining = LB_Remain_charge_time;
-  //     updateRequired = true;
-  //   }
-  //   if( g_payloadLeaf.batterySOH != LB_Capacity_Deterioration_Rate ||
-  //       g_payloadLeaf.batteryTemperature != LB_Average_Battery_Temperature)
-  //   {
-  //     g_payloadLeaf.batterySOH = LB_Capacity_Deterioration_Rate;
-  //     g_payloadLeaf.batteryTemperature = LB_Average_Battery_Temperature;
-  //     updateRequired = true;
-  //   }
-  //   return updateRequired;
-  // }
+  if(frame.id == 0x441 )        // RxPDO3, device 17
+  {
+    int8_t motorTemperature = (int8_t) frame.data[6];
+    if( motorTemperature != sevConPayload.motorTemperature)
+    {
+      sevConPayload.motorTemperature = motorTemperature;
+      return true;
+    }
+  }
+  else 
+  if (frame.id == 0x454)        //Receive PDO 3, device 84
+  {
+    int16_t rpm = ((int16_t)frame.data[1])*256 + (int16_t)frame.data[2];
+    if( rpm != sevConPayload.rpm )
+    {
+      sevConPayload.rpm = rpm;
+      return true;
+    }
+
+  }
+  else if (frame.id == 0x271 )   //Receive PDO 1, device 113 
+  {
+    float capVoltage = ( (int16_t)((uint16_t) frame.data[1])<<8 + (uint16_t)frame.data[0])/16.0; 
+    int8_t controllerTemperature = (int8_t) frame.data[3];
+    float batteryCurrent = ( (int16_t)((uint16_t) frame.data[5])<<8 + (uint16_t)frame.data[4])/16.0; 
+    if(capVoltage != sevConPayload.capVoltage || 
+       controllerTemperature != sevConPayload.controllerTemperature ||
+       batteryCurrent != sevConPayload.batteryCurrent)
+    {
+        sevConPayload.capVoltage = capVoltage;
+        sevConPayload.controllerTemperature = controllerTemperature;
+        sevConPayload.batteryCurrent = batteryCurrent;
+        return true;
+    }
+  }
 
   return false;
 }
@@ -234,11 +176,11 @@ void loop()
   
   if ( g_CAN.available()) 
   {
-    digitalWrite(LED_ACTION_PIN, HIGH);
+//   digitalWrite(LED_ACTION_PIN, HIGH);
     
     g_CAN.receive(&frame);
 //    printFrame(frame);
-    delay(3);
+//    delay(3);
 
 
 
@@ -252,15 +194,15 @@ void loop()
       }
     }
 
-    //debug print the message
-    if(index != -1)
-    {
-      if( millis() - DEBUG_TIME_INTERVAL > lastDebugTime[index] ) 
-      {
-        lastDebugTime[index] = millis();
-        printFrame(frame);
-      }
-    }
+    // //debug print the message
+    // if(index != -1)
+    // {
+    //   if( millis() - DEBUG_TIME_INTERVAL > lastDebugTime[index] ) 
+    //   {
+    //     lastDebugTime[index] = millis();
+    //     printFrame(frame);
+    //   }
+    // }
 
     // try processing the frame if it is different from the last received frame
     if(index >= 0 && frame.data64 != lastMessage[index].data64)
@@ -293,7 +235,7 @@ void loop()
     delay(10);
     digitalWrite(LED_ACTION_PIN, LOW);
   }    
-  delay(1);
-  digitalWrite(LED_ACTION_PIN, LOW);
+  // delay(1);
+  // digitalWrite(LED_ACTION_PIN, LOW);
 }
 

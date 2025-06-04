@@ -648,22 +648,22 @@ void EmonSerial::PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCo
 {
 	if (pPayloadSevCon == NULL)
 	{
-		stream.print(F("svc,subnode,motorTemperature,controlerTemperature,capVoltage,batteryCurrent,RPM"));
+		stream.print(F("svc,subnode,motorTemperature,controllerTemperature,capVoltage,batteryCurrent,rpm"));
 	}
 	else
 	{
 		stream.print(F("svc,"));
 		stream.print(pPayloadSevCon->subnode);
 		stream.print(F(","));
-		stream.print(pPayloadSevCon->motorTemperature,0);
+		stream.print(pPayloadSevCon->motorTemperature);
 		stream.print(F(","));
-		stream.print(pPayloadSevCon->controlerTemperature,0);
+		stream.print(pPayloadSevCon->controllerTemperature);
 		stream.print(F(","));
 		stream.print(pPayloadSevCon->capVoltage,2);
 		stream.print(F(","));    
 		stream.print(pPayloadSevCon->batteryCurrent,2);
 		stream.print(F(","));    
-		stream.print(pPayloadSevCon->RPM);
+		stream.print(pPayloadSevCon->rpm);
 		PrintRelay(stream, pPayloadSevCon);
 		if (timeSinceLast != 0)
 		{
@@ -1439,15 +1439,15 @@ int EmonSerial::ParseSevConPayload(char* str, PayloadSevCon* pPayloadSevCon)
 	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
 	pPayloadSevCon->subnode = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	pPayloadSevCon->motorTemperature = atof(pch);
+	pPayloadSevCon->motorTemperature = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	pPayloadSevCon->controlerTemperature = atof(pch);
+	pPayloadSevCon->controllerTemperature = atoi(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadSevCon->capVoltage = atof(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
 	pPayloadSevCon->batteryCurrent = atof(pch);
 	if (NULL == (pch = strtok(NULL, tok))) return 0;
-	pPayloadSevCon->RPM = atoi(pch);
+	pPayloadSevCon->rpm = atoi(pch);
 
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{

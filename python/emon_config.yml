@@ -195,4 +195,6 @@ bms:
     name: BMS - Bank 1
   1:
     name: BMS - Bank 2
-
+svc:
+  0:
+    name: SevCon

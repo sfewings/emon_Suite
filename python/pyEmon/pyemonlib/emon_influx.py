@@ -35,6 +35,7 @@ class emon_influx:
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
             'bms'  : self.bmsMessage,
+            'svc'  : self.sevConMessage,
             'other': self.otherMessage
         }
 
@@ -475,7 +476,42 @@ class emon_influx:
                 if(':' in reading):
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
-                self.printException("leafException", reading, ex)
+                self.printException("bmsException", reading, ex)
+
+    def sevConMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadSevCon()
+        if( emonSuite.EmonSerial.ParseSevConPayload(reading,payload) ):
+            try:
+                p = Point("temperature").tag("sensor",f"sevCon/temperature/{payload.subnode}/motor")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ "motor")\
+                                .field("value",payload.motorTemperature/1.0).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("temperature").tag("sensor",f"sevCon/temperature/{payload.subnode}/controller")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ "controller")\
+                                .field("value",payload.controllerTemperature/1.0).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("voltage").tag("sensor",f"sevCon/voltage/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"])\
+                                .field("value",payload.capVoltage).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("power").tag("sensor",f"sevCon/current/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - current")\
+                                .field("value",payload.batteryCurrent).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("sevCon").tag("sensor",f"sevCon/rpm/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - RPM")\
+                                .field("value",(payload.rpm)/1.0).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("sevConException", reading, ex)
 
     def otherMessage(self, time, reading, nodeSettings ):
         print(reading)
