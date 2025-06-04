@@ -11,15 +11,17 @@ temp:
     t1: Big Fridge
     t2: Small Fridge
   2:
-    name: inside
-    t0: sensor 1
-    t1: sensor 2
-    t2: sensor 3
-    t3: sensor 4
+    name: Node 2
+    t0: Sensor 2-1
+    t1: Sensor 2-2
+    t2: Sensor 2-3
+    t3: Sensor 2-4
   3:
-    name: Solar tester
-    t0: Test 1
-    t1: Test 2
+    name: Node 3
+    t0: Sensor 3-1
+    t1: Sensor 3-2
+    t2: Sensor 3-3
+    t3: Sensor 3-4
 hws:
   0:
     name: Hot water system

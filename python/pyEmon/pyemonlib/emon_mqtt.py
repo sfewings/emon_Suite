@@ -30,6 +30,7 @@ class emon_mqtt:
         self.mqttClient.on_connect = self.on_connect
         self.mqttClient.connect(mqtt_server, mqtt_port, 60)
         self.mqttClient.loop_start()
+        self.lineNumber = -1
 
     # def __del__(self):
     #     self.client.close()
