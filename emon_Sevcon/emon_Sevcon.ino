@@ -10,7 +10,7 @@ static const auto LED_ACTION_PIN          = 9;
 static const uint32_t SEND_PERIOD         = 1000*30;//30 seconds if no data updates otherwise.
 static const uint32_t DEBUG_TIME_INTERVAL = 1000; //Limit the debug print of each message
 
-static const int ALL_MESSAGE_IDs[]        = { 0x391, 0x441, 0x330, 0x454, 0x271}; //{0x80 = sync, 0x701 = heartbeat, 
+static const int ALL_MESSAGE_IDs[]        = { 0x411, 0x454, 0x271}; //{0x80 = sync, 0x701 = heartbeat, 0x391 = not used, 0x330 = not used 
 static const int NUM_MESSAGES             = sizeof(ALL_MESSAGE_IDs)/sizeof(ALL_MESSAGE_IDs[1]);
 
 static unsigned long        lastDebugTime[NUM_MESSAGES];
@@ -78,6 +78,7 @@ void setup()
     lastDebugTime[i] = millis();
   }
 
+  memset(&g_payloadSevCon, sizeof(PayloadSevCon), 0);
   if(!initCAN( g_CAN ))
   {
       flashErrorToLED(1); //will never return!
@@ -128,9 +129,14 @@ void printFrame(CanBusData_asukiaaa::Frame& frame)
 //returns true if any of the elements of the payload packet have changed
 bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayload)
 {
-  if(frame.id == 0x441 )        // RxPDO3, device 17
+  printFrame(frame);
+
+  if(frame.id == 0x411 )        // RxPDO3, device 17
   {
     int8_t motorTemperature = (int8_t) frame.data[6];
+    
+    Serial.print(motorTemperature); Serial.print(":"); Serial.println(sevConPayload.motorTemperature);
+    
     if( motorTemperature != sevConPayload.motorTemperature)
     {
       sevConPayload.motorTemperature = motorTemperature;
@@ -140,7 +146,8 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
   else 
   if (frame.id == 0x454)        //Receive PDO 3, device 84
   {
-    int16_t rpm = ((int16_t)frame.data[1])*256 + (int16_t)frame.data[2];
+    int16_t rpm = (int16_t)(((uint16_t)(frame.data[2])<<8) | (uint16_t)frame.data[1]);
+    rpm *= -1;    //our wag stick is reversed!
     if( rpm != sevConPayload.rpm )
     {
       sevConPayload.rpm = rpm;
@@ -150,9 +157,21 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
   }
   else if (frame.id == 0x271 )   //Receive PDO 1, device 113 
   {
-    float capVoltage = ( (int16_t)((uint16_t) frame.data[1])<<8 + (uint16_t)frame.data[0])/16.0; 
-    int8_t controllerTemperature = (int8_t) frame.data[3];
-    float batteryCurrent = ( (int16_t)((uint16_t) frame.data[5])<<8 + (uint16_t)frame.data[4])/16.0; 
+    // Serial.println(frame.data[6],16);
+    // Serial.println((uint16_t)frame.data[6]);
+    // Serial.println(((uint16_t)frame.data[6])<<8);
+    // Serial.println((((uint16_t)frame.data[6])<<8) + (uint16_t)frame.data[5]);
+    // Serial.println((float)((((uint16_t)frame.data[6])<<8) + (uint16_t)frame.data[5]));
+    // Serial.println(((float)((((uint16_t)frame.data[6])<<8) + (uint16_t)frame.data[5]))/16.0);
+
+    float capVoltage = ( (float)((((uint16_t) frame.data[1])<<8) | (uint16_t)frame.data[0]))/16.0; 
+    int8_t controllerTemperature = (int8_t) frame.data[2];
+    float batteryCurrent = ( (float)((int16_t)((((uint16_t) frame.data[6])<<8) | (uint16_t)frame.data[5])))/16.0;
+
+    // Serial.print(capVoltage); Serial.print(":"); Serial.println(sevConPayload.capVoltage);
+    // Serial.print(controllerTemperature); Serial.print(":"); Serial.println(sevConPayload.controllerTemperature);
+    // Serial.print(batteryCurrent); Serial.print(":"); Serial.println(sevConPayload.batteryCurrent);
+ 
     if(capVoltage != sevConPayload.capVoltage || 
        controllerTemperature != sevConPayload.controllerTemperature ||
        batteryCurrent != sevConPayload.batteryCurrent)
@@ -179,8 +198,8 @@ void loop()
 //   digitalWrite(LED_ACTION_PIN, HIGH);
     
     g_CAN.receive(&frame);
-//    printFrame(frame);
-//    delay(3);
+    // printFrame(frame);
+    // delay(3);
 
 
 
@@ -194,15 +213,14 @@ void loop()
       }
     }
 
-    // //debug print the message
-    // if(index != -1)
-    // {
-    //   if( millis() - DEBUG_TIME_INTERVAL > lastDebugTime[index] ) 
-    //   {
-    //     lastDebugTime[index] = millis();
-    //     printFrame(frame);
-    //   }
-    // }
+    //debug print the message
+    if(index != -1)
+    {
+      if( millis() - DEBUG_TIME_INTERVAL > lastDebugTime[index] ) 
+      {
+        lastDebugTime[index] = millis();
+      }
+    }
 
     // try processing the frame if it is different from the last received frame
     if(index >= 0 && frame.data64 != lastMessage[index].data64)
@@ -233,9 +251,8 @@ void loop()
     }
 
     delay(10);
-    digitalWrite(LED_ACTION_PIN, LOW);
   }    
-  // delay(1);
-  // digitalWrite(LED_ACTION_PIN, LOW);
+
+  digitalWrite(LED_ACTION_PIN, LOW);
 }
 
