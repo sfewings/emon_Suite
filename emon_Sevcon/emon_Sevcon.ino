@@ -5,15 +5,13 @@
 #include <RH_RF69.h>
 #include <SoftwareSerial.h>
 
-static const auto CS_PIN                  = 5;
-static const auto LED_ACTION_PIN          = 9;
+static const auto CS_PIN                  = 5;      //CAN chip select pin
+static const auto LED_ACTION_PIN          = 9;      //LED
 static const uint32_t SEND_PERIOD         = 1000*30;//30 seconds if no data updates otherwise.
-static const uint32_t DEBUG_TIME_INTERVAL = 1000; //Limit the debug print of each message
 
 static const int ALL_MESSAGE_IDs[]        = { 0x411, 0x454, 0x271}; //{0x80 = sync, 0x701 = heartbeat, 0x391 = not used, 0x330 = not used 
 static const int NUM_MESSAGES             = sizeof(ALL_MESSAGE_IDs)/sizeof(ALL_MESSAGE_IDs[1]);
 
-static unsigned long        lastDebugTime[NUM_MESSAGES];
 CanBusData_asukiaaa::Frame  lastMessage[NUM_MESSAGES];
 
 #define NETWORK_FREQUENCY 914.0   //as used on the boat
@@ -73,15 +71,10 @@ void setup()
   delay(500);
  	Serial.println(F("SevCon CAN decode"));
 
-  for(int i=0; i<NUM_MESSAGES; i++)
-  {
-    lastDebugTime[i] = millis();
-  }
-
   memset(&g_payloadSevCon, sizeof(PayloadSevCon), 0);
   if(!initCAN( g_CAN ))
   {
-      flashErrorToLED(1); //will never return!
+    flashErrorToLED(1); //will never return!
   }
 
 	if (!g_rf69.init())
@@ -143,8 +136,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
       return true;
     }
   }
-  else 
-  if (frame.id == 0x454)        //Receive PDO 3, device 84
+  else if (frame.id == 0x454)        //Receive PDO 3, device 84
   {
     int16_t rpm = (int16_t)(((uint16_t)(frame.data[2])<<8) | (uint16_t)frame.data[1]);
     rpm *= -1;    //our wag stick is reversed!
@@ -166,7 +158,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
 
     float capVoltage = ( (float)((((uint16_t) frame.data[1])<<8) | (uint16_t)frame.data[0]))/16.0; 
     int8_t controllerTemperature = (int8_t) frame.data[2];
-    float batteryCurrent = ( (float)((int16_t)((((uint16_t) frame.data[6])<<8) | (uint16_t)frame.data[5])))/16.0;
+    float batteryCurrent = ( (float)((int16_t)((((uint16_t) frame.data[4])<<8) | (uint16_t)frame.data[3])))/16.0;
 
     // Serial.print(capVoltage); Serial.print(":"); Serial.println(sevConPayload.capVoltage);
     // Serial.print(controllerTemperature); Serial.print(":"); Serial.println(sevConPayload.controllerTemperature);
@@ -194,14 +186,10 @@ void loop()
   CanBusData_asukiaaa::Frame frame;
   
   if ( g_CAN.available()) 
-  {
-//   digitalWrite(LED_ACTION_PIN, HIGH);
-    
+  {  
     g_CAN.receive(&frame);
     // printFrame(frame);
     // delay(3);
-
-
 
     int index = -1;
     for(int i=0;i < NUM_MESSAGES; i++)
@@ -213,16 +201,7 @@ void loop()
       }
     }
 
-    //debug print the message
-    if(index != -1)
-    {
-      if( millis() - DEBUG_TIME_INTERVAL > lastDebugTime[index] ) 
-      {
-        lastDebugTime[index] = millis();
-      }
-    }
-
-    // try processing the frame if it is different from the last received frame
+     // try processing the frame if it is different from the last received frame
     if(index >= 0 && frame.data64 != lastMessage[index].data64)
     {
       lastMessage[index] = frame;
