@@ -32,6 +32,7 @@ class emon_mqtt:
         self.mqttClient.on_connect = self.on_connect
         self.mqttClient.connect(mqtt_server, mqtt_port, 60)
         self.mqttClient.loop_start()
+        self.mqttClient.lineNumber = -1
 
     # def __del__(self):
     #     self.client.close()
@@ -253,7 +254,7 @@ class emon_mqtt:
         if( emonSuite.EmonSerial.ParseSevConPayload(reading,payload) ):
             try:
                 self.mqttClient.publish(f"sevCon/temperature/motor/{payload.subnode}",payload.motorTemperature)
-                self.mqttClient.publish(f"sevCon/temperature/controller/{payload.subnode}",payload.motorController)
+                self.mqttClient.publish(f"sevCon/temperature/controller/{payload.subnode}",payload.controllerTemperature)
                 self.mqttClient.publish(f"sevCon/voltage{payload.subnode}",payload.capVoltage)
                 self.mqttClient.publish(f"sevCon/current{payload.subnode}",payload.batteryCurrent)
                 self.mqttClient.publish(f"sevCon/rpm{payload.subnode}",payload.rpm)
