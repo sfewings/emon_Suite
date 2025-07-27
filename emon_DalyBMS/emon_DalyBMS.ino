@@ -14,9 +14,9 @@ ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
 //#define BOAT_NETWORK
 #ifdef BOAT_NETWORK
-	#define NETWORK_FREQUENCY 915.0
-#else
 	#define NETWORK_FREQUENCY 914.0
+#else
+	#define NETWORK_FREQUENCY 915.0
 #endif
 
 #define GREEN_LED 9			// Green LED on emonTx
