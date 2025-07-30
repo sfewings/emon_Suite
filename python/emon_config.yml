@@ -182,11 +182,11 @@ air:
     name: Garage
 inv: #inverters
   0:
-    name: Inverter 1
+    name: Inverter One
   1:
-    name: Inverter 2
+    name: Inverter Three
   2:
-    name: Inverter Middle
+    name: Inverter Two
 bee:
   0:
 leaf:
