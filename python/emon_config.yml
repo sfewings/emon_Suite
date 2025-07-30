@@ -185,6 +185,8 @@ inv: #inverters
     name: Inverter 1
   1:
     name: Inverter 2
+  2:
+    name: Inverter Middle
 bee:
   0:
 leaf:
