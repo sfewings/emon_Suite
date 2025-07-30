@@ -1,58 +1,35 @@
-#define RF69_COMPAT 1
+//Emon_MPPSolar for MPP hybrid inverter
 
-//#define USE_JEELIB
-
-
-#ifdef USE_JEELIB
-  //#define __MOTEINO_AVR_ATmega1284__
-
-
-  #include <JeeLib.h>			// ports and RFM12 - used for RFM12B wireless
-  #include <RF69_avr.h>  // for SPI_SCK, SPI_SS, SPI_MOSI & SPI_MISO
-
-RF12Init g_rf12Init = { INVERTER_NODE, RF12_915MHZ, FEWINGS_MONITOR_GROUP, RF69_COMPAT };
-
-/*
-Note. To make the Jeelib RFM69 work witht he Moteino Mega 1284p two changes need to be made to the jeelib libraries
-1. The SPI pin assignement for __
-in RF69_avr.h add the following definition for SPI pins
-  #elif defined(__AVR_ATmega1284P__) //Moteino mega
-
-  #define SS_DDR      DDRB
-  #define SS_PORT     PORTB
-  #define SS_BIT      4     // PB4    D4
-
-  #define SPI_SS      4     // PB4    D4
-  #define SPI_MOSI    5     // PB5    D5
-  #define SPI_MISO    6     // PB6    D6
-  #define SPI_SCK     7     // PB7    D7
-
-  static void spiConfigPins () {
-      SS_PORT |= _BV(SS_BIT);
-      SS_DDR |= _BV(SS_BIT);
-      PORTB |= _BV(SPI_SS);
-      DDRB |= _BV(SPI_SS) | _BV(SPI_MOSI) | _BV(SPI_SCK);
-  }
-
-2. In RF69.cpp rf69_initialize change the interrupt from 0 to 2
-#if defined(__AVR_ATmega1284P__) //Moteino mega
-        attachInterrupt(2, RF69::interrupt_compat, RISING);
-#else
-        attachInterrupt(0, RF69::interrupt_compat, RISING);
-#endif
-*/
-#else
-	#include <SPI.h>
-	#include <RH_RF69.h>
-	// Singleton instance of the radio driver
-	RH_RF69 g_rf69(4, 2);
-#endif
+#include <SPI.h>
+#include <RH_RF69.h>
 
 #include <EEPROM.h>
 #include <SoftwareSerial.h>
 #include <EmonShared.h>
 
-#define NUM_INVERTERS 2
+//#define MEGA_INSTALL  //install of MPP on Moteino mega for two inverters. Moetino is for a single inverter
+#ifdef MEGA_INSTALL
+//Note: Set board to Moteino-Mega to access Serial1
+  #define NUM_INVERTERS 2
+  #define INVERTER_SUBNODE_1 0
+  #define INVERTER_SUBNODE_2 1
+
+  #define SW_SERIAL_RX_PIN 14
+  #define SW_SERIAL_TX_PIN 13
+  #define LED_PIN 15
+  
+  RH_RF69 g_rf69(4,2);
+#else
+  #define NUM_INVERTERS 1
+  #define INVERTER_SUBNODE_2 2
+
+  #define SW_SERIAL_RX_PIN 3
+  #define SW_SERIAL_TX_PIN 4
+  #define LED_PIN 9
+  
+  RH_RF69 g_rf69;
+#endif
+
 #define EEPROM_BASE 0x10	//where the wH readings are stored in EEPROM
 
 double g_mWH_produced[NUM_INVERTERS];
@@ -66,9 +43,7 @@ String P004T = "\x5E\x50\x30\x30\x34\x54\xDF\x69\x0D";      //Query Current time
 
 PayloadInverter g_payloadInverter;
 
-SoftwareSerial g_serialInverter2(14, 13);	//18,17); //A1=rx, A0=tx
-
-#define LED_PIN 15
+SoftwareSerial g_serialInverter(SW_SERIAL_RX_PIN, SW_SERIAL_TX_PIN);
 
 uint16_t cal_crc_half(uint8_t *pin, uint8_t len)
 {
@@ -290,31 +265,29 @@ void calculateWattHoursAndStore(int inverter)
 	}
 }
 
+void FlashLEDError()
+{
+		for(int i=0;i<3;i++)
+		{
+			digitalWrite(LED_PIN, HIGH);
+			delay(100);
+			digitalWrite(LED_PIN, LOW);
+			delay(100);
+		}
+}
+
 void setup()
 {  
   Serial.begin(9600);
+#ifdef MEGA_INSTALL
 	Serial1.begin(2400);
-  g_serialInverter2.begin(2400);
+#endif
+  g_serialInverter.begin(2400);
 
   pinMode(LED_PIN, OUTPUT);
   
 	Serial.println(F("MPP inverter sensor node start"));
 
-#ifdef USE_JEELIB
-  //check to make sure the correct SPI pins are assigned for use witht he Moteino Mega 1284P
-  if( SPI_SS !=  4 || SPI_MOSI != 5 || SPI_MISO != 6 || SPI_SCK != 7 )
-    Serial.println("Warning. The JLib code will not work with the Moteino Mega.");
-
-	// Serial.print("SPI_SS   ");   Serial.println(SPI_SS   );
-	// Serial.print("SPI_MOSI ");   Serial.println(SPI_MOSI );
-	// Serial.print("SPI_MISO ");   Serial.println(SPI_MISO );
-	// Serial.print("SPI_SCK  ");   Serial.println(SPI_SCK  );
-
-	Serial.println("rf12_initialize");
-
-	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
-	EmonSerial::PrintRF12Init(g_rf12Init);
-#else
 
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
@@ -326,8 +299,8 @@ void setup()
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(INVERTER_NODE);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 
-#endif
 
 	//reset the counters
 	// for (int i = 0; i < NUM_INVERTERS; i++)
@@ -345,6 +318,7 @@ void setup()
     Serial.println(g_mWH_produced[i],1);
 	}
 
+  memset(&g_payloadInverter, 0, sizeof(g_payloadInverter));
 
   EmonSerial::PrintInverterPayload(NULL);
 
@@ -357,27 +331,10 @@ void setup()
 
 void SendPacket()
 {
-#ifdef USE_JEELIB
-  rf12_sleep(RF12_WAKEUP);
-  int wait = 1000;
-  while (!rf12_canSend() && wait--)
-  {
-    rf12_recvDone();
-  }
-  if (wait)
-  {
-    rf12_sendStart(0, &g_payloadInverter, sizeof(g_payloadInverter));
-    rf12_sendWait(0);
-  }
-  else
-  {
-    Serial.println(F("RF12 waiting. No packet sent"));
-  }
-  rf12_sleep(RF12_SLEEP);
-#else
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
   g_rf69.send((const uint8_t*) &g_payloadInverter, sizeof(g_payloadInverter));
   g_rf69.waitPacketSent();
-#endif
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
   EmonSerial::PrintInverterPayload(&g_payloadInverter);
 }
 
@@ -385,18 +342,27 @@ void loop()
 {
   digitalWrite(LED_PIN, HIGH);
 
+#ifdef MEGA_INSTALL
   if( ReadFromInverter( Serial1, P005GS ) )
   {
-    calculateWattHoursAndStore(0);
-    g_payloadInverter.subnode = 0;
+    calculateWattHoursAndStore(1);
+    g_payloadInverter.subnode = INVERTER_SUBNODE_1;
     SendPacket();
   }
-
-  if( ReadFromInverter( g_serialInverter2, P005GS ) )
+  else
   {
-    calculateWattHoursAndStore(1);
-    g_payloadInverter.subnode = 1;
+    FlashLEDError();
+  }
+#endif
+  if( ReadFromInverter( g_serialInverter, P005GS ) )
+  {
+    calculateWattHoursAndStore(0);
+    g_payloadInverter.subnode = INVERTER_SUBNODE_2;
     SendPacket();
+  }
+  else
+  {
+    FlashLEDError();
   }
   digitalWrite(LED_PIN, LOW);
 
