@@ -45,6 +45,13 @@ double g_mWH_In;
 double g_mWH_Out;
 unsigned long g_lastSendTime;
 
+typedef struct {
+	double mean;
+	double median;
+	double stdDev;
+} stats_t;
+
+
 long readVcc()
 {
 	long result;
@@ -109,92 +116,268 @@ void interruptHandlerPushButton()
 }
 
 
-int16_t median(int16_t* samples, int nSamples)
+
+stats_t GetStats(double* samples, int nSamples)
 {
-	for (int i = 1; i < nSamples; ++i)
+	const int SKIP_READINGS = 5;		//skip the first and last of the sorted sampels as these appear to be noisy!
+	stats_t stats;
+	double sum = 0;
+	double sumOfSquares = 0;
+	double samplesCopy[SAMPLES];
+
+	for(int i=0;i<nSamples;i++)
+    	samplesCopy[i] = samples[i];
+
+	//sort the samples
+	for (int i = 0; i < nSamples-1; i++) 
+	{ 
+		bool swapped = false; 
+		for (int j = 0; j < nSamples-i-1; j++) 
+		{ 
+			if (samplesCopy[j] > samplesCopy[j+1]) 
+			{ 
+				double temp = samplesCopy[j];
+				samplesCopy[j]=samplesCopy[j+1];
+				samplesCopy[j+1] = temp;
+				swapped = true; 
+			} 
+		} 
+
+		// IF no two elements were swapped by inner loop, then break 
+		if (swapped == false) 
+			break; 
+	} 
+
+	//skip the top and bottom readings as there is quite a bit of noise
+	for (int i = SKIP_READINGS; i < nSamples-SKIP_READINGS; ++i)
 	{
-		int16_t j = samples[i];
-		int16_t k;
-		for (k = i - 1; (k >= 0) && (j < samples[k]); k--)
-		{
-			samples[k + 1] = samples[k];
-		}
-		samples[k + 1] = j;
+		sum += samplesCopy[i];
 	}
 
-	return samples[nSamples / 2];
+	stats.mean = sum/(nSamples-2*SKIP_READINGS);
+	stats.median = samplesCopy[nSamples/2];
+
+	for(int i=SKIP_READINGS; i< nSamples-SKIP_READINGS;i++)
+	{
+		sumOfSquares += (samplesCopy[i] - stats.mean) * (samplesCopy[i] - stats.mean);
+	}
+	stats.stdDev = sqrt( sumOfSquares/(nSamples-2*SKIP_READINGS));
+
+	return stats;
 }
 
 
-int16_t Reading(uint8_t channel)
+// int16_t median(int16_t* samples, int nSamples)
+// {
+// 	for (int i = 1; i < nSamples; ++i)
+// 	{
+// 		int16_t j = samples[i];
+// 		int16_t k;
+// 		for (k = i - 1; (k >= 0) && (j < samples[k]); k--)
+// 		{
+// 			samples[k + 1] = samples[k];
+// 		}
+// 		samples[k + 1] = j;
+// 	}
+
+// 	return samples[nSamples / 2];
+// }
+
+// int16_t Reading(uint8_t channel)
+// {
+// 	ads1115.setGain(GAIN_TWOTHIRDS); //shouldn't be required!
+// 	int32_t s = 0;
+// 	for (int i = 0; i < SAMPLES; i++)
+// 	{
+// 		int16_t r = ads1115.readADC_SingleEnded(channel);
+// 		s += r;
+// 		//		Serial.print(i); Serial.print(":"); Serial.print(r);Serial.print(",");
+// 	}
+// 	//	Serial.println();
+// 	//	Serial.print(ads); Serial.print(":"); Serial.print(channel); Serial.print(","); Serial.println( (int16_t)(s/SAMPLES));
+// 	return (int16_t)(s / SAMPLES);
+// }
+
+
+// double ReadingDifferential(uint8_t channel )
+// {
+// 	double sum = 0;
+// 	int gain;
+// 	int16_t samples[SAMPLES];
+
+// 	for (int g = 0; g < 6; g++ )
+// 	{
+// 		ads1115.setGain((adsGain_t)GAIN_VALUE[g]);
+// 		int16_t reading;
+// 		if( channel == 0)
+// 			reading = ads1115.readADC_Differential_0_1();
+// 		else
+// 			reading = ads1115.readADC_Differential_2_3();
+
+// 		gain = g;
+// 		//Serial.print("AIN2: v shunt       "); Serial.print(g); Serial.print(","); Serial.print(adc2); Serial.print(","); Serial.println(adc2 * factor[g], 5);
+// 		if (abs(reading) > 1000)
+// 			break;
+// 	}
+
+// 	for (int i = 0; i < SAMPLES; i++)
+// 	{
+// 		int16_t reading;
+// 		if (channel == 0)
+// 			samples[i] = ads1115.readADC_Differential_0_1();
+// 		else
+// 			samples[i] = ads1115.readADC_Differential_2_3();
+// 		sum += samples[i];
+// 	}
+	
+// 	//reset to default
+// 	ads1115.setGain(GAIN_TWOTHIRDS);
+
+
+// 	double _median = median(samples, SAMPLES)*FACTOR[gain];
+// 	double mean = sum/SAMPLES*FACTOR[gain];
+// 	double sumOfSquares = 0.0;
+// 	double stdDev;
+
+// 	for(int i=0; i< SAMPLES;i++)
+// 	{
+// 		sumOfSquares += (samples[i]*FACTOR[gain] - mean) * (samples[i]*FACTOR[gain] - mean);
+// 	}
+// 	stdDev = sqrt( sumOfSquares/SAMPLES);
+
+// 	Serial.print("gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
+// 	Serial.print(" median=");Serial.print(_median, 5);
+// 	Serial.print(" mean=");Serial.print(mean, 5);
+// 	Serial.print(" stdDev=");Serial.println(stdDev, 5);
+
+// 	return _median;
+// }
+
+
+double Reading(uint8_t readingNum, uint8_t channel, double scaleFactor, bool &noisyData )
 {
 	ads1115.setGain(GAIN_TWOTHIRDS); //shouldn't be required!
-	int32_t s = 0;
+	double samples[SAMPLES];
+
+	if( ads1115.readADC_SingleEnded(channel) == 0xffff)
+	{
+		//0xffff is no ADS115 connected or not voltage reading. Return 0 instead
+		Serial.print(F("reading,"));
+		Serial.print( readingNum);
+		Serial.println(F(",no ADS115 connected or not voltage reading. Return 0 instead"));
+		return 0.0;
+	}
+
 	for (int i = 0; i < SAMPLES; i++)
 	{
-		int16_t r = ads1115.readADC_SingleEnded(channel);
-		s += r;
-		//		Serial.print(i); Serial.print(":"); Serial.print(r);Serial.print(",");
+		samples[i] = ads1115.readADC_SingleEnded(channel)*scaleFactor; 
 	}
-	//	Serial.println();
-	//	Serial.print(ads); Serial.print(":"); Serial.print(channel); Serial.print(","); Serial.println( (int16_t)(s/SAMPLES));
-	return (int16_t)(s / SAMPLES);
+	stats_t stats = GetStats(samples, SAMPLES);
+
+	Serial.print(F("reading,"));
+	Serial.print( readingNum);		Serial.print(F(","));
+	Serial.print( stats.median,0 );	Serial.print(F(",")); 
+	Serial.print( stats.mean,0 );		Serial.print(F(",")); 
+	Serial.print( stats.stdDev );
+	Serial.println();
+
+	if(stats.stdDev > 30.0) //30 = 0.3v
+	{
+		noisyData = true;
+
+		Serial.print(F("voltage vals,"));
+		for (int i = 0; i < SAMPLES; i++)
+		{
+			Serial.print(samples[i]);
+			Serial.print(",");
+		}
+		Serial.println();
+	}
+
+	return stats.median;  //median removes chance of spike reading influencing the tallies
 }
 
-
-double ReadingDifferential(uint8_t channel )
+double ReadingDifferential(const __FlashStringHelper* shuntName, uint8_t channel, double offset, bool &noisyData)
 {
-	double sum = 0;
 	int gain;
-	int16_t samples[SAMPLES];
+	double samples[SAMPLES];
 
 	for (int g = 0; g < 6; g++ )
 	{
 		ads1115.setGain((adsGain_t)GAIN_VALUE[g]);
-		int16_t reading;
-		if( channel == 0)
-			reading = ads1115.readADC_Differential_0_1();
-		else
-			reading = ads1115.readADC_Differential_2_3();
+
+		for (int i = 0; i < SAMPLES; i++)
+		{
+			if( channel == 0)
+				samples[i] = ads1115.readADC_Differential_0_1();
+			else
+				samples[i] = ads1115.readADC_Differential_2_3();
+		}
 
 		gain = g;
-		//Serial.print("AIN2: v shunt       "); Serial.print(g); Serial.print(","); Serial.print(adc2); Serial.print(","); Serial.println(adc2 * factor[g], 5);
-		if (abs(reading) > 1000)
+
+		//appears to be some noisy values resulting in selecting a low gain value.
+		//use mean to try and filter out the noise at this stage.
+		stats_t stats = GetStats(samples, SAMPLES);
+		if (abs(stats.mean) > 1000)
 			break;
 	}
 
+	ads1115.setGain((adsGain_t)GAIN_VALUE[gain]);
+
 	for (int i = 0; i < SAMPLES; i++)
 	{
-		int16_t reading;
 		if (channel == 0)
-			samples[i] = ads1115.readADC_Differential_0_1();
+			samples[i] = ads1115.readADC_Differential_0_1()*FACTOR[gain] - offset;
 		else
-			samples[i] = ads1115.readADC_Differential_2_3();
-		sum += samples[i];
+			samples[i] = ads1115.readADC_Differential_2_3()*FACTOR[gain] - offset;
 	}
 	
 	//reset to default
 	ads1115.setGain(GAIN_TWOTHIRDS);
 
+	//print before sorting!
+	// Serial.print(F("current vals,"));
+	// for (int i = 0; i < SAMPLES; i++)
+	// {
+	// 	Serial.print(samples[i]);
+	// 	Serial.print(",");
+	// }
+	// Serial.println();
 
-	double _median = median(samples, SAMPLES)*FACTOR[gain];
-	double mean = sum/SAMPLES*FACTOR[gain];
-	double sumOfSquares = 0.0;
-	double stdDev;
 
-	for(int i=0; i< SAMPLES;i++)
+	stats_t stats = GetStats(samples, SAMPLES);
+
+	//Serial.println(F("current,shuntNum,gain,factor,median,mean,stdDev"));
+	Serial.print(F("current,"));
+	Serial.print(shuntName);	Serial.print(F(",")); 
+	Serial.print(gain);		Serial.print(F(",")); 
+	Serial.print(stats.median);	Serial.print(F(",")); 
+	Serial.print(stats.mean);		Serial.print(F(",")); 
+	Serial.print(stats.stdDev);
+	Serial.println();
+	
+	//mean seems to be the best measure. StdDev on the 30 samples is quite high! 
+	//typical for 3 banks
+	//gain=5 factor=0.01 median=-5.36719 mean=-5.22786 stdDev=0.48221
+	//gain=5 factor=0.01 median=-3.88281 mean=-3.51432 stdDev=1.09815
+	//gain=5 factor=0.01 median=-0.06250 mean=0.00781 stdDev=0.27687
+
+	if(stats.stdDev > 30.0)
 	{
-		sumOfSquares += (samples[i]*FACTOR[gain] - mean) * (samples[i]*FACTOR[gain] - mean);
+		noisyData = true;
+		Serial.print(F("current vals,"));
+		for (int i = 0; i < SAMPLES; i++)
+		{
+			Serial.print(samples[i]);
+			Serial.print(",");
+		}
+		Serial.println();
 	}
-	stdDev = sqrt( sumOfSquares/SAMPLES);
 
-	Serial.print("gain="); Serial.print(gain); Serial.print(" factor="); Serial.print(FACTOR[gain]);
-	Serial.print(" median=");Serial.print(_median, 5);
-	Serial.print(" mean=");Serial.print(mean, 5);
-	Serial.print(" stdDev=");Serial.println(stdDev, 5);
-
-	return _median;
+	return stats.mean;
 }
+
 
 void setup()
 {
@@ -208,11 +391,6 @@ void setup()
 
 	Serial.println(F("Current meter sensor start"));
 
-#ifdef USE_JLIB
-	Serial.println("rf12_initialize");
-	rf12_initialize(g_rf12Init.node, g_rf12Init.freq, g_rf12Init.group);
-	EmonSerial::PrintRF12Init(g_rf12Init);
-#else
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
 	if (!g_rf69.setFrequency(915.0))
@@ -227,7 +405,6 @@ void setup()
 	Serial.print("RF69 initialise node: ");
 	Serial.print(BATTERY_NODE);
 	Serial.println(" Freq: 915MHz");
-#endif
 
 	Serial.println("Getting single-ended readings from AIN0..3");
 	Serial.println("ADC Range: +/- 6.144V (1 bit = 3mV)");
@@ -256,19 +433,21 @@ void loop()
 	int16_t adc0, adc1, adc2, adc3;
 	String str;
 	char floatStr[16];
+	bool noisyData = false;
 
 	//reset to default
 	ads1115.setGain(GAIN_TWOTHIRDS);
 
-	adc0 = Reading(0);
+	adc0 = Reading(2, 2, 1.0, noisyData);
 	int16_t mVolts = (int16_t)((adc0 * 0.1875) *(100000+6800)/6800); // 6.144v range using a100K and 6.8K voltage divider on 12v source
 	g_payloadBattery.voltage[0] = mVolts/10;  //convert mV to 100ths V
 
-	adc1 = Reading(1);
-	int16_t vcc_from_arduino = (int16_t)((adc1 * 0.1875) ); // 6.144v range
+	//adc1 = Reading(3, 3, 1.0, noisyData);
+	//int16_t vcc_from_arduino = (int16_t)((adc1 * 0.1875) ); // 6.144v range
+	int16_t vcc_from_arduino = readVcc();
 	g_payloadBattery.voltage[MAX_VOLTAGES-1] = vcc_from_arduino/10;	//we put the MCU voltage in teh last slot. In 100ths of volts
 
-	double v_current = ReadingDifferential(1);
+	double v_current = ReadingDifferential(F("Battery"), 0, 0.0, noisyData);
 	double amps = v_current * 90.0 / 100.0; //shunt is 90Amps for 100mV;
 	//double watts = voltage * amps/1000.0;
 
