@@ -305,6 +305,33 @@ void loop ()
 			{
 				PRINT_AND_LOG(Leaf, Payload);
 			}
+			if (node_id == GPS_NODE  && len == sizeof(PayloadGPS))
+			{
+				PRINT_AND_LOG(GPS, Payload);
+			}
+			if (node_id == PRESSURE_NODE  && len == sizeof(PayloadPressure))
+			{
+				PRINT_AND_LOG(Pressure, Payload);
+			}
+			if (node_id == DALY_BMS_NODE  && len == sizeof(PayloadDalyBMS)-2)
+			{
+				PRINT_AND_LOG(DalyBMS, Payload);
+			}
+			if (node_id == DALY_BMS_NODE && len == sizeof(PayloadDalyBMS))		//has crc
+			{
+				PayloadDalyBMS* pPayload = (PayloadDalyBMS*)data;
+				if(pPayload->crc == EmonSerial::CalcCrc((const void *) data, sizeof(PayloadDalyBMS)-2) )
+				{
+					PRINT_AND_LOG(DalyBMS, Payload)
+				}
+				else
+				{
+					Serial.print(F("DalyBMS - Bad CRC"));
+					Serial.print(pPayload->crc);
+					Serial.print(F(", calculated CRC="));
+					Serial.println( EmonSerial::CalcCrc((const void *) data, sizeof(PayloadBattery)-2) );
+				}
+			}
 
 			if (file)
 				file.close();
