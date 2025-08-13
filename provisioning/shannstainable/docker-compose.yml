@@ -77,7 +77,7 @@ services:
       - MQTT_IP=mqtt
       - TZ=${TIMEZONE}
     volumes:
-      - /share/emon_Suite/python:/data
+      - ./emon_config:/data
       - /share/Output:/share/Output
     depends_on:
       - mosquitto
@@ -103,10 +103,11 @@ services:
     image: sfewings32/emon_mqtt_to_influx:latest
     container_name: emon_influx
     volumes:
-      - /share/emon_Suite/python:/share/config
+      - ./emon_config:/share/config
     environment:
       - MQTT_IP=mqtt
       - INFLUX_IP=influxdb
+      - SETTINGS_PATH=/share/config/emon_config.yml
     depends_on:
       - influxdb
       - mosquitto
