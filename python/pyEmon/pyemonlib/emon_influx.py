@@ -35,6 +35,7 @@ class emon_influx:
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
             'bms'  : self.bmsMessage,
+            'gps'  : self.gpsMessage,
             'other': self.otherMessage
         }
 
@@ -476,6 +477,36 @@ class emon_influx:
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("leafException", reading, ex)
+
+    def gpsMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadGPS()
+        if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
+            try:
+                p = Point("gps").tag("sensor",f"gps/latitude/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-latitude")\
+                                .field("value",payload.latitude).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("gps").tag("sensor",f"gps/longitude/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-longitude")\
+                                .field("value",payload.longitude).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("gps").tag("sensor",f"gps/course/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-course")\
+                                .field("value",payload.course).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("gps").tag("sensor",f"gps/speed/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-speed")\
+                                .field("value",payload.speed).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("gpsException", reading, ex)
 
     def otherMessage(self, time, reading, nodeSettings ):
         print(reading)

@@ -25,12 +25,14 @@ class emon_mqtt:
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
             'bms'  : self.bmsMessage,
+            'gps'  : self.gpsMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
         self.mqttClient.on_connect = self.on_connect
         self.mqttClient.connect(mqtt_server, mqtt_port, 60)
         self.mqttClient.loop_start()
+        self.lineNumber = -1
 
     # def __del__(self):
     #     self.client.close()
@@ -242,6 +244,19 @@ class emon_mqtt:
                 self.mqttClient.publish(f"bms/lifetimeCycles{payload.subnode}",payload.lifetimeCycles)
                 for cell in range(emonSuite.MAX_BMS_CELLS):
                     self.mqttClient.publish(f"bms/cellVoltage/{payload.subnode}/{cell}",payload.cellmv[cell]/1000.0)                    
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("DalyBMSException", reading, ex)
+
+    def gpsMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadGPS()
+        if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"gps/latitude/{payload.subnode}",payload.latitude)
+                self.mqttClient.publish(f"gps/longitude/{payload.subnode}",payload.longitude)
+                self.mqttClient.publish(f"gps/course/{payload.subnode}",payload.course)
+                self.mqttClient.publish(f"gps/speed/{payload.subnode}",payload.speed)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:

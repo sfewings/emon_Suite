@@ -196,6 +196,15 @@ PYBIND11_MODULE(emonSuite, m) {
             return pybind11::array(dtype, { MAX_BMS_CELLS }, { sizeof(short) }, payload.cellmv, nullptr);
             }, [](PayloadDalyBMS& payload) {});	// cell voltages in mv
 
+    //PayloadGPS
+    py::class_<PayloadGPS, PayloadRelay> payloadGPS(m, "PayloadGPS");
+    payloadGPS.def(py::init<>());
+    payloadGPS.def_readwrite("subnode", &PayloadGPS::subnode, "allow multiple GPS nodes on the network");
+    payloadGPS.def_readwrite("latitude", &PayloadGPS::latitude, "GPS latitude");
+    payloadGPS.def_readwrite("longitude", &PayloadGPS::longitude, "GPS longitude");
+    payloadGPS.def_readwrite("course", &PayloadGPS::course, "GPS course");
+    payloadGPS.def_readwrite("speed", &PayloadGPS::speed, "GPS speed");
+
     //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
     emonSerial.def_static("ParseRainPayload", &EmonSerial::ParseRainPayload, "Parses from string to RainPayload",py::arg("string"), py::arg("PayloadRain"));
@@ -212,7 +221,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
     emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
     emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
-    emonSerial.def_static("CalcCrc", &EmonSerial::CalcCrc, "Calculates Crc on payloads",py::arg("const void*"), py::arg("byte"));
+    emonSerial.def_static("ParseGPSPayload", &EmonSerial::ParseGPSPayload, "Parses from string to PayloadGPS",py::arg("string"), py::arg("PayloadGPS"));
 }
 
 
