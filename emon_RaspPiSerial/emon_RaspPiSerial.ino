@@ -19,8 +19,8 @@
 	#define RFM69_RST     	4
 #endif
 
-#define HOUSE_BANNER
-//#define BOAT_BANNER
+//#define HOUSE_BANNER
+#define BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
@@ -81,6 +81,7 @@ void setup ()
 	EmonSerial::PrintGPSPayload(NULL);
 	EmonSerial::PrintPressurePayload(NULL);
 	EmonSerial::PrintDalyBMSPayload(NULL);
+	EmonSerial::PrintSevConPayload(NULL);
 
 #ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
@@ -161,6 +162,7 @@ void loop ()
 			}
 			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery)-2)		//no crc
 			{
+				//older BatteryNode without CRC
 				SERIAL_OUT(Battery, Payload);
 			}
 			if (node_id == BATTERY_NODE && len == sizeof(PayloadBattery))		//has crc
@@ -204,6 +206,7 @@ void loop ()
 			}
 			if (node_id == DALY_BMS_NODE  && len == sizeof(PayloadDalyBMS)-2)
 			{
+				//older DalyBMS without CRC
 				SERIAL_OUT(DalyBMS, Payload);
 			}
 			if (node_id == DALY_BMS_NODE && len == sizeof(PayloadDalyBMS))		//has crc
@@ -221,7 +224,10 @@ void loop ()
 					Serial.println( EmonSerial::CalcCrc((const void *) data, sizeof(PayloadBattery)-2) );
 				}
 			}
-
+			if (node_id == SEVCON_CAN_NODE  && len == sizeof(PayloadSevCon))
+			{
+				SERIAL_OUT(SevCon, Payload);
+			}
 		}
 
 		//read the time basePayload 

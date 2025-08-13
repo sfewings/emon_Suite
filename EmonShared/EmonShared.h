@@ -38,6 +38,8 @@ typedef unsigned char byte;
 #define GPS_NODE 25					//Node for GPS unit
 #define PRESSURE_NODE 26			//Node for BM unit
 #define DALY_BMS_NODE 27			//Node for a Daly BMS
+#define SEVCON_CAN_NODE 28			//Node for a Daly BMS
+
 
 #define MAX_SUBNODES	8			//Maximum number of disp and temp nodes supported
 #define MAX_WATER_SENSORS	4		//Maximum number of water pulse and water height metres
@@ -213,6 +215,15 @@ typedef struct PayloadDalyBMS : PayloadRelay {
 	uint16_t crc;
 } PayloadDalyBMS;
 
+typedef struct PayloadSevCon : PayloadRelay {
+	byte subnode;
+	int8_t motorTemperature;		            	// 
+	int8_t controllerTemperature;                 //
+	float capVoltage;							//
+	float batteryCurrent;						//
+	int16_t rpm;									//
+} PayloadSevCon;
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -234,6 +245,7 @@ public:
 	static void PrintGPSPayload(PayloadGPS* pPayloadGPS, unsigned long timeSinceLast = 0);
 	static void PrintPressurePayload(PayloadPressure* pPayloadPressure, unsigned long timeSinceLast = 0);
 	static void PrintDalyBMSPayload(PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
+	static void PrintSevConPayload(PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
 	
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -253,6 +265,7 @@ public:
 	static void PrintGPSPayload(Stream& stream, PayloadGPS* pPayloadGPS, unsigned long timeSinceLast = 0);
 	static void PrintPressurePayload(Stream& stream, PayloadPressure* pPayloadPressure, unsigned long timeSinceLast = 0);
 	static void PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
+	static void PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
 
 #endif
 	static uint16_t CalcCrc(const void* ptr, byte len);
@@ -277,6 +290,7 @@ public:
 	static int ParseGPSPayload(char* str, PayloadGPS* pPayloadGPS);
 	static int ParsePressurePayload(char* str, PayloadPressure* pPayloadPressure);
 	static int ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS);
+	static int ParseSevConPayload(char* str, PayloadSevCon* pPayloadSevCon);
 };
 
 

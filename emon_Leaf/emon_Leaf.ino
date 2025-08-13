@@ -24,9 +24,9 @@ PayloadLeaf     g_payloadLeaf;
 SoftwareSerial  g_serial(3, 4);
 CanBusMCP2515_asukiaaa::Driver g_CAN(CS_PIN);
 
-void flashErrorToLED(int error)
+void flashErrorToLED(int error, bool haltExecution = true)
 {
-  while( true)
+  while( haltExecution )
   { 
     for( int i = 0; i < error; i++)
     {
@@ -44,6 +44,8 @@ bool initCAN(CanBusMCP2515_asukiaaa::Driver& can)
   const auto QUARTZ_FREQUENCY  = CanBusMCP2515_asukiaaa::QuartzFrequency::MHz8;
   const auto BITRATE           = CanBusMCP2515_asukiaaa::BitRate::Kbps500;
   CanBusMCP2515_asukiaaa::Settings settings(QUARTZ_FREQUENCY, BITRATE);
+  settings.mReceiveBufferSize = 16;
+  settings.mTransmitBuffer0Size = 0;
   Serial.print(F("settings for :"));Serial.println(can.CS());
   Serial.println(settings.toString());
 
@@ -88,12 +90,12 @@ void setup()
 	if (!g_rf69.init())
   {
 		Serial.println(F("rf69 init failed"));
-    flashErrorToLED(2); //will never return!
+    flashErrorToLED(2, false); //will never return!
   }
 	if (!g_rf69.setFrequency(915.0))
   {
     Serial.println(F("rf69 setFrequency failed"));
-    flashErrorToLED(3); //will never return!
+    flashErrorToLED(3, false); //will never return!
   }
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,

@@ -26,6 +26,7 @@ class emon_mqtt:
             'leaf' : self.leafMessage,
             'bms'  : self.bmsMessage,
             'gps'  : self.gpsMessage,
+            'svc'  : self.sevConMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
@@ -260,7 +261,22 @@ class emon_mqtt:
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
-                self.printException("DalyBMSException", reading, ex)
+                self.printException("GPSException", reading, ex)
+                
+    def sevConMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadSevCon()
+        if( emonSuite.EmonSerial.ParseSevConPayload(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"sevCon/temperature/motor/{payload.subnode}",payload.motorTemperature)
+                self.mqttClient.publish(f"sevCon/temperature/controller/{payload.subnode}",payload.controllerTemperature)
+                self.mqttClient.publish(f"sevCon/voltage{payload.subnode}",payload.capVoltage)
+                self.mqttClient.publish(f"sevCon/current{payload.subnode}",payload.batteryCurrent)
+                self.mqttClient.publish(f"sevCon/rpm{payload.subnode}",payload.rpm)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("SevConException", reading, ex)
+
 
     def otherMessage(self, reading, nodeSettings ):
         print(reading)

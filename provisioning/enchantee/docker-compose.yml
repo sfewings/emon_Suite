@@ -1,4 +1,3 @@
-version: '2'
 services:
   influxdb:
     image: arm32v7/influxdb:latest
@@ -71,14 +70,14 @@ services:
     image: sfewings32/emon_serial_to_mqtt:latest
     container_name: emon_serial
     devices:
-      - /dev/ttyUSB0
+      - /dev/ttyAMA0  #/dev/ttyUSB0
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
-      - SERIAL_PORT=/dev/ttyUSB0
+      - SERIAL_PORT=/dev/ttyAMA0   #/dev/ttyUSB0
       - MQTT_IP=mqtt
       - TZ=${TIMEZONE}
     volumes:
-      - /share/emon_Suite/python:/data
+      - ./emon_config:/data
       - /share/Output:/share/Output
     depends_on:
       - mosquitto
@@ -104,10 +103,11 @@ services:
     image: sfewings32/emon_mqtt_to_influx:latest
     container_name: emon_influx
     volumes:
-      - /share/emon_Suite/python:/share/config
+      - ./emon_config:/share/config
     environment:
       - MQTT_IP=mqtt
       - INFLUX_IP=influxdb
+      - SETTINGS_PATH=/share/config/emon_config.yml
     depends_on:
       - influxdb
       - mosquitto

@@ -204,6 +204,17 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadGPS.def_readwrite("longitude", &PayloadGPS::longitude, "GPS longitude");
     payloadGPS.def_readwrite("course", &PayloadGPS::course, "GPS course");
     payloadGPS.def_readwrite("speed", &PayloadGPS::speed, "GPS speed");
+    
+    //PayloadSevCon
+    py::class_<PayloadSevCon, PayloadRelay> payloadSevCon(m, "PayloadSevCon");
+    payloadSevCon.def(py::init<>());
+    payloadSevCon.def_readwrite("subnode", &PayloadSevCon::subnode, "allow multiple SevCon nodes on the network");
+    payloadSevCon.def_readwrite("motorTemperature", &PayloadSevCon::motorTemperature, "Motor temperature C");
+    payloadSevCon.def_readwrite("controllerTemperature", &PayloadSevCon::controllerTemperature, "Controller temperature C");
+    payloadSevCon.def_readwrite("capVoltage", &PayloadSevCon::capVoltage, "Cap voltage V");
+    payloadSevCon.def_readwrite("batteryCurrent", &PayloadSevCon::batteryCurrent, "Battery current A");
+    payloadSevCon.def_readwrite("rpm", &PayloadSevCon::rpm, "RPM revolutions per minute");
+
 
     //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
@@ -222,6 +233,8 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
     emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
     emonSerial.def_static("ParseGPSPayload", &EmonSerial::ParseGPSPayload, "Parses from string to PayloadGPS",py::arg("string"), py::arg("PayloadGPS"));
+    emonSerial.def_static("ParseSevConPayload", &EmonSerial::ParseSevConPayload, "Parses from string to PayloadSevCon",py::arg("string"), py::arg("PayloadSevCon"));
+    emonSerial.def_static("CalcCrc", &EmonSerial::CalcCrc, "Calculates Crc on payloads",py::arg("const void*"), py::arg("byte"));
 }
 
 
