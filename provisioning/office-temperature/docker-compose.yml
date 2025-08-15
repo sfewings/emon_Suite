@@ -1,0 +1,118 @@
+version: '2'
+services:
+  influxdb:
+    image: arm32v7/influxdb:latest
+    container_name: influx
+    ports:
+      - '8086:8086'
+    volumes:
+      - influxdb-storage:/var/lib/influxdb
+      - /share/influxdb/influxdb_backup:/backups
+    environment:
+      - INFLUXDB_DB=sensors
+      - INFLUXDB_ADMIN_USER=${INFLUXDB_USERNAME}
+      - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
+      - INFLUXDB_HTTP_FLUX_ENABLED=true
+    restart: always
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana1
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana-provisioning/:/etc/grafana/provisioning
+    depends_on:
+      - influxdb
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_PANELS_ENABLE_ALPHA=true
+      - GF_SERVER_ROOT_URL=${GRAFANA_URL}
+      - GF_ALLOW_UI_UPDATES=true
+      - GF_ALLOWUIUPDATES=true
+    restart: always
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mqtt
+    ports:
+      - 1883:1883
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/logs
+      - ./mosquitto-config:/mosquitto/config
+    restart: always
+
+  emon_mqtt_to_log:
+    image: sfewings32/emon_mqtt_to_log:latest
+    container_name: emon_log
+    volumes:
+      - /share/Input:/share/Input
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_IP=mqtt
+      - TZ=Australia/Perth
+    restart: always
+
+  emon_serial_to_mqtt:
+    image: sfewings32/emon_serial_to_mqtt:latest
+    container_name: emon_serial
+    devices:
+      - /dev/ttyUSB0
+    environment:
+      - SETTINGS_PATH=/data/emon_config.yml
+      - SERIAL_PORT=/dev/ttyUSB0
+      - MQTT_IP=mqtt
+    volumes:
+      - ./emon_config:/data
+    depends_on:
+      - mosquitto
+    restart: always
+      
+  emon_mqtt_to_influx:
+    image: sfewings32/emon_mqtt_to_influx:latest
+    container_name: emon_influx
+    volumes:
+      - ./emon_config:/share/config
+      - /share/Input:/share/Input
+    environment:
+      - MQTT_IP=mqtt
+      - INFLUX_IP=influxdb
+      - SETTINGS_PATH=/share/config/emon_config.yml
+      - TZ=Australia/Perth      
+    depends_on:
+      - influxdb
+      - mosquitto
+    restart: always
+
+  query_bom:
+    image: query_bom:v1
+    container_name: query_bom
+    environment:
+      - INFLUX_IP=influxdb
+    depends_on:
+      - influxdb
+    restart: always
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer-data:/data
+    ports:
+      - 9000:9000
+      - 9443:9443
+
+volumes:
+  influxdb-storage:
+  grafana-storage:
+  mosquitto-data:
+  mosquitto-logs:
+  mosquitto-conf:
+  portainer-data:
