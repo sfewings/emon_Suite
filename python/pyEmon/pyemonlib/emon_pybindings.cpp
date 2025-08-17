@@ -179,6 +179,22 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadLeaf.def_readwrite("batteryChargeBars", &PayloadLeaf::batteryChargeBars, "Battery charge bars on Dashboard (12=fully charged)");
     payloadLeaf.def_readwrite("chargeTimeRemaining", &PayloadLeaf::chargeTimeRemaining, "Battery charge time remaining in minutes");
 
+    //PayloadGPS
+    py::class_<PayloadGPS, PayloadRelay> payloadGPS(m, "PayloadGPS");
+    payloadGPS.def(py::init<>());
+    payloadGPS.def_readwrite("subnode", &PayloadGPS::subnode, "allow multiple GPS nodes on the network");
+    payloadGPS.def_readwrite("latitude", &PayloadGPS::latitude, "GPS latitude");
+    payloadGPS.def_readwrite("longitude", &PayloadGPS::longitude, "GPS longitude");
+    payloadGPS.def_readwrite("course", &PayloadGPS::course, "GPS course");
+    payloadGPS.def_readwrite("speed", &PayloadGPS::speed, "GPS speed");
+
+    //PayloadPressure
+    py::class_<PayloadPressure, PayloadRelay> payloadPressure(m, "PayloadPressure");
+    payloadPressure.def(py::init<>());
+    payloadPressure.def_readwrite("subnode", &PayloadPressure::subnode, "allow multiple Pressure nodes on the network");
+    payloadPressure.def_readwrite("pressure", &PayloadPressure::pressure, "Pressure");
+    payloadPressure.def_readwrite("temperature", &PayloadPressure::temperature, "Temperature");
+    payloadPressure.def_readwrite("humidity", &PayloadPressure::humidity, "Humidity");
 
     //PayloadDalyBMS
     py::class_<PayloadDalyBMS, PayloadRelay> payloadDalyBMS(m, "PayloadDalyBMS");
@@ -196,15 +212,6 @@ PYBIND11_MODULE(emonSuite, m) {
             return pybind11::array(dtype, { MAX_BMS_CELLS }, { sizeof(short) }, payload.cellmv, nullptr);
             }, [](PayloadDalyBMS& payload) {});	// cell voltages in mv
 
-    //PayloadGPS
-    py::class_<PayloadGPS, PayloadRelay> payloadGPS(m, "PayloadGPS");
-    payloadGPS.def(py::init<>());
-    payloadGPS.def_readwrite("subnode", &PayloadGPS::subnode, "allow multiple GPS nodes on the network");
-    payloadGPS.def_readwrite("latitude", &PayloadGPS::latitude, "GPS latitude");
-    payloadGPS.def_readwrite("longitude", &PayloadGPS::longitude, "GPS longitude");
-    payloadGPS.def_readwrite("course", &PayloadGPS::course, "GPS course");
-    payloadGPS.def_readwrite("speed", &PayloadGPS::speed, "GPS speed");
-    
     //PayloadSevCon
     py::class_<PayloadSevCon, PayloadRelay> payloadSevCon(m, "PayloadSevCon");
     payloadSevCon.def(py::init<>());
@@ -231,8 +238,9 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseInverterPayload", &EmonSerial::ParseInverterPayload, "Parses from string to PayloadInverter",py::arg("string"), py::arg("PayloadInverter"));
     emonSerial.def_static("ParseAirQualityPayload", &EmonSerial::ParseAirQualityPayload, "Parses from string to PayloadAirQuality",py::arg("string"), py::arg("PayloadAirQuality"));
     emonSerial.def_static("ParseLeafPayload", &EmonSerial::ParseLeafPayload, "Parses from string to PayloadLeaf",py::arg("string"), py::arg("PayloadLeaf"));
-    emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
     emonSerial.def_static("ParseGPSPayload", &EmonSerial::ParseGPSPayload, "Parses from string to PayloadGPS",py::arg("string"), py::arg("PayloadGPS"));
+    emonSerial.def_static("ParsePressurePayload", &EmonSerial::ParsePressurePayload, "Parses from string to PayloadPressure",py::arg("string"), py::arg("PayloadPressure"));
+    emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
     emonSerial.def_static("ParseSevConPayload", &EmonSerial::ParseSevConPayload, "Parses from string to PayloadSevCon",py::arg("string"), py::arg("PayloadSevCon"));
     emonSerial.def_static("CalcCrc", &EmonSerial::CalcCrc, "Calculates Crc on payloads",py::arg("const void*"), py::arg("byte"));
 }
