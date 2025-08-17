@@ -24,6 +24,8 @@ class emon_mqtt:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
+            'gps'  : self.gpsMessage,
+            'pth'  : self.pthMessage,            
             'bms'  : self.bmsMessage,
             'svc'  : self.sevConMessage,
             'other': self.otherMessage
@@ -231,6 +233,31 @@ class emon_mqtt:
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("leafException", reading, ex)
+
+    def gpsMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadGPS()
+        if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"gps/latitude/{payload.subnode}",payload.latitude)
+                self.mqttClient.publish(f"gps/longitude/{payload.subnode}",payload.longitude)
+                self.mqttClient.publish(f"gps/course/{payload.subnode}",payload.course)
+                self.mqttClient.publish(f"gps/speed/{payload.subnode}",payload.speed)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("GPSException", reading, ex)
+
+    def pthMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadPressure()
+        if( emonSuite.EmonSerial.ParsePressurePayload(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"pth/pressure/{payload.subnode}",payload.pressure)
+                self.mqttClient.publish(f"temperature/pth/{payload.subnode}",payload.temperature)
+                self.mqttClient.publish(f"pth/humidity/{payload.subnode}",payload.humidity)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("PressureException", reading, ex)
 
     def bmsMessage(self, reading, nodeSettings ):
         payload = emonSuite.PayloadDalyBMS()

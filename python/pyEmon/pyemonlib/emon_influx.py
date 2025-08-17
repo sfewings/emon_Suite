@@ -34,6 +34,8 @@ class emon_influx:
             'bee'  : self.beeMessage,
             'air'  : self.airMessage,
             'leaf' : self.leafMessage,
+            'gps'  : self.gpsMessage,
+            'pth'  : self.pthMessage,            
             'bms'  : self.bmsMessage,
             'svc'  : self.sevConMessage,
             'other': self.otherMessage
@@ -430,6 +432,62 @@ class emon_influx:
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("leafException", reading, ex)
+
+    def gpsMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadGPS()
+        if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
+            try:
+                p = Point("gps").tag("sensor",f"gps/latitude/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-latitude")\
+                                .field("value",payload.latitude).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("gps").tag("sensor",f"gps/longitude/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-longitude")\
+                                .field("value",payload.longitude).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("gps").tag("sensor",f"gps/course/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-course")\
+                                .field("value",payload.course).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("gps").tag("sensor",f"gps/speed/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-speed")\
+                                .field("value",payload.speed).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("gpsException", reading, ex)
+
+    def pthMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadPressure()
+        if( emonSuite.EmonSerial.ParsePressurePayload(reading,payload) ):
+            try:
+                p = Point("pressure").tag("sensor",f"pressure/pth/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Pressure")\
+                                .field("value",payload.pressure).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("temperature").tag("sensor",f"temperature/pth/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Temperature")\
+                                .field("value",payload.temperature).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("humidity").tag("sensor",f"humidity/pth/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+" - Humidity")\
+                                .field("value",payload.humidity).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("pthException", reading, ex)
 
     def bmsMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadDalyBMS()
