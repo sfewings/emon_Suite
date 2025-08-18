@@ -6,10 +6,11 @@
 #include <SoftwareSerial.h>
 
 static const auto CS_PIN                  = 5;      //CAN chip select pin
-static const auto LED_ACTION_PIN          = 9;      //LED
+static const auto LED_RECEIVE_PIN         = 9;      //The default LED on the moteino to indicate a CAN packet is received
+static const auto LED_TRANSMIT_PIN        = 6;      //LED to indicate an emon data packet is being transmitted
 static const uint32_t SEND_PERIOD         = 1000*30;//30 seconds if no data updates otherwise.
 
-static const int ALL_MESSAGE_IDs[]        = { 0x411, 0x454, 0x271}; //{0x80 = sync, 0x701 = heartbeat, 0x391 = not used, 0x330 = not used 
+static const int ALL_MESSAGE_IDs[]        = {0x411, 0x454, 0x271};
 static const int NUM_MESSAGES             = sizeof(ALL_MESSAGE_IDs)/sizeof(ALL_MESSAGE_IDs[1]);
 
 CanBusData_asukiaaa::Frame  lastMessage[NUM_MESSAGES];
@@ -20,18 +21,22 @@ RH_RF69         g_rf69;
 PayloadSevCon     g_payloadSevCon;
 CanBusMCP2515_asukiaaa::Driver g_CAN(CS_PIN);
 
-void flashErrorToLED(int error)
+void flashErrorToLED(int error, uint8_t pin, bool haltExecution = true)
 {
-  while( true)
+  while( true )
   { 
     for( int i = 0; i < error; i++)
     {
-      digitalWrite(LED_ACTION_PIN, HIGH);
+      digitalWrite(pin, HIGH);
       delay(100);
-      digitalWrite(LED_ACTION_PIN, LOW);
+      digitalWrite(pin, LOW);
       delay(100);
     }
     delay(1000); 
+    if( !haltExecution )
+    {
+      return; //don't loop forever
+    }
   }
 }
 
@@ -65,8 +70,10 @@ void setup()
 {
   Serial.begin(9600);
 
-  pinMode(LED_ACTION_PIN, OUTPUT);
-  digitalWrite(LED_ACTION_PIN, HIGH);
+  pinMode(LED_RECEIVE_PIN, OUTPUT);
+  pinMode(LED_TRANSMIT_PIN, OUTPUT);
+  digitalWrite(LED_RECEIVE_PIN, HIGH);
+  digitalWrite(LED_TRANSMIT_PIN, HIGH);
 
   delay(500);
  	Serial.println(F("SevCon CAN decode"));
@@ -74,18 +81,18 @@ void setup()
   memset(&g_payloadSevCon, sizeof(PayloadSevCon), 0);
   if(!initCAN( g_CAN ))
   {
-    flashErrorToLED(1); //will never return!
+    flashErrorToLED(1, LED_RECEIVE_PIN); //will never return!
   }
 
 	if (!g_rf69.init())
   {
 		Serial.println(F("rf69 init failed"));
-    flashErrorToLED(2); //will never return!
+    flashErrorToLED(2, LED_RECEIVE_PIN); //will never return!
   }
 	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
   {
     Serial.println(F("rf69 setFrequency failed"));
-    flashErrorToLED(3); //will never return!
+    flashErrorToLED(3, LED_RECEIVE_PIN); //will never return!
   }
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -96,7 +103,8 @@ void setup()
 	Serial.print(F("RF69 initialise node: "));
 	Serial.print(SEVCON_CAN_NODE);
 	Serial.print(" Freq: ");Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
-  digitalWrite(LED_ACTION_PIN, LOW);
+  digitalWrite(LED_RECEIVE_PIN, LOW);
+  digitalWrite(LED_TRANSMIT_PIN, LOW);
 
   EmonSerial::PrintSevConPayload(NULL);
 }
@@ -128,7 +136,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
   {
     int8_t motorTemperature = (int8_t) frame.data[6];
     
-    Serial.print(motorTemperature); Serial.print(":"); Serial.println(sevConPayload.motorTemperature);
+    //Serial.print(motorTemperature); Serial.print(":"); Serial.println(sevConPayload.motorTemperature);
     
     if( motorTemperature != sevConPayload.motorTemperature)
     {
@@ -149,13 +157,6 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
   }
   else if (frame.id == 0x271 )   //Receive PDO 1, device 113 
   {
-    // Serial.println(frame.data[6],16);
-    // Serial.println((uint16_t)frame.data[6]);
-    // Serial.println(((uint16_t)frame.data[6])<<8);
-    // Serial.println((((uint16_t)frame.data[6])<<8) + (uint16_t)frame.data[5]);
-    // Serial.println((float)((((uint16_t)frame.data[6])<<8) + (uint16_t)frame.data[5]));
-    // Serial.println(((float)((((uint16_t)frame.data[6])<<8) + (uint16_t)frame.data[5]))/16.0);
-
     float capVoltage = ( (float)((((uint16_t) frame.data[1])<<8) | (uint16_t)frame.data[0]))/16.0; 
     int8_t controllerTemperature = (int8_t) frame.data[2];
     float batteryCurrent = ( (float)((int16_t)((((uint16_t) frame.data[4])<<8) | (uint16_t)frame.data[3])))/16.0;
@@ -182,11 +183,11 @@ void loop()
 {
   static uint32_t waitingStart = millis();
   bool dataToTransmit = false;
-
   CanBusData_asukiaaa::Frame frame;
   
   if ( g_CAN.available()) 
   {  
+    digitalWrite(LED_RECEIVE_PIN, HIGH);
     g_CAN.receive(&frame);
     // printFrame(frame);
     // delay(3);
@@ -217,7 +218,7 @@ void loop()
   if( (dataToTransmit || millis() - waitingStart > SEND_PERIOD) )
   {   
     waitingStart = millis();
-    digitalWrite(LED_ACTION_PIN, HIGH);
+    digitalWrite(LED_TRANSMIT_PIN, HIGH);
 
     g_rf69.send((const uint8_t*) &g_payloadSevCon, sizeof (PayloadSevCon));
     if( g_rf69.waitPacketSent() )
@@ -228,10 +229,10 @@ void loop()
     {
       Serial.println(F("No packet sent"));
     }
-
     delay(10);
+    digitalWrite(LED_TRANSMIT_PIN, LOW);
   }    
 
-  digitalWrite(LED_ACTION_PIN, LOW);
+  digitalWrite(LED_RECEIVE_PIN, LOW);
 }
 
