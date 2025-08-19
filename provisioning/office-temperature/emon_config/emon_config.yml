@@ -32,6 +32,9 @@ temp:
     t1: S3-Open office rear
     t2: S3-R&D room middle
     t3: S3-Open office middle
+  6:
+    name: BOM
+    t0: Perth
 
 hws:
   0:
