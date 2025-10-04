@@ -12,15 +12,15 @@
 #include <Ports.h>
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
-#define BOAT_NETWORK
+#define HOME_NETWORK
+//#define BOAT_NETWORK
 #ifdef BOAT_NETWORK
-	#define NETWORK_FREQUENCY 915.0
-#else
 	#define NETWORK_FREQUENCY 914.0
+#elif defined( HOME_NETWORK )
+	#define NETWORK_FREQUENCY 915.0
 #endif
 
 #define GREEN_LED 9			// Green LED on emonTx
-bool g_toggleLED = false;
 
 //Pinout for MAX485
 //DI = TXD = 3
@@ -28,59 +28,72 @@ bool g_toggleLED = false;
 //DE = A4
 //RE = A5
 
+//Pinout for Serial or UART board
+// RX = 3
+// TX = 4
 
 SoftwareSerial g_sensorSerial(3,4 );	//A1=rx, A0=tx
 Daly_BMS_UART g_daly_bms(g_sensorSerial); //if using RS485 board directly  , A4, A5);
 
 PayloadDalyBMS g_payloadDalyBMS;
 
-#define EEPROM_BASE 0x10			//where the water count is stored
+#define EEPROM_BASE 0x10			//where the water
 
 RH_RF69 g_rf69;
 
-bool		 g_previousActivity = false;	//true if the last loop had activity. Allow transmit 1 second after flow activity has stopped
 
-unsigned long readEEPROM(int offset)
+bool isRF69HW()
 {
-	unsigned long value = 0;
-	char* pc = (char*)& value;
+	g_rf69.setFrequency(NETWORK_FREQUENCY + 0.5);
+	g_rf69.setTxPower(13,false);
 
-	for (long l = 0; l < sizeof(unsigned long); l++)
+	g_rf69.setModeIdle();
+	int8_t tempW = g_rf69.temperatureRead();
+	Serial.print(F("Temperature W start="));
+	Serial.print(tempW);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+	for(int i = 0; i< 300; i++)
 	{
-		*(pc + l) = EEPROM.read(EEPROM_BASE + offset + l);
+		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
+		g_rf69.waitPacketSent();
 	}
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	g_rf69.setModeIdle();
+	int8_t tempWend = g_rf69.temperatureRead();
+	tempW =  tempWend - tempW;
+	Serial.print(F(", end="));
+	Serial.print(tempWend);
+	Serial.print(F(", diff="));
+	Serial.print(tempW);
+	delay(500);
 
-	return value;
-}
-
-void writeEEPROM(int offset, unsigned long value)
-{
-	char* pc = (char*)& value;
-
-	for (long l = 0; l < sizeof(unsigned long); l++)
+	g_rf69.setTxPower(18,true);
+	g_rf69.setModeIdle();
+	int8_t tempHW = g_rf69.temperatureRead();
+	Serial.print(F("Temperature HW start="));
+	Serial.print(tempHW);
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+	for(int i = 0; i< 300; i++)
 	{
-		EEPROM.write(EEPROM_BASE + offset + l, *(pc + l));
+		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
+		g_rf69.waitPacketSent();
 	}
+	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	g_rf69.setModeIdle();
+	int8_t tempHWend = g_rf69.temperatureRead();
+	Serial.print(F(", end="));
+	Serial.print(tempHWend);
+	tempHW = tempHWend - tempHW;
+	Serial.print(F(", diff="));
+	Serial.print(tempHW);
+
+	Serial.print( "This is a RFM69" );
+	Serial.println( tempHW > tempW ? "HW" : "W" );
+	
+	g_rf69.setFrequency(NETWORK_FREQUENCY);
+	
+	return tempHW > tempW;
 }
-
-//--------------------------------------------------------------------------------------------------
-// Read Arduino voltage - not main supplyV!
-//--------------------------------------------------------------------------------------------------
-// long readVcc() {
-// 	long result;
-// 	// Read 1.1V reference against AVcc
-// 	ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-// 	delay(2); // Wait for Vref to settle
-// 	ADCSRA |= _BV(ADSC); // Convert
-// 	while (bit_is_set(ADCSRA, ADSC));
-// 	result = ADCL;
-// 	result |= ADCH << 8;
-// 	result = 1126400L / result; // Back-calculate AVcc in mV
-// 	return result;
-// }
-//--------------------------------------------------------------------------------------------------
-
-
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -103,6 +116,8 @@ void setup()
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(DALY_BMS_NODE);
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	bool isHW = isRF69HW();
+	g_rf69.setTxPower(18,isHW);
 
 	Serial.print(F("RF69 initialise node: "));
 	Serial.print(DALY_BMS_NODE);
@@ -113,15 +128,13 @@ void setup()
 	EmonEEPROM::ReadEEPROMSettings(eepromSettings);
 	EmonEEPROM::PrintEEPROMSettings(Serial, eepromSettings);
 	g_payloadDalyBMS.subnode = eepromSettings.subnode;
-
- 	g_daly_bms.Init(); // This call sets up the driver
+	
+ 	g_daly_bms.Init();
 
 	EmonSerial::PrintDalyBMSPayload(NULL);
 
-  	// Serial.println(F("Watchdog timer set for 8 seconds"));
-  	// wdt_enable(WDTO_8S);
-  	delay(2000);	//Give time for the water sensor to fill the serial buffer before the first read
-	digitalWrite(GREEN_LED, LOW);		//LED has inverted logic. LOW is on, HIGH is off!
+  	delay(1000);
+	digitalWrite(GREEN_LED, LOW);
 }
 
 //--------------------------------------------------------------------------------------------
@@ -180,9 +193,12 @@ void loop ()
 
 		for (size_t i = 0; i < size_t(g_daly_bms.get.numberOfCells); i++)
 		{
-			Serial.println("Cell voltage mV:      " + (String)g_daly_bms.get.cellVmV[i]);
+			Serial.print(F("Cell "));
+			Serial.print(i);
+			Serial.print(F("voltage mV:      "));
+			Serial.println((String)g_daly_bms.get.cellVmV[i]);
 		}
-
+		Serial.println();
 		// Alarm flags
 		// These are boolean flags that the BMS will set to indicate various issues.
 		// For all flags see the alarm struct in daly-bms-uart.h and refer to the datasheet
@@ -209,6 +225,11 @@ void loop ()
 			delay(100);
 		}
 	}
+
+	//see http://www.gammon.com.au/forum/?id=11428
+	while (!(UCSR0A & (1 << UDRE0)))  // Wait for empty transmit buffer
+		UCSR0A |= 1 << TXC0;  // mark transmission not complete
+	while (!(UCSR0A & (1 << TXC0)));   // Wait for the transmission to complete
 
 	digitalWrite(GREEN_LED, LOW);
 
