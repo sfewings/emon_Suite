@@ -56,6 +56,21 @@ services:
       - TZ=${TIMEZONE}
     restart: always
 
+  emon_gpsd_to_mqtt:
+    image: sfewings32/emon_gpsd_to_mqtt:latest
+    container_name: emon_gpsd
+    volumes:
+      - ./emon_config:/data
+      - /share/Input:/share/Input
+    depends_on:
+      - mosquitto
+    environment:
+      - SETTINGS_PATH=/data/emon_config.yml
+      - MQTT_IP=mqtt
+      - GPS_NODE_NUMBER=1
+      - TZ=${TIMEZONE}
+    restart: always
+
   emon_serial_to_mqtt:
     image: sfewings32/emon_serial_to_mqtt:latest
     container_name: emon_serial
