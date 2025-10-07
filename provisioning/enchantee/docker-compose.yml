@@ -59,16 +59,19 @@ services:
   emon_gpsd_to_mqtt:
     image: sfewings32/emon_gpsd_to_mqtt:latest
     container_name: emon_gpsd
+    # Use host network to access the gpsd service that should be running. Then set MQTT_IP to localhost instead of mqtt
+    network_mode: "host"    
     volumes:
       - ./emon_config:/data
       - /share/Input:/share/Input
-    depends_on:
-      - mosquitto
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
-      - MQTT_IP=mqtt
+      - LOG_PATH=/share/Input/gps
+      - MQTT_IP=localhost
       - GPS_NODE_NUMBER=1
       - TZ=${TIMEZONE}
+    depends_on:
+      - mosquitto
     restart: always
 
   emon_serial_to_mqtt:
