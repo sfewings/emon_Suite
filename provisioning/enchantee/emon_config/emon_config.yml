@@ -32,7 +32,7 @@ bms:
   0:
     name: Unused
   1:
-    name:Main Battery
+    name: Main Battery
 svc:
   0:
     name: SevCon
