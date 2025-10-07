@@ -7,6 +7,8 @@ from pyemonlib import emon_mqtt
 from gpsdclient import GPSDClient   #pip install gpsdclient
 
 def log_message(logPath, msg):
+    if not os.path.exists(logPath):
+        return
     time = datetime.datetime.now()
     path = f"{logPath}/{time.strftime('%Y%m%d_%H.TXT')}"
     #09/07/2021 00:00:22
