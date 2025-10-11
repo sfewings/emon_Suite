@@ -82,6 +82,7 @@ void setup ()
 	EmonSerial::PrintPressurePayload(NULL);
 	EmonSerial::PrintDalyBMSPayload(NULL);
 	EmonSerial::PrintSevConPayload(NULL);
+	EmonSerial::PrintAnemometerPayload(NULL);
 
 #ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
@@ -227,6 +228,10 @@ void loop ()
 			if (node_id == SEVCON_CAN_NODE  && len == sizeof(PayloadSevCon))
 			{
 				SERIAL_OUT(SevCon, Payload);
+			}
+			if (node_id == ANEMOMETER_NODE  && len == sizeof(PayloadAnemometer))
+			{
+				SERIAL_OUT(Anemometer, Payload);
 			}
 		}
 
