@@ -39,6 +39,8 @@ svc:
 gps:
   0:
     name: Enchantee-GPS
+  1:
+    name: RaspPi-GPS
 pth:
   0:
     name: Enchantee-Pressure
