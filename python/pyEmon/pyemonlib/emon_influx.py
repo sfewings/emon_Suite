@@ -38,6 +38,7 @@ class emon_influx:
             'pth'  : self.pthMessage,            
             'bms'  : self.bmsMessage,
             'svc'  : self.sevConMessage,
+            'mwv'  : self.mwvMessage,
             'other': self.otherMessage
         }
 
@@ -437,14 +438,14 @@ class emon_influx:
         payload = emonSuite.PayloadGPS()
         if( emonSuite.EmonSerial.ParseGPSPayload(reading,payload) ):
             try:
-                p = Point("gps").tag("sensor",f"gps/latitude/{payload.subnode}")\
+                p = Point("gps").tag("sensor",f"gps/{payload.subnode}/latitude")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-latitude")\
+                                .tag("sensorName","latitude")\
                                 .field("value",payload.latitude).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
-                p = Point("gps").tag("sensor",f"gps/longitude/{payload.subnode}")\
+                p = Point("gps").tag("sensor",f"gps/{payload.subnode}/longitude")\
                                 .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
-                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+"-longitude")\
+                                .tag("sensorName","longitude")\
                                 .field("value",payload.longitude).time(time)
                 self.write_api.write(bucket=self.bucket, record=p)
                 p = Point("gps").tag("sensor",f"gps/course/{payload.subnode}")\
@@ -570,6 +571,31 @@ class emon_influx:
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("sevConException", reading, ex)
+
+    def mwvMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadAnemometer()
+        if( emonSuite.EmonSerial.ParseAnemometerPayload(reading,payload) ):
+            try:
+                p = Point("temperature").tag("sensor",f"anemometer/temperature/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - Temperature")\
+                                .field("value",payload.temperature/1.0).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("anemometer").tag("sensor",f"anemometer/windSpeed/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"] + " - Wind Speed")\
+                                .field("value",payload.windSpeed).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+                p = Point("anemometer").tag("sensor",f"anemometer/windDirection/{payload.subnode}")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"]+ " - Wind Direction")\
+                                .field("value",payload.windDirection).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("anemometerException", reading, ex)
 
     def otherMessage(self, time, reading, nodeSettings ):
         print(reading)

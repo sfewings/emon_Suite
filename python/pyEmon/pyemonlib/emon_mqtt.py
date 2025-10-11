@@ -28,6 +28,7 @@ class emon_mqtt:
             'pth'  : self.pthMessage,            
             'bms'  : self.bmsMessage,
             'svc'  : self.sevConMessage,
+            'mwv'  : self.mwvMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
@@ -289,6 +290,18 @@ class emon_mqtt:
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("SevConException", reading, ex)
+
+    def mwvMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadAnemometer()
+        if( emonSuite.EmonSerial.ParseAnemometerPayload(reading,payload) ):
+            try:
+                self.mqttClient.publish(f"anemometer/temperature/{payload.subnode}",payload.temperature)
+                self.mqttClient.publish(f"anemometer/windSpeed/{payload.subnode}",payload.windSpeed)
+                self.mqttClient.publish(f"anemometer/windDirection/{payload.subnode}",payload.windDirection)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("AnemometerException", reading, ex)
 
 
     def otherMessage(self, reading, nodeSettings ):

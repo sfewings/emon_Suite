@@ -222,6 +222,13 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadSevCon.def_readwrite("batteryCurrent", &PayloadSevCon::batteryCurrent, "Battery current A");
     payloadSevCon.def_readwrite("rpm", &PayloadSevCon::rpm, "RPM revolutions per minute");
 
+    //PayloadAnemometer
+    py::class_<PayloadAnemometer, PayloadRelay> payloadAnemometer(m, "PayloadAnemometer");
+    payloadAnemometer.def(py::init<>());
+    payloadAnemometer.def_readwrite("subnode", &PayloadAnemometer::subnode, "allow multiple Anemometer nodes on the network");
+    payloadAnemometer.def_readwrite("windSpeed", &PayloadAnemometer::windSpeed, "Wind speed");
+    payloadAnemometer.def_readwrite("windDirection", &PayloadAnemometer::windDirection, "Wind direction (relative)");
+    payloadAnemometer.def_readwrite("temperature", &PayloadAnemometer::temperature, "Temperature C");
 
     //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
@@ -242,6 +249,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParsePressurePayload", &EmonSerial::ParsePressurePayload, "Parses from string to PayloadPressure",py::arg("string"), py::arg("PayloadPressure"));
     emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
     emonSerial.def_static("ParseSevConPayload", &EmonSerial::ParseSevConPayload, "Parses from string to PayloadSevCon",py::arg("string"), py::arg("PayloadSevCon"));
+    emonSerial.def_static("ParseAnemometerPayload", &EmonSerial::ParseAnemometerPayload, "Parses from string to PayloadAnemometer",py::arg("string"), py::arg("PayloadAnemometer"));
     emonSerial.def_static("CalcCrc", &EmonSerial::CalcCrc, "Calculates Crc on payloads",py::arg("const void*"), py::arg("byte"));
 }
 
