@@ -415,7 +415,7 @@
           ]
         }
       ],
-      "title": "New panel",
+      "title": "Vessel Speed",
       "type": "timeseries"
     }
   ],
@@ -426,12 +426,12 @@
     "list": []
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "SevCon controller",
   "uid": "714fdea5-0707-405e-89ab-cd8ee5d28cf8",
-  "version": 5
+  "version": 6
 }
