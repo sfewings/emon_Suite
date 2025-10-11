@@ -51,14 +51,14 @@ void setup()
     uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
     g_rf69.setEncryptionKey(key);
-    g_rf69.setHeaderId(DALY_BMS_NODE);
+    g_rf69.setHeaderId(ANEMOMETER_NODE);
     g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
     //when using the RH_RF69 driver with the RFM69HW module, you must setTxPowercan with isHigherPowerModule set to true
     //Otherwise, the library will not set the PA_BOOST pin high and the module will not transmit
     g_rf69.setTxPower(13,true);
 
     Serial.print(F("RF69 initialise node: "));
-    Serial.print(DALY_BMS_NODE);
+    Serial.print(ANEMOMETER_NODE);
     Serial.print(F(" Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println(F("MHz"));
 
     //initialise the EEPROMSettings for relay and node number
