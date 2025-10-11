@@ -116,8 +116,10 @@ void setup()
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(DALY_BMS_NODE);
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-	bool isHW = isRF69HW();
-	g_rf69.setTxPower(18,isHW);
+	if( isRF69HW() )
+	{
+		g_rf69.setTxPower(18,true);
+	}
 
 	Serial.print(F("RF69 initialise node: "));
 	Serial.print(DALY_BMS_NODE);
@@ -135,6 +137,7 @@ void setup()
 
   	delay(1000);
 	digitalWrite(GREEN_LED, LOW);
+  	delay(500);
 }
 
 //--------------------------------------------------------------------------------------------
