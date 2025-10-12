@@ -1,6 +1,8 @@
 //------------------------------------------------------------------------------------------------------------------------------------------------
 //emon_RaspPiSerial. Receive each packet from an emon group and write to Serial for RaspbeerryPi input
 //-------------------------------------------------------------------------------------------------------------------------------------------------
+#include <avr/wdt.h>    //watchdog timer
+
 #include <EmonShared.h>
 #include <SPI.h>
 
@@ -90,6 +92,8 @@ void setup ()
 	 				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 	g_rfRadio.setEncryptionKey(key);
 #endif
+  	wdt_enable(WDTO_8S);
+
 	SetLed(LOW);
 }
 
@@ -103,6 +107,8 @@ void loop ()
 	volatile uint8_t *data = NULL;
 	uint8_t len = 0;
 	int node_id = 0;
+
+    wdt_reset();
 
 	if(g_rfRadio.available())
 	{
