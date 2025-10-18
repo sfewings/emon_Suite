@@ -1,6 +1,7 @@
 ////////////////////////////////////////////
 #include <SoftwareSerial.h>
-#include <TinyNMEA.h>
+#include <TinyGPS++.h>
+#include <TinyGPSPlus.h>
 
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
@@ -22,7 +23,12 @@ char anemometerBuf[SERIAL_BUF_LEN];
 
 PayloadAnemometer g_payloadAnemometer;
 
-TinyNMEA anemometer;
+// The TinyGPSPlus object
+TinyGPSPlus anemometer;
+TinyGPSCustom windDirection(anemometer, "WIMWV", 1);   // $WIMWV sentence, 1st element
+TinyGPSCustom windSpeed(anemometer, "WIMWV", 3);       // $WIMWV sentence, 3rd element
+TinyGPSCustom temperature(anemometer, "YXXDR", 2);     // $YXXDR sentence, 2nd element
+
 SoftwareSerial ss(3,4); // rx, tx
 
 RH_RF69 g_rf69;
@@ -39,8 +45,8 @@ void setup()
     Serial.begin(9600);
     
     Serial.println(F("Emon anemometer start"));
-    Serial.print("Using TinyNMEA library version "); 
-    Serial.println(TinyNMEA::library_version());
+    Serial.print("Using TinyGPSPlus library version "); 
+    Serial.println(TinyGPSPlus::libraryVersion());
 
 
     if (!g_rf69.init())
@@ -68,12 +74,7 @@ void setup()
     memset(&g_payloadAnemometer, 0, sizeof(g_payloadAnemometer));
     g_payloadAnemometer.subnode = eepromSettings.subnode;
     
-    //set some defaults
-    g_payloadAnemometer.temperature = 20;
-    g_payloadAnemometer.windDirection = 180;
-    g_payloadAnemometer.windSpeed = 10;
-
-    ss.begin( 2400 );
+    ss.begin( 4800 );
 
     Serial.println("initilaised");
     delay(1000);
@@ -83,79 +84,33 @@ void setup()
 
 void loop()
 {
-    delay(1000);
-    digitalWrite(MOTEINO_LED, HIGH );
-
-    //simulation mode
-    g_payloadAnemometer.windSpeed = (float) ((int)g_payloadAnemometer.windSpeed +(int)random(0,3)-1);;
-    if( g_payloadAnemometer.windSpeed < 0 ) g_payloadAnemometer.windSpeed = 0;
-    if( g_payloadAnemometer.windSpeed > 100 ) g_payloadAnemometer.windSpeed = 100;
-
-    g_payloadAnemometer.windDirection = (float) ((int)g_payloadAnemometer.windDirection +(int)random(0,3)-1);
-    if( g_payloadAnemometer.windDirection < 0 ) g_payloadAnemometer.windDirection = 359;
-    if( g_payloadAnemometer.windDirection >= 360 ) g_payloadAnemometer.windDirection = 0;
-
-    g_payloadAnemometer.temperature = (float) ((int)g_payloadAnemometer.temperature +(int)random(0,3)-1);
-    if( g_payloadAnemometer.temperature < -10 ) g_payloadAnemometer.temperature = -10;
-    if( g_payloadAnemometer.temperature > 40 ) g_payloadAnemometer.temperature = 40;
-    
-    g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-    g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-    if( g_rf69.waitPacketSent() )
+    while (ss.available() > 0)
     {
-        EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
+        char c = ss.read();
+        anemometer.encode(c);
+        Serial.write(c);    //write the stream stright back out
     }
-    else
+
+    if( windSpeed.isUpdated() || windDirection.isUpdated() || temperature.isUpdated() )
     {
-        Serial.println(F("No packet sent"));
+        digitalWrite(MOTEINO_LED, HIGH );
+
+        g_payloadAnemometer.windSpeed = atof(windSpeed.value());
+        g_payloadAnemometer.windDirection = atof(windDirection.value());
+        g_payloadAnemometer.temperature = atof(temperature.value());
+
+        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+        g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
+        if( g_rf69.waitPacketSent() )
+        {
+            EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
+        }
+        else
+        {
+            Serial.println(F("No packet sent"));
+        }
+        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+
+        digitalWrite(MOTEINO_LED, LOW );
     }
-    g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-
-
-    digitalWrite(MOTEINO_LED, LOW );
-
-  
-    // while (ss.available())
-    // {
-    //     char c = Serial.read();
-
-    //     if( c == '$' || anemometerBufPos-2 >= SERIAL_BUF_LEN )
-    //       anemometerBufPos = 0;
-    //     anemometerBuf[anemometerBufPos++] = c;
-
-    //     Serial.write(c);    //write the stream stright back out
-    //     if( anemometer.encode(c))
-    //     {
-    //         digitalWrite(MOTEINO_LED, HIGH );
-    //         anemometerBuf[anemometerBufPos++] = '\n';
-    //         anemometerBuf[anemometerBufPos++] = '\0';
-    //         Serial.print(anemometerBuf);
-    //         anemometerBufPos = 0;
-
-    //         g_payloadAnemometer.windSpeed = (float) anemometer.windSpeed();
-    //         g_payloadAnemometer.windDirection = (float) ((anemometer.windDirection()+130)%360);
-    //         g_payloadAnemometer.temperature = (float) anemometer.temperature();
-
-    //         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-    //         g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-    //         if( g_rf69.waitPacketSent() )
-    //         {
-    //             EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
-    //         }
-    //         else
-    //         {
-    //             Serial.println(F("No packet sent"));
-    //         }
-    //         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-
-    //         // Serial.print("WIND SPEED=");
-    //         // Serial.print(anemometer.windSpeed());
-    //         // Serial.print(" WIND DIRECTION=");
-    //         // Serial.print((anemometer.windDirection()+130)%360);
-    //         // Serial.print(" TEMPERATURE=");
-    //         // Serial.println(anemometer.temperature());
-
-    //         digitalWrite(MOTEINO_LED, LOW );
-    //     }
-    // }
 }
