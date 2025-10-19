@@ -16,10 +16,8 @@
 #endif
 
 #define MOTEINO_LED 9			// LED on Moteino
-
+#define SEND_INTERVAL_MS 2000   //send at least every 2 seconds. Data is currently received at ~5Hz
 #define SERIAL_BUF_LEN 200
-int anemometerBufPos;
-char anemometerBuf[SERIAL_BUF_LEN];
 
 PayloadAnemometer g_payloadAnemometer;
 
@@ -40,19 +38,17 @@ void setup()
     pinMode(MOTEINO_LED, OUTPUT);     
     digitalWrite(MOTEINO_LED, HIGH );
 
-    anemometerBufPos = 0;
-
     Serial.begin(9600);
     
     Serial.println(F("Emon anemometer start"));
-    Serial.print("Using TinyGPSPlus library version "); 
+    Serial.print(F("Using TinyGPSPlus library version ")); 
     Serial.println(TinyGPSPlus::libraryVersion());
 
 
     if (!g_rf69.init())
-        Serial.println("rf69 init failed");
+        Serial.println(F("rf69 init failed"));
     if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
-        Serial.println("rf69 setFrequency failed");
+        Serial.println(F("rf69 setFrequency failed"));
     // The encryption key has to be the same as the one in the client
     uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -76,28 +72,48 @@ void setup()
     
     ss.begin( 4800 );
 
-    Serial.println("initilaised");
     delay(1000);
-
+    
     digitalWrite(MOTEINO_LED, LOW );
 }
 
 void loop()
 {
+    static unsigned long lastSendTime = millis();
+    static bool receivedData = false;  //true if we are getting some data from the anemometer
+    bool dataToSend = false;           //true if the data received has changed and we should send it immeditely
+
     while (ss.available() > 0)
     {
         char c = ss.read();
         anemometer.encode(c);
-        Serial.write(c);    //write the stream stright back out
+        //Serial.write(c);    //write the stream stright back out
     }
 
-    if( windSpeed.isUpdated() || windDirection.isUpdated() || temperature.isUpdated() )
+    if ( windSpeed.isUpdated()  || windDirection.isUpdated() || temperature.isUpdated() )
+    {
+        receivedData = true;
+        if( atof(windSpeed.value())     != g_payloadAnemometer.windSpeed || 
+            atof(windDirection.value()) != g_payloadAnemometer.windDirection  || 
+            atof(temperature.value())   != g_payloadAnemometer.temperature )
+        {
+            g_payloadAnemometer.windSpeed = atof(windSpeed.value());
+            g_payloadAnemometer.windDirection = atof(windDirection.value());
+            g_payloadAnemometer.temperature = atof(temperature.value());
+            dataToSend = true;
+         }
+    }
+
+    //we only send data if we are still receiving something from the anemometer and either the data has changed or the send interval has elapsed
+    // this prevents us sending packets if the anemoeter is not working and flooding the network with unchanged data
+    if( receivedData && 
+        (dataToSend || (millis() - lastSendTime) >= SEND_INTERVAL_MS ) )
     {
         digitalWrite(MOTEINO_LED, HIGH );
+        lastSendTime = millis();
 
-        g_payloadAnemometer.windSpeed = atof(windSpeed.value());
-        g_payloadAnemometer.windDirection = atof(windDirection.value());
-        g_payloadAnemometer.temperature = atof(temperature.value());
+        receivedData = false;
+        dataToSend = false;
 
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
         g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
