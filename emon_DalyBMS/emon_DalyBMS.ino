@@ -90,7 +90,9 @@ bool isRF69HW()
 	Serial.print( "This is a RFM69" );
 	Serial.println( tempHW > tempW ? "HW" : "W" );
 	
+	//restore settings
 	g_rf69.setFrequency(NETWORK_FREQUENCY);
+	g_rf69.setTxPower(13,false);
 	
 	return tempHW > tempW;
 }
@@ -116,10 +118,10 @@ void setup()
 	g_rf69.setEncryptionKey(key);
 	g_rf69.setHeaderId(DALY_BMS_NODE);
 	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-	if( isRF69HW() )
-	{
-		g_rf69.setTxPower(18,true);
-	}
+	// if( isRF69HW() )
+	// {
+	// 	g_rf69.setTxPower(18,true);
+	// }
 
 	Serial.print(F("RF69 initialise node: "));
 	Serial.print(DALY_BMS_NODE);
