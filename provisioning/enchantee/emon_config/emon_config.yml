@@ -44,4 +44,7 @@ gps:
 pth:
   0:
     name: Enchantee-Pressure
+mwv:
+  0:
+    name: Anemometer
 

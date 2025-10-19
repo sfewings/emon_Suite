@@ -38,7 +38,8 @@ typedef unsigned char byte;
 #define GPS_NODE 25					//Node for GPS unit
 #define PRESSURE_NODE 26			//Node for BM unit
 #define DALY_BMS_NODE 27			//Node for a Daly BMS
-#define SEVCON_CAN_NODE 28			//Node for a Daly BMS
+#define SEVCON_CAN_NODE 28			//Node for Sevcon Gen4 motor controller CAN bus
+#define ANEMOMETER_NODE 29			//Node for anemometer
 
 
 #define MAX_SUBNODES	8			//Maximum number of disp and temp nodes supported
@@ -224,6 +225,13 @@ typedef struct PayloadSevCon : PayloadRelay {
 	int16_t rpm;									//
 } PayloadSevCon;
 
+typedef struct PayloadAnemometer : PayloadRelay {
+	byte subnode;
+	float windSpeed;
+	float windDirection;
+	float temperature;
+} PayloadAnemometer;
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -246,6 +254,7 @@ public:
 	static void PrintPressurePayload(PayloadPressure* pPayloadPressure, unsigned long timeSinceLast = 0);
 	static void PrintDalyBMSPayload(PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 	static void PrintSevConPayload(PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
+	static void PrintAnemometerPayload(PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast = 0);
 	
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -266,6 +275,7 @@ public:
 	static void PrintPressurePayload(Stream& stream, PayloadPressure* pPayloadPressure, unsigned long timeSinceLast = 0);
 	static void PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 	static void PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
+	static void PrintAnemometerPayload(Stream& stream, PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast = 0);
 
 #endif
 	static uint16_t CalcCrc(const void* ptr, byte len);
@@ -291,6 +301,7 @@ public:
 	static int ParsePressurePayload(char* str, PayloadPressure* pPayloadPressure);
 	static int ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS);
 	static int ParseSevConPayload(char* str, PayloadSevCon* pPayloadSevCon);
+	static int ParseAnemometerPayload(char* str, PayloadAnemometer* pPayloadAnemometer);
 };
 
 

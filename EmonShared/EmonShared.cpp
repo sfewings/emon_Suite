@@ -674,6 +674,37 @@ void EmonSerial::PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCo
 	stream.println();
 }
 
+void EmonSerial::PrintAnemometerPayload(PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast)
+{
+	PrintAnemometerPayload(Serial, pPayloadAnemometer, timeSinceLast);
+}
+
+void EmonSerial::PrintAnemometerPayload(Stream& stream, PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast)
+{
+	if (pPayloadAnemometer == NULL)
+	{
+		stream.print(F("mwv,subnode,windSpeed,windDirection,temperature"));
+	}
+	else
+	{
+		stream.print(F("mwv,"));
+		stream.print(pPayloadAnemometer->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadAnemometer->windSpeed,1);
+		stream.print(F(","));
+		stream.print(pPayloadAnemometer->windDirection,1);
+		stream.print(F(","));
+		stream.print(pPayloadAnemometer->temperature,1);
+		PrintRelay(stream, pPayloadAnemometer);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 uint16_t EmonSerial::CalcCrc(const void* ptr, byte len)
@@ -1452,6 +1483,35 @@ int EmonSerial::ParseSevConPayload(char* str, PayloadSevCon* pPayloadSevCon)
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadSevCon, pch);
+	}
+	return version;
+}
+
+
+int EmonSerial::ParseAnemometerPayload(char* str, PayloadAnemometer* pPayloadAnemometer)
+{
+	memset(pPayloadAnemometer, 0, sizeof(PayloadAnemometer));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "mwv"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadAnemometer->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAnemometer->windSpeed = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAnemometer->windDirection = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadAnemometer->temperature = atof(pch);
+
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadAnemometer, pch);
 	}
 	return version;
 }
