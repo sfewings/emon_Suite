@@ -4,6 +4,7 @@
 #include <EmonShared.h>
 #include <RH_RF69.h>
 #include <SoftwareSerial.h>
+#include <avr/wdt.h>    //watchdog timer
 
 static const auto CS_PIN                  = 5;
 static const auto LED_ACTION_PIN          = 6;
@@ -110,6 +111,7 @@ void setup()
 
   EmonSerial::PrintLeafPayload(NULL);
   //Serial.println(F("0x5BC,LB_Remain_Capacity,LB_New_Full_Capacity,LB_Remaining_Capacity_Segment,LB_Average_Battery_Temperature,LB_Capacity_Deterioration_Rate,LB_Remaining_Capaci_Segment_Switch,LB_Output_Power_Limit_Reason,LB_Capacity_Bal_Complete_Flag,LB_Remain_charge_time_condition,LB_Remain_charge_time"));
+  wdt_enable(WDTO_8S);
 }
 
 
@@ -226,9 +228,15 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     //Serial.print(F("0x5B9"));
     //Serial.print(F(","));Serial.print(chargeMinutesRemaining);
     //Serial.println();
+    
+    //we disable the watchdog here as we only want watchdog to be working on the CAR_CAN_unit
+    wdt_disable();  
   }
   else if( frame.id == 0x5BC )
   {
+    //we disable the watchdog here as we only want watchdog to be working on the CAR_CAN_unit
+    wdt_disable();
+
     //EV Bus : remaining capacity, SOH, Charge bars, battery temperature
     unsigned long LB_Remain_Capacity   = ((((unsigned long)(frame.data[0]))<<2)  + (((unsigned long)frame.data[1])>>6) )*80;
     unsigned long LB_New_Full_Capacity = ((((unsigned long)frame.data[1])<<4)  + (((unsigned long)frame.data[2])>>4) )*80;
@@ -284,6 +292,8 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame)
     return updateRequired;
   }
 
+
+
   return false;
 }
 
@@ -296,6 +306,8 @@ void loop()
   
   if ( g_CAN.available()) 
   {
+    wdt_reset();
+
     g_CAN.receive(&frame);
     int index = -1;
     for(int i=0;i < NUM_MESSAGES; i++)
