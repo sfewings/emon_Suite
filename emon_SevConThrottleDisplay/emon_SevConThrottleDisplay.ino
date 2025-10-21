@@ -30,14 +30,15 @@ PayloadSevCon       g_payloadSevCon;
 
 uint8_t readLDR()
 {
-    const int NUM_LOOPS = 10;
-    long l = 0;
-    for(int i=0; i <NUM_LOOPS; i++)
-        l += analogRead( LDR_PIN );
-    float value = l/NUM_LOOPS;
-    uint8_t intensity = 1+(uint8_t) sqrt(62.5*value);
-    //Serial.print(value);Serial.print(", ");Serial.println(intensity);
-    return intensity;    
+    // const int NUM_LOOPS = 10;
+    // long l = 0;
+    // for(int i=0; i <NUM_LOOPS; i++)
+    //     l += analogRead( LDR_PIN );
+    // float value = l/NUM_LOOPS;
+    // uint8_t intensity = 1+(uint8_t) sqrt(62.5*value);
+    // //Serial.print(value);Serial.print(", ");Serial.println(intensity);
+    // return intensity;    
+    return 12; //analogRead(LDR_PIN);
 }
 
 
@@ -57,8 +58,11 @@ void updateRotatingPixel(RgbColor inColour, unsigned long stepMs, int direction 
     int dir = (direction >= 0) ? 1 : -1;
 
     unsigned long now = millis();
+   // Serial.print(now - lastMove); Serial.print(",");
     if (now - lastMove < stepMs)
         return; // not time to move yet
+
+    //Serial.println();
 
     lastMove = now;
 
@@ -104,29 +108,30 @@ void pulseAllPixels(RgbColor colour, unsigned long pulseTime, uint8_t intensityL
 
     unsigned long now = millis();
     unsigned long elapsed = now - startTime;
-    unsigned long phase = elapsed % pulseTime;
-
-    // triangular wave: 0 -> 255 -> 0 over pulseTime
-    unsigned long half = pulseTime / 2;
-    uint8_t intensity;
-    if (phase <= half)
-    {
-        // rising edge: map [0..half] -> [0..255]
-        unsigned long denom = (half == 0) ? 1 : half;
-        intensity = (uint8_t)(((phase * 255UL) / denom) * intensityLDR / 255UL);
-    }
-    else
-    {
-        // falling edge: map (half..pulseTime) -> (255..0)
-        unsigned long d = phase - half;
-        unsigned long denom = (pulseTime - half == 0) ? 1 : (pulseTime - half);
-        intensity = (uint8_t)((255UL - ((d * 255UL) / denom))* intensityLDR / 255UL);
-    }
-
-    // scale colour by intensity and set all pixels
-    RgbColor col = RgbColor((colour.R * intensity) / 255, (colour.G * intensity) / 255, (colour.B * intensity) / 255);
     for (uint16_t i = 0; i < NUM_PIXELS; ++i)
     {
+        unsigned long phase = (elapsed+i*pulseTime/NUM_PIXELS) % pulseTime;
+
+        // triangular wave: 0 -> 255 -> 0 over pulseTime
+        unsigned long half = pulseTime / 2;
+        uint8_t intensity;
+        if (phase <= half)
+        {
+            // rising edge: map [0..half] -> [0..255]
+            unsigned long denom = (half == 0) ? 1 : half;
+            intensity = (uint8_t)(((phase * 255UL) / denom) * intensityLDR / 255UL);
+        }
+        else
+        {
+            // falling edge: map (half..pulseTime) -> (255..0)
+            unsigned long d = phase - half;
+            unsigned long denom = (pulseTime - half == 0) ? 1 : (pulseTime - half);
+            intensity = (uint8_t)((255UL - ((d * 255UL) / denom))* intensityLDR / 255UL);
+        }
+
+        // scale colour by intensity and set all pixels
+        RgbColor col = RgbColor((colour.R * intensity) / 255, (colour.G * intensity) / 255, (colour.B * intensity) / 255);
+
         strip.SetPixelColor(i, col);
     }
     strip.Show();
@@ -135,8 +140,9 @@ void pulseAllPixels(RgbColor colour, unsigned long pulseTime, uint8_t intensityL
 void testRotatingPixels()
 {
     uint8_t intensity = readLDR();
-    Serial.print(F("LDR Intensity=")); Serial.println(intensity);
-    
+//    Serial.print(F("LDR Intensity=")); Serial.println(intensity);
+//    uint8_t intensity = 255;
+
     unsigned long mode = millis() %60000;
 
     if( mode < 30000 ) 
@@ -149,7 +155,8 @@ void testRotatingPixels()
             direction = -1;
             speed = 30 - speed;
         }
-        speed = speed*2;
+//        Serial.println(speed);
+        //speed = speed*2;
         RgbColor colour = RgbColor(0,255,0); // default green
         switch ((millis() %6000)/1000)
         {
@@ -224,8 +231,8 @@ void setup()
 
 void loop()
 {
-    //testRotatingPixels();
-    //return;
+    testRotatingPixels();
+    return;
 
     static unsigned long lastReceivedFromSevCon = millis();
 
@@ -260,7 +267,7 @@ void loop()
     }
 
     uint8_t intensity = readLDR();
-    Serial.print(F("LDR Intensity=")); Serial.println(intensity);
+    //Serial.print(F("LDR Intensity=")); Serial.println(intensity);
 
     if( abs(g_payloadSevCon.rpm) <5 )
     {
@@ -276,12 +283,12 @@ void loop()
         //Overall pixel intensity is based on LDR intensity
         //Colour is based on controller temperature
 
-        int speed = map( abs(g_payloadSevCon.rpm), 0, 2000, 50, 1); // map 0-2000rpm to 50-1ms step
-        speed = constrain(speed, 1, 50);
+        int speed = map( abs(g_payloadSevCon.rpm), 0, 1800, 20, 1); // map 0-2000rpm to 50-1ms step
+        speed = constrain(speed, 1, 20);
         int direction = (g_payloadSevCon.rpm >0) ? 1 : -1;
         uint16_t numPixelsLit = map( abs(intensity), 0, 255, 1, 10);
         numPixelsLit = constrain(numPixelsLit, 1, 10);
-
+        Serial.print(F("RPM:"));Serial.print(g_payloadSevCon.rpm);Serial.print(F("Speed:"));Serial.print(speed);Serial.println();
         RgbColor colour = RgbColor(0,255,0); // default green
         switch( g_payloadSevCon.controllerTemperature )
         {
