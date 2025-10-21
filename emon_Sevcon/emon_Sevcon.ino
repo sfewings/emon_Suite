@@ -8,7 +8,7 @@
 static const auto CS_PIN                  = 5;      //CAN chip select pin
 static const auto LED_RECEIVE_PIN         = 9;      //The default LED on the moteino to indicate a CAN packet is received
 static const auto LED_TRANSMIT_PIN        = 6;      //LED to indicate an emon data packet is being transmitted
-static const uint32_t SEND_PERIOD         = 1000*30;//30 seconds if no data updates otherwise.
+static const uint32_t SEND_PERIOD         = 1000*3; //3 seconds if no data updates otherwise.
 
 static const int ALL_MESSAGE_IDs[]        = {0x411, 0x454, 0x271};
 static const int NUM_MESSAGES             = sizeof(ALL_MESSAGE_IDs)/sizeof(ALL_MESSAGE_IDs[1]);
@@ -182,6 +182,7 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
 void loop() 
 {
   static uint32_t waitingStart = millis();
+  static uint32_t lastCANMessageReceived = millis();
   bool dataToTransmit = false;
   CanBusData_asukiaaa::Frame frame;
   
@@ -189,6 +190,7 @@ void loop()
   {  
     digitalWrite(LED_RECEIVE_PIN, HIGH);
     g_CAN.receive(&frame);
+    lastCANMessageReceived = millis();
     // printFrame(frame);
     // delay(3);
 
@@ -215,7 +217,8 @@ void loop()
   }
 
   //are we ready to transmit the packet?
-  if( (dataToTransmit || millis() - waitingStart > SEND_PERIOD) )
+  if( millis() - lastCANMessageReceived <2000 &&
+     (dataToTransmit || millis() - waitingStart > SEND_PERIOD) )
   {   
     waitingStart = millis();
     digitalWrite(LED_TRANSMIT_PIN, HIGH);
