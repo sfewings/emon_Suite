@@ -30,15 +30,47 @@ PayloadSevCon       g_payloadSevCon;
 
 uint8_t readLDR()
 {
-    // const int NUM_LOOPS = 10;
-    // long l = 0;
-    // for(int i=0; i <NUM_LOOPS; i++)
-    //     l += analogRead( LDR_PIN );
-    // float value = l/NUM_LOOPS;
-    // uint8_t intensity = 1+(uint8_t) sqrt(62.5*value);
-    // //Serial.print(value);Serial.print(", ");Serial.println(intensity);
-    // return intensity;    
-    return 12; //analogRead(LDR_PIN);
+    const uint8_t BUF_SIZE = 10;
+    static uint16_t buf[BUF_SIZE];
+    static uint8_t idx = 0;
+    static uint8_t count = 0;
+
+    // single analog read per call
+    int raw = analogRead(LDR_PIN); // 0..1023
+    raw = sqrt(250.0*raw); // approx. linearize response
+    // compute current average of stored values (before inserting new)
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < count; ++i) sum += buf[i];
+    uint16_t avgRaw = (count == 0) ? raw : (uint16_t)(sum / count);
+
+    // despike: allow +/-20% around current average
+    // if (count > 0)
+    // {
+    //     int lower = avgRaw - (avgRaw * 20) / 100;
+    //     int upper = avgRaw + (avgRaw * 20) / 100;
+    //     if (lower < 0) lower = 0;
+    //     if (upper > 1023) upper = 1023;
+
+    //     if (raw < lower || raw > upper)
+    //     {
+    //         // treat as spike -> use current average instead of raw
+    //         raw = avgRaw;
+    //     }
+    // }
+
+    // store accepted reading in circular buffer
+    buf[idx] = (uint16_t)raw;
+    idx = (idx + 1) % BUF_SIZE;
+    if (count < BUF_SIZE) ++count;
+
+    // compute average of last up to 10 readings
+    sum = 0;
+    for (uint8_t i = 0; i < count; ++i) sum += buf[i];
+    avgRaw = (uint16_t)(sum / count);
+
+    // scale 0..1023 -> 0..255
+    uint8_t intensity = (uint8_t)((avgRaw * 255UL) / 1023UL);
+    return intensity;
 }
 
 
@@ -108,40 +140,82 @@ void pulseAllPixels(RgbColor colour, unsigned long pulseTime, uint8_t intensityL
 
     unsigned long now = millis();
     unsigned long elapsed = now - startTime;
+    unsigned long phase = elapsed % pulseTime;
+
+    // triangular wave: 0 -> 255 -> 0 over pulseTime
+    unsigned long half = pulseTime / 2;
+    uint8_t intensity;
+    if (phase <= half)
+    {
+        // rising edge: map [0..half] -> [0..255]
+        unsigned long denom = (half == 0) ? 1 : half;
+        intensity = (uint8_t)(((phase * 255UL) / denom) * intensityLDR / 255UL);
+    }
+    else
+    {
+        // falling edge: map (half..pulseTime) -> (255..0)
+        unsigned long d = phase - half;
+        unsigned long denom = (pulseTime - half == 0) ? 1 : (pulseTime - half);
+        intensity = (uint8_t)((255UL - ((d * 255UL) / denom))* intensityLDR / 255UL);
+    }
+
+    // scale colour by intensity and set all pixels
+    RgbColor col = RgbColor((colour.R * intensity) / 255, (colour.G * intensity) / 255, (colour.B * intensity) / 255);
     for (uint16_t i = 0; i < NUM_PIXELS; ++i)
     {
-        unsigned long phase = (elapsed+i*pulseTime/NUM_PIXELS) % pulseTime;
-
-        // triangular wave: 0 -> 255 -> 0 over pulseTime
-        unsigned long half = pulseTime / 2;
-        uint8_t intensity;
-        if (phase <= half)
-        {
-            // rising edge: map [0..half] -> [0..255]
-            unsigned long denom = (half == 0) ? 1 : half;
-            intensity = (uint8_t)(((phase * 255UL) / denom) * intensityLDR / 255UL);
-        }
-        else
-        {
-            // falling edge: map (half..pulseTime) -> (255..0)
-            unsigned long d = phase - half;
-            unsigned long denom = (pulseTime - half == 0) ? 1 : (pulseTime - half);
-            intensity = (uint8_t)((255UL - ((d * 255UL) / denom))* intensityLDR / 255UL);
-        }
-
-        // scale colour by intensity and set all pixels
-        RgbColor col = RgbColor((colour.R * intensity) / 255, (colour.G * intensity) / 255, (colour.B * intensity) / 255);
-
         strip.SetPixelColor(i, col);
     }
     strip.Show();
 }
 
+//{
+//     static unsigned long startTime = 0;
+//     static bool started = false;
+
+//     if (!started)
+//     {
+//         startTime = millis();
+//         started = true;
+//     }
+
+//     if (pulseTime == 0)
+//         pulseTime = 1; // avoid div-by-zero
+
+//     unsigned long now = millis();
+//     unsigned long elapsed = now - startTime;
+//     for (uint16_t i = 0; i < NUM_PIXELS; ++i)
+//     {
+//         unsigned long phase = (elapsed+i*pulseTime/NUM_PIXELS) % pulseTime;
+
+//         // triangular wave: 0 -> 255 -> 0 over pulseTime
+//         unsigned long half = pulseTime / 2;
+//         uint8_t intensity;
+//         if (phase <= half)
+//         {
+//             // rising edge: map [0..half] -> [0..255]
+//             unsigned long denom = (half == 0) ? 1 : half;
+//             intensity = (uint8_t)(((phase * 255UL) / denom) * intensityLDR / 255UL);
+//         }
+//         else
+//         {
+//             // falling edge: map (half..pulseTime) -> (255..0)
+//             unsigned long d = phase - half;
+//             unsigned long denom = (pulseTime - half == 0) ? 1 : (pulseTime - half);
+//             intensity = (uint8_t)((255UL - ((d * 255UL) / denom))* intensityLDR / 255UL);
+//         }
+
+//         // scale colour by intensity and set all pixels
+//         RgbColor col = RgbColor((colour.R * intensity) / 255, (colour.G * intensity) / 255, (colour.B * intensity) / 255);
+
+//         strip.SetPixelColor(i, col);
+//     }
+//     strip.Show();
+// }
+
 void testRotatingPixels()
 {
     uint8_t intensity = readLDR();
-//    Serial.print(F("LDR Intensity=")); Serial.println(intensity);
-//    uint8_t intensity = 255;
+    Serial.print(F("LDR Intensity=")); Serial.println(intensity);
 
     unsigned long mode = millis() %60000;
 
@@ -231,8 +305,8 @@ void setup()
 
 void loop()
 {
-    testRotatingPixels();
-    return;
+    //testRotatingPixels();
+    //return;
 
     static unsigned long lastReceivedFromSevCon = millis();
 
@@ -267,8 +341,7 @@ void loop()
     }
 
     uint8_t intensity = readLDR();
-    //Serial.print(F("LDR Intensity=")); Serial.println(intensity);
-
+ 
     if( abs(g_payloadSevCon.rpm) <5 )
     {
         //pulse all the pixels if the motor is idle
