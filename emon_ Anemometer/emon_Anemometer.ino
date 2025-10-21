@@ -16,6 +16,7 @@
 #endif
 
 #define MOTEINO_LED 9			// LED on Moteino
+#define UART_PCB_LED 7          //LED on the UART to RS232 breakout board
 #define SEND_INTERVAL_MS 2000   //send at least every 2 seconds. Data is currently received at ~5Hz
 #define SERIAL_BUF_LEN 200
 
@@ -37,6 +38,8 @@ void setup()
 {
     pinMode(MOTEINO_LED, OUTPUT);     
     digitalWrite(MOTEINO_LED, HIGH );
+    pinMode(UART_PCB_LED, OUTPUT);
+    digitalWrite(UART_PCB_LED, HIGH);
 
     Serial.begin(9600);
     
@@ -75,12 +78,13 @@ void setup()
     delay(1000);
     
     digitalWrite(MOTEINO_LED, LOW );
+    digitalWrite(UART_PCB_LED, LOW );
 }
 
 void loop()
 {
     static unsigned long lastSendTime = millis();
-    static bool receivedData = false;  //true if we are getting some data from the anemometer
+    static bool receivedData = false;  //true if we are getting any data from the anemometer
     bool dataToSend = false;           //true if the data received has changed and we should send it immeditely
 
     while (ss.available() > 0)
@@ -92,6 +96,7 @@ void loop()
 
     if ( windSpeed.isUpdated()  || windDirection.isUpdated() || temperature.isUpdated() )
     {
+        digitalWrite(UART_PCB_LED, HIGH);
         receivedData = true;
         if( atof(windSpeed.value())     != g_payloadAnemometer.windSpeed || 
             atof(windDirection.value()) != g_payloadAnemometer.windDirection  || 
@@ -102,6 +107,7 @@ void loop()
             g_payloadAnemometer.temperature = atof(temperature.value());
             dataToSend = true;
          }
+        digitalWrite(UART_PCB_LED, LOW);
     }
 
     //we only send data if we are still receiving something from the anemometer and either the data has changed or the send interval has elapsed
@@ -112,7 +118,6 @@ void loop()
         digitalWrite(MOTEINO_LED, HIGH );
         lastSendTime = millis();
 
-        receivedData = false;
         dataToSend = false;
 
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
