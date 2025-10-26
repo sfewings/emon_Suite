@@ -40,7 +40,8 @@ uint8_t readLDR()
     raw = sqrt(250.0*raw); // approx. linearize response
     // compute current average of stored values (before inserting new)
     uint32_t sum = 0;
-    for (uint8_t i = 0; i < count; ++i) sum += buf[i];
+    for (uint8_t i = 0; i < count; ++i) 
+        sum += buf[i];
     uint16_t avgRaw = (count == 0) ? raw : (uint16_t)(sum / count);
 
     // despike: allow +/-20% around current average
@@ -65,7 +66,8 @@ uint8_t readLDR()
 
     // compute average of last up to 10 readings
     sum = 0;
-    for (uint8_t i = 0; i < count; ++i) sum += buf[i];
+    for (uint8_t i = 0; i < count; ++i) 
+        sum += buf[i];
     avgRaw = (uint16_t)(sum / count);
 
     // scale 0..1023 -> 0..255
@@ -90,11 +92,11 @@ void updateRotatingPixel(RgbColor inColour, unsigned long stepMs, int direction 
     int dir = (direction >= 0) ? 1 : -1;
 
     unsigned long now = millis();
-   // Serial.print(now - lastMove); Serial.print(",");
+    Serial.print(now - lastMove); Serial.print(",");
     if (now - lastMove < stepMs)
         return; // not time to move yet
 
-    //Serial.println();
+    Serial.println(stepMs);
 
     lastMove = now;
 
@@ -168,54 +170,10 @@ void pulseAllPixels(RgbColor colour, unsigned long pulseTime, uint8_t intensityL
     strip.Show();
 }
 
-//{
-//     static unsigned long startTime = 0;
-//     static bool started = false;
-
-//     if (!started)
-//     {
-//         startTime = millis();
-//         started = true;
-//     }
-
-//     if (pulseTime == 0)
-//         pulseTime = 1; // avoid div-by-zero
-
-//     unsigned long now = millis();
-//     unsigned long elapsed = now - startTime;
-//     for (uint16_t i = 0; i < NUM_PIXELS; ++i)
-//     {
-//         unsigned long phase = (elapsed+i*pulseTime/NUM_PIXELS) % pulseTime;
-
-//         // triangular wave: 0 -> 255 -> 0 over pulseTime
-//         unsigned long half = pulseTime / 2;
-//         uint8_t intensity;
-//         if (phase <= half)
-//         {
-//             // rising edge: map [0..half] -> [0..255]
-//             unsigned long denom = (half == 0) ? 1 : half;
-//             intensity = (uint8_t)(((phase * 255UL) / denom) * intensityLDR / 255UL);
-//         }
-//         else
-//         {
-//             // falling edge: map (half..pulseTime) -> (255..0)
-//             unsigned long d = phase - half;
-//             unsigned long denom = (pulseTime - half == 0) ? 1 : (pulseTime - half);
-//             intensity = (uint8_t)((255UL - ((d * 255UL) / denom))* intensityLDR / 255UL);
-//         }
-
-//         // scale colour by intensity and set all pixels
-//         RgbColor col = RgbColor((colour.R * intensity) / 255, (colour.G * intensity) / 255, (colour.B * intensity) / 255);
-
-//         strip.SetPixelColor(i, col);
-//     }
-//     strip.Show();
-// }
-
 void testRotatingPixels()
 {
     uint8_t intensity = readLDR();
-    Serial.print(F("LDR Intensity=")); Serial.println(intensity);
+    //Serial.print(F("LDR Intensity=")); Serial.println(intensity);
 
     unsigned long mode = millis() %60000;
 
@@ -305,8 +263,8 @@ void setup()
 
 void loop()
 {
-    //testRotatingPixels();
-    //return;
+    testRotatingPixels();
+    return;
 
     static unsigned long lastReceivedFromSevCon = millis();
 
