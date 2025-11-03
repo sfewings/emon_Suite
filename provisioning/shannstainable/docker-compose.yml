@@ -43,6 +43,7 @@ services:
       - GF_SERVER_ROOT_URL=${GRAFANA_URL}
       - GF_SERVER_DOMAIN=${DOMAIN_NAME}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SECURITY_ALLOW_EMBEDDING=true
     restart: always
   mosquitto:
     image: eclipse-mosquitto
