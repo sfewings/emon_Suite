@@ -175,6 +175,17 @@ bat:
     v6: Unused
     v7: Unused
     v8: Unused
+  6:
+    name: 12v series monitor
+    v0: Battery 1
+    v1: Battery 2
+    v2: Battery 3
+    v3: Battery 4
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Unused
 air:
   0:
     name: Kitchen
