@@ -107,7 +107,6 @@ void loop()
             g_payloadAnemometer.temperature = atof(temperature.value());
             dataToSend = true;
          }
-        digitalWrite(UART_PCB_LED, LOW);
     }
 
     //we only send data if we are still receiving something from the anemometer and either the data has changed or the send interval has elapsed
@@ -120,6 +119,7 @@ void loop()
 
         dataToSend = false;
 
+        ss.stopListening();
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
         g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
         if( g_rf69.waitPacketSent() )
@@ -131,7 +131,9 @@ void loop()
             Serial.println(F("No packet sent"));
         }
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-
+        ss.listen();
         digitalWrite(MOTEINO_LED, LOW );
     }
+
+    digitalWrite(UART_PCB_LED, LOW);
 }
