@@ -177,6 +177,9 @@ bat:
     v8: Unused
   6:
     name: 12v series monitor
+    s0: Unused
+    s1: Unused
+    s2: Unused
     v0: Battery 1
     v1: Battery 2
     v2: Battery 3
