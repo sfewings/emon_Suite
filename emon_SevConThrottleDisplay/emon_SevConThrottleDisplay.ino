@@ -170,15 +170,25 @@ void pulseAllPixels(RgbColor colour, unsigned long pulseTime, uint8_t intensityL
     strip.Show();
 }
 
-void testRotatingPixels()
+void turnAllOnTest()
+{
+    for (uint16_t i = 0; i < NUM_PIXELS; ++i)
+    {
+        strip.SetPixelColor(i, RgbColor(255,255,255));
+    }
+    strip.Show();
+}
+
+void testRotatingPixelsAndPulse()
 {
     uint8_t intensity = readLDR();
     //Serial.print(F("LDR Intensity=")); Serial.println(intensity);
 
     unsigned long mode = millis() %60000;
 
-    if( mode < 30000 ) 
+    if( mode > 30000 ) 
     {
+        //rotatating pixels
         unsigned long time = millis() % 30000;
         int direction = 1;
         int speed = time / 1000; // 0-599
@@ -227,10 +237,10 @@ void testRotatingPixels()
     }
     else 
     {
+        //pulse all pixels red
         pulseAllPixels(RgbColor(255,0,0), 2000, intensity); // red, 2 second pulse
     }
 }
-
 
 void setup()
 {
@@ -263,7 +273,10 @@ void setup()
 
 void loop()
 {
-    testRotatingPixels();
+    pulseAllPixels(RgbColor(255,0,0), 2000, 255U); // red, 2 second pulse
+    return;
+    
+    testRotatingPixelsAndPulse();
     return;
 
     static unsigned long lastReceivedFromSevCon = millis();
@@ -339,5 +352,4 @@ void loop()
 
         updateRotatingPixel(colour, speed, direction, intensity, numPixelsLit);
     }
-    
 }
