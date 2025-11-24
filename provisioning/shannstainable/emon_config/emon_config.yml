@@ -93,10 +93,10 @@ bat:
     s2: Bank 3 (old batteries)
     v0: Rail
     v0_reference: true
-    v1: B1-4
-    v2: B1-3
-    v3: B1-2
-    v4: B1-1
+    v1: B2-5
+    v2: Unused
+    v3: Unused
+    v4: Unused
     v5: B2-4
     v6: B2-3
     v7: B2-2
@@ -189,7 +189,21 @@ bat:
     v6: Unused
     v7: Unused
     v8: Unused
-
+  7:
+    name: 12v series monitor (Normalised)
+    s0: Unused
+    s1: Unused
+    s2: Unused
+    v0: Battery 1
+    v1: Battery 2
+    v2: Battery 3
+    v3: Battery 4
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Unused
+    
 air:
   0:
     name: Kitchen
