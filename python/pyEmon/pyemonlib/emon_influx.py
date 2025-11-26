@@ -6,6 +6,7 @@ import datetime
 import pytz
 import os
 import yaml
+import re
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 
@@ -211,6 +212,18 @@ class emon_influx:
             except Exception as ex:
                 self.printException("scaleException", reading, ex)
 
+    def find_v_reference(config):
+        """
+        Returns X (int) where 'vX_reference' == True.
+        Returns -1 if no v_X_reference found.
+        """
+        for k, val in config.items():
+            if(isinstance(k, str) and k.endswith('_reference')):
+                m = re.match(r'^v(\d+)_reference$', k)
+                if m and val is True:
+                    return int(m.group(1))
+        return -1
+
     def batteryMessage(self, time, reading, nodeSettings ):
         payload = emonSuite.PayloadBattery()
         if( emonSuite.EmonSerial.ParseBatteryPayload(reading,payload) ):
@@ -236,12 +249,16 @@ class emon_influx:
                                         .tag("sensorName",nodeSettings[payload.subnode][f"s{sensor}"]+"Out")\
                                         .field("value", payload.pulseOut[sensor]/1).time(time)
                         self.write_api.write(bucket=self.bucket, record=p)
-                #get the mid voltages
-                railVoltage = payload.voltage[0]/100.0  #voltages are in 100ths
+                #if a vX_reference setting is set to True, use that as the refence for midvoltages
+                refSensor = emon_influx.find_v_reference(nodeSettings[payload.subnode])
+                if(refSensor != -1):                
+                    railVoltage = payload.voltage[refSensor]/100.0  #voltages are in 100ths
+                else:
+                    railVoltage = 0.0
                 for sensor in range(emonSuite.MAX_VOLTAGES):
                     if(nodeSettings[payload.subnode][f"v{sensor}"] != "Unused"):
                         voltage = payload.voltage[sensor]/100.0
-                        if(sensor != 0 ):
+                        if(refSensor != -1 and sensor != refSensor):
                             voltage = voltage - railVoltage/2.0
                         p = Point("voltage").tag("sensor",f"battery/voltage/{sensor}/{payload.subnode}")\
                                             .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\

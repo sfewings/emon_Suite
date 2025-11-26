@@ -6,6 +6,7 @@ import paho.mqtt.client as mqtt
 # import pytz
 import os
 import yaml
+import re
 
 class emon_mqtt:
     def __init__(self, mqtt_server="localhost",mqtt_port=1883, settingsPath="./emon_config.yml"):
@@ -149,6 +150,18 @@ class emon_mqtt:
             except Exception as ex:
                 self.printException("scaleException", reading, ex)
 
+    def find_v_reference(config):
+        """
+        Returns X (int) where 'vX_reference' == True.
+        Returns -1 if no v_X_reference found.
+        """
+        for k, val in config.items():
+            if(isinstance(k, str) and k.endswith('_reference')):
+                m = re.match(r'^v(\d+)_reference$', k)
+                if m and val is True:
+                    return int(m.group(1))
+        return -1
+
     def batteryMessage(self, reading, nodeSettings ):
         payload = emonSuite.PayloadBattery()
         if( emonSuite.EmonSerial.ParseBatteryPayload(reading,payload) ):
@@ -158,11 +171,15 @@ class emon_mqtt:
                         self.mqttClient.publish(f"battery/power/{payload.subnode}/{sensor}", payload.power[sensor]/1)
                         self.mqttClient.publish(f"battery/pulseIn/{payload.subnode}/{sensor}", payload.pulseIn[sensor]/1)
                         self.mqttClient.publish(f"battery/pulseOut/{payload.subnode}/{sensor}", payload.pulseOut[sensor]/1)
-                #get the mid voltages from the rail voltage reference
-                railVoltage = payload.voltage[0]/100.0  #voltages are in 100ths
+                #if a vX_reference setting, get the mid voltages from the rail voltage reference
+                refSensor = emon_mqtt.find_v_reference(nodeSettings[payload.subnode])
+                if(refSensor != -1):                
+                    railVoltage = payload.voltage[refSensor]/100.0  #voltages are in 100ths
+                else:
+                    railVoltage = 0.0
                 for sensor in range(emonSuite.MAX_VOLTAGES):
                     voltage = payload.voltage[sensor]/100.0
-                    if(sensor != 0 ):
+                    if(refSensor != -1 and sensor != refSensor):
                         voltage = voltage - railVoltage/2.0
                     self.mqttClient.publish(f"battery/voltage/{payload.subnode}/{sensor}", voltage/1)
                 if(':' in reading):

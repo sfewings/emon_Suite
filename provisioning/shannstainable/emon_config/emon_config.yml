@@ -121,7 +121,6 @@ bat:
     s1: Bank 1 - Forward
     s2: Unused
     v0: 50v ref
-    v0_reference: true
     v1: V_In
     v2: Unused
     v3: Unused
@@ -151,7 +150,6 @@ bat:
     s1: Inverter 2
     s2: Inverter 3
     v0: Rail-A
-    v0_reference: true
     v1: Unused
     v2: Unused
     v3: Unused
@@ -166,7 +164,6 @@ bat:
     s1: Battery-320Ah
     s2: Battery-280Ah
     v0: Rail-B
-    v0_reference: true
     v1: Unused
     v2: Unused
     v3: Unused
@@ -190,7 +187,7 @@ bat:
     v7: Unused
     v8: Unused
   7:
-    name: 12v series monitor (Normalised)
+    name: 12v series monitor (NodeRed)
     s0: Unused
     s1: Unused
     s2: Unused
