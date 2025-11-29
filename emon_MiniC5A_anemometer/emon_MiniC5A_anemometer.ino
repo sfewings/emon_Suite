@@ -55,9 +55,9 @@ void flashErrorToLED(int error, bool haltExecution = false)
     for( int i = 0; i < error; i++)
     {
       digitalWrite(MOTEINO_LED, HIGH);
-      delay(100);
+      delay(300);
       digitalWrite(MOTEINO_LED, LOW);
-      delay(100);
+      delay(200);
     }
 	delay(1000);
   }
@@ -265,10 +265,14 @@ void loop()
         {
             Serial.println(F("No packet sent"));
         }
+        digitalWrite(MOTEINO_LED, LOW );
 
         //send the pressure readings less regularly
         if( (now - lastSendPressureTime) >= SEND_PRESSURE_INTERVAL_MS )
         {
+            delay(100);
+            digitalWrite(MOTEINO_LED, HIGH );
+
             lastSendPressureTime = now;
             // send pressure packet
             g_payloadPressure.pressure = pressure;
@@ -285,6 +289,7 @@ void loop()
             {
                 Serial.println(F("No packet sent"));
             }
+            digitalWrite(MOTEINO_LED, LOW );
         }
         
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
@@ -294,7 +299,7 @@ void loop()
     else 
     {
         Serial.println(F("No valid Modbus response"));
-        flashErrorToLED(3);
+        flashErrorToLED(4);
     }
   }
 
