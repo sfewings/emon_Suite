@@ -13,7 +13,7 @@
 //  line 31:  #define DONT_USE_STANDARD_FONT
 //  line 1266-1268: surround the line "uint8_t line = pgm_read_byte(&font[c * 5 + i]);" with
 //  #ifdef DONT_USE_STANDARD_FONT
-//       uint8_t line = 255;
+//       uint8_t line = 255;  //will write all chars as a rectangular block
 //  #else
 //       uint8_t line = pgm_read_byte(&font[c * 5 + i]);
 //  #endif
@@ -51,8 +51,8 @@
 #include <EmonShared.h>
 
 
-#define HOUSE_BANNER
-//#define BOAT_BANNER
+//#define HOUSE_BANNER
+#define BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
@@ -86,13 +86,13 @@ uint16_t ch1 = 1;
 // RF69 network definitions
 RH_RF69 g_rf69;
 
+#ifdef HOUSE_BANNER
 const uint8_t MAX_INVERTERS = 3;
-PayloadGPS          g_payloadGPS;
-PayloadTemperature  g_payloadTemperature;
 PayloadPulse        g_payloadPulse;
+PayloadTemperature  g_payloadTemperature;
 PayloadBattery      g_payloadBattery;
 PayloadInverter     g_payloadInverter[MAX_INVERTERS];
-
+PayloadGPS          g_payloadGPS;
 
 typedef enum {
     eFirstDisplayMode = 0, 
@@ -111,47 +111,36 @@ const char* g_displayModeNames[][2] = {
     "Inv", "W x100",
     "GPS", "kts",
 };
+#elif defined(BOAT_BANNER)
+const uint8_t MAX_INVERTERS = 3;
+PayloadSevCon       g_payloadSevCon;
+PayloadGPS          g_payloadGPS;
+PayloadAnemometer   g_payloadAnemometer;
+PayloadDalyBMS      g_payloadDalyBMS;
+
+typedef enum {
+    eFirstDisplayMode = 0, 
+    eRPM = 0,
+    eGPSSpeed,
+	eWindSpeed,
+    eBatterySoC,
+    eLastDisplayMode = eBatterySoC,
+}  ButtonDisplayMode;
+
+const char* g_displayModeNames[][2] = {
+    "RPM", "RPM x100",
+    "Speed", "Speed - kts",
+    "Wind", "Wind - kts",
+    "Battery", "% SoC /4",
+};
+#endif
+
+
 
 const uint8_t MOVING_AVERAGE_COUNT = 5;
 float g_tachometer_movingAverage[MOVING_AVERAGE_COUNT] = {0};
 uint8_t g_movingAverageIndex = 0;
 
-// =============== Font testing routine ====================
-/*
-struct FontInfo { const GFXfont* font; const char* name; };
-const FontInfo g_fonts[] = {
-//    {&FreeMono24pt7b, "FreeMono24pt7b" },
-//    {&FreeSerif24pt7b, "FreeSerif24pt7b" },
-    //{&FreeMonoBold24pt7b, "FreeMonoBold24pt7b" },
-    // {&FreeMonoBoldOblique24pt7b, "FreeMonoBoldOblique24pt7b" },
-    // {&FreeMonoOblique24pt7b, "FreeMonoOblique24pt7b" },
-    // {&FreeSans24pt7b, "FreeSans24pt7b" },
-     {&FreeSans18pt7b, "FreeSans18pt7b" },
-     //{&FreeSans12pt7b, "FreeSans12pt7b" },
-    // {&FreeSansBold24pt7b, "FreeSansBold24pt7b" },
-    // {&FreeSansBoldOblique24pt7b, "FreeSansBoldOblique24pt7b" },
-    // {&FreeSansOblique24pt7b, "FreeSansOblique24pt7b" },
-    // {&FreeSerif24pt7b, "FreeSerif24pt7b" },
-    // {&FreeSerifBold24pt7b, "FreeSerifBold24pt7b" },
-    // {&FreeSerifBoldItalic24pt7b, "FreeSerifBoldItalic24pt7b" },
-    // {&FreeSerifItalic24pt7b, "FreeSerifItalic24pt7b" }
-};
-const size_t FONT_COUNT = sizeof(g_fonts) / sizeof(g_fonts[0]);
-
-
-void setFont(uint8_t fontIndex)
-{
-    display.clearDisplay();
-    //display.setTextSize(1);          // keep text size at 1 when using GFX fonts
-    if( fontIndex < FONT_COUNT )
-    {
-        display.setFont(g_fonts[fontIndex].font);
-        Serial.println("Using font: " + String(g_fonts[fontIndex].name) );
-    }
-    else
-        display.setFont(NULL);  // restore default font
-}
-*/
 
 void setLedStrip(RgbwColor inColour, uint8_t intensity = 255 )
 {
@@ -240,6 +229,7 @@ void setup()
     g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 	Serial.print(F("RF69 initialised Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 
+#ifdef HOUSE_BANNER
     EmonSerial::PrintGPSPayload(NULL);
     EmonSerial::PrintTemperaturePayload(NULL);
     EmonSerial::PrintPulsePayload(NULL);
@@ -254,12 +244,23 @@ void setup()
     {
         memset( &g_payloadInverter[i],0, sizeof(PayloadInverter) );        
     }
+#elif defined(BOAT_BANNER)
+    // EmonSerial::PrintSevConPayload(NULL);
+    // EmonSerial::PrintGPSPayload(NULL);
+    // EmonSerial::PrintAnemometerPayload(NULL);
+	// EmonSerial::PrintBatteryPayload(NULL);
 
+    memset( &g_payloadGPS,0, sizeof(PayloadGPS));
+    memset( &g_payloadSevCon,0, sizeof(PayloadSevCon));
+    memset( &g_payloadAnemometer,0, sizeof(PayloadAnemometer));
+    memset( &g_payloadDalyBMS,0, sizeof(PayloadDalyBMS));
+#endif
+
+    //initialize LED strip
     strip.Begin();
     strip.Show();
 
     //initialise PWM timers for tachometer output
-    //pinMode(TACHOMETER_PIN, OUTPUT);
     InitTimersSafe();
 
     digitalWrite(LED_PIN, LOW);
@@ -281,13 +282,13 @@ void loop()
 		//read the nodeID early to prevent overwriting before the buffer is read
 		uint8_t node_id = g_rf69.headerId();
 
-        digitalWrite(LED_PIN, HIGH);
+        //digitalWrite(LED_PIN, HIGH);
         byte len = RH_RF69_MAX_MESSAGE_LEN;
         uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
         
 		if (g_rf69.recv(buf, &len))
 		{
-
+#ifdef HOUSE_BANNER
             if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
             {
                 g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
@@ -326,8 +327,35 @@ void loop()
                 g_payloadTemperature = *(PayloadTemperature*)buf;							// get payload data
                 EmonSerial::PrintTemperaturePayload(&g_payloadTemperature);				// print data to serial
             }
+#elif defined(BOAT_BANNER)
+            if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
+            {
+                g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
+                EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
+            }
+            else if ( node_id == BATTERY_NODE && len == sizeof(PayloadBattery))						// jeenode base Receives the time
+            {
+                PayloadBattery payloadBattery = *((PayloadBattery*)buf);
+                if( payloadBattery.crc == EmonSerial::CalcCrc(buf, sizeof(PayloadBattery)-2) && payloadBattery.subnode == 0 )
+                {
+                    //we only get the voltage from battery node 0
+                    g_payloadDalyBMS = *((PayloadDalyBMS*)buf);
+                    EmonSerial::PrintDalyBMSPayload(&g_payloadDalyBMS);
+                }
+            }
+            else if ( node_id == SEVCON_CAN_NODE && len == sizeof(PayloadSevCon))
+            {
+                g_payloadSevCon = *(PayloadSevCon*)buf;							// get payload data
+                EmonSerial::PrintSevConPayload(&g_payloadSevCon);				// print data to serial
+            }
+            else if ( node_id == ANEMOMETER_NODE && len == sizeof(PayloadAnemometer))
+            {
+                g_payloadAnemometer = *(PayloadAnemometer*)buf;							// get payload data
+                EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);				// print data to serial
+            }
+#endif
         }
-        digitalWrite(LED_PIN, LOW);
+        //digitalWrite(LED_PIN, LOW);
     }
 
     static bool proximityOn = false;
@@ -355,14 +383,17 @@ void loop()
         lastDisplayUpdateTime = millis();
         
         uint8_t textOffset = (millis() - lastDisplayModeChangeTime) > DISPLAYMODE_PERIOD_MS;
-        size_t pixOffset = SCREEN_WIDTH/2 - 6*strlen(g_displayModeNames[displayMode][textOffset]);
+        int16_t x1, y1, w, h;
+        display.getTextBounds(g_displayModeNames[displayMode][textOffset], 0, SCREEN_HEIGHT, &x1, &y1, &w, &h);
+        //size_t pixOffset = (SCREEN_WIDTH-w)/2; //6*strlen(g_displayModeNames[displayMode][textOffset]);
         display.clearDisplay();
-        display.setCursor(pixOffset, 26);
+        display.setCursor((SCREEN_WIDTH-w)/2,SCREEN_HEIGHT - ((SCREEN_HEIGHT-h)/2));
         display.print(g_displayModeNames[displayMode][textOffset]);
         display.display();
 
         switch(displayMode)
         {
+#ifdef HOUSE_BANNER
             case eCurrentPower:
                 setTachometer((float)(g_payloadPulse.power[2]/2500.0));
                 ledColor = RgbwColor(255,255,255,255); // white
@@ -390,21 +421,41 @@ void loop()
                 setTachometer(g_payloadGPS.speed/10.0);
                 ledColor = RgbwColor(0,0,255,0); // blue
                 break;
+
+#elif defined(BOAT_BANNER)
+            case eRPM:
+                setTachometer(fabs((float)(g_payloadSevCon.rpm/2500.0))); //engin RPM
+                ledColor = RgbwColor(255,255,255,255); // white
+                break;
+            case eWindSpeed:
+                setTachometer(g_payloadAnemometer.windSpeed/25.0);  //speed in knots
+                ledColor = RgbwColor(0,255,0,0); // green
+                break;
+            case eGPSSpeed:
+                setTachometer(g_payloadGPS.speed/25.0);             //speed in knots
+                ledColor = RgbwColor(0,0,255,0); // blue
+                break;
+            case eBatterySoC:
+                setTachometer((float)(g_payloadDalyBMS.batterySoC/1000.0)); //SoC is in 0.1% units
+                ledColor = RgbwColor(255,0,0,0); // red
+                break;
+#endif
         }
     }
 
-    //do the lighting based on ambient light and whether instrument lights are on
+    //do the lighting based on ambient light and whether the external instrument lights are switched on
     uint8_t intensity = 0;
     if( digitalRead(INSTRUMENT_LIGHT_PIN) == HIGH )
     {
-        intensity = 2;
+        intensity = 4;
     }
     else
     {
         // Get the intensity of the ambient light. 
         float ambient_light;
         apds.readAmbientLightLux(ambient_light);
-        intensity = map(ambient_light, 0, 1000, 3, 255);   //0 turns off when light is very low!
+        ambient_light = constrain(ambient_light, 0, 255.0);
+        intensity = map(ambient_light, 0, 255.0, 0, 255);   //0 turns off when light is very low!
         //Serial.print(ambient_light);Serial.print(",");Serial.println(intensity);
     }
     setLedStrip(ledColor, intensity ); // adjust brightness based on ambient light
