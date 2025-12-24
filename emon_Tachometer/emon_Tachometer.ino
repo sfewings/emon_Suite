@@ -7,6 +7,7 @@
 // APDS9930 proximity sensor
 #include <PWM.h> 
 #include <Wire.h>
+#include <avr/wdt.h>    //watchdog timer
 
 //Note: To stop loading the standard font and saving 1314 bytes of program memory, add the following
 // Adafruit_GFX.cpp
@@ -263,6 +264,8 @@ void setup()
     //initialise PWM timers for tachometer output
     InitTimersSafe();
 
+  	wdt_enable(WDTO_1S);    //watchdog timer 1 second
+
     digitalWrite(LED_PIN, LOW);
 }
 
@@ -276,7 +279,9 @@ void loop()
     static unsigned long lastDisplayModeChangeTime = millis();
     static ButtonDisplayMode displayMode = eFirstDisplayMode;
     static RgbwColor ledColor = RgbwColor(255, 255, 255, 255);
-    
+
+	wdt_reset();
+
 	if (g_rf69.available())
 	{
 		//read the nodeID early to prevent overwriting before the buffer is read
@@ -330,28 +335,23 @@ void loop()
 #elif defined(BOAT_BANNER)
             if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
             {
-                g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
-                EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
+                g_payloadGPS = *(PayloadGPS*)buf;
+                EmonSerial::PrintGPSPayload(&g_payloadGPS);
             }
-            else if ( node_id == BATTERY_NODE && len == sizeof(PayloadBattery))						// jeenode base Receives the time
-            {
-                PayloadBattery payloadBattery = *((PayloadBattery*)buf);
-                if( payloadBattery.crc == EmonSerial::CalcCrc(buf, sizeof(PayloadBattery)-2) && payloadBattery.subnode == 0 )
-                {
-                    //we only get the voltage from battery node 0
-                    g_payloadDalyBMS = *((PayloadDalyBMS*)buf);
-                    EmonSerial::PrintDalyBMSPayload(&g_payloadDalyBMS);
-                }
-            }
+			else if (node_id == DALY_BMS_NODE  && (len == sizeof(PayloadDalyBMS)-2 || len == sizeof(PayloadDalyBMS)) )		//some Daly BMS don't send the crc
+			{
+                g_payloadDalyBMS = *(PayloadDalyBMS*)buf;
+                EmonSerial::PrintDalyBMSPayload(&g_payloadDalyBMS);
+			}
             else if ( node_id == SEVCON_CAN_NODE && len == sizeof(PayloadSevCon))
             {
-                g_payloadSevCon = *(PayloadSevCon*)buf;							// get payload data
-                EmonSerial::PrintSevConPayload(&g_payloadSevCon);				// print data to serial
+                g_payloadSevCon = *(PayloadSevCon*)buf;
+                EmonSerial::PrintSevConPayload(&g_payloadSevCon);
             }
             else if ( node_id == ANEMOMETER_NODE && len == sizeof(PayloadAnemometer))
             {
-                g_payloadAnemometer = *(PayloadAnemometer*)buf;							// get payload data
-                EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);				// print data to serial
+                g_payloadAnemometer = *(PayloadAnemometer*)buf;
+                EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
             }
 #endif
         }
