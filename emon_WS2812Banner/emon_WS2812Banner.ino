@@ -599,7 +599,7 @@ void loop()
 #ifdef HOUSE_BANNER
     if( displayToggle %2 == 0)
     {
-        int totalPower = g_payloadPulse.power[1];
+        int totalPower = 0;
         for(int i=0; i<MAX_INVERTERS;i++)
         {
             totalPower += g_payloadInverter[i].pvInputPower;
