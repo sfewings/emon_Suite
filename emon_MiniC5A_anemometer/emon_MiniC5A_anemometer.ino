@@ -706,6 +706,7 @@ void loop()
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 
         //Send vessel relatative wind data first
+        g_rf69.setHeaderId(ANEMOMETER_NODE);
         g_payloadAnemometer.subnode = 0;
         g_payloadAnemometer.windSpeed = g_windSpeed;      // m/s
         g_payloadAnemometer.windDirection = g_windDirection;          // degrees
@@ -743,6 +744,7 @@ void loop()
 
             lastSendPressureTime = now;
             // send pressure packet
+            g_rf69.setHeaderId(PRESSURE_NODE);
             g_payloadPressure.subnode = 0;
             g_payloadPressure.pressure = g_pressure;
             g_payloadPressure.humidity = g_humidity;
