@@ -16,7 +16,7 @@
 #endif
 
 const uint8_t MOTEINO_LED = 9;	// LED on Moteino
-SoftwareSerial rs232Serial(3,4); // rx, tx
+SoftwareSerial g_rs232Serial(3,4); // rx, tx
 
 const unsigned long BAUD_RS232 = 9600;  // Mini-C5A RS232 baud
 
@@ -28,10 +28,6 @@ const uint16_t MODBUS_REG_COUNT = 5;
 const unsigned long SEND_WIND_INTERVAL_MS = 1000; // ms
 const unsigned long RESPONSE_TIMEOUT = 500;  // ms
 const unsigned long SEND_PRESSURE_INTERVAL_MS = 5000; // send pressure data at least every 5 seconds
-
-unsigned long lastSendWindTime;
-unsigned long lastSendPressureTime;
-unsigned long lastGPSUpdate = 0;
 
 // scaling as in the Mini C5A datasheet
 const float SCALE_WIND_SPEED = 0.01f; // register value * 0.01 -> m/s
@@ -97,8 +93,14 @@ float declination = -1.5;
 
 float p[] = {1, 0, 0};  //X marking on sensor board points toward yaw = 0
 
-// storage
-float g_windSpeed = NAN, g_windDirection = NAN, g_temperature = NAN, g_humidity = NAN, g_pressure = NAN;
+//Anemometer readings as received from MiniC5A
+struct AnemometerReadings {
+    float windSpeed = NAN;
+    float windDirection = NAN;
+    float temperature = NAN;
+    float humidity = NAN;
+    float pressure = NAN;
+};
 
 PayloadPressure g_payloadPressure;
 PayloadAnemometer g_payloadAnemometer;
@@ -562,13 +564,13 @@ void sendReadRequest()
     req[6] = crc & 0xFF;       // CRC low
     req[7] = (crc >> 8) & 0xFF; // CRC high
 
-    rs232Serial.write(req, 8);
+    g_rs232Serial.write(req, 8);
 }
 
 // Attempt to read a Modbus RTU response for the last request.
 // Blocks up to RESPONSE_TIMEOUT ms while collecting bytes.
 // Returns true if a valid frame was parsed.
-bool readResponseAndParse()
+bool readResponseAndParse(AnemometerReadings &anemometerReadings)
 {
     const uint8_t expectedByteCount = MODBUS_REG_COUNT * 2; // 10
     const uint8_t expectedLen = 1 + 1 + 1 + expectedByteCount + 2; // addr+func+bytecount+data+crc
@@ -579,9 +581,9 @@ bool readResponseAndParse()
 
     while (millis() - start < RESPONSE_TIMEOUT) 
     {
-        while (rs232Serial.available() && pos < sizeof(buf)) 
+        while (g_rs232Serial.available() && pos < sizeof(buf)) 
         {
-            buf[pos++] = (uint8_t)rs232Serial.read();
+            buf[pos++] = (uint8_t)g_rs232Serial.read();
         }
         if (pos >= expectedLen) 
             break;
@@ -613,11 +615,11 @@ bool readResponseAndParse()
             uint16_t reg = ((uint16_t)hi << 8) | lo;
             switch (i) 
             {
-                case 0: g_windSpeed = reg * SCALE_WIND_SPEED * SCALE_MPS_TO_KNOTS; break;
-                case 1: g_windDirection   = reg * SCALE_WIND_DIR;   break;
-                case 2: g_temperature = (int16_t)reg * SCALE_TEMPERATURE; break; // cast if signed
-                case 3: g_humidity = reg * SCALE_HUMIDITY; break;
-                case 4: g_pressure = reg * SCALE_PRESSURE; break;
+                case 0: anemometerReadings.windSpeed = reg * SCALE_WIND_SPEED * SCALE_MPS_TO_KNOTS; break;
+                case 1: anemometerReadings.windDirection   = reg * SCALE_WIND_DIR;   break;
+                case 2: anemometerReadings.temperature = (int16_t)reg * SCALE_TEMPERATURE; break; // cast if signed
+                case 3: anemometerReadings.humidity = reg * SCALE_HUMIDITY; break;
+                case 4: anemometerReadings.pressure = reg * SCALE_PRESSURE; break;
             }
         }
         return true;
@@ -626,38 +628,38 @@ bool readResponseAndParse()
     return false;
 }
 
-void printValues()
+void printValues(AnemometerReadings anemometerReadings)
 {
     Serial.print(millis()); Serial.print(", ");
     Serial.print("WSPD=");
-    if (isnan(g_windSpeed)) 
+    if (isnan(anemometerReadings.windSpeed)) 
         Serial.print("NaN"); 
     else 
-        Serial.print(g_windSpeed, 2);
+        Serial.print(anemometerReadings.windSpeed, 2);
     
     Serial.print(", WDIR=");
-    if (isnan(g_windDirection)) 
+    if (isnan(anemometerReadings.windDirection)) 
         Serial.print("NaN"); 
     else 
-        Serial.print(g_windDirection, 1);
+        Serial.print(anemometerReadings.windDirection, 1);
 
     Serial.print(", TEMP=");
-    if (isnan(g_temperature)) 
+    if (isnan(anemometerReadings.temperature)) 
         Serial.print("NaN"); 
     else 
-        Serial.print(g_temperature, 2);
+        Serial.print(anemometerReadings.temperature, 2);
 
     Serial.print(", HUM=");
-    if (isnan(g_humidity)) 
+    if (isnan(anemometerReadings.humidity)) 
         Serial.print("NaN"); 
     else 
-        Serial.print(g_humidity, 2);
+        Serial.print(anemometerReadings.humidity, 2);
     
     Serial.print(", PRES=");
-    if (isnan(g_pressure)) 
+    if (isnan(anemometerReadings.pressure)) 
         Serial.print("NaN"); 
     else 
-        Serial.print(g_pressure, 2);
+        Serial.print(anemometerReadings.pressure, 2);
     Serial.println();
 }
 
@@ -667,7 +669,8 @@ void setup()
     digitalWrite(MOTEINO_LED, HIGH );
     Serial.begin(9600);
 
-    rs232Serial.begin(BAUD_RS232);
+    g_rs232Serial.begin(BAUD_RS232);
+    g_rs232Serial.stopListening();  //disable as interrupt can interfer with g_rf69
     Serial.println(F("Mini-C5A Modbus RTU reader starting"));
 
     if (!g_rf69.init())
@@ -692,7 +695,11 @@ void setup()
     memset(&g_payloadPressure, 0, sizeof(g_payloadPressure));
     g_payloadPressure.subnode = 1;
     EmonSerial::PrintPressurePayload(NULL);
+    EmonSerial::PrintGPSPayload(NULL);
     EmonSerial::PrintAnemometerPayload(NULL);
+    Serial.println(F("mwv,0= wind relative to boat"));
+    Serial.println(F("mwv,1= apparent wind"));
+    Serial.println(F("mwv,2= true wind"));
 
     Wire.begin();
     delay(50);
@@ -710,10 +717,7 @@ void setup()
     Serial.print(F("MS5611: "));
     Serial.println(okMS5 ? F("OK") : F("NOT FOUND"));
 
-    lastSendWindTime = 0;
-    lastSendWindTime = millis();
-    lastSendPressureTime = millis();
-    
+
     digitalWrite(MOTEINO_LED, LOW );
 
     /////////calibration routine////////////
@@ -725,8 +729,13 @@ void setup()
 
 void loop()
 {
+    static unsigned long lastSendWindTime = millis();
+    static unsigned long lastSendPressureTime = millis();
+    static unsigned long lastGPSUpdate = 0;
+
     unsigned long now = millis();
 
+    //receive a GPS update
     if(g_rf69.available() && g_rf69.headerId()==GPS_NODE)
     {
         uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
@@ -746,16 +755,17 @@ void loop()
     {
         lastSendWindTime = now;
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-        rs232Serial.listen();
+        g_rs232Serial.listen();
         sendReadRequest();          // send request to MiniC5A anemometer
         // read and parse response
-        bool readAnemometerOK = readResponseAndParse();
-        rs232Serial.stopListening();
+        AnemometerReadings anemometerReadings;
+        bool readAnemometerOK = readResponseAndParse(anemometerReadings);
+        g_rs232Serial.stopListening();
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 
         if (readAnemometerOK) 
         {
-            //printValues();
+            //printValues(anemometerReadings);
 
             digitalWrite(MOTEINO_LED, HIGH );
 
@@ -766,10 +776,10 @@ void loop()
 
             //Send vessel relatative wind data first
             g_rf69.setHeaderId(ANEMOMETER_NODE);
-            g_payloadAnemometer.subnode = 0;    //relative wind
-            g_payloadAnemometer.windSpeed = g_windSpeed;      // m/s
-            g_payloadAnemometer.windDirection = g_windDirection;          // degrees
-            g_payloadAnemometer.temperature = g_temperature;  // degree celcius
+            g_payloadAnemometer.subnode = 0;    //relative to boat wind
+            g_payloadAnemometer.windSpeed = anemometerReadings.windSpeed;      // m/s
+            g_payloadAnemometer.windDirection = anemometerReadings.windDirection;          // degrees
+            g_payloadAnemometer.temperature = anemometerReadings.temperature;  // degree celcius
 
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
             if( g_rf69.waitPacketSent() )
@@ -781,8 +791,9 @@ void loop()
                 Serial.println(F("No packet sent"));
             }
             //now send compass based wind direction as a separate packet
+            float apparentWindDirection = fmod(anemometerReadings.windDirection + (float) heading, 360.0);
             g_payloadAnemometer.subnode = 1;    //apparent wind
-            g_payloadAnemometer.windDirection = fmod(g_payloadAnemometer.windDirection + (float) heading, 360.0); //reuse windDirection field to send heading
+            g_payloadAnemometer.windDirection = apparentWindDirection;
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
             if( g_rf69.waitPacketSent() )   
             {
@@ -796,7 +807,7 @@ void loop()
             //Finally send true wind speed and direction based on a recent GPS update if we have a recent GPS update
             if( now - lastGPSUpdate < 3000 )
             {
-                TrueWind tw = calculateTrueWind(g_windSpeed, fmod(g_payloadAnemometer.windDirection + (float) heading, 360.0), g_payloadGPS.speed, g_payloadGPS.course);
+                TrueWind tw = calculateTrueWind(anemometerReadings.windSpeed, apparentWindDirection, g_payloadGPS.speed, g_payloadGPS.course);
                 g_payloadAnemometer.subnode = 2;    //True wind
                 g_payloadAnemometer.windDirection = tw.twd;
                 g_payloadAnemometer.windSpeed = tw.tws;
@@ -823,9 +834,9 @@ void loop()
                 // send pressure packet
                 g_rf69.setHeaderId(PRESSURE_NODE);
                 g_payloadPressure.subnode = 0;
-                g_payloadPressure.pressure = g_pressure;
-                g_payloadPressure.humidity = g_humidity;
-                g_payloadPressure.temperature = g_temperature;
+                g_payloadPressure.pressure = anemometerReadings.pressure;
+                g_payloadPressure.humidity = anemometerReadings.humidity;
+                g_payloadPressure.temperature = anemometerReadings.temperature;
 
                 g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
                 if( g_rf69.waitPacketSent() )
@@ -837,7 +848,7 @@ void loop()
                     Serial.println(F("No packet sent"));
                 }
 
-                //send another packet with details from the M5611 on the 9dof sensor
+                // send another packet with details from the M5611 on the 9dof sensor
                 // g_payloadPressure.subnode = 1;
                 // g_payloadPressure.humidity = 0;
                 // get_temperature_pressure(g_payloadPressure.temperature, g_payloadPressure.pressure );
