@@ -31,6 +31,7 @@ const unsigned long SEND_PRESSURE_INTERVAL_MS = 5000; // send pressure data at l
 
 unsigned long lastSendWindTime;
 unsigned long lastSendPressureTime;
+unsigned long lastGPSUpdate = 0;
 
 // scaling as in the Mini C5A datasheet
 const float SCALE_WIND_SPEED = 0.01f; // register value * 0.01 -> m/s
@@ -101,11 +102,51 @@ float g_windSpeed = NAN, g_windDirection = NAN, g_temperature = NAN, g_humidity 
 
 PayloadPressure g_payloadPressure;
 PayloadAnemometer g_payloadAnemometer;
+PayloadGPS g_payloadGPS;
 
 RH_RF69 g_rf69;
 
 
 ////////////////////////////////////////////////
+struct TrueWind {
+  float tws;   // True Wind Speed
+  float twd;   // True Wind Direction (FROM)
+};
+
+TrueWind calculateTrueWind(float aws, float awd, float sog, float hdg) {
+  // Convert degrees to radians
+  auto deg2rad = [](float d) { return d * PI / 180.0; };
+  auto rad2deg = [](float r) { return r * 180.0 / PI; };
+
+  float awdRad = deg2rad(awd);
+  float hdgRad = deg2rad(hdg);
+
+  // Apparent wind vector (coming FROM awd)
+  float awx = aws * sin(awdRad);
+  float awy = aws * cos(awdRad);
+
+  // Vessel motion vector (moving TOWARD hdg)
+  float vx = sog * sin(hdgRad);
+  float vy = sog * cos(hdgRad);
+
+  // True wind = apparent wind + vessel motion
+  float twx = awx + vx;
+  float twy = awy + vy;
+
+  // Convert back to polar
+  float tws = sqrt(twx * twx + twy * twy);
+  float twd = rad2deg(atan2(twx, twy));
+
+  // Normalize to 0–360°
+  if (twd < 0) 
+    twd += 360.0;
+
+  TrueWind result;
+  result.tws = tws;
+  result.twd = twd;
+  return result;
+}
+
 
 
 void writeRegister(uint8_t addr, uint8_t reg, uint8_t val) {
@@ -638,7 +679,7 @@ void setup()
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
     g_rf69.setEncryptionKey(key);
     g_rf69.setHeaderId(ANEMOMETER_NODE);
-    g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+    //g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
     //when using the RH_RF69 driver with the RFM69HW module, you must setTxPowercan with isHigherPowerModule set to true
     //Otherwise, the library will not set the PA_BOOST pin high and the module will not transmit
     //g_rf69.setTxPower(13,true);
@@ -684,111 +725,143 @@ void setup()
 
 void loop()
 {
-  unsigned long now = millis();
-  if (now - lastSendWindTime >= SEND_WIND_INTERVAL_MS) 
-  {
-    lastSendWindTime = now;
-    // send request
-    sendReadRequest();
-    // read and parse response
-    if (readResponseAndParse()) 
+    unsigned long now = millis();
+
+    if(g_rf69.available() && g_rf69.headerId()==GPS_NODE)
     {
-        //printValues();
+        uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
+        memset(buf, 0, RH_RF69_MAX_MESSAGE_LEN);
 
-        digitalWrite(MOTEINO_LED, HIGH );
+        uint8_t len = sizeof(buf);
+        if (g_rf69.recv(buf, &len) && len == sizeof(PayloadGPS))
+        {
+			g_payloadGPS = *(PayloadGPS*)buf;
+			EmonSerial::PrintGPSPayload(&g_payloadGPS);
+            lastGPSUpdate = millis();
+        }
+    }
 
-        //calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
-        float Axyz[3], Mxyz[3]; //centered and scaled accel/mag data
-        get_scaled_IMU(Axyz, Mxyz);  //apply relative scale and offset to RAW data. UNITS are not important
-        int heading = get_heading(Axyz, Mxyz, p, declination);
 
+    if (now - lastSendWindTime >= SEND_WIND_INTERVAL_MS) 
+    {
+        lastSendWindTime = now;
+        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+        rs232Serial.listen();
+        sendReadRequest();          // send request to MiniC5A anemometer
+        // read and parse response
+        bool readAnemometerOK = readResponseAndParse();
         rs232Serial.stopListening();
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 
-        //Send vessel relatative wind data first
-        g_rf69.setHeaderId(ANEMOMETER_NODE);
-        g_payloadAnemometer.subnode = 0;
-        g_payloadAnemometer.windSpeed = g_windSpeed;      // m/s
-        g_payloadAnemometer.windDirection = g_windDirection;          // degrees
-        g_payloadAnemometer.temperature = g_temperature;  // degree celcius
+        if (readAnemometerOK) 
+        {
+            //printValues();
 
-        g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-        if( g_rf69.waitPacketSent() )
-        {
-            EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
-        }
-        else
-        {
-            Serial.println(F("No packet sent"));
-        }
-        //now send compass based wind direction as a separate packet
-        g_payloadAnemometer.subnode = 1;
-        g_payloadAnemometer.windDirection = fmod(g_payloadAnemometer.windDirection + (float) heading, 360.0); //reuse windDirection field to send heading
-        g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-        if( g_rf69.waitPacketSent() )   
-        {
-            EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
-        }
-        else
-        {
-            Serial.println(F("No packet sent"));
-        }
-
-        digitalWrite(MOTEINO_LED, LOW );
-
-        //send the pressure readings less regularly
-        if( (now - lastSendPressureTime) >= SEND_PRESSURE_INTERVAL_MS )
-        {
-            delay(100);
             digitalWrite(MOTEINO_LED, HIGH );
 
-            lastSendPressureTime = now;
-            // send pressure packet
-            g_rf69.setHeaderId(PRESSURE_NODE);
-            g_payloadPressure.subnode = 0;
-            g_payloadPressure.pressure = g_pressure;
-            g_payloadPressure.humidity = g_humidity;
-            g_payloadPressure.temperature = g_temperature;
+            //calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
+            float Axyz[3], Mxyz[3]; //centered and scaled accel/mag data
+            get_scaled_IMU(Axyz, Mxyz);  //apply relative scale and offset to RAW data. UNITS are not important
+            int heading = get_heading(Axyz, Mxyz, p, declination);
 
-            g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
+            //Send vessel relatative wind data first
+            g_rf69.setHeaderId(ANEMOMETER_NODE);
+            g_payloadAnemometer.subnode = 0;    //relative wind
+            g_payloadAnemometer.windSpeed = g_windSpeed;      // m/s
+            g_payloadAnemometer.windDirection = g_windDirection;          // degrees
+            g_payloadAnemometer.temperature = g_temperature;  // degree celcius
+
+            g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
             if( g_rf69.waitPacketSent() )
             {
-                EmonSerial::PrintPressurePayload(&g_payloadPressure);
+                EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
+            }
+            else
+            {
+                Serial.println(F("No packet sent"));
+            }
+            //now send compass based wind direction as a separate packet
+            g_payloadAnemometer.subnode = 1;    //apparent wind
+            g_payloadAnemometer.windDirection = fmod(g_payloadAnemometer.windDirection + (float) heading, 360.0); //reuse windDirection field to send heading
+            g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
+            if( g_rf69.waitPacketSent() )   
+            {
+                EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
             }
             else
             {
                 Serial.println(F("No packet sent"));
             }
 
-            //send another packet with details from the M5611 on the 9dof sensor
-            // g_payloadPressure.subnode = 1;
-            // g_payloadPressure.humidity = 0;
-            // get_temperature_pressure(g_payloadPressure.temperature, g_payloadPressure.pressure );
-            // g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
-            // if( g_rf69.waitPacketSent() )
-            // {
-            //     EmonSerial::PrintPressurePayload(&g_payloadPressure);
-            // }
-            // else
-            // {
-            //     Serial.println(F("No packet sent"));
-            // }
-
+            //Finally send true wind speed and direction based on a recent GPS update if we have a recent GPS update
+            if( now - lastGPSUpdate < 3000 )
+            {
+                TrueWind tw = calculateTrueWind(g_windSpeed, fmod(g_payloadAnemometer.windDirection + (float) heading, 360.0), g_payloadGPS.speed, g_payloadGPS.course);
+                g_payloadAnemometer.subnode = 2;    //True wind
+                g_payloadAnemometer.windDirection = tw.twd;
+                g_payloadAnemometer.windSpeed = tw.tws;
+                g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
+                if( g_rf69.waitPacketSent() )   
+                {
+                    EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
+                }
+                else
+                {
+                    Serial.println(F("No packet sent"));
+                }
+            }
 
             digitalWrite(MOTEINO_LED, LOW );
-        }
-        
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-        rs232Serial.listen();
-        digitalWrite(MOTEINO_LED, LOW );
-    } 
-    else 
-    {
-        Serial.println(F("No valid Modbus response"));
-        flashErrorToLED(4);
-    }
-  }
 
-  // small idle delay
-  delay(10);
+            //send the pressure readings less regularly
+            if( (now - lastSendPressureTime) >= SEND_PRESSURE_INTERVAL_MS )
+            {
+                //delay(100);
+                digitalWrite(MOTEINO_LED, HIGH );
+
+                lastSendPressureTime = now;
+                // send pressure packet
+                g_rf69.setHeaderId(PRESSURE_NODE);
+                g_payloadPressure.subnode = 0;
+                g_payloadPressure.pressure = g_pressure;
+                g_payloadPressure.humidity = g_humidity;
+                g_payloadPressure.temperature = g_temperature;
+
+                g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
+                if( g_rf69.waitPacketSent() )
+                {
+                    EmonSerial::PrintPressurePayload(&g_payloadPressure);
+                }
+                else
+                {
+                    Serial.println(F("No packet sent"));
+                }
+
+                //send another packet with details from the M5611 on the 9dof sensor
+                // g_payloadPressure.subnode = 1;
+                // g_payloadPressure.humidity = 0;
+                // get_temperature_pressure(g_payloadPressure.temperature, g_payloadPressure.pressure );
+                // g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
+                // if( g_rf69.waitPacketSent() )
+                // {
+                //     EmonSerial::PrintPressurePayload(&g_payloadPressure);
+                // }
+                // else
+                // {
+                //     Serial.println(F("No packet sent"));
+                // }
+
+
+                digitalWrite(MOTEINO_LED, LOW );
+            }
+        } 
+        else 
+        {
+            Serial.println(F("No valid Modbus response"));
+            flashErrorToLED(4);
+        }
+    }
+
+    // small idle delay
+    delay(10);
 }
