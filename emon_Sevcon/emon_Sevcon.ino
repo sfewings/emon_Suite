@@ -181,16 +181,15 @@ bool processFrame(CanBusData_asukiaaa::Frame& frame, PayloadSevCon& sevConPayloa
 
 void loop() 
 {
-  static uint32_t waitingStart = millis();
-  static uint32_t lastCANMessageReceived = millis();
-  bool dataToTransmit = false;
+  static uint32_t lastTransmitTime = millis();
+  static bool dataToTransmit = false;
+
   CanBusData_asukiaaa::Frame frame;
   
   if ( g_CAN.available()) 
   {  
     digitalWrite(LED_RECEIVE_PIN, HIGH);
     g_CAN.receive(&frame);
-    lastCANMessageReceived = millis();
     // printFrame(frame);
     // delay(3);
 
@@ -217,10 +216,10 @@ void loop()
   }
 
   //are we ready to transmit the packet?
-  if( millis() - lastCANMessageReceived <2000 &&
-     (dataToTransmit || millis() - waitingStart > SEND_PERIOD) )
+  if( dataToTransmit && millis()-lastTransmitTime > 500 ) //only send updates every 500ms at most
   {   
-    waitingStart = millis();
+    lastTransmitTime = millis();
+    dataToTransmit = false;
     digitalWrite(LED_TRANSMIT_PIN, HIGH);
 
     g_rf69.send((const uint8_t*) &g_payloadSevCon, sizeof (PayloadSevCon));
