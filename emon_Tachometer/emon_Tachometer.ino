@@ -350,8 +350,12 @@ void loop()
             }
             else if ( node_id == ANEMOMETER_NODE && len == sizeof(PayloadAnemometer))
             {
-                g_payloadAnemometer = *(PayloadAnemometer*)buf;
-                EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
+                PayloadAnemometer payloadAnemometer = *(PayloadAnemometer*)buf;
+                if( payloadAnemometer.subnode == 2) //True wind is published on node 2
+                {    
+                    g_payloadAnemometer = *(PayloadAnemometer*)buf;
+                    EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
+                }
             }
 #endif
         }
@@ -382,10 +386,10 @@ void loop()
     {
         lastDisplayUpdateTime = millis();
         
+        //centre the text to the OLED display
         uint8_t textOffset = (millis() - lastDisplayModeChangeTime) > DISPLAYMODE_PERIOD_MS;
         int16_t x1, y1, w, h;
         display.getTextBounds(g_displayModeNames[displayMode][textOffset], 0, SCREEN_HEIGHT, &x1, &y1, &w, &h);
-        //size_t pixOffset = (SCREEN_WIDTH-w)/2; //6*strlen(g_displayModeNames[displayMode][textOffset]);
         display.clearDisplay();
         display.setCursor((SCREEN_WIDTH-w)/2,SCREEN_HEIGHT - ((SCREEN_HEIGHT-h)/2));
         display.print(g_displayModeNames[displayMode][textOffset]);
