@@ -43,7 +43,9 @@ gps:
     name: RaspPi-GPS
 pth:
   0:
-    name: Enchantee-Pressure
+    name: Cabin GPS
+  1:
+    name: Anemometer
 mwv:
   0:
     name: Boat reference wind
