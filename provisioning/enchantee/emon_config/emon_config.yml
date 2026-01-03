@@ -46,5 +46,9 @@ pth:
     name: Enchantee-Pressure
 mwv:
   0:
-    name: Anemometer
+    name: Boat reference wind
+  1:
+    name: Apparent wind
+  2:
+    name: True wind
 
