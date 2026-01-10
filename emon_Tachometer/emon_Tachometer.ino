@@ -173,7 +173,7 @@ void setTachometer(float value)
     }
     value = sum / MOVING_AVERAGE_COUNT;
     uint32_t pwm_frequency =  ( 5000.0 * value + 100.0); // approx  250
-//    Serial.print("Tachometer RPM: "); Serial.print(value,3); Serial.print(" PWM frequency: "); Serial.println(pwm_frequency);
+    Serial.print("Tachometer: "); Serial.print(value,3); Serial.print(" PWM frequency: "); Serial.println(pwm_frequency);
     SetPinFrequencySafe(TACHOMETER_PIN, pwm_frequency);
     pwmWrite(TACHOMETER_PIN, 254); // ensure pin is High for 254/255 of duty cycle
 }
@@ -335,8 +335,12 @@ void loop()
 #elif defined(BOAT_BANNER)
             if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
             {
-                g_payloadGPS = *(PayloadGPS*)buf;
-                EmonSerial::PrintGPSPayload(&g_payloadGPS);
+                PayloadGPS payloadGPS = *(PayloadGPS*)buf;
+                if(payloadGPS.subnode == 0)
+                {
+                    g_payloadGPS = *(PayloadGPS*)buf;
+                    EmonSerial::PrintGPSPayload(&g_payloadGPS);
+                }
             }
 			else if (node_id == DALY_BMS_NODE  && (len == sizeof(PayloadDalyBMS)-2 || len == sizeof(PayloadDalyBMS)) )		//some Daly BMS don't send the crc
 			{
