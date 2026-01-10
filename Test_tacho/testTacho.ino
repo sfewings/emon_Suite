@@ -1,5 +1,5 @@
 // Example: simulate 100-tooth flywheel at variable RPM
-const int tachPin = 8;  // output pin
+const int tachPin = 3;  // output pin
 int teeth = 120;
 int rpm = 500;
 int highPeriod = 500; //microseconds signal high time
