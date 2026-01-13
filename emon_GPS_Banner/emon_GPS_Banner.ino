@@ -1,8 +1,8 @@
 #include <Time.h>
 
 /*--------------------------- Libraries ----------------------------------*/
-//#define GPS_EMBEDDED
-#undef GPS_EMBEDDED
+#define GPS_EMBEDDED
+//#undef GPS_EMBEDDED
 
 #ifdef GPS_EMBEDDED
 
@@ -62,15 +62,19 @@
     unsigned long g_rainStartOfToday = 0;
     
     const uint8_t VOLTAGE_MEASURE_PIN = A5;
-
-    const uint8_t LDR_MOVING_AVERAGE_WINDOWN_SIZE = 20; 
-    uint8_t g_LDR_movingAverage[LDR_MOVING_AVERAGE_WINDOWN_SIZE];
-    uint8_t g_LDR_movingAverage_index = 0;
-
 #endif
+
+const uint8_t LDR_MOVING_AVERAGE_WINDOWN_SIZE = 20; 
+uint8_t g_LDR_movingAverage[LDR_MOVING_AVERAGE_WINDOWN_SIZE];
+uint8_t g_LDR_movingAverage_index = 0;
+
 
 
 #include <NeoPixelBus.h>
+
+//limit PinChangeInt to port C only as this contains pins A1 and A2
+#define NO_PORTB_PINCHANGES     
+#define NO_PORTD_PINCHANGES
 #include <PinChangeInt.h>
 
 #include <EEPROM.h>
@@ -764,12 +768,17 @@ void loop()
 
 #ifdef GPS_EMBEDDED
     //read GPS if not setting time && not recently pressed the changedisplayType button
-    if( !g_settingTime.settingMode && millis() - g_changeDisplayTypePushTime > 2000)
+    if( !g_settingTime.settingMode && millis() - g_changeDisplayTypePushTime > 1200)
     {
         // Need to wait for the buffer to fill. Neopixel and Serial read both use the 16bit timer 
         // and serial buffer corrupts if the Neopixel writes while serial receives.
         //delay 950 should do it!
-        delay(950);
+        unsigned long start_time = millis();
+        while( millis() - start_time <= 950)
+        {
+            GetCharIntensity(); //update the LDR moving average window
+            delay(50);
+        }
         
         while (gpsSerial.available())
         {
@@ -814,6 +823,7 @@ void loop()
         Serial.print(F(","));
         Serial.print(g_humidity, 1);
         Serial.println();
+        digitalWrite(LED_PIN,LOW);
     }
 #else
 	if (g_rf69.available())
@@ -948,7 +958,7 @@ void loop()
     // Serial.println(displayToggle);
 
     //display text of the selected mode for 2 seconds after the button was pressed
-    if( millis() - g_changeDisplayTypePushTime < 2000 )
+    if( millis() - g_changeDisplayTypePushTime < 1200 )
     {
         //display the reading name
         strcpy_P(str,displayTypeName[g_config.displayType]);
