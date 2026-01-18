@@ -833,7 +833,7 @@ void loop()
                 lastSendPressureTime = now;
                 // send pressure packet
                 g_rf69.setHeaderId(PRESSURE_NODE);
-                g_payloadPressure.subnode = 0;
+                g_payloadPressure.subnode = 1;
                 g_payloadPressure.pressure = anemometerReadings.pressure;
                 g_payloadPressure.humidity = anemometerReadings.humidity;
                 g_payloadPressure.temperature = anemometerReadings.temperature;
