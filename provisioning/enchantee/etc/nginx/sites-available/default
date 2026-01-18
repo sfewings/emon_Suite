@@ -1,0 +1,79 @@
+# Default server configuration
+#
+##
+# You should look at the following URL's in order to grasp a solid understanding
+# of Nginx configuration files in order to fully unleash the power of Nginx.
+# https://www.nginx.com/resources/wiki/start/
+# https://www.nginx.com/resources/wiki/start/topics/tutorials/config_pitfalls/
+# https://wiki.debian.org/Nginx/DirectoryStructure
+#
+# In most cases, administrators will remove this file from sites-enabled/ and
+# leave it as reference inside of sites-available where it will continue to be
+# updated by the nginx packaging team.
+#
+# This file will automatically load configuration files provided by other
+# applications, such as Drupal or Wordpress. These applications will be made
+# available underneath a path with that package name, such as /drupal8.
+#
+# Please see /usr/share/doc/nginx-doc/examples/ for more detailed examples.
+##
+
+#redirect http traffic to https
+server {
+    listen 80;
+    server_name 192.168.1.92
+    return 301 https://$server_name$request_uri;
+    
+    server_name harvey.fewings.org;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+ listen 443 default ssl;
+  #ssl on;
+  ssl_certificate_key /etc/letsencrypt/live/harvey.fewings.org/privkey.pem;
+  ssl_certificate /etc/letsencrypt/live/harvey.fewings.org/cert.pem;
+
+  ssl_verify_depth 3;
+  ssl_protocols TLSv1.1 TLSv1.2;
+  ssl_ciphers "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256";
+
+  location / {
+    proxy_pass http://localhost:1880/ui/;
+    proxy_set_header X-Real-IP $remote_addr;
+
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+ 
+  location /grafana/ {
+    proxy_pass http://localhost:3000;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";    
+  }
+
+  location /other/ {
+    proxy_pass http://localhost:1880/ui/;
+  }
+
+  location /nodered/ {
+    proxy_pass http://localhost:1880/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+  }
+  
+  location /portainer/ {
+    proxy_pass http://localhost:9000/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+    proxy_set_header Host $host;
+  }
+
+}
