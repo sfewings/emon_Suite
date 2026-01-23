@@ -31,6 +31,10 @@
 
 #include <stdint.h>
 
+#ifdef MQTT_LIB
+#define __attribute__(x) ;	//the MSVC compiler does not support __attribute__!
+#endif
+
 static inline uint16_t _crc16_update(uint16_t crc, uint8_t data) __attribute__((always_inline, unused));
 static inline uint16_t _crc16_update(uint16_t crc, uint8_t data)
 {

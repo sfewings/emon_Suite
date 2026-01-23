@@ -31,6 +31,11 @@
 #ifndef _UTIL_PARITY_H_
 #define _UTIL_PARITY_H_
 
+#ifdef MQTT_LIB
+#define __attribute__(x) ;	//the MSVC compiler does not support __attribute__!
+#endif
+
+
 static inline uint8_t parity_even_bit(uint8_t x) __attribute__((pure, always_inline, unused));
 static inline uint8_t parity_even_bit(uint8_t x)
 {
