@@ -37,7 +37,7 @@ class EmonSettings:
         self.settingsPath = settingsPath
         self.settingsDirectory = os.path.dirname(settingsPath) or "."
         self.currentSettingsFile = None
-        self.availableSettingsFiles = []
+        self.availableSettingsFiles = {}  # Dictionary: filename -> (datetime, filename, full_path) tuple
         self.lastSettingsFileCheck = 0
         self.settingsCheckInterval = 60  # Check for new settings files every 60 seconds
         self.settings = {}
@@ -76,10 +76,10 @@ class EmonSettings:
         Scan the settings directory for all valid settings files.
         
         Returns:
-            Sorted list of tuples: (datetime, filename, full_path)
-            Sorted chronologically with emon_config.yml as fallback
+            Dictionary with filename as key and (datetime, filename, full_path) tuple as value
+            Chronologically organized with emon_config.yml as fallback
         """
-        settings_files = []
+        settings_files = {}
         
         if not os.path.isdir(self.settingsDirectory):
             return settings_files
@@ -88,17 +88,15 @@ class EmonSettings:
             for filename in os.listdir(self.settingsDirectory):
                 if filename == "emon_config.yml":
                     # Support the legacy single config file
-                    settings_files.append((datetime.datetime.max, filename, os.path.join(self.settingsDirectory, filename)))
+                    settings_files[filename] = (datetime.datetime.max, filename, os.path.join(self.settingsDirectory, filename))
                 else:
                     dt = self._parse_settings_filename(filename)
                     if dt is not None:
                         full_path = os.path.join(self.settingsDirectory, filename)
-                        settings_files.append((dt, filename, full_path))
+                        settings_files[filename] = (dt, filename, full_path)
         except Exception as e:
             print(f"Error scanning settings directory: {e}")
         
-        # Sort by datetime (earliest first), with emon_config.yml last as fallback
-        settings_files.sort(key=lambda x: x[0])
         return settings_files
     
     def _get_applicable_settings_file(self, current_time=None):
@@ -119,7 +117,10 @@ class EmonSettings:
         
         applicable_file = None
         
-        for dt, filename, full_path in self.availableSettingsFiles:
+        # Sort files by datetime and find the most recent one <= current_time
+        sorted_files = sorted(self.availableSettingsFiles.values(), key=lambda x: x[0])
+        
+        for dt, filename, full_path in sorted_files:
             if dt <= current_time:
                 applicable_file = full_path
             else:
@@ -281,10 +282,10 @@ class EmonSettings:
     
     def get_available_settings_files(self):
         """
-        Get the list of all available settings files.
+        Get all available settings files.
         
         Returns:
-            List of tuples: (datetime, filename, full_path)
+            Dictionary with filename as key and (datetime, filename, full_path) tuple as value
         """
         return self.availableSettingsFiles
     
