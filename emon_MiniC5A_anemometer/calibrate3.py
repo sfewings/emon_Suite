@@ -27,7 +27,8 @@ class Magnetometer(object):
         
     def run(self):
 
-        data = np.loadtxt(".\\Tests\\ICM_20948-AHRS\\acc_mag_raw.csv",delimiter=',')
+        data = np.loadtxt("./emon_MiniC5A_anemometer/acc_mag_raw.csv",delimiter=',')
+        #data = np.loadtxt(".\\Tests\\ICM_20948-AHRS\\acc_mag_raw.csv",delimiter=',')
         #data = np.loadtxt(".\\Tests\\ICM_20948-AHRS\\mag_raw.csv", delimiter=',', encoding='utf-8-sig')
 
         # ensure 2D shape when a single line is present

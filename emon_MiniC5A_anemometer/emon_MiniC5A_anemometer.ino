@@ -73,20 +73,22 @@ const float MPU_GYRO_SCALE = 131.0f;    // LSB/(deg/s) for ±250deg/s
 //The compass will NOT work well or at all if these are not correct
 
 //Accel scale: divide by 16604.0 to normalize. These corrections are quite small and probably can be ignored.
-float A_B[3] = { 574.57 , -94.66 , 2046.23 };
+float A_B [3] = {-142.37, 1379.88, 2941.27};
+
 
 float A_Ainv[3][3] = {
-{ 0.06152 , 0.00016 , 0.00013 },
-{ 0.00016 , 0.06202 , 0.00029 },
-{ 0.00013 , 0.00029 , 0.05888 }};
+{ 0.06069, 0.00612, 0.00281 },
+{ 0.00612, 0.05928, -0.00414 },
+{ 0.00281, -0.00414, 0.06009 }};
 
 //Mag scale divide by 369.4 to normalize. These are significant corrections, especially the large offsets.
-float M_B[3] = { 98.23 , -121.28 , 9.8 };
+float M_B [3] = {45.68, -121.05, 2.35};
+
 
 float M_Ainv[3][3] = {
-{ 4.11223 , 0.02434 , 0.01824 },
-{ 0.02434 , 4.06178 , -0.00319 },
-{ 0.01824 , -0.00319 , 4.5599 }};
+{ 3.26302, 0.05405, 0.01863 },
+{ 0.05405, 3.69962, -0.03631 },
+{ 0.01863, -0.03631, 4.45143 }};
 
 // local magnetic declination in degrees
 float declination = -1.5;
@@ -278,7 +280,7 @@ void collectDataForMahonyCalibration()
     // find gyro offsets
     Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z"));
 
-    Serial.println(F("Hold sensor still for gyro offset calibration ..."));
+    Serial.println(F("Hold sensor still for 5 seconds for gyro offset calibration ..."));
     delay(5000);
 
     float goff;
