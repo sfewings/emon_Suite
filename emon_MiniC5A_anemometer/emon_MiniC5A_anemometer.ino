@@ -235,7 +235,7 @@ void collectDataForMahonyCalibration()
     // find gyro offsets
     Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z"));
 
-    Serial.println(F("Hold sensor still for gyro offset calibration ..."));
+    Serial.println(F("Hold sensor still for 5 seconds for gyro offset calibration ..."));
     delay(5000);
 
     float goff;
