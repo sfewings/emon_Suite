@@ -54,7 +54,7 @@ class EmonSettings:
             filename: Filename to parse
             
         Returns:
-            datetime object if valid format, None otherwise
+            timezone-aware datetime object if valid format, None otherwise
         """
         if not filename.endswith('.yml'):
             return None
@@ -67,7 +67,13 @@ class EmonSettings:
             date_str = base[:8]  # YYYYMMDD
             time_str = base[9:13]  # hhmm
             datetime_str = f"{date_str}{time_str}"
-            return datetime.datetime.strptime(datetime_str, "%Y%m%d%H%M")
+            naive_dt = datetime.datetime.strptime(datetime_str, "%Y%m%d%H%M")
+            
+            # Get local timezone offset
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            
+            # Return timezone-aware datetime
+            return naive_dt.replace(tzinfo=local_tz)
         except ValueError:
             return None
     
@@ -113,7 +119,7 @@ class EmonSettings:
             Full path to applicable settings file, or None if none found
         """
         if current_time is None:
-            current_time = datetime.datetime.now()
+            current_time = datetime.datetime.now().astimezone()
         
         applicable_file = None
         
@@ -250,7 +256,7 @@ class EmonSettings:
         
         # Determine which file should be used for the given time
         if current_time is None:
-            current_time = datetime.datetime.now()
+            current_time = datetime.datetime.now().astimezone()
         
         applicable_file = self._get_applicable_settings_file(current_time)
         
