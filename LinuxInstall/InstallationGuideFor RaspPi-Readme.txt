@@ -59,9 +59,17 @@ If using UART connected to HAT COM1
 	enable_uart=1
 	dtoverlay=disable-bt
 
-10. Connect Moteino with emon_RapsPiSerial.ino to TX, RX pins GPIO14, GPIO15
+10. Disable serial console login to prevent conflict with Moteino serial connection
+	sudo raspi-config
+	Select "3 Interface Options"
+	Select "P6 Serial Port"
+	"Would you like a login shell to be accessible over serial?"  Select "No"
+	"Would you like the serial port hardware to be enabled?" Select "Yes"
+	Finish and reboot
 
-11. Set docker/docker-compose-influxdb-grafana/docker-compose.yml
+11. Connect Moteino with emon_RapsPiSerial.ino to TX, RX pins GPIO14, GPIO15
+
+12. Set docker/docker-compose-influxdb-grafana/docker-compose.yml
 	emon_serial_to_mqtt:
 		devices:
       	  - /dev/ttyAMA0
@@ -69,12 +77,12 @@ If using UART connected to HAT COM1
       	  - SERIAL_PORT=/dev/ttyAMA0
 
 
-12. Install nginx
+13. Install nginx
 	sudo apt install nginx
 	Copy contents of /etc/nginx/sites-available/default
 	This enables shannstainable.fewings.org http and https traffic to node-red on port :1880\ui
 
-13. Restart nginx
+14. Restart nginx
 	sudo systemctl restart nginx
 
 
