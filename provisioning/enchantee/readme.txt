@@ -5,7 +5,7 @@
 ------------------------------
 in /boot/firmware/config.txt add:
 ```enable_uart=1```
-reassign Bluetooth to use mini-UART:
+reassign Bluetooth to use mini-UART: (Raspberry Pi 4 only )
 ```dtoverlay=miniuart-bt```
 Connect Moteino to Raspberry Pi UART:
 Moteino TX -> Pi RX (GPIO15)
@@ -14,7 +14,7 @@ Moteino GND -> Pi GND
 UART can be accessed using ttyAMA0
 
 
-**To enable Waveshare LED display
+**To enable Waveshare LCD display
 ------------------------------
 '''dtoverlay=vc4-kms-v3d'''
 '''dtoverlay=vc4-kms-dsi-waveshare-panel,8_0_inch'''
@@ -46,4 +46,17 @@ Add to /etc/default/gpsd:
 Restart gpsd:
 ```sudo systemctl enable gpsd```
 ```sudo systemctl restart gpsd```
+
+Install chrony to use GPS time. As from https://www.workswiththeweb.com/piprojects/2023/08/06/RBPi-NTP-Server/
+------------------------------
+```sudo apt install chrony```
+Add to /etc/chrony/chrony.conf:
+```local stratum 10```
+```refclock SHM 0 poll 3 refid GPS1```
+```refclock PPS /dev/pps0 lock GPS1 refid GPS prefer```
+Restart chrony:
+```sudo systemctl restart chrony```
+Test it is working:
+```chronyc -n sourcestats```
+
 
