@@ -1,4 +1,5 @@
 import pyemonlib.emonSuite as emonSuite
+#from pyEmon.pyemonlib import emon_settings
 import pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
 import re
@@ -325,12 +326,24 @@ class emon_mqtt:
     def otherMessage(self, reading, nodeSettings ):
         print(reading)
 
+    def check_int(self, s):
+        if s[0] in ('-', '+'):
+            return s[1:].isdigit()
+        return s.isdigit()
 
-    def process_line(self, command, line ):
+    def process_line(self, line ):
         # Check if settings need to be reloaded
         self.settings_manager.check_and_reload_settings()
         
-        if(command in self.dispatch.keys()):
-            self.dispatch[command](line, self.settings[command])
-            # Now publish the entire string
-            self.mqttClient.publish("EmonLog",line)
+        lineFields = line.split(',',2)
+        command = lineFields[0].rstrip('0123456789')
+        if( len(lineFields)<3 or not self.check_int(lineFields[1])):
+           raise ValueError(f"Invalid line format: {line}")
+        if not command in self.settings_manager.get_current_nodes():
+            raise ValueError(f"No current configuration for node: {command} in line: {line}")
+        if(not command in self.dispatch.keys()):
+            raise ValueError(f"Unknown device: {command} in line: {line}")
+        
+        self.dispatch[command](line, self.settings[command])
+        # Now publish the entire string
+        self.mqttClient.publish("EmonLog",line)

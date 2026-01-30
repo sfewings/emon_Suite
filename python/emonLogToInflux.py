@@ -2,26 +2,32 @@ import os
 import datetime
 import argparse
 from pyemonlib import emon_influx
+#from pyEmon.pyemonlib import emon_influx
 
 
 def process_files(path, fromFile="", toFile="", influxURL="", settingsPath = ""):
-    ei = emon_influx.emon_influx(url= influxURL, settingsPath=settingsPath)
+    ei = emon_influx.emon_influx(url= influxURL, settingsPath=settingsPath, batchProcess=True)
 
-    files = os.listdir(path)
-    files.sort()
+    try:
+        files = os.listdir(path)
+        files.sort()
 
-    start    = 0
-    end = len(files)
-    if( len(fromFile) != 0 ):
-        start  = files.index(fromFile)
-    if( len(toFile) != 0 ):
-        end = files.index(toFile)
-    
-    for i in range(start, end+1):
-        file = files[i]
-        if file.endswith(".TXT"):
-            print(f"{datetime.datetime.now()}, {i-start} of {end-start}, {file}")
-            ei.process_file(os.path.join(path,file))
+        start    = 0
+        end = len(files)
+        if( len(fromFile) != 0 ):
+            start  = files.index(fromFile)
+        if( len(toFile) != 0 ):
+            end = files.index(toFile)+1
+        
+        for i in range(start, end):
+            file = files[i]
+            if file.endswith(".TXT"):
+                print(f"{datetime.datetime.now()}, {i-start} of {end-start}, {file}")
+                ei.process_file(os.path.join(path,file))
+    finally:
+        # Ensure all batches are flushed and written to influxdb before exiting
+        print("Flushing and closing InfluxDB connection...")
+        ei.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import emon log.TXT files to Influx")

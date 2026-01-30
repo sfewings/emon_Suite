@@ -45,6 +45,19 @@ services:
       - GF_ALLOWUIUPDATES=true
     restart: always
 
+  emon_settings_web:
+    image: emon-settings-web:latest
+    container_name: emon_settings_web
+    ports:
+      - '5000:5000'
+    volumes:
+      - ./emon_config:/config
+    environment:
+      - EMON_CONFIG=/config
+      - TZ=${TIMEZONE}
+      - FLASK_APP=emon_settings_web.py
+    restart: unless-stopped
+
 volumes:
   influxdb-storage:
   grafana-storage:

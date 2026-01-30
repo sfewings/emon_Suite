@@ -3,7 +3,8 @@ import datetime
 import time
 import os
 import yaml
-from pyemonlib import emon_mqtt
+#from pyemonlib import emon_mqtt
+from pyEmon.pyemonlib import emon_mqtt
 
 
 def check_int(s):
@@ -46,20 +47,7 @@ if __name__ == "__main__":
     
     writeLog(logPath, f"Starting emonCSVToMQTT with file: {csvFile}, MQTT: {mqttServer}")
 
-    # Get the node names from the settings file
-    nodes = []
-    try:
-        with open(args.settingsPath, 'r') as settingsFile:
-            settings = yaml.full_load(settingsFile)
-            for key in settings:
-                nodes.append(key)
-        nodes.append('base')
-        writeLog(logPath, f"Loaded nodes: {nodes}")
-    except Exception as e:
-        writeLog(logPath, f"Error loading settings file: {str(e)}")
-        exit(1)
-
-    # Create MQTT instance
+     # Create MQTT instance
     try:
         emonMQTT = emon_mqtt.emon_mqtt(mqtt_server=mqttServer, mqtt_port=1883, 
                                         settingsPath=args.settingsPath)
@@ -111,16 +99,8 @@ if __name__ == "__main__":
                 device_name_parts = device_data.split(',')
                 device_name = device_name_parts[0].rstrip('0123456789')
                 
-                # Check if device is in our nodes list
-                if device_name in nodes and len(device_name_parts) > 1:
-                    if check_int(device_name_parts[1]):
-                        # Process the line
-                        writeLog(logPath, f"Processing: {line}")
-                        emonMQTT.process_line(device_name, device_data)
-                    else:
-                        writeLog(logPath, f"Line {line_num}: Invalid format - second field not numeric: {line}")
-                else:
-                    writeLog(logPath, f"Line {line_num}: Unknown device or invalid format: {line}")
+                writeLog(logPath, f"Processing: {line}")
+                emonMQTT.process_line(device_data)
                 
                 previous_timestamp = current_timestamp
                 

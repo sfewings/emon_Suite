@@ -66,7 +66,6 @@ class SettingsWebInterface:
             try:
                 files_dict = self.settings_manager.get_available_settings_files()
                 current = self.settings_manager.get_current_settings_file()
-                
                 return jsonify({
                     'success': True,
                     'files': [
