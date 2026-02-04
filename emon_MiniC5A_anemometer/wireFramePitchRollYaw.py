@@ -21,9 +21,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from matplotlib.animation import FuncAnimation
 
+com_port = "/dev/tty.usbserial-A50285BI"
 # CLI
 parser = argparse.ArgumentParser(description="Plot yaw,roll,pitch from serial as rotating wireframe")
-parser.add_argument("--port", "-p", default="COM4", help="serial port (e.g. COM4 or /dev/ttyUSB0)")
+parser.add_argument("--port", "-p", default=com_port, help="serial port (e.g. COM4 or /dev/ttyUSB0)")
 parser.add_argument("--baud", "-b", type=int, default=115200, help="baud rate")
 parser.add_argument("--history", "-n", type=int, default=100, help="trail length")
 args = parser.parse_args()

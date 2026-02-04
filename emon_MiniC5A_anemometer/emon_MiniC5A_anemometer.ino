@@ -65,8 +65,9 @@ const float SCALE_PRESSURE   = 0.1f; // hPa or other unit
 // scaling constants
 const float MPU_ACCEL_SCALE = 16384.0f; // LSB/g for ±2g
 const float MPU_GYRO_SCALE = 131.0f;    // LSB/(deg/s) for ±250deg/s
+const int INSTALATION_HEADING_OFFSET = 0;  //degrees difference between anemometer direction and sensro installation direction
 
-float GyroOffset[3] = {0.0f, 0.0f, 0.0f};
+float GyroOffset[3] = {-693.9f, -62.5f, -40.3f};
 
 
 // VERY IMPORTANT!
@@ -74,22 +75,22 @@ float GyroOffset[3] = {0.0f, 0.0f, 0.0f};
 //The compass will NOT work well or at all if these are not correct
 
 //Accel scale: divide by 16604.0 to normalize. These corrections are quite small and probably can be ignored.
-float A_B [3] = {-142.37, 1379.88, 2941.27};
+float A_B [3] = {1152.16, -1208.87, 1895.63};
 
 
 float A_Ainv[3][3] = {
-{ 0.05835, 0.00087, -0.00058 },
-{ 0.00087, 0.06162, 0.00127 },
-{ -0.00058, 0.00127, 0.05849 }};
+{ 0.06165, 0.0015, 0.00235 },
+{ 0.0015, 0.05959, -0.00639 },
+{ 0.00235, -0.00639, 0.05417 }};;
 
 //Mag scale divide by 369.4 to normalize. These are significant corrections, especially the large offsets.
-float M_B [3] = {45.68, -121.05, 2.35};
+float M_B [3] = {107.82, -122.78, 5.68};
 
 
 float M_Ainv[3][3] = {
-{ 5.18943, -0.08813, 0.03296 },
-{ -0.08813, 4.98646, -0.14547 },
-{ 0.03296, -0.14547, 6.13326 }};
+{ 4.27479, 0.01328, 0.00683 },
+{ 0.01328, 4.28946, -0.05025 },
+{ 0.00683, -0.05025, 5.32997 }};
 
 
 // local magnetic declination in degrees
@@ -517,7 +518,7 @@ int get_heading(float acc[3], float mag[3], float p[3], float magdec)
   // compute heading in horizontal plane, correct for local magnetic declination in degrees
 
   float h = -atan2(vector_dot(W, p), vector_dot(N, p)) * 180 / M_PI; //minus: conventional nav, heading increases North to East
-  int heading = round(h + magdec);
+  int heading = round(h + magdec) - INSTALATION_HEADING_OFFSET;
   heading = (heading + 720) % 360; //apply compass wrap
   return heading;
 }
@@ -528,9 +529,9 @@ void get_gyro(float Gxyz[3])
   int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
   int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
 
-  Gxyz[0] = (float)gx - GyroOffset[0];
-  Gxyz[1] = (float)gy - GyroOffset[1];
-  Gxyz[2] = (float)gz - GyroOffset[2];
+  Gxyz[0] = (float)gx + GyroOffset[0];
+  Gxyz[1] = (float)gy + GyroOffset[1];
+  Gxyz[2] = (float)gz + GyroOffset[2];
 }
 
 // subtract offsets and correction matrix to accel and mag data
@@ -750,7 +751,7 @@ void setup()
     g_payloadAnemometer.subnode = 1;
     memset(&g_payloadPressure, 0, sizeof(g_payloadPressure));
     g_payloadPressure.subnode = 1;
-    memset(&payloadIMU, 0, sizeof(g_payloadIMU));
+    memset(&g_payloadIMU, 0, sizeof(g_payloadIMU));
     g_payloadIMU.subnode = 0;
     EmonSerial::PrintPressurePayload(NULL);
     EmonSerial::PrintGPSPayload(NULL);
@@ -826,9 +827,9 @@ void loop()
 
         //calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
 
-        get_scaled_IMU(g_payloadIMU.Acc, g_payloadIMU.Mag);  //apply relative scale and offset to RAW data. UNITS are not important
-        get_gyro(g_payloadIMU.Gyro);                         //get gyro data with offsets removed
-        g_payloadIMU.heading = get_heading(g_payloadIMU.Acc, g_payloadIMU.Mag, p, declination);
+        get_scaled_IMU(g_payloadIMU.acc, g_payloadIMU.mag);  //apply relative scale and offset to RAW data. UNITS are not important
+        get_gyro(g_payloadIMU.gyro);                         //get gyro data with offsets removed
+        g_payloadIMU.heading = get_heading(g_payloadIMU.acc, g_payloadIMU.mag, p, declination);
 
         g_rf69.setHeaderId(IMU_NODE);
         g_rf69.send((const uint8_t*) &g_payloadIMU, sizeof(PayloadIMU) );
@@ -859,7 +860,7 @@ void loop()
                 Serial.println(F("No packet sent"));
             }
             //now send compass based wind direction as a separate packet
-            float apparentWindDirection = fmod(anemometerReadings.windDirection + (float) heading, 360.0);
+            float apparentWindDirection = fmod(anemometerReadings.windDirection + g_payloadIMU.heading, 360.0);
             g_payloadAnemometer.subnode = 1;    //apparent wind
             g_payloadAnemometer.windDirection = apparentWindDirection;
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
