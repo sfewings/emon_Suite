@@ -204,6 +204,27 @@ def test1():
     print("cellmv=", end='')
     for x in range(emonSuite.MAX_BMS_CELLS):
         print("{},".format(payload.cellmv[x]), end = '')
+    print()
+
+    IMU_MESSAGE = "imu,0,0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,180.0"
+    print(IMU_MESSAGE)
+    payload = emonSuite.PayloadIMU()
+    retVal = emonSuite.EmonSerial.ParseIMUPayload(IMU_MESSAGE, payload)
+    print('returnVal={}'.format(retVal))
+    print(f"subnode={payload.subnode}")
+    print("acc=", end='')
+    for axis in range(3):
+        print("{},".format(payload.acc[axis]), end = '')
+    print()
+    print("mag=", end='')
+    for axis in range(3):
+        print("{},".format(payload.mag[axis]), end = '')
+    print()
+    print("gyro=", end='')
+    for axis in range(3):
+        print("{},".format(payload.gyro[axis]), end = '')
+    print(f"heading={payload.heading}")
+
 
 if __name__ == '__main__':
     test1()

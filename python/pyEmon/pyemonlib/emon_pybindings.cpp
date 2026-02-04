@@ -230,6 +230,25 @@ PYBIND11_MODULE(emonSuite, m) {
     payloadAnemometer.def_readwrite("windDirection", &PayloadAnemometer::windDirection, "Wind direction (relative)");
     payloadAnemometer.def_readwrite("temperature", &PayloadAnemometer::temperature, "Temperature C");
 
+    //PayloadIMU
+    py::class_<PayloadIMU, PayloadRelay> payloadIMU(m, "PayloadIMU");
+    payloadIMU.def(py::init<>());
+    payloadIMU.def_readwrite("subnode", &PayloadIMU::subnode, "allow multiple IMU nodes on the network");
+    payloadIMU.def_property("acc", [](PayloadIMU &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<float>::format());
+            return pybind11::array(dtype, { 3 }, { sizeof(float) }, payload.acc, nullptr);
+            }, [](PayloadIMU& payload) {});	// normalised accelerometer readings
+    payloadIMU.def_property("mag", [](PayloadIMU &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<float>::format());
+            return pybind11::array(dtype, { 3 }, { sizeof(float) }, payload.mag, nullptr);
+            }, [](PayloadIMU& payload) {});	// normalised magnetometer readings
+    payloadIMU.def_property("gyro", [](PayloadIMU &payload)->pybind11::array {
+            auto dtype = pybind11::dtype(pybind11::format_descriptor<float>::format());
+            return pybind11::array(dtype, { 3 }, { sizeof(float) }, payload.gyro, nullptr);
+            }, [](PayloadIMU& payload) {});	// normalised gyroscope readings
+    payloadIMU.def_readwrite("heading", &PayloadIMU::heading, "Heading in degrees");
+
+
     //Parse function calls
     py::class_<EmonSerial> emonSerial(m, "EmonSerial");
     emonSerial.def_static("ParseRainPayload", &EmonSerial::ParseRainPayload, "Parses from string to RainPayload",py::arg("string"), py::arg("PayloadRain"));
@@ -250,6 +269,7 @@ PYBIND11_MODULE(emonSuite, m) {
     emonSerial.def_static("ParseDalyBMSPayload", &EmonSerial::ParseDalyBMSPayload, "Parses from string to PayloadDalyBMS",py::arg("string"), py::arg("PayloadDalyBMS"));
     emonSerial.def_static("ParseSevConPayload", &EmonSerial::ParseSevConPayload, "Parses from string to PayloadSevCon",py::arg("string"), py::arg("PayloadSevCon"));
     emonSerial.def_static("ParseAnemometerPayload", &EmonSerial::ParseAnemometerPayload, "Parses from string to PayloadAnemometer",py::arg("string"), py::arg("PayloadAnemometer"));
+    emonSerial.def_static("ParseIMUPayload", &EmonSerial::ParseIMUPayload, "Parses from string to PayloadIMU",py::arg("string"), py::arg("PayloadIMU"));
     emonSerial.def_static("CalcCrc", &EmonSerial::CalcCrc, "Calculates Crc on payloads",py::arg("const void*"), py::arg("byte"));
 }
 

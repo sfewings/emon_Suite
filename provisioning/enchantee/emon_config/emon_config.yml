@@ -47,4 +47,7 @@ pth:
 mwv:
   0:
     name: Anemometer
+imu:
+  0:
+    name: IMU Sensor
 

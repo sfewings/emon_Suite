@@ -40,6 +40,7 @@ class emon_influx:
             'bms'  : self.bmsMessage,
             'svc'  : self.sevConMessage,
             'mwv'  : self.mwvMessage,
+            'imu'  : self.imuMessage,
             'other': self.otherMessage
         }
 
@@ -613,6 +614,43 @@ class emon_influx:
                     self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("anemometerException", reading, ex)
+
+    def imuMessage(self, time, reading, nodeSettings ):
+        payload = emonSuite.PayloadIMU()
+        if( emonSuite.EmonSerial.ParseIMUPayload(reading,payload) ):
+            try:
+                p = Point("imu").tag("sensor",f"imu/{payload.subnode}/heading")\
+                                .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                .tag("sensorName",nodeSettings[payload.subnode]["name"])\
+                                .field("value",payload.heading).time(time)
+                self.write_api.write(bucket=self.bucket, record=p)
+
+                for axis in range(3):
+                    p = Point("imu").tag("sensor",f"imu/{payload.subnode}/acc/{axis}")\
+                                        .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+ f" - acc[{axis}]")\
+                                        .field("value", payload.acc[axis]).time(time)
+                    self.write_api.write(bucket=self.bucket, record=p)
+
+                for axis in range(3):
+                    p = Point("imu").tag("sensor",f"imu/{payload.subnode}/mag/{axis}")\
+                                        .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+ f" - mag[{axis}]")\
+                                        .field("value", payload.mag[axis]).time(time)
+                    self.write_api.write(bucket=self.bucket, record=p)
+
+                for axis in range(3):
+                    p = Point("imu").tag("sensor",f"imu/{payload.subnode}/gyro/{axis}")\
+                                        .tag("sensorGroup",nodeSettings[payload.subnode]["name"])\
+                                        .tag("sensorName",nodeSettings[payload.subnode]["name"]+ f" - gyro[{axis}]")\
+                                        .field("value", payload.gyro[axis]).time(time)
+                    self.write_api.write(bucket=self.bucket, record=p)
+
+                if(':' in reading):
+                    self.publishRSSI( time, nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("IMUException", reading, ex)
+
 
     def otherMessage(self, time, reading, nodeSettings ):
         print(reading)
