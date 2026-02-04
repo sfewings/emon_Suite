@@ -40,6 +40,7 @@ typedef unsigned char byte;
 #define DALY_BMS_NODE 27			//Node for a Daly BMS
 #define SEVCON_CAN_NODE 28			//Node for Sevcon Gen4 motor controller CAN bus
 #define ANEMOMETER_NODE 29			//Node for anemometer
+#define IMU_NODE 30					//Node for 9DOF IMU sensor
 
 
 #define MAX_SUBNODES	8			//Maximum number of disp and temp nodes supported
@@ -232,6 +233,14 @@ typedef struct PayloadAnemometer : PayloadRelay {
 	float temperature;
 } PayloadAnemometer;
 
+typedef struct PayloadIMU : PayloadRelay {
+	byte subnode;
+	float acc[3];
+	float mag[3];
+	float gyro[3];
+	float heading;
+} PayloadIMU;
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -255,6 +264,7 @@ public:
 	static void PrintDalyBMSPayload(PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 	static void PrintSevConPayload(PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
 	static void PrintAnemometerPayload(PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast = 0);
+	static void PrintIMUPayload(PayloadIMU* pPayloadIMU, unsigned long timeSinceLast = 0);
 	
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
@@ -276,6 +286,7 @@ public:
 	static void PrintDalyBMSPayload(Stream& stream, PayloadDalyBMS* pPayloadDalyBMS, unsigned long timeSinceLast = 0);
 	static void PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
 	static void PrintAnemometerPayload(Stream& stream, PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast = 0);
+	static void PrintIMUPayload(Stream& stream, PayloadIMU* pPayloadIMU, unsigned long timeSinceLast = 0);
 
 #endif
 	static uint16_t CalcCrc(const void* ptr, byte len);
@@ -302,6 +313,7 @@ public:
 	static int ParseDalyBMSPayload(char* str, PayloadDalyBMS* pPayloadDalyBMS);
 	static int ParseSevConPayload(char* str, PayloadSevCon* pPayloadSevCon);
 	static int ParseAnemometerPayload(char* str, PayloadAnemometer* pPayloadAnemometer);
+	static int ParseIMUPayload(char* str, PayloadIMU* pPayloadIMU);
 };
 
 

@@ -66,6 +66,7 @@ const float SCALE_PRESSURE   = 0.1f; // hPa or other unit
 const float MPU_ACCEL_SCALE = 16384.0f; // LSB/g for ±2g
 const float MPU_GYRO_SCALE = 131.0f;    // LSB/(deg/s) for ±250deg/s
 
+float GyroOffset[3] = {0.0f, 0.0f, 0.0f};
 
 
 // VERY IMPORTANT!
@@ -92,7 +93,7 @@ float M_Ainv[3][3] = {
 
 
 // local magnetic declination in degrees
-float declination = -1.5;
+float declination = -1.5;  // Perth, Western Australia
 
 float p[] = {1, 0, 0};  //X marking on sensor board points toward yaw = 0
 
@@ -108,6 +109,7 @@ struct AnemometerReadings {
 PayloadPressure g_payloadPressure;
 PayloadAnemometer g_payloadAnemometer;
 PayloadGPS g_payloadGPS;
+PayloadIMU g_payloadIMU;
 
 RH_RF69 g_rf69;
 
@@ -520,6 +522,17 @@ int get_heading(float acc[3], float mag[3], float p[3], float magdec)
   return heading;
 }
 
+void get_gyro(float Gxyz[3]) 
+{
+  int16_t gx = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
+  int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
+  int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
+
+  Gxyz[0] = (float)gx - GyroOffset[0];
+  Gxyz[1] = (float)gy - GyroOffset[1];
+  Gxyz[2] = (float)gz - GyroOffset[2];
+}
+
 // subtract offsets and correction matrix to accel and mag data
 
 void get_scaled_IMU(float Axyz[3], float Mxyz[3]) {
@@ -737,9 +750,12 @@ void setup()
     g_payloadAnemometer.subnode = 1;
     memset(&g_payloadPressure, 0, sizeof(g_payloadPressure));
     g_payloadPressure.subnode = 1;
+    memset(&payloadIMU, 0, sizeof(g_payloadIMU));
+    g_payloadIMU.subnode = 0;
     EmonSerial::PrintPressurePayload(NULL);
     EmonSerial::PrintGPSPayload(NULL);
     EmonSerial::PrintAnemometerPayload(NULL);
+    EmonSerial::PrintIMUPayload(NULL);
     Serial.println(F("mwv,0= wind relative to boat"));
     Serial.println(F("mwv,1= apparent wind"));
     Serial.println(F("mwv,2= true wind"));
@@ -806,16 +822,25 @@ void loop()
         g_rs232Serial.stopListening();
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 
+        digitalWrite(MOTEINO_LED, HIGH );
+
+        //calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
+
+        get_scaled_IMU(g_payloadIMU.Acc, g_payloadIMU.Mag);  //apply relative scale and offset to RAW data. UNITS are not important
+        get_gyro(g_payloadIMU.Gyro);                         //get gyro data with offsets removed
+        g_payloadIMU.heading = get_heading(g_payloadIMU.Acc, g_payloadIMU.Mag, p, declination);
+
+        g_rf69.setHeaderId(IMU_NODE);
+        g_rf69.send((const uint8_t*) &g_payloadIMU, sizeof(PayloadIMU) );
+        if( g_rf69.waitPacketSent() )
+        {
+            EmonSerial::PrintIMUPayload(&g_payloadIMU);
+        }
+
         if (readAnemometerOK) 
         {
             //printValues(anemometerReadings);
 
-            digitalWrite(MOTEINO_LED, HIGH );
-
-            //calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
-            float Axyz[3], Mxyz[3]; //centered and scaled accel/mag data
-            get_scaled_IMU(Axyz, Mxyz);  //apply relative scale and offset to RAW data. UNITS are not important
-            int heading = get_heading(Axyz, Mxyz, p, declination);
 
             //Send vessel relatative wind data first
             g_rf69.setHeaderId(ANEMOMETER_NODE);

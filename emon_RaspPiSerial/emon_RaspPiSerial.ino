@@ -239,18 +239,9 @@ void loop ()
 			{
 				SERIAL_OUT(Anemometer, Payload);
 			}
-
-			if(node_id == 99) //receive array data from anemometer calibration
+			if (node_id == IMU_NODE && len == sizeof(PayloadIMU))
 			{
-				int16_t acc_mag_readings[6];
-				memcpy( acc_mag_readings, data, sizeof(acc_mag_readings));
-				for(int i=0;i<6;i++)
-				{
-					Serial.print(acc_mag_readings[i]);
-					if( i<5)
-						Serial.print(" ,");
-				}
-				Serial.println();
+				SERIAL_OUT(IMU, Payload);
 			}
 		}
 
