@@ -21,8 +21,8 @@
 	#define RFM69_RST     	4
 #endif
 
-//#define HOUSE_BANNER
-#define BOAT_BANNER
+#define HOUSE_BANNER
+//#define BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
@@ -125,8 +125,8 @@ void loop ()
 			//RH_RF95::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
-			Serial.print("RSSI: ");
-			Serial.println(g_rfRadio.lastRssi(), DEC);
+			//Serial.print("RSSI: ");
+			//Serial.println(g_rfRadio.lastRssi(), DEC);
 
 			data = buf;
 
@@ -238,6 +238,19 @@ void loop ()
 			if (node_id == ANEMOMETER_NODE  && len == sizeof(PayloadAnemometer))
 			{
 				SERIAL_OUT(Anemometer, Payload);
+			}
+
+			if(node_id == 99) //receive array data from anemometer calibration
+			{
+				int16_t acc_mag_readings[6];
+				memcpy( acc_mag_readings, data, sizeof(acc_mag_readings));
+				for(int i=0;i<6;i++)
+				{
+					Serial.print(acc_mag_readings[i]);
+					if( i<5)
+						Serial.print(" ,");
+				}
+				Serial.println();
 			}
 		}
 

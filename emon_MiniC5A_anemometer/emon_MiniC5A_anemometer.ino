@@ -77,18 +77,19 @@ float A_B [3] = {-142.37, 1379.88, 2941.27};
 
 
 float A_Ainv[3][3] = {
-{ 0.06069, 0.00612, 0.00281 },
-{ 0.00612, 0.05928, -0.00414 },
-{ 0.00281, -0.00414, 0.06009 }};
+{ 0.05835, 0.00087, -0.00058 },
+{ 0.00087, 0.06162, 0.00127 },
+{ -0.00058, 0.00127, 0.05849 }};
 
 //Mag scale divide by 369.4 to normalize. These are significant corrections, especially the large offsets.
 float M_B [3] = {45.68, -121.05, 2.35};
 
 
 float M_Ainv[3][3] = {
-{ 3.26302, 0.05405, 0.01863 },
-{ 0.05405, 3.69962, -0.03631 },
-{ 0.01863, -0.03631, 4.45143 }};
+{ 5.18943, -0.08813, 0.03296 },
+{ -0.08813, 4.98646, -0.14547 },
+{ 0.03296, -0.14547, 6.13326 }};
+
 
 // local magnetic declination in degrees
 float declination = -1.5;
@@ -277,6 +278,10 @@ bool initMS5611()
 // Outputs pasted into this sketch
 void collectDataForMahonyCalibration()
 {
+    int16_t acc_mag_readings[6];
+    
+    g_rf69.setHeaderId(99);
+    
     // find gyro offsets
     Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z"));
 
@@ -315,13 +320,16 @@ void collectDataForMahonyCalibration()
     delay(5000);
     Serial.println(F("Starting..."));
 
-    // get values for calibration of acc/mag
+    //get values for calibration of acc/mag
     for (i = 0; i < acc_mag_count; i++) 
     {
         int16_t ax = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
         int16_t ay = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
         int16_t az = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
 
+        acc_mag_readings[0] = ax;
+        acc_mag_readings[1] = ay;
+        acc_mag_readings[2] = az;
 
         Serial.print(ax);
         Serial.print(", ");
@@ -337,17 +345,50 @@ void collectDataForMahonyCalibration()
             int16_t mZ = (int16_t)((magBuf[2] << 8) | magBuf[3]);
             int16_t mY = (int16_t)((magBuf[4] << 8) | magBuf[5]);
 
+            acc_mag_readings[3] = mX;
+            acc_mag_readings[4] = mY;
+            acc_mag_readings[5] = mZ;
+
             Serial.print(mX);
             Serial.print(", ");
             Serial.print(mY);
             Serial.print(", ");
             Serial.print(mZ);
         }
-        Serial.println();
 
-        delay(200);
+        digitalWrite(MOTEINO_LED,HIGH);
+        g_rf69.send((const uint8_t*) acc_mag_readings, 6*sizeof(int16_t) );
+        if( g_rf69.waitPacketSent() )
+            Serial.print(",sent");   
+        digitalWrite(MOTEINO_LED,LOW);
+
+        Serial.println();
+           delay(200);
     }
+
+    // for (i = 0; i < acc_mag_count; i++) 
+    // {
+    //     for(int j=0; j<6;j++)
+    //     {
+    //         acc_mag_readings[j] = i;
+    //         Serial.print(i);
+    //         if(j<5)
+    //             Serial.print(", ");
+    //     }
+
+    //     digitalWrite(MOTEINO_LED,HIGH);
+    //     g_rf69.send((const uint8_t*) acc_mag_readings, 6*sizeof(int16_t) );
+    //     if( g_rf69.waitPacketSent() )
+    //         Serial.print(",sent");   
+    //     digitalWrite(MOTEINO_LED,LOW);
+
+    //     Serial.println();
+
+    //     delay(200);
+    // }
     Serial.print(F("Done collecting"));
+    
+    g_rf69.setHeaderId(ANEMOMETER_NODE);
 }
 
 // Routine to call to output on serial to wireFrame.py or wireFramePitchRollYaw.py. 
