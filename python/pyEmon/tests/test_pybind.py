@@ -206,7 +206,7 @@ def test1():
         print("{},".format(payload.cellmv[x]), end = '')
     print()
 
-    IMU_MESSAGE = "imu,0,0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,180.0"
+    IMU_MESSAGE = "imu,0,0.1,0.2,0.3,0.4,0.5,0.6,700,800,900,180.0"
     print(IMU_MESSAGE)
     payload = emonSuite.PayloadIMU()
     retVal = emonSuite.EmonSerial.ParseIMUPayload(IMU_MESSAGE, payload)

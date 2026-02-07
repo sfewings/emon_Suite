@@ -326,11 +326,11 @@ class emon_mqtt:
         if( emonSuite.EmonSerial.ParseIMUPayload(reading,payload) ):
             try:
                 for axis in range(3):
-                    self.mqttClient.publish(f"imu/{payload.subnode}/acc/{axis}",payload.acc[axis])                    
+                    self.mqttClient.publish(f"imu/{payload.subnode}/acc/{axis}",float(payload.acc[axis]))
                 for axis in range(3):
-                    self.mqttClient.publish(f"imu/{payload.subnode}/mag/{axis}",payload.mag[axis])                    
+                    self.mqttClient.publish(f"imu/{payload.subnode}/mag/{axis}",float(payload.mag[axis]))
                 for axis in range(3):
-                    self.mqttClient.publish(f"imu/{payload.subnode}/gyro/{axis}",payload.gyro[axis])                    
+                    self.mqttClient.publish(f"imu/{payload.subnode}/gyro/{axis}",float(payload.gyro[axis]))
                 self.mqttClient.publish(f"imu/{payload.subnode}/heading",payload.heading)
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
