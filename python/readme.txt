@@ -33,6 +33,8 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
     > python setup.py pytest
 3. Run setup
     > python setup.py bdist_wheel
+     or
+    > python -m build #using the pyproject.toml file
 4. Copy the wheel from dist and install
     > pip install ./dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl
     or

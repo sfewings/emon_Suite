@@ -94,7 +94,8 @@ class EmonSettings:
             for filename in os.listdir(self.settingsDirectory):
                 if filename == "emon_config.yml":
                     # Support the legacy single config file
-                    settings_files[filename] = (datetime.datetime.max, filename, os.path.join(self.settingsDirectory, filename))
+                    dt = datetime.datetime.max.replace(tzinfo=datetime.datetime.now().astimezone().tzinfo)
+                    settings_files[filename] = (dt, filename, os.path.join(self.settingsDirectory, filename))
                 else:
                     dt = self._parse_settings_filename(filename)
                     if dt is not None:
