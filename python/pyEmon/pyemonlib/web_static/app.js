@@ -352,8 +352,59 @@ function goBackToList() {
 function showNewFileDialog() {
     document.getElementById('newFileDialog').style.display = 'block';
     document.getElementById('modalOverlay').style.display = 'block';
-    document.getElementById('newFilename').focus();
+    
+    // Auto-populate filename with current date/time
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const filename = `${year}${month}${day}-${hours}${minutes}.yml`;
+    
+    document.getElementById('newFilename').value = filename;
+    
+    // Populate existing files dropdown
+    populateExistingFilesDropdown();
+    
+    // Reset template to empty
+    document.getElementById('templateSelect').value = 'empty';
     updateNewFileTemplate();
+    
+    document.getElementById('newFilename').focus();
+}
+
+/**
+ * Populate the existing files dropdown
+ */
+async function populateExistingFilesDropdown() {
+    try {
+        const response = await fetch('/api/settings/list');
+        const data = await response.json();
+        
+        if (!data.success || !data.files || data.files.length === 0) {
+            // Hide existing files group if no files available
+            document.getElementById('existingFilesGroup').style.display = 'none';
+            return;
+        }
+        
+        const group = document.getElementById('existingFilesGroup');
+        group.innerHTML = '';
+        
+        // Add each existing file as an option
+        data.files.forEach(file => {
+            const option = document.createElement('option');
+            option.value = `file:${file.filename}`;
+            option.textContent = file.filename;
+            group.appendChild(option);
+        });
+        
+        // Show the group if we have files
+        group.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error loading existing files:', error);
+    }
 }
 
 /**
@@ -374,6 +425,13 @@ function updateNewFileTemplate() {
     const textarea = document.getElementById('newFileContent');
     
     let content = '';
+    
+    // Handle existing file templates
+    if (template.startsWith('file:')) {
+        const filename = template.substring(5);
+        loadExistingFileAsTemplate(filename);
+        return;
+    }
     
     switch (template) {
         case 'empty':
@@ -462,6 +520,27 @@ bat:
     }
     
     textarea.value = content;
+}
+
+/**
+ * Load an existing file as template
+ */
+async function loadExistingFileAsTemplate(filename) {
+    try {
+        const response = await fetch(`/api/settings/read/${encodeURIComponent(filename)}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            showNewFileError('Failed to load template file: ' + data.error);
+            return;
+        }
+        
+        document.getElementById('newFileContent').value = data.content;
+        
+    } catch (error) {
+        console.error('Error loading template file:', error);
+        showNewFileError('Error loading template file: ' + error.message);
+    }
 }
 
 /**
