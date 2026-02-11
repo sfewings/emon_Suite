@@ -23,8 +23,8 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from werkzeug.exceptions import BadRequest
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(__file__))
-from emon_settings import EmonSettings
+sys.path.insert(0, os.path.dirname(__file__)+'/..')
+from pyEmon.pyemonlib.emon_settings import EmonSettings
 
 
 class SettingsWebInterface:
