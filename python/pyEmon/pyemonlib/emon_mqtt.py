@@ -1,17 +1,13 @@
 import pyemonlib.emonSuite as emonSuite
+import pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
-
-# import time
-# import datetime
-# import pytz
-import os
-import yaml
 import re
 
 class emon_mqtt:
     def __init__(self, mqtt_server="localhost",mqtt_port=1883, settingsPath="./emon_config.yml"):
-        settingsFile = open(settingsPath, 'r')
-        self.settings = yaml.full_load(settingsFile)
+        # Initialize settings manager
+        self.settings_manager = emon_settings.EmonSettings(settingsPath)
+        
         self.dispatch = {
             'rain' : self.rainMessage,
             'temp' : self.temperatureMessage,
@@ -48,6 +44,11 @@ class emon_mqtt:
     def on_disconnect(self, client, userdata,rc=0):
         print("DisConnected result code {rc}")
         self.mqttClient.loop_stop()
+    
+    @property
+    def settings(self):
+        """Property to access current settings from settings manager."""
+        return self.settings_manager.get_settings()
     
     def printException(self, exceptionSource, reading, ex):
         if( self.lineNumber == -1):
@@ -343,6 +344,9 @@ class emon_mqtt:
 
 
     def process_line(self, command, line ):
+        # Check if settings need to be reloaded
+        self.settings_manager.check_and_reload_settings()
+        
         if(command in self.dispatch.keys()):
             self.dispatch[command](line, self.settings[command])
             # Now publish the entire string

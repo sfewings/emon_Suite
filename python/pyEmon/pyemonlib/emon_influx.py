@@ -1,12 +1,12 @@
 import pyemonlib.emonSuite as emonSuite
+import pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
 
 import time
+import os
+import re
 import datetime
 import pytz
-import os
-import yaml
-import re
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 
@@ -20,16 +20,8 @@ class emon_influx:
             self.write_api = self.client.write_api(write_options=WriteOptions(batch_size=50, flush_interval=10))
         self.lineNumber = -1
 
-        # Initialize settings path tracking
-        self.settingsPath = settingsPath
-        self.settingsDirectory = os.path.dirname(settingsPath) or "."
-        self.currentSettingsFile = None
-        self.availableSettingsFiles = []
-        self.lastSettingsFileCheck = 0
-        self.settingsCheckInterval = 60  # Check for new settings files every 60 seconds
-        
-        # Load initial settings
-        self._load_settings()
+        # Initialize settings manager
+        self.settings_manager = emon_settings.EmonSettings(settingsPath)
         
         self.dispatch = {
             'rain' : self.rainMessage,
@@ -56,193 +48,11 @@ class emon_influx:
     def __del__(self):
         self.client.close()
     
-    def _parse_settings_filename(self, filename):
-        """
-        Parse a settings filename to extract the datetime.
-        Expects format: YYYYMMDD-hhmm.yml
-        Returns: datetime object if valid, None otherwise
-        """
-        if not filename.endswith('.yml'):
-            return None
-        
-        base = filename[:-4]  # Remove .yml extension
-        if not re.match(r'^\d{8}-\d{4}$', base):
-            return None
-        
-        try:
-            date_str = base[:8]  # YYYYMMDD
-            time_str = base[9:13]  # hhmm
-            datetime_str = f"{date_str}{time_str}"
-            return datetime.datetime.strptime(datetime_str, "%Y%m%d%H%M")
-        except ValueError:
-            return None
+    @property
+    def settings(self):
+        """Property to access current settings from settings manager."""
+        return self.settings_manager.get_settings()
     
-    def _scan_settings_files(self):
-        """
-        Scan the settings directory for all valid settings files.
-        Returns a sorted list of tuples: (datetime, filename, full_path)
-        """
-        settings_files = []
-        
-        if not os.path.isdir(self.settingsDirectory):
-            return settings_files
-        
-        try:
-            for filename in os.listdir(self.settingsDirectory):
-                if filename == "emon_config.yml":
-                    # Support the legacy single config file
-                    settings_files.append((datetime.datetime.max, filename, os.path.join(self.settingsDirectory, filename)))
-                else:
-                    dt = self._parse_settings_filename(filename)
-                    if dt is not None:
-                        full_path = os.path.join(self.settingsDirectory, filename)
-                        settings_files.append((dt, filename, full_path))
-        except Exception as e:
-            print(f"Error scanning settings directory: {e}")
-        
-        # Sort by datetime (earliest first), with emon_config.yml last as fallback
-        settings_files.sort(key=lambda x: x[0])
-        return settings_files
-    
-    def _get_applicable_settings_file(self, current_time=None):
-        """
-        Determine which settings file should be used for the given time.
-        Returns the full path to the applicable settings file.
-        If current_time is None, uses the current system time.
-        Selects the most recent file whose timestamp is <= current_time.
-        """
-        if current_time is None:
-            current_time = datetime.datetime.now()
-        
-        applicable_file = None
-        
-        for dt, filename, full_path in self.availableSettingsFiles:
-            if dt <= current_time:
-                applicable_file = full_path
-            else:
-                break  # Since list is sorted, no later files will match
-        
-        # If no dated file matches, use the legacy emon_config.yml if it exists
-        if applicable_file is None:
-            legacy_path = os.path.join(self.settingsDirectory, "emon_config.yml")
-            if os.path.isfile(legacy_path):
-                applicable_file = legacy_path
-        
-        # If still no file, try the original settingsPath
-        if applicable_file is None:
-            if os.path.isfile(self.settingsPath):
-                applicable_file = self.settingsPath
-        
-        return applicable_file
-    
-    def _load_settings_from_file(self, filepath):
-        """
-        Load and parse a settings YAML file.
-        Returns the parsed settings dict, or None if loading fails.
-        """
-        try:
-            with open(filepath, 'r') as settingsFile:
-                settings = yaml.full_load(settingsFile)
-                return settings
-        except Exception as e:
-            print(f"Error loading settings file {filepath}: {e}")
-            return None
-    
-    def _load_settings(self):
-        """
-        Load settings from the appropriate file.
-        Scans for timestamped files and selects the appropriate one based on current time.
-        Falls back to emon_config.yml if no timestamped files are found.
-        """
-        self.availableSettingsFiles = self._scan_settings_files()
-        applicable_file = self._get_applicable_settings_file()
-        
-        if applicable_file is None:
-            print(f"Error: No settings file found in {self.settingsDirectory}")
-            self.settings = {}
-            self.currentSettingsFile = None
-            return
-        
-        settings = self._load_settings_from_file(applicable_file)
-        if settings is not None:
-            self.settings = settings
-            self.currentSettingsFile = applicable_file
-            print(f"Loaded settings from: {os.path.basename(applicable_file)}")
-        else:
-            if self.settings is None:
-                self.settings = {}
-            print(f"Failed to load settings from {applicable_file}, using previous settings")
-    
-    def check_and_reload_settings(self):
-        """
-        Periodically check if new settings files have been created or if the current time
-        requires switching to a different settings file.
-        Should be called at appropriate intervals during message processing.
-        """
-        current_time = time.time()
-        
-        # Only check at specified intervals
-        if current_time - self.lastSettingsFileCheck < self.settingsCheckInterval:
-            return False
-        
-        self.lastSettingsFileCheck = current_time
-        
-        # Scan for any new files
-        new_files = self._scan_settings_files()
-        
-        # Check if the list of available files has changed
-        if new_files != self.availableSettingsFiles:
-            print("New settings files detected, rescanning...")
-            self.availableSettingsFiles = new_files
-        
-        # Determine which file should be used now
-        applicable_file = self._get_applicable_settings_file()
-        
-        # If the applicable file has changed, reload settings
-        if applicable_file != self.currentSettingsFile:
-            print(f"Switching settings from {self.currentSettingsFile} to {applicable_file}")
-            self._load_settings()
-            return True  # Settings were reloaded
-        
-        return False  # No changes needed
-    
-    def check_and_reload_settings_by_time(self, current_time=None):
-        """
-        Check if new settings files have been created and determine which settings file
-        to use based on the provided time (typically from log entry timestamps).
-        This is useful when processing historical log data.
-        
-        Args:
-            current_time: datetime object representing the time to check against.
-                         If None, uses system time.
-        """
-        # Periodically scan for new files
-        current_epoch = time.time()
-        if current_epoch - self.lastSettingsFileCheck >= self.settingsCheckInterval:
-            self.lastSettingsFileCheck = current_epoch
-            
-            # Scan for any new files
-            new_files = self._scan_settings_files()
-            
-            # Check if the list of available files has changed
-            if new_files != self.availableSettingsFiles:
-                print("New settings files detected, rescanning...")
-                self.availableSettingsFiles = new_files
-        
-        # Determine which file should be used for the given time
-        if current_time is None:
-            current_time = datetime.datetime.now()
-        
-        applicable_file = self._get_applicable_settings_file(current_time)
-        
-        # If the applicable file has changed, reload settings
-        if applicable_file != self.currentSettingsFile:
-            print(f"Switching settings from {self.currentSettingsFile} to {applicable_file} (for time {current_time})")
-            self._load_settings()
-            return True  # Settings were reloaded
-        
-        return False  # No changes needed
-
     def printException(self, exceptionSource, reading, ex):
         if( self.lineNumber == -1):
             print(f"{exceptionSource} {reading} - {ex}")
@@ -854,7 +664,7 @@ class emon_influx:
 
     def process_line(self, command, time, line ):
         # Check if settings need to be reloaded based on current time
-        self.check_and_reload_settings_by_time(time)
+        self.settings_manager.check_and_reload_settings_by_time(time)
         
         if(command in self.dispatch.keys()):
             self.dispatch[command](time, line, self.settings[command])
