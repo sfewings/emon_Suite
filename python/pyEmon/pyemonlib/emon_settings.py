@@ -35,13 +35,17 @@ class EmonSettings:
             settingsPath: Path to settings file or directory containing settings files
         """
         self.settingsPath = settingsPath
-        self.settingsDirectory = os.path.dirname(settingsPath) or "."
+        if( os.path.isdir(settingsPath) ):
+            self.settingsDirectory = settingsPath
+        else:
+            self.settingsDirectory = os.path.dirname(settingsPath) or "."
         self.currentSettingsFile = None
         self.availableSettingsFiles = {}  # Dictionary: filename -> (datetime, filename, full_path) tuple
         self.lastSettingsFileCheck = 0
         self.settingsCheckInterval = 60  # Check for new settings files every 60 seconds
         self.settings = {}
-        
+        self.currentNodes = []
+        print(f"Initializing EmonSettings with path: {self.settingsPath}, directory: {self.settingsDirectory}")
         # Load initial settings
         self._load_settings()
     
@@ -99,7 +103,7 @@ class EmonSettings:
                 else:
                     dt = self._parse_settings_filename(filename)
                     if dt is not None:
-                        full_path = os.path.join(self.settingsDirectory, filename)
+                        full_path = os.path.join(self.settingsDirectory, filename).replace('\\', '/')
                         settings_files[filename] = (dt, filename, full_path)
         except Exception as e:
             print(f"Error scanning settings directory: {e}")
@@ -123,10 +127,12 @@ class EmonSettings:
             current_time = datetime.datetime.now().astimezone()
         
         applicable_file = None
+     
         
         # Sort files by datetime and find the most recent one <= current_time
         sorted_files = sorted(self.availableSettingsFiles.values(), key=lambda x: x[0])
-        
+        applicable_file = sorted_files[0][2] if sorted_files else None  # Default to first file if none match
+
         for dt, filename, full_path in sorted_files:
             if dt <= current_time:
                 applicable_file = full_path
@@ -159,20 +165,29 @@ class EmonSettings:
         try:
             with open(filepath, 'r') as settingsFile:
                 settings = yaml.full_load(settingsFile)
+                #keep track of current nodes; "temp", "disp", etc.
+                self.currentNodes = []
+                for key in settings:
+                    self.currentNodes.append(key)
+                self.currentNodes.append('base')
+
                 return settings
         except Exception as e:
             print(f"Error loading settings file {filepath}: {e}")
             return None
     
-    def _load_settings(self):
+    def _load_settings(self, current_time=None):
         """
         Load settings from the appropriate file based on current time.
         
         Scans for timestamped files and selects the appropriate one.
         Falls back to emon_config.yml if no timestamped files are found.
+        
+        Args:
+            current_time: datetime object to determine applicable file (defaults to current system time if None)
         """
         self.availableSettingsFiles = self._scan_settings_files()
-        applicable_file = self._get_applicable_settings_file()
+        applicable_file = self._get_applicable_settings_file(current_time)
         
         if applicable_file is None:
             print(f"Error: No settings file found in {self.settingsDirectory}")
@@ -263,8 +278,9 @@ class EmonSettings:
         
         # If the applicable file has changed, reload settings
         if applicable_file != self.currentSettingsFile:
-            print(f"Switching settings from {self.currentSettingsFile} to {applicable_file} (for time {current_time})")
-            self._load_settings()
+            print(f"Switching settings from {os.path.basename(self.currentSettingsFile)} to {os.path.basename(applicable_file)} (for time {current_time})")
+            #self.currentSettingsFile = applicable_file 
+            self._load_settings(current_time)
             return True  # Settings were reloaded
         
         return False  # No changes needed
@@ -295,6 +311,14 @@ class EmonSettings:
             Dictionary with filename as key and (datetime, filename, full_path) tuple as value
         """
         return self.availableSettingsFiles
+    def get_current_nodes(self):
+        """
+        Get the list of current nodes from the loaded settings.
+        
+        Returns:
+            List of node names
+        """
+        return self.currentNodes
     
     def reload_settings(self):
         """

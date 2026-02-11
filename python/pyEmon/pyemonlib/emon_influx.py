@@ -1,5 +1,6 @@
 import pyemonlib.emonSuite as emonSuite
 import pyemonlib.emon_settings as emon_settings
+#import pyEmon.pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
 
 import time
@@ -46,7 +47,30 @@ class emon_influx:
         }
 
     def __del__(self):
-        self.client.close()
+        self.close()
+    
+    def close(self):
+        """
+        Properly close the InfluxDB connection and ensure all pending batches are written.
+        This uses the write_api's close() method to properly shut down the batch executor
+        and wait for all pending writes to complete.
+        """
+        try:
+            if hasattr(self, 'write_api') and self.write_api:
+                print("Closing write API and flushing pending batches...")
+                # Close the write_api, which will flush and wait for all pending batches
+                self.write_api.close()
+                print("Write API closed and all batches flushed")
+        except Exception as e:
+            print(f"Error closing write_api: {e}")
+        
+        try:
+            if hasattr(self, 'client') and self.client:
+                print("Closing InfluxDB client...")
+                self.client.close()
+                print("InfluxDB client closed")
+        except Exception as e:
+            print(f"Error closing client: {e}")
     
     @property
     def settings(self):
@@ -662,12 +686,17 @@ class emon_influx:
         print(reading)
 
 
-    def process_line(self, command, time, line ):
+    def process_line(self, time, line ):
         # Check if settings need to be reloaded based on current time
         self.settings_manager.check_and_reload_settings_by_time(time)
         
-        if(command in self.dispatch.keys()):
-            self.dispatch[command](time, line, self.settings[command])
+        command = line.split(',',1)[0].rstrip('0123456789')
+
+        if not command in self.settings_manager.get_current_nodes():
+            raise ValueError(f"No current configuration for node: {command} in line: {line}")
+        if(not command in self.dispatch.keys()):
+            raise ValueError(f"Unknown device: {command} in line: {line}")
+        self.dispatch[command](time, line, self.settings[command])
 
     def replace_at_position_with_comma(self, line, position):
         s = list(line)
@@ -691,23 +720,25 @@ class emon_influx:
                         line = self.replace_at_position_with_comma(line, colonPositionAfterDateTime+19)
                     if (line[19] != ',' and line[19] == ' '): # 20211231.TXT to 20220116.TXT had a space instead of comma after the date-time
                         line = self.replace_at_position_with_comma(line, 19)
-                    dateAndNode = line.split(',',3)
-                    node = dateAndNode[1].rstrip('0123456789')
+                    date_node_line = line.split(',',2)
+                    dateStr = date_node_line[0]
+                    line = date_node_line[1] + ',' + date_node_line[2]
                     time = datetime.datetime.now()
-                    if("rain" in dateAndNode[2]):
+                    if("rain" in date_node_line[2]):
                         continue    # skip rain,rain,txCount,temperature,supplyV|ms_since_last_pkt 
-                    if( " AM" in dateAndNode[0] or" PM" in dateAndNode[0]  ):
-                        time = datetime.datetime.strptime(dateAndNode[0], "%d/%m/%Y %I:%M:%S %p")
+                    if( " AM" in dateStr or" PM" in dateStr  ):
+                        time = datetime.datetime.strptime(dateStr, "%d/%m/%Y %I:%M:%S %p")
                     else:
-                        time = datetime.datetime.strptime(dateAndNode[0], "%d/%m/%Y %H:%M:%S")
+                        time = datetime.datetime.strptime(dateStr, "%d/%m/%Y %H:%M:%S")
                     local_dt = local.localize(time, is_dst=None)
                     utc_dt = local_dt.astimezone(pytz.utc)                
-                    self.process_line( node, utc_dt, line[len(dateAndNode[0])+1: ])
+                    self.process_line( utc_dt, line)
                     if(int(self.lineNumber/num_lines*100)>currentPercent):
                         currentPercent = int(self.lineNumber/num_lines*100)
                         print( f"{currentPercent}%", end='\r' )
                 except Exception as ex:
                     print(f"Exception in process_file {line}:{self.lineNumber} - {ex}")
+   
         except Exception as ex:
             print(f"Exception in process_file - {ex}")
         
