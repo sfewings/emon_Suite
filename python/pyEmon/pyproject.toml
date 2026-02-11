@@ -9,9 +9,7 @@ description = "Emon Python library"
 readme = "README.md"
 requires-python = ">=3.7"
 license = {text = "MIT"}
-authors = [
-    {name = "Me"}
-]
+authors = [{name = "Me"}]
 dependencies = [
     "influxdb-client[ciso]",
     "paho-mqtt",
@@ -29,4 +27,3 @@ dev = [
 [tool.setuptools]
 packages = ["pyemonlib"]
 ext-modules = [ {name = "pyemonlib.emonSuite", sources = ["pyemonlib/emon_pybindings.cpp"]} ]
-

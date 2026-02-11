@@ -5,7 +5,7 @@
 #define MQTT_LIB
 
 //Note:- may require full path when building with pyproject.toml
-#include "../../../EmonShared/EmonShared.cpp"
+#include "/share/emon_Suite/EmonShared/EmonShared.cpp"
 
 namespace py = pybind11;
 
