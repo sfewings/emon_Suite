@@ -2,6 +2,7 @@ import argparse
 import datetime
 import pytz
 from pyemonlib import emon_influx
+#from pyEmon.pyemonlib import emon_influx
 import paho.mqtt.client as mqtt
 
 # The callback function of connection
@@ -12,10 +13,12 @@ def on_connect(client, userdata, flags, rc):
 # The callback function for received message
 def on_message(client, settings, msg):
     line = msg.payload.decode("utf-8")
-    node = line.split(',',1)[0].rstrip('0123456789')
     time = datetime.datetime.now(pytz.utc)
     #print(f"command{node}, time {time}, settings {settings[node]}")
-    settings.process_line(node, time, line)
+    try:
+        settings.process_line(time, line)
+    except Exception as e:
+        print(f"Error processing line: {e}")
     print( line )
 
 def subscribe_mqtt( mqttServer, emonInflux ):   

@@ -1,0 +1,12 @@
+# Emon Settings Configuration
+# Created: 2026-01-22T09:07:48.741Z
+
+temp:
+  0:
+    name: Temperature Sensors
+hws:
+  0:
+    name: Hot Water System
+wtr:
+  0:
+    name: Water Meters

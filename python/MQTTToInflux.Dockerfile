@@ -14,5 +14,5 @@ RUN mkdir -p /share/config
 ENV INFLUX_IP=localhost
 ENV MQTT_IP=localhost
 ENV SETTINGS_PATH=/share/config/emon_config.yml
-CMD python ./emonMQTTToInflux.py -i $INFLUX_IP -m $MQTT_IP -s $SETTINGS_PATH
+CMD ["python", "./emonMQTTToInflux.py", "-i", "$INFLUX_IP", "-m", "$MQTT_IP", "-s", "$SETTINGS_PATH"]
 #CMD ["sh"]

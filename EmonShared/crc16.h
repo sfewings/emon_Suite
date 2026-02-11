@@ -31,6 +31,13 @@
 
 #include <stdint.h>
 
+//Note: If building for Windows with MSVC, the __attribute__((pure, always_inline, unused)) will cause a compile error as MSVC does not support __attribute__.
+//But if building for linux the pybind11 library requires the parity_even_bit function to be defined with these attributes for it to work correctly. So we will define __attribute__ as empty when building for Windows with MSVC, but leave it as is for linux builds.
+#ifdef _MSC_VER
+#define __attribute__(x) ;	//the MSVC compiler does not support __attribute__
+#endif
+
+
 static inline uint16_t _crc16_update(uint16_t crc, uint8_t data) __attribute__((always_inline, unused));
 static inline uint16_t _crc16_update(uint16_t crc, uint8_t data)
 {

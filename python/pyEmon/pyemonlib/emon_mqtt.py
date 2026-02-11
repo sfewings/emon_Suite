@@ -1,17 +1,14 @@
 import pyemonlib.emonSuite as emonSuite
+#from pyEmon.pyemonlib import emon_settings
+import pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
-
-# import time
-# import datetime
-# import pytz
-import os
-import yaml
 import re
 
 class emon_mqtt:
     def __init__(self, mqtt_server="localhost",mqtt_port=1883, settingsPath="./emon_config.yml"):
-        settingsFile = open(settingsPath, 'r')
-        self.settings = yaml.full_load(settingsFile)
+        # Initialize settings manager
+        self.settings_manager = emon_settings.EmonSettings(settingsPath)
+        
         self.dispatch = {
             'rain' : self.rainMessage,
             'temp' : self.temperatureMessage,
@@ -47,6 +44,11 @@ class emon_mqtt:
     def on_disconnect(self, client, userdata,rc=0):
         print("DisConnected result code {rc}")
         self.mqttClient.loop_stop()
+    
+    @property
+    def settings(self):
+        """Property to access current settings from settings manager."""
+        return self.settings_manager.get_settings()
     
     def printException(self, exceptionSource, reading, ex):
         if( self.lineNumber == -1):
@@ -324,9 +326,24 @@ class emon_mqtt:
     def otherMessage(self, reading, nodeSettings ):
         print(reading)
 
+    def check_int(self, s):
+        if s[0] in ('-', '+'):
+            return s[1:].isdigit()
+        return s.isdigit()
 
-    def process_line(self, command, line ):
-        if(command in self.dispatch.keys()):
-            self.dispatch[command](line, self.settings[command])
-            # Now publish the entire string
-            self.mqttClient.publish("EmonLog",line)
+    def process_line(self, line ):
+        # Check if settings need to be reloaded
+        self.settings_manager.check_and_reload_settings()
+        
+        lineFields = line.split(',',2)
+        command = lineFields[0].rstrip('0123456789')
+        if( len(lineFields)<3 or not self.check_int(lineFields[1])):
+           raise ValueError(f"Invalid line format: {line}")
+        if not command in self.settings_manager.get_current_nodes():
+            raise ValueError(f"No current configuration for node: {command} in line: {line}")
+        if(not command in self.dispatch.keys()):
+            raise ValueError(f"Unknown device: {command} in line: {line}")
+        
+        self.dispatch[command](line, self.settings[command])
+        # Now publish the entire string
+        self.mqttClient.publish("EmonLog",line)
