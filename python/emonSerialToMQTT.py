@@ -69,7 +69,10 @@ if __name__ == "__main__":
                 if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):
                     if(RSSIvalue!=0):
                         line = f"{line}:{RSSIvalue}"
-                    emonMQTT.process_line(lineFields[0].rstrip('0123456789'), line)
+                    try:
+                        emonMQTT.process_line(line)
+                    except Exception as e:
+                        writeLog(logPath, f"Error processing line: {e}")
                     #writeLog(logPath, line)
                     #print(line)
                     RSSIvalue = 0
