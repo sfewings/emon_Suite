@@ -12,5 +12,5 @@ RUN apt-get update && apt-get install -y cmake
 RUN pip3 install numpy
 ENV MQTT_IP=localhost
 ENV SERIAL_PORT=/dev/ttyUSB0
-CMD ["sh", "-c", "python ./emonSerialToMQTT.py -m $MQTT_IP -c $SERIAL_PORT -s $SETTINGS_PATH"]
+CMD ["python", "./emonSerialToMQTT.py", "-m", "$MQTT_IP", "-c", "$SERIAL_PORT", "-s", "$SETTINGS_PATH"]
 #CMD ["sh"]
