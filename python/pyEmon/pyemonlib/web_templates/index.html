@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emon Settings Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚙️ Emon Settings Manager</h1>
+            <p class="subtitle">Manage timestamped configuration files</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Sidebar with file list -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Available Files</h2>
+                    <button class="btn-new-file" onclick="showNewFileDialog()">+ New File</button>
+                </div>
+                <div id="fileList" class="file-list">
+                    <p class="loading">Loading files...</p>
+                </div>
+            </aside>
+
+            <!-- Main content area -->
+            <main class="main-area">
+                <div id="welcome-screen" class="welcome-screen">
+                    <div class="welcome-content">
+                        <h2>Welcome to Settings Manager</h2>
+                        <p>Select a settings file from the list to view and edit its contents.</p>
+                        <div class="quick-tips">
+                            <h3>Quick Tips:</h3>
+                            <ul>
+                                <li><strong>Create New File:</strong> Click the "+ New File" button to create a new timestamped settings file</li>
+                                <li><strong>File Format:</strong> Use YYYYMMDD-hhmm.yml format (e.g., 20250122-1430.yml)</li>
+                                <li><strong>View/Edit:</strong> Click on any file to view and edit its contents</li>
+                                <li><strong>Auto-refresh:</strong> Files are automatically detected when added to the directory</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="editor-screen" class="editor-screen" style="display: none;">
+                    <div class="editor-header">
+                        <div class="file-info">
+                            <h2 id="editorFileName"></h2>
+                            <p id="editorFileStatus" class="file-status"></p>
+                        </div>
+                        <div class="editor-actions">
+                            <button class="btn btn-secondary" onclick="goBackToList()">← Back to List</button>
+                            <button class="btn btn-primary" onclick="saveFile()">💾 Save Changes</button>
+                            <button class="btn btn-danger" id="deleteBtn" style="display: none;" onclick="deleteFile()">🗑️ Delete</button>
+                        </div>
+                    </div>
+
+                    <div class="editor-container">
+                        <div class="editor-tabs">
+                            <button class="tab-button active" onclick="switchTab('edit')">Edit</button>
+                            <button class="tab-button" onclick="switchTab('preview')">Preview</button>
+                            <button class="tab-button" onclick="switchTab('validate')">Validate</button>
+                        </div>
+
+                        <div id="editTab" class="tab-content active">
+                            <textarea id="yamlEditor" class="yaml-editor" placeholder="Enter YAML content here..."></textarea>
+                            <div class="editor-status">
+                                <span id="editorCharCount">0 characters</span>
+                                <span id="editorLineCount">0 lines</span>
+                                <span id="editorSaveStatus"></span>
+                            </div>
+                        </div>
+
+                        <div id="previewTab" class="tab-content">
+                            <div id="previewContent" class="preview-content">
+                                <p class="loading">Loading preview...</p>
+                            </div>
+                        </div>
+
+                        <div id="validateTab" class="tab-content">
+                            <div class="validation-controls">
+                                <button class="btn btn-primary" onclick="validateYAML()">Validate YAML</button>
+                            </div>
+                            <div id="validationResult" class="validation-result"></div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- New File Dialog -->
+    <div id="newFileDialog" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Settings File</h2>
+                <button class="close-btn" onclick="closeNewFileDialog()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newFilename">Filename:</label>
+                    <input type="text" id="newFilename" placeholder="e.g., 20250122-1430.yml" />
+                    <small>Use YYYYMMDD-hhmm.yml format or emon_config.yml</small>
+                </div>
+                <div class="form-group">
+                    <label for="templateSelect">Template:</label>
+                    <select id="templateSelect" onchange="updateNewFileTemplate()">
+                        <option value="empty">Empty</option>
+                        <option value="minimal">Minimal</option>
+                        <option value="full">Full Example</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="newFileContent">Content:</label>
+                    <textarea id="newFileContent" class="form-textarea" placeholder="Enter YAML content..."></textarea>
+                </div>
+                <div id="newFileError" class="error-message" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeNewFileDialog()">Cancel</button>
+                <button class="btn btn-primary" onclick="createNewFile()">Create File</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay for modal -->
+    <div id="modalOverlay" class="modal-overlay" style="display: none;" onclick="closeNewFileDialog()"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
