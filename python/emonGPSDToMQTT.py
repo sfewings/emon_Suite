@@ -44,6 +44,12 @@ if __name__ == '__main__':
          if report['class'] == 'TPV':
             log_message(logPath, report)
             #format for emon is "gps,subnode,latitude,longitude,course,speed"
-            buf = "gps,%d,%.7f,%.7f,%.2f,%.2f:%d" %(nodeNumber, report.get('lat', 'n/a'), report.get('lon', 'n/a'), report.get('track', 'n/a'), report.get('speed', 'n/a'),numSatellites)
-            emonMQTT.process_line('gps', buf)
+            lat = report.get('lat', 'n/a')
+            lon = report.get('lon', 'n/a')
+            track = report.get('track', 'n/a')
+            speed = report.get('speed', 'n/a')
+            if( lat == 'n/a' or lon == 'n/a' or track == 'n/a' or speed == 'n/a'):
+                continue
+            buf = f"gps,{nodeNumber},{lat:.7f},{lon:.7f},{track:.2f},{speed:.2f}:{numSatellites}"
+            emonMQTT.process_line(buf)
             print(buf)
