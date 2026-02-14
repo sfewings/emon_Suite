@@ -47,7 +47,7 @@ services:
     restart: always
 
   emon_mqtt_to_log:
-    image: sfewings32/emon_mqtt_to_log:date_settings
+    image: sfewings32/emon_mqtt_to_log:latest
     container_name: emon_log
     volumes:
       - /share/Input:/share/Input
@@ -59,7 +59,7 @@ services:
     restart: always
 
   emon_gpsd_to_mqtt:
-    image: sfewings32/emon_gpsd_to_mqtt:date_settings
+    image: sfewings32/emon_gpsd_to_mqtt:latest
     container_name: emon_gpsd
     # Use host network to access the gpsd service that should be running. Then set MQTT_IP to localhost instead of mqtt
     network_mode: "host"    
@@ -77,7 +77,7 @@ services:
     restart: always
 
   emon_serial_to_mqtt:
-    image: sfewings32/emon_serial_to_mqtt:date_settings
+    image: sfewings32/emon_serial_to_mqtt:latest
     container_name: emon_serial
     devices:
       - /dev/ttyAMA0  #/dev/ttyUSB0
@@ -94,7 +94,7 @@ services:
     restart: always
 
   emon_mqtt_to_influx:
-    image: sfewings32/emon_mqtt_to_influx:date_settings
+    image: sfewings32/emon_mqtt_to_influx:latest
     container_name: emon_influx
     volumes:
       - ./emon_config:/share/config
@@ -108,7 +108,7 @@ services:
     restart: always
 
   emon_settings_web:
-    image: sfewings32/emon_settings_web:date_settings
+    image: sfewings32/emon_settings_web:latest
     container_name: emon_settings_web
     ports:
       - '5000:5000'
