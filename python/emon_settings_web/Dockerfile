@@ -9,20 +9,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+    # Install Python dependencies
+RUN pip install --no-cache-dir \
+    Flask \
+    PyYAML \
+    gunicorn
+
+    # Copy the shared emon library (parent directory)
+COPY pyEmon/ /app/pyEmon/
+
 # Copy Python application files (paths relative to `python` build context)
 COPY emon_settings_web/emon_settings_web.py ./
 COPY emon_settings_web/start_settings_manager.py ./
 COPY emon_settings_web/web_static/ ./web_static/
 COPY emon_settings_web/web_templates/ ./web_templates/
 
-# Copy the shared emon library (parent directory)
-COPY pyEmon/ /app/pyEmon/
-
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    Flask \
-    PyYAML \
-    gunicorn
 
 # Create config directory for mounted volumes
 RUN mkdir -p /config

@@ -8,5 +8,5 @@ RUN pip3 install influxdb-client[ciso]
 RUN pip3 install bs4 lxml
 ENV INFLUX_IP=localhost
 COPY ./queryBOM.py ./
-CMD ["python", "./queryBOM.py", "-i", "$INFLUX_IP"]
+CMD ["python", "./queryBOM.py", "-i", $INFLUX_IP]
 #CMD ["sh"]
