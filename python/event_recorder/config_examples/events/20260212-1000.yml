@@ -1,0 +1,184 @@
+# Event Configurations
+# Time-based config file following emon_Suite pattern
+# Active from: 2026-02-12 10:00
+
+events:
+  # Vehicle drive recording - automatic logging when vehicle moves
+  drive_recording:
+    enabled: true
+    name: "Vehicle Drive Recording"
+    description: "Automatic logging of drive sessions with battery, GPS, temperature, and motor data"
+
+    # GPS position monitoring topics
+    monitor_topics:
+      - "gps/latitude/0"
+      - "gps/longitude/0"
+
+    # Start condition: Vehicle moving (GPS position changing)
+    start_condition:
+      type: "gps_movement"
+      distance_threshold: 20             # meters - movement required to trigger
+      duration: 10                       # seconds - must move continuously
+
+    # Stop condition: Vehicle stopped (GPS position stationary)
+    stop_condition:
+      type: "gps_stopped"
+      distance_threshold: 5              # meters - max movement while "stopped"
+      duration: 60                       # seconds - must be stationary continuously
+
+    # MQTT topics to record during session
+    record_topics:
+      - "gps/#"                          # All GPS data
+      - "battery/power/+/+"              # Battery power (all banks)
+      - "battery/voltage/+/+"            # Battery voltages
+      - "temperature/bms/+"              # BMS temperatures
+      - "sevCon/#"                       # Motor controller data
+      - "leaf/#"                         # Nissan Leaf vehicle data
+      - "bms/#"                          # Battery management system
+
+    # Plot generation configuration
+    plots:
+      # Speed over time
+      - type: "line"
+        title: "Speed Over Time"
+        topics: ["gps/speed/0"]
+        ylabel: "Speed (km/h)"
+        color: "#667eea"
+
+      # Battery power comparison (multiple banks)
+      - type: "multi_line"
+        title: "Battery Power (All Banks)"
+        topics:
+          - "battery/power/0/0"
+          - "battery/power/0/1"
+        ylabel: "Power (W)"
+        labels: ["Bank 1", "Bank 2"]
+        legend: true
+        colors: ["#667eea", "#764ba2"]
+
+      # Battery voltage
+      - type: "line"
+        title: "Battery Voltage"
+        topics: ["battery/voltage/0/0"]
+        ylabel: "Voltage (V)"
+        color: "#667eea"
+
+      # GPS route map
+      - type: "map"
+        title: "Drive Route"
+        topics: ["gps/latitude/0", "gps/longitude/0"]
+        map_style: "OpenStreetMap"
+        markers: ["start", "end"]
+
+      # Statistics summary table
+      - type: "statistics_table"
+        title: "Drive Summary"
+        metrics:
+          - topic: "gps/speed/0"
+            stats: ["max", "mean"]
+            labels: ["Max Speed (km/h)", "Avg Speed (km/h)"]
+          - topic: "battery/power/0/0"
+            stats: ["min", "max", "mean", "total_energy"]
+            labels: ["Min Power (W)", "Max Power (W)", "Avg Power (W)", "Energy Used (Wh)"]
+          - topic: "gps/distance"
+            stats: ["total"]
+            labels: ["Distance (km)"]
+
+    # WordPress publishing settings
+    wordpress:
+      site: "default_site"               # Reference to wordpress.default_site in main config
+      category: "Drive Logs"
+      auto_publish: false                # Manual review before publish
+      template: |
+        <h2>Drive Summary</h2>
+        <p><strong>Date:</strong> {start_time}</p>
+        <p><strong>Duration:</strong> {duration}</p>
+        <p><strong>Distance:</strong> {distance} km</p>
+        <p><strong>Max Speed:</strong> {max_speed} km/h</p>
+        <p><strong>Average Speed:</strong> {avg_speed} km/h</p>
+        <p><strong>Energy Used:</strong> {energy_used} Wh</p>
+        <p><strong>Efficiency:</strong> {efficiency} Wh/km</p>
+
+        <h3>Performance Plots</h3>
+        {plots}
+
+  # Example: Solar high production event (disabled by default)
+  solar_high_production:
+    enabled: false
+    name: "High Solar Production Event"
+    description: "Record when solar production exceeds 2kW"
+
+    monitor_topics:
+      - "inverter/pvInputPower/0"
+
+    start_condition:
+      type: "threshold"
+      topic: "inverter/pvInputPower/0"
+      operator: ">"
+      value: 2000                        # 2kW production
+
+    stop_condition:
+      type: "duration"
+      duration: 3600                     # Record for 1 hour
+
+    record_topics:
+      - "inverter/#"
+      - "battery/#"
+      - "temperature/+/+"
+
+    plots:
+      - type: "line"
+        title: "Solar Production"
+        topics: ["inverter/pvInputPower/0"]
+        ylabel: "Power (W)"
+        color: "#FFD700"
+
+    wordpress:
+      site: "default_site"
+      category: "Solar Production"
+      auto_publish: false
+
+  # Example: Battery charge cycle (disabled by default)
+  battery_charge_cycle:
+    enabled: false
+    name: "Battery Charge Cycle"
+    description: "Record battery charging sessions"
+
+    monitor_topics:
+      - "battery/power/0/0"
+
+    start_condition:
+      type: "threshold"
+      topic: "battery/power/0/0"
+      operator: ">"
+      value: 100                         # Charging > 100W
+      duration: 5                        # For 5 seconds
+
+    stop_condition:
+      type: "threshold"
+      topic: "battery/power/0/0"
+      operator: "<"
+      value: 10                          # Charge complete < 10W
+      duration: 60                       # For 60 seconds
+
+    record_topics:
+      - "battery/#"
+      - "inverter/#"
+
+    plots:
+      - type: "line"
+        title: "Battery Power During Charge"
+        topics: ["battery/power/0/0"]
+        ylabel: "Power (W)"
+        color: "#667eea"
+
+      - type: "line"
+        title: "Battery Voltage During Charge"
+        topics: ["battery/voltage/0/0"]
+        ylabel: "Voltage (V)"
+        color: "#764ba2"
+
+    wordpress:
+      site: "default_site"
+      category: "Battery Performance"
+      auto_publish: false

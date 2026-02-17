@@ -39,13 +39,21 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--logPath", help="Path to log directory", 
                         default="/share/Output/emonCSVToMQTT")
     parser.add_argument("-m", "--MQTT", help="IP address of MQTT server", default="localhost")
+    parser.add_argument("-x", "--speed", help="Playback speed multiplier (e.g. 10 = 10x faster, 0.5 = half speed)",
+                        type=float, default=1.0)
     args = parser.parse_args()
-    
+
     mqttServer = str(args.MQTT)
     csvFile = str(args.file)
     logPath = str(args.logPath)
+    playbackSpeed = args.speed
+
+    if playbackSpeed <= 0:
+        print("Error: Speed multiplier must be greater than 0")
+        exit(1)
     
-    writeLog(logPath, f"Starting emonCSVToMQTT with file: {csvFile}, MQTT: {mqttServer}")
+    speedLabel = f"{playbackSpeed}x speed" if playbackSpeed != 1.0 else "real-time"
+    writeLog(logPath, f"Starting emonCSVToMQTT with file: {csvFile}, MQTT: {mqttServer}, playback: {speedLabel}")
 
      # Create MQTT instance
     try:
@@ -90,8 +98,9 @@ if __name__ == "__main__":
                 if previous_timestamp is not None:
                     time_diff = (current_timestamp - previous_timestamp).total_seconds()
                     if time_diff > 0:
-                        writeLog(logPath, f"Waiting {time_diff} seconds before processing next line")
-                        time.sleep(time_diff)
+                        sleep_time = time_diff / playbackSpeed
+                        writeLog(logPath, f"Waiting {sleep_time:.1f}s (original: {time_diff}s at {playbackSpeed}x)")
+                        time.sleep(sleep_time)
                     elif time_diff < 0:
                         writeLog(logPath, f"Warning: Line {line_num} has earlier timestamp than previous line")
                 

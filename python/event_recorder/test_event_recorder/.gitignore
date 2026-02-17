@@ -1,0 +1,25 @@
+# Test Environment - Git Ignore
+
+# Environment variables (may contain passwords)
+.env
+
+# Data directory (recordings and plots)
+data/*
+!data/.gitkeep
+
+# Mosquitto data and logs
+mosquitto-data/
+mosquitto-logs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Docker volumes
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log

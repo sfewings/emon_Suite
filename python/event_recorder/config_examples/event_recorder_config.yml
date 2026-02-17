@@ -1,0 +1,51 @@
+# Event Recorder Service Configuration
+# Main service settings for event recorder and WordPress publisher
+
+# Service configuration
+service:
+  name: "Event Recorder"
+  mqtt_broker: "mqtt"                    # MQTT broker hostname (container name or service name)
+                                         # For test environment: use "mosquitto"
+                                         # For production: use your MQTT container name (e.g., "mqtt")
+  mqtt_port: 1883                        # MQTT port
+  database_path: "/data/recordings.db"   # SQLite database path
+  plots_dir: "/data/plots"               # Plot output directory
+  timezone: "Australia/Perth"            # Timezone for timestamps
+
+# Recording parameters
+recording:
+  buffer_flush_interval: 5               # Buffer flush interval (seconds)
+  max_buffer_size: 1000                  # Max messages before forced flush
+  min_recording_duration: 30             # Minimum recording duration (seconds)
+  max_recording_duration: 86400          # Maximum recording duration (24 hours)
+  auto_publish: false                    # Auto-publish to WordPress after recording
+
+# Plot generation defaults
+plots:
+  dpi: 150                               # Image resolution
+  default_width: 12                      # Plot width (inches)
+  default_height: 6                      # Plot height (inches)
+  style: "seaborn-v0_8"                  # Matplotlib style
+
+# WordPress configuration
+wordpress:
+  default_site:
+    site_url: "${WP_SITE_URL}"           # WordPress site URL (from env var)
+    username: "${WP_USERNAME}"           # WordPress username (from env var)
+    app_password: "${WP_APP_PASSWORD}"   # Application password (from env var)
+    category: "Drive Logs"               # Default post category
+    publish_status: "draft"              # Post status: "draft" or "publish"
+
+  retry_attempts: 3                      # Retry attempts for failed posts
+  retry_delay: 2                         # Retry delay (seconds, exponential backoff)
+
+# Web interface settings
+web:
+  host: "0.0.0.0"                        # Listen address
+  port: 5000                             # Port (exposed as 5001 in docker-compose)
+  debug: false                           # Debug mode
+
+# Logging configuration
+logging:
+  level: "INFO"                          # Log level: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

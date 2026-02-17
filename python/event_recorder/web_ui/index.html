@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Recorder - Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <h1>Event Recorder & WordPress Publisher</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <ul class="nav-menu">
+                <li class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Dashboard</span>
+                </li>
+                <li class="nav-item" data-view="recordings">
+                    <span class="nav-icon">📹</span>
+                    <span class="nav-label">Recordings</span>
+                </li>
+                <li class="nav-item" data-view="manual">
+                    <span class="nav-icon">🎮</span>
+                    <span class="nav-label">Manual Control</span>
+                </li>
+                <li class="nav-item" data-view="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Settings</span>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <div class="stats-summary">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Recordings:</span>
+                        <span class="stat-value" id="totalRecordings">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Total Messages:</span>
+                        <span class="stat-value" id="totalMessages">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">DB Size:</span>
+                        <span class="stat-value" id="dbSize">-</span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content">
+            <!-- Dashboard View -->
+            <div id="dashboardView" class="view active">
+                <div class="view-header">
+                    <h2>Dashboard</h2>
+                    <button class="btn btn-primary" onclick="refreshDashboard()">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <!-- Active Recordings Section -->
+                <section class="card">
+                    <h3>Active Recordings</h3>
+                    <div id="activeRecordings" class="recordings-grid">
+                        <p class="empty-state">No active recordings</p>
+                    </div>
+                </section>
+
+                <!-- Service Status Section -->
+                <section class="card">
+                    <h3>Service Status</h3>
+                    <div id="serviceStatus" class="status-grid">
+                        <div class="status-item">
+                            <span class="status-label">MQTT Broker:</span>
+                            <span class="status-value" id="mqttStatus">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Buffer Size:</span>
+                            <span class="status-value" id="bufferSize">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Subscribed Topics:</span>
+                            <span class="status-value" id="subscribedTopics">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Active Monitors:</span>
+                            <span class="status-value" id="activeMonitors">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">WordPress:</span>
+                            <span class="status-value" id="wpStatus">-</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Recent Recordings Section -->
+                <section class="card">
+                    <h3>Recent Recordings</h3>
+                    <div id="recentRecordings" class="recordings-list">
+                        <p class="empty-state">No recent recordings</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Recordings View -->
+            <div id="recordingsView" class="view">
+                <div class="view-header">
+                    <h2>All Recordings</h2>
+                    <div class="view-actions">
+                        <select id="statusFilter" class="filter-select" onchange="filterRecordings()">
+                            <option value="">All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="stopped">Stopped</option>
+                            <option value="processing">Processing</option>
+                            <option value="published">Published</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="loadRecordings()">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div id="recordingsList" class="recordings-table">
+                    <p class="empty-state">Loading recordings...</p>
+                </div>
+            </div>
+
+            <!-- Manual Control View -->
+            <div id="manualView" class="view">
+                <div class="view-header">
+                    <h2>Manual Control</h2>
+                </div>
+
+                <section class="card">
+                    <h3>Start New Recording</h3>
+                    <form id="startRecordingForm" class="form">
+                        <div class="form-group">
+                            <label for="recordingName">Recording Name:</label>
+                            <input type="text" id="recordingName" class="form-input"
+                                   placeholder="My Drive - 2026-02-12">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="recordingDescription">Description:</label>
+                            <textarea id="recordingDescription" class="form-textarea"
+                                      placeholder="Optional description" rows="3"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="recordingTopics">Topics to Record:</label>
+                            <textarea id="recordingTopics" class="form-textarea"
+                                      placeholder="gps/#&#10;battery/#&#10;temperature/#" rows="5"></textarea>
+                            <small class="form-help">One topic per line. Supports MQTT wildcards (+, #)</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            ▶️ Start Recording
+                        </button>
+                    </form>
+                </section>
+
+                <section class="card">
+                    <h3>Stop Active Recording</h3>
+                    <div id="stopRecordingSection">
+                        <p class="empty-state">No active recordings to stop</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Settings View -->
+            <div id="settingsView" class="view">
+                <div class="view-header">
+                    <h2>Settings</h2>
+                </div>
+
+                <section class="card">
+                    <h3>About</h3>
+                    <p>Event Recorder & WordPress Publisher v0.1.0</p>
+                    <p>Automatic vehicle drive logging with data visualization and blog posting.</p>
+                </section>
+
+                <section class="card">
+                    <h3>Configuration</h3>
+                    <p>Configuration files are managed via YAML files:</p>
+                    <ul>
+                        <li><code>/config/event_recorder_config.yml</code> - Service configuration</li>
+                        <li><code>/config/events/*.yml</code> - Event trigger configurations</li>
+                    </ul>
+                    <p>See documentation for configuration details.</p>
+                </section>
+
+                <section class="card">
+                    <h3>WordPress Integration</h3>
+                    <div id="wpSettingsStatus">
+                        <p>Loading WordPress status...</p>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Recording Details -->
+    <div id="recordingModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Recording Details</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- JavaScript -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

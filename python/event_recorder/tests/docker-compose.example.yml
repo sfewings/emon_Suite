@@ -1,0 +1,66 @@
+# Event Recorder Docker Compose Example
+# Copy this to your emon_Suite docker-compose.yml and configure
+
+version: '3.8'
+
+services:
+  event_recorder:
+    image: sfewings32/emon_event_recorder:latest
+    container_name: event_recorder
+    depends_on:
+      - mosquitto
+    volumes:
+      # Configuration (create these directories)
+      - ./event_recorder_config:/config:ro
+      # Data persistence
+      - /share/event_recorder/data:/data
+      # Timezone (for accurate timestamps)
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      # MQTT Configuration
+      - MQTT_BROKER=mqtt
+      - MQTT_PORT=1883
+
+      # WordPress Configuration (set these in .env file)
+      - WP_SITE_URL=${WP_SITE_URL}
+      - WP_USERNAME=${WP_USERNAME}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+
+      # Timezone (default: UTC)
+      - TZ=${TIMEZONE:-UTC}
+
+      # Optional: Debug mode
+      # - DEBUG=true
+    ports:
+      - "5001:5000"  # Web interface (change host port if needed)
+    restart: unless-stopped
+    networks:
+      - emon_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  emon_network:
+    external: true
+
+# Configuration Directory Structure:
+# ./event_recorder_config/
+#   ├── event_recorder_config.yml    # Main configuration
+#   └── events/
+#       └── 20260212-1000.yml        # Event trigger configs
+
+# Data Directory Structure (auto-created):
+# /share/event_recorder/data/
+#   ├── recordings.db                # SQLite database
+#   ├── plots/                       # Generated plots
+#   │   └── {recording_id}/
+#   │       ├── speed_over_time.png
+#   │       ├── battery_power.png
+#   │       └── route_map.png
+#   └── uploads/                     # User-uploaded images
+#       └── {recording_id}/

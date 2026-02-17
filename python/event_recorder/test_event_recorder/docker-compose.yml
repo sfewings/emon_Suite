@@ -1,0 +1,82 @@
+# Event Recorder - Test Environment
+# Self-contained setup for testing event_recorder with MQTT broker and WordPress
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: test_mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/logs
+      - ./mosquitto-config:/mosquitto/config
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: test_mysql
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    restart: unless-stopped
+
+  wordpress:
+    image: wordpress:latest
+    container_name: test_wordpress
+    ports:
+      - "8080:80"
+    volumes:
+      - wordpress-data:/var/www/html
+    environment:
+      - WORDPRESS_DB_HOST=mysql:3306
+      - WORDPRESS_DB_USER=${MYSQL_USER}
+      - WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}
+      - WORDPRESS_DB_NAME=${MYSQL_DATABASE}
+      - WP_ENVIRONMENT_TYPE=local
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+  emon_settings_web:
+    image: sfewings32/emon_settings_web:latest
+    container_name: test_emon_settings_web
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./emon_config:/config
+    environment:
+      - EMON_CONFIG=/config
+      - TZ=${TIMEZONE}
+      - FLASK_APP=emon_settings_web.py
+    restart: unless-stopped
+
+  event_recorder:
+    image: sfewings32/emon_event_recorder:latest
+    container_name: test_event_recorder
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - WP_SITE_URL=${WP_SITE_URL}
+      - WP_USERNAME=${WP_USERNAME}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      - TZ=${TIMEZONE}
+    depends_on:
+      - mosquitto
+      - wordpress
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-logs:
+  mysql-data:
+  wordpress-data:

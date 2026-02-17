@@ -1,0 +1,40 @@
+# Event Recorder & WordPress Publisher - Python Dependencies
+# Phase 1 (Core Recording) + Phase 2 (Data Processing) Dependencies
+
+# === Phase 1: Core Recording Infrastructure ===
+
+# Database
+# (sqlite3 is included in Python standard library)
+
+# MQTT
+paho-mqtt>=1.6.1,<2.0.0
+
+# Configuration
+PyYAML>=6.0,<7.0
+python-dotenv>=1.0.0,<2.0.0
+
+# === Phase 2: Data Processing & Plotting ===
+
+# Plotting
+matplotlib>=3.8.0,<4.0.0
+numpy>=1.24.3,<2.0.0
+
+# GPS route maps (optional - matplotlib fallback available)
+folium>=0.15.0,<1.0.0
+selenium>=4.15.0,<5.0.0  # For converting folium HTML to PNG
+# Note: Also requires ChromeDriver or GeckoDriver installed on system
+
+# === Phase 3: Web Interface ===
+Flask>=2.3.3,<3.0.0
+gunicorn>=22.0.0,<23.0.0
+Werkzeug>=2.3.0,<3.0.0
+
+# === Phase 4: WordPress Integration ===
+requests>=2.31.0,<3.0.0
+python-dateutil>=2.8.2,<3.0.0  # For flexible date parsing
+
+# === Development Dependencies (Optional) ===
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
+# black>=23.0.0
+# flake8>=6.0.0

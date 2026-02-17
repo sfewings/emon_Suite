@@ -1,0 +1,121 @@
+# WordPress Configuration Example
+# Copy to your event_recorder_config.yml and configure
+
+wordpress:
+  # Default WordPress site configuration
+  default_site:
+    site_url: "${WP_SITE_URL}"           # e.g., https://myblog.com
+    username: "${WP_USERNAME}"           # WordPress admin username
+    app_password: "${WP_APP_PASSWORD}"   # Application password (see setup below)
+    category: "Drive Logs"               # Default category for posts
+    publish_status: "draft"              # "draft" or "publish"
+
+  # Optional: Multiple WordPress sites
+  # alternate_site:
+  #   site_url: "https://alternate-blog.com"
+  #   username: "admin"
+  #   app_password: "${WP_ALT_PASSWORD}"
+  #   category: "Tech Blog"
+  #   publish_status: "publish"
+
+# Post template (used if not specified in event config)
+wordpress_template: |
+  <h2>Drive Summary</h2>
+  <p><strong>Date:</strong> {start_time}</p>
+  <p><strong>Duration:</strong> {duration}</p>
+  <p><strong>Description:</strong> {description}</p>
+  <p><strong>Total Messages:</strong> {message_count}</p>
+
+# ==============================================================================
+# HOW TO SETUP WORDPRESS APPLICATION PASSWORDS
+# ==============================================================================
+#
+# WordPress Application Passwords (available since WordPress 5.6+) provide
+# secure authentication for REST API access without exposing your main password.
+#
+# STEP 1: Enable Application Passwords (if not already enabled)
+# ---------------------------------------------------------------
+# Application Passwords require HTTPS or localhost. If your WordPress site
+# doesn't use HTTPS yet, you'll need to enable it first or add this to wp-config.php:
+#
+#   define('WP_ENVIRONMENT_TYPE', 'local');
+#
+# STEP 2: Generate Application Password
+# --------------------------------------
+# 1. Log into WordPress Admin Dashboard
+# 2. Go to: Users → Profile (or Users → Your Profile)
+# 3. Scroll down to "Application Passwords" section
+# 4. In "New Application Password Name" field, enter: "Event Recorder"
+# 5. Click "Add New Application Password"
+# 6. WordPress will display a new password like: "xxxx xxxx xxxx xxxx xxxx xxxx"
+# 7. COPY this password immediately (it's only shown once!)
+#
+# STEP 3: Add to Environment Variables
+# -------------------------------------
+# Add these to your .env file (create if doesn't exist):
+#
+#   WP_SITE_URL=https://yourblog.com
+#   WP_USERNAME=your_wordpress_username
+#   WP_APP_PASSWORD="xxxx xxxx xxxx xxxx xxxx xxxx"
+#
+# IMPORTANT: Keep spaces in the password! WordPress generates them with spaces.
+#
+# STEP 4: Verify Permissions
+# ---------------------------
+# The WordPress user needs these capabilities:
+# - upload_files (to upload images to media library)
+# - publish_posts (to create blog posts)
+# - edit_posts (to manage posts)
+#
+# Admin and Editor roles have these by default.
+#
+# STEP 5: Test Connection
+# ------------------------
+# Test your WordPress configuration:
+#
+#   python -m event_recorder.wordpress_publisher \
+#       --site-url "https://yourblog.com" \
+#       --username "your_username" \
+#       --password "xxxx xxxx xxxx xxxx xxxx xxxx"
+#
+# Or via web API:
+#   curl http://localhost:5001/api/wordpress/test
+#
+# Expected output: "✓ Connected as YourName (administrator, editor)"
+#
+# ==============================================================================
+# TROUBLESHOOTING
+# ==============================================================================
+#
+# ERROR: "Authentication failed"
+# → Check username spelling (case-sensitive)
+# → Verify application password copied correctly (with spaces)
+# → Ensure password not expired or revoked
+#
+# ERROR: "Connection failed - cannot reach site"
+# → Verify site URL (https:// vs http://)
+# → Check if site has IP blocking / firewall rules
+# → Test: curl -I https://yourblog.com/wp-json/
+#
+# ERROR: "User does not have permission"
+# → User role needs upload_files and publish_posts capabilities
+# → Temporarily test with Administrator role
+#
+# ERROR: "Application Passwords not available"
+# → Update WordPress to 5.6+
+# → Enable HTTPS or add define('WP_ENVIRONMENT_TYPE', 'local') to wp-config.php
+# → Check if disabled by plugin/security settings
+#
+# ==============================================================================
+# SECURITY NOTES
+# ==============================================================================
+#
+# ✓ Application passwords are safer than using your main WordPress password
+# ✓ Each application password can be revoked individually
+# ✓ Application passwords bypass 2FA (by design - they're app-specific)
+# ✓ Store app passwords in .env file (never commit to git)
+# ✓ Use strong, unique passwords for WordPress admin account
+# ✓ Regularly audit application passwords: Users → Profile → Application Passwords
+# ✓ Revoke unused application passwords
+#
+# ==============================================================================

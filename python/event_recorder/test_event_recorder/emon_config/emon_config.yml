@@ -1,0 +1,35 @@
+# emon_config.yml - Test environment configuration
+# Used by emon_settings_web for device/sensor configuration
+
+temp:
+  0:
+    name: Test Temp Sensor
+    t0: Sensor 1
+
+disp:
+  0:
+    name: Unused
+gps:
+  0:
+    name: Breaksea location
+  1:
+    name: Waypoint location
+scl:
+  0:
+    name: Unused
+  1:
+    name: Cable tension
+
+pulse:
+  0:
+    name: Unused
+    p0: Unused
+    p0_wPerPulse: 0.25
+
+bat:
+  0:
+    name: Test Battery
+    s0: Battery 1
+    v0: Rail
+    v0_reference: true
+    v1: Unused
