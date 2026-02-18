@@ -33,6 +33,7 @@ services:
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_ALLOW_UI_UPDATES=true
     restart: always
 
   mosquitto:
