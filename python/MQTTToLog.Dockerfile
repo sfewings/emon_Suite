@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM python:3.11
+FROM python:3.13
 ARG TARGETARCH
 RUN pip3 install pytz
 COPY ./platform.sh ./
@@ -10,4 +10,4 @@ COPY ./emonMQTTToLog.py ./
 RUN mkdir -p /share/Input
 ENV MQTT_IP=localhost
 ENV TZ="Australia/Perth"
-CMD ["python", "./emonMQTTToLog.py", "-m", $MQTT_IP]
+CMD python ./emonMQTTToLog.py -m $MQTT_IP

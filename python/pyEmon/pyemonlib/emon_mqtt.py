@@ -2,6 +2,7 @@ import pyemonlib.emonSuite as emonSuite
 #from pyEmon.pyemonlib import emon_settings
 import pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
+import numpy    #needed for array iteration. Seems like the lists from pybindings are numpy lists! Seems to be from python 3.11 to 3.13
 import re
 
 class emon_mqtt:

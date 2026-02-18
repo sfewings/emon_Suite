@@ -8,6 +8,7 @@ import os
 import re
 import datetime
 import pytz
+import numpy    #needed for array iteration. Seems like the lists from pybindings are numpy lists!
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS, WriteOptions
 

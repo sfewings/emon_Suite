@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM python:3.11-slim
+FROM python:3.13-slim
 ARG TARGETARCH
 
 # Set working directory
