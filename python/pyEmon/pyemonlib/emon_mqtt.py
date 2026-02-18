@@ -28,6 +28,7 @@ class emon_mqtt:
             'bms'  : self.bmsMessage,
             'svc'  : self.sevConMessage,
             'mwv'  : self.mwvMessage,
+            'imu'  : self.imuMessage,
             'other': self.otherMessage
         }
         self.mqttClient = mqtt.Client()
@@ -322,6 +323,22 @@ class emon_mqtt:
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
                 self.printException("AnemometerException", reading, ex)
+
+    def imuMessage(self, reading, nodeSettings ):
+        payload = emonSuite.PayloadIMU()
+        if( emonSuite.EmonSerial.ParseIMUPayload(reading,payload) ):
+            try:
+                for axis in range(3):
+                    self.mqttClient.publish(f"imu/{payload.subnode}/acc/{axis}",float(payload.acc[axis]))
+                for axis in range(3):
+                    self.mqttClient.publish(f"imu/{payload.subnode}/mag/{axis}",float(payload.mag[axis]))
+                for axis in range(3):
+                    self.mqttClient.publish(f"imu/{payload.subnode}/gyro/{axis}",float(payload.gyro[axis]))
+                self.mqttClient.publish(f"imu/{payload.subnode}/heading",payload.heading)
+                if(':' in reading):
+                    self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
+            except Exception as ex:
+                self.printException("IMUException", reading, ex)
 
 
     def otherMessage(self, reading, nodeSettings ):

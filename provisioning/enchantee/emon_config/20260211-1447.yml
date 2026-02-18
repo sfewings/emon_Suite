@@ -43,7 +43,7 @@ gps:
     name: RaspPi-GPS
 pth:
   0:
-    name: Enchantee-Pressure
+    name: Cabin GPS
   1:
     name: Anemometer
 mwv:

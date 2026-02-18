@@ -705,6 +705,51 @@ void EmonSerial::PrintAnemometerPayload(Stream& stream, PayloadAnemometer* pPayl
 	stream.println();
 }
 
+void EmonSerial::PrintIMUPayload(PayloadIMU* pPayloadIMU, unsigned long timeSinceLast)
+{
+	PrintIMUPayload(Serial, pPayloadIMU, timeSinceLast);
+}
+
+void EmonSerial::PrintIMUPayload(Stream& stream, PayloadIMU* pPayloadIMU, unsigned long timeSinceLast)
+{
+	if (pPayloadIMU == NULL)
+	{
+		stream.print(F("imu,subnode,accX,accY,accZ,magX,magY,magZ,gyroX,gyroY,gyroZ,heading"));
+	}
+	else
+	{
+		stream.print(F("imu,"));
+		stream.print(pPayloadIMU->subnode);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->acc[0],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->acc[1],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->acc[2],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->mag[0],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->mag[1],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->mag[2],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->gyro[0],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->gyro[1],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->gyro[2],3);
+		stream.print(F(","));
+		stream.print(pPayloadIMU->heading,2);
+		PrintRelay(stream, pPayloadIMU);
+		if (timeSinceLast != 0)
+		{
+			stream.print(F("|"));
+			stream.print(timeSinceLast);
+		}
+	}
+	stream.println();
+}
+
 #endif
 
 uint16_t EmonSerial::CalcCrc(const void* ptr, byte len)
@@ -1512,6 +1557,47 @@ int EmonSerial::ParseAnemometerPayload(char* str, PayloadAnemometer* pPayloadAne
 	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
 	{
 		ParseRelay(pPayloadAnemometer, pch);
+	}
+	return version;
+}
+
+int EmonSerial::ParseIMUPayload(char* str, PayloadIMU* pPayloadIMU)
+{
+	memset(pPayloadIMU, 0, sizeof(PayloadIMU));
+
+	char* pch = strtok(str, tok);
+	if (pch == NULL)
+		return 0;	//can't find anything
+
+	int version = 0;
+	if (0 == strcmp(pch, "imu"))
+		version = 1;
+
+	if (NULL == (pch = strtok(NULL, tok)) || !isDigit(pch) ) return 0;
+	pPayloadIMU->subnode = atoi(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->acc[0] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->acc[1] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->acc[2] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->mag[0] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->mag[1] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->mag[2] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->gyro[0]= atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->gyro[1] = atof(pch);
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->gyro[2] = atof(pch);	
+	if (NULL == (pch = strtok(NULL, tok))) return 0;
+	pPayloadIMU->heading = atof(pch);
+	if (NULL != (pch = strtok(NULL, tok)) && strlen(pch) == 8) //8 differentiates timeSinceLast from relay
+	{
+		ParseRelay(pPayloadIMU, pch);
 	}
 	return version;
 }
