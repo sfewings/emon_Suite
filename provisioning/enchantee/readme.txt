@@ -59,4 +59,17 @@ Restart chrony:
 Test it is working:
 ```chronyc -n sourcestats```
 
-
+Starting an instance of nodered UI when RaspPi Starts up
+-------------------------------
+Create a shortcut to start
+```Open localhost:1880:ui in a web browser and create a shortcut to the desktop.```
+Setup file explorer not display "This text file seems to be an executable script. What do you want to do?"
+```In File Explorer, uncheck these options:```
+```[Edit] --> [Preferences] --> [General]........ [ ] "Ask what to do with executable text files"```
+```[Edit] --> [Preferences] --> [Advanced]........ [ ] Use Application Startup Notify by default```
+Make the script run when the desktop starts up. This is done by creating a .desktop file in ~/.config/autostart/ that points to the script. For example, create a file called start_nodered.desktop with the following content:
+```mkdir -p /home/pi/.config/autostart```
+```Move Enchantee.desktop to /home/pi/.config/autostart/```
+Stop "The application wants access to keyring "Default keyring" but it is locked". Set to blank password:
+```mv ~/.local/share/keyrings/Default_Keyring.keyring old_Default_Keyring.keyring```
+```reboot and set to blank password. Ignore the warning```

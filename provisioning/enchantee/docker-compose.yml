@@ -118,6 +118,12 @@ services:
       - EMON_CONFIG=/config
       - TZ=${TIMEZONE}
       - FLASK_APP=emon_settings_web.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/settings/current')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s      
     restart: unless-stopped
 
   node-red:
