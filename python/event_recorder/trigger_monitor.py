@@ -276,7 +276,7 @@ class GPSTriggerMonitor:
 
             # Calculate distance from anchor (last stationary position)
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
-
+            print(f"Monitor '{monitor_id}': distance from anchor = {distance:.1f}m" )
             if distance > distance_threshold:
                 # Vehicle has moved away from anchor
                 if state['condition_start_time'] is None:
