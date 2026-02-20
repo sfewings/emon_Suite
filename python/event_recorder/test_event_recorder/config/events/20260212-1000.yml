@@ -104,6 +104,113 @@ events:
         <h3>Performance Plots</h3>
         {plots}
 
+
+ # Example: Anchor-based drive recording (disabled by default)
+  # Records when vehicle leaves a fixed home location and stops when it returns.
+  # Useful for a fixed base (garage, depot, marina) where departures/arrivals
+  # define the start and end of an activity rather than movement detection.
+  anchor_drive_recording:
+    enabled: false
+    name: "Anchor-Based Recording"
+    description: "Record when vessel departs from home anchor and stop when it returns"
+
+    monitor_topics:
+      - "gps/latitude/0"
+      - "gps/longitude/0"
+
+    # Start condition: Vehicle has moved outside the anchor zone
+    start_condition:
+      type: "anchor_departure"
+      anchor_lat: -35.0938041                # Home latitude
+      anchor_lon: 117.9565888                # Home longitude
+      radius: 100                            # meters - zone radius around anchor
+      duration: 5                           # seconds outside zone before triggering
+
+    # Stop condition: Vehicle has returned inside the anchor zone
+    stop_condition:
+      type: "anchor_return"
+      anchor_lat: -35.0938041                # Home latitude
+      anchor_lon: 117.9565888                # Home longitude
+      radius: 100                            # meters - zone radius around anchor
+      duration: 15                           # seconds inside zone before triggering
+
+    record_topics:
+      - "gps/#"                          # All GPS data
+      - "battery/power/+/+"              # Battery power (all banks)
+      - "battery/voltage/+/+"            # Battery voltages
+      - "temperature/bms/+"              # BMS temperatures
+      - "sevCon/#"                       # Motor controller data
+      - "leaf/#"                         # Nissan Leaf vehicle data
+      - "bms/#"                          # Battery management system
+      - "scale/#"                        # Scale data
+      - "rssi/#"                         # Signal strength data
+
+    # Plot generation configuration
+    plots:
+      # Speed over time
+      - type: "line"
+        title: "Speed Over Time"
+        topics: ["gps/speed/0"]
+        ylabel: "Speed (km/h)"
+        color: "#667eea"
+
+      # Battery power comparison (multiple banks)
+      - type: "multi_line"
+        title: "Battery Power (All Banks)"
+        topics:
+          - "battery/power/0/0"
+          - "battery/power/0/1"
+        ylabel: "Power (W)"
+        labels: ["Bank 1", "Bank 2"]
+        legend: true
+        colors: ["#667eea", "#764ba2"]
+
+      # Battery voltage
+      - type: "line"
+        title: "Battery Voltage"
+        topics: ["battery/voltage/0/0"]
+        ylabel: "Voltage (V)"
+        color: "#667eea"
+
+      # GPS route map
+      - type: "map"
+        title: "Drive Route"
+        topics: ["gps/latitude/0", "gps/longitude/0"]
+        map_style: "OpenStreetMap"
+        markers: ["start", "end"]
+
+      # Statistics summary table
+      - type: "statistics_table"
+        title: "Drive Summary"
+        metrics:
+          - topic: "gps/speed/0"
+            stats: ["max", "mean"]
+            labels: ["Max Speed (km/h)", "Avg Speed (km/h)"]
+          - topic: "battery/power/0/0"
+            stats: ["min", "max", "mean", "total_energy"]
+            labels: ["Min Power (W)", "Max Power (W)", "Avg Power (W)", "Energy Used (Wh)"]
+          - topic: "gps/distance"
+            stats: ["total"]
+            labels: ["Distance (km)"]
+
+    # WordPress publishing settings
+    wordpress:
+      site: "default_site"               # Reference to wordpress.default_site in main config
+      category: "Anchor Logs"
+      auto_publish: false                # Manual review before publish
+      template: |
+        <h2>Drive Summary</h2>
+        <p><strong>Date:</strong> {start_time}</p>
+        <p><strong>Duration:</strong> {duration}</p>
+        <p><strong>Distance:</strong> {distance} km</p>
+        <p><strong>Max Speed:</strong> {max_speed} km/h</p>
+        <p><strong>Average Speed:</strong> {avg_speed} km/h</p>
+        <p><strong>Energy Used:</strong> {energy_used} Wh</p>
+        <p><strong>Efficiency:</strong> {efficiency} Wh/km</p>
+
+        <h3>Performance Plots</h3>
+        {plots}
+
   # Example: Solar high production event (disabled by default)
   solar_high_production:
     enabled: false

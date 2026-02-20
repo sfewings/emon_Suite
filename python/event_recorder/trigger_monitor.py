@@ -276,7 +276,7 @@ class GPSTriggerMonitor:
 
             # Calculate distance from anchor (last stationary position)
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
-            print(f"Monitor '{monitor_id}': distance from anchor = {distance:.1f}m" )
+            logger.debug(f"Monitor '{monitor_id}': distance from anchor = {distance:.1f}m")
             if distance > distance_threshold:
                 # Vehicle has moved away from anchor
                 if state['condition_start_time'] is None:
@@ -297,6 +297,39 @@ class GPSTriggerMonitor:
                 # Still near anchor, reset timer and update anchor
                 state['condition_start_time'] = None
                 state['last_position'] = (lat, lon, timestamp)
+
+        elif condition_type == 'anchor_departure':
+            # Start recording when vehicle moves outside a fixed anchor location.
+            # The anchor is a configured lat/lon - no dynamic position tracking needed.
+            anchor_lat = start_condition.get('anchor_lat')
+            anchor_lon = start_condition.get('anchor_lon')
+            radius = start_condition.get('radius', 100)       # meters
+            duration = start_condition.get('duration', 10)    # seconds
+
+            if anchor_lat is None or anchor_lon is None:
+                logger.error(f"Monitor '{monitor_id}': anchor_departure requires anchor_lat and anchor_lon")
+                return
+
+            distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
+            logger.debug(f"Monitor '{monitor_id}': {distance:.1f}m from configured anchor ({anchor_lat},{anchor_lon})")
+
+            if distance > radius:
+                # Outside the anchor zone
+                if state['condition_start_time'] is None:
+                    state['condition_start_time'] = timestamp
+                    logger.debug(f"Monitor '{monitor_id}': departed anchor zone ({distance:.1f}m > {radius}m radius)")
+                else:
+                    elapsed = (timestamp - state['condition_start_time']).total_seconds()
+                    if elapsed >= duration:
+                        logger.info(f"Monitor '{monitor_id}': START trigger (anchor departure {distance:.1f}m for {elapsed:.0f}s)")
+                        self._trigger_start(monitor_id, monitor, state)
+                        state['condition_start_time'] = None
+            else:
+                # Still inside anchor zone, reset timer
+                state['condition_start_time'] = None
+
+        else:
+            logger.warning(f"Monitor '{monitor_id}': unknown start condition type '{condition_type}'")
 
     def _check_stop_condition(self, monitor_id: str, monitor: Dict, state: Dict,
                               lat: float, lon: float, timestamp: datetime):
@@ -345,6 +378,39 @@ class GPSTriggerMonitor:
                 # Moved away from anchor, reset timer and set new anchor
                 state['stationary_start_time'] = None
                 state['last_position'] = (lat, lon, timestamp)
+
+        elif condition_type == 'anchor_return':
+            # Stop recording when vehicle returns inside a fixed anchor location.
+            # Paired with anchor_departure start condition.
+            anchor_lat = stop_condition.get('anchor_lat')
+            anchor_lon = stop_condition.get('anchor_lon')
+            radius = stop_condition.get('radius', 100)      # meters
+            duration = stop_condition.get('duration', 30)   # seconds
+
+            if anchor_lat is None or anchor_lon is None:
+                logger.error(f"Monitor '{monitor_id}': anchor_return requires anchor_lat and anchor_lon")
+                return
+
+            distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
+            logger.debug(f"Monitor '{monitor_id}': {distance:.1f}m from configured anchor ({anchor_lat},{anchor_lon})")
+
+            if distance <= radius:
+                # Inside the anchor zone (returned home)
+                if state['stationary_start_time'] is None:
+                    state['stationary_start_time'] = timestamp
+                    logger.debug(f"Monitor '{monitor_id}': returned inside anchor zone ({distance:.1f}m <= {radius}m radius)")
+                else:
+                    elapsed = (timestamp - state['stationary_start_time']).total_seconds()
+                    if elapsed >= duration:
+                        logger.info(f"Monitor '{monitor_id}': STOP trigger (anchor return within {radius}m for {elapsed:.0f}s)")
+                        self._trigger_stop(monitor_id, monitor, state)
+                        state['stationary_start_time'] = None
+            else:
+                # Still outside anchor zone, reset timer
+                state['stationary_start_time'] = None
+
+        else:
+            logger.warning(f"Monitor '{monitor_id}': unknown stop condition type '{condition_type}'")
 
     def _haversine_distance(self, lat1: float, lon1: float,
                            lat2: float, lon2: float) -> float:
@@ -448,67 +514,134 @@ def main():
     """
     CLI for testing GPS trigger monitor.
 
+    Loads event monitors from the time-appropriate config file in the events
+    directory (emon_Suite YYYYMMDD-HHMM.yml pattern), using the same
+    ConfigManager as the main service.
+
     Usage:
-        python trigger_monitor.py [--broker BROKER]
+        python trigger_monitor.py --config /config/event_recorder_config.yml
+        python trigger_monitor.py --config /config/event_recorder_config.yml --events-dir /config/events
+        python trigger_monitor.py --broker localhost --port 1883  # fallback test mode
     """
     import argparse
+    from .config_manager import ConfigManager
 
     parser = argparse.ArgumentParser(description="GPS Trigger Monitor Test")
-    parser.add_argument('--broker', default='localhost', help="MQTT broker")
-    parser.add_argument('--port', type=int, default=1883, help="MQTT port")
+    parser.add_argument('--config',
+                        help="Path to event_recorder_config.yml (loads events from adjacent events/ dir)")
+    parser.add_argument('--events-dir',
+                        help="Override events config directory")
+    parser.add_argument('--broker', default='localhost',
+                        help="MQTT broker hostname (used when --config is not provided)")
+    parser.add_argument('--port', type=int, default=1883,
+                        help="MQTT broker port (used when --config is not provided)")
+    parser.add_argument('--log-level', default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help="Logging level (default: INFO)")
 
     args = parser.parse_args()
 
     # Setup logging
-    logging.basicConfig(level=logging.INFO,
-                       format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    # Create monitor
-    monitor = GPSTriggerMonitor(args.broker, args.port)
+    logging.basicConfig(level=getattr(logging, args.log_level),
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     # Test callbacks
     def on_start(monitor_id, config):
-        logger.info(f"START TRIGGERED: {monitor_id}")
+        logger.info(f"*** START TRIGGERED: {monitor_id} ***")
         return 999  # Mock recording ID
 
     def on_stop(monitor_id, recording_id):
-        logger.info(f"STOP TRIGGERED: {monitor_id}, recording={recording_id}")
+        logger.info(f"*** STOP TRIGGERED: {monitor_id}, recording={recording_id} ***")
 
-    # Add test monitor
-    test_config = {
-        'monitor_topics': ['gps/latitude/0', 'gps/longitude/0'],
-        'start_condition': {
-            'type': 'gps_movement',
-            'distance_threshold': 20,
-            'duration': 10
-        },
-        'stop_condition': {
-            'type': 'gps_stopped',
-            'distance_threshold': 5,
-            'duration': 60
+    if args.config:
+        # Load from config files using ConfigManager (same as main service)
+        try:
+            config = ConfigManager(args.config, args.events_dir)
+        except Exception as e:
+            logger.error(f"Failed to load config: {e}")
+            raise
+
+        mqtt_config = config.get_mqtt_config()
+        broker = mqtt_config['broker']
+        port = mqtt_config['port']
+
+        event_configs = config.get_enabled_event_configs()
+        if not event_configs:
+            logger.warning("No enabled event configs found - nothing to monitor")
+            return
+
+        logger.info(f"Loaded {len(event_configs)} enabled event(s): {list(event_configs.keys())}")
+
+        monitor = GPSTriggerMonitor(broker, port)
+
+        try:
+            monitor.connect()
+            time.sleep(1)  # Allow connection to establish
+
+            for event_name, event_config in event_configs.items():
+                monitor.add_monitor(event_name, event_config, on_start, on_stop)
+                start_type = event_config.get('start_condition', {}).get('type', '?')
+                stop_type = event_config.get('stop_condition', {}).get('type', '?')
+                logger.info(f"Monitor '{event_name}': start={start_type}, stop={stop_type}")
+
+            logger.info("Monitoring active. Press Ctrl+C to stop.")
+
+            while True:
+                time.sleep(5)
+                pos = monitor.get_current_position()
+                if pos:
+                    lat, lon, _ = pos
+                    logger.info(f"Position: {lat:.6f}, {lon:.6f}")
+                status = monitor.get_monitor_status()
+                for name, s in status.items():
+                    logger.info(f"  [{name}] state={s['state']} recording={s['recording_id']} has_pos={s['has_position']}")
+
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user")
+        finally:
+            monitor.shutdown()
+
+    else:
+        # Fallback: hardcoded test config when no config file given
+        logger.warning("No --config provided, using built-in test config")
+        logger.info(f"Broker: {args.broker}:{args.port}")
+
+        test_config = {
+            'monitor_topics': ['gps/latitude/0', 'gps/longitude/0'],
+            'start_condition': {
+                'type': 'gps_movement',
+                'distance_threshold': 20,
+                'duration': 10
+            },
+            'stop_condition': {
+                'type': 'gps_stopped',
+                'distance_threshold': 5,
+                'duration': 60
+            }
         }
-    }
 
-    try:
-        monitor.connect()
-        monitor.add_monitor('test_monitor', test_config, on_start, on_stop)
+        monitor = GPSTriggerMonitor(args.broker, args.port)
 
-        logger.info("Monitoring GPS topics. Press Ctrl+C to stop.")
-        logger.info("Publish test messages:")
-        logger.info("  mosquitto_pub -h localhost -t 'gps/latitude/0' -m '-31.9505'")
-        logger.info("  mosquitto_pub -h localhost -t 'gps/longitude/0' -m '115.8605'")
+        try:
+            monitor.connect()
+            monitor.add_monitor('test_monitor', test_config, on_start, on_stop)
 
-        while True:
-            time.sleep(1)
-            pos = monitor.get_current_position()
-            if pos:
-                lat, lon, ts = pos
-                logger.info(f"Current position: {lat:.6f}, {lon:.6f}")
+            logger.info("Monitoring GPS topics. Press Ctrl+C to stop.")
+            logger.info("Publish test messages:")
+            logger.info("  mosquitto_pub -h localhost -t 'gps/latitude/0' -m '-31.9505'")
+            logger.info("  mosquitto_pub -h localhost -t 'gps/longitude/0' -m '115.8605'")
 
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-    finally:
-        monitor.shutdown()
+            while True:
+                time.sleep(1)
+                pos = monitor.get_current_position()
+                if pos:
+                    lat, lon, _ = pos
+                    logger.info(f"Current position: {lat:.6f}, {lon:.6f}")
+
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user")
+        finally:
+            monitor.shutdown()
 
 
 if __name__ == '__main__':

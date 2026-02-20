@@ -102,6 +102,49 @@ events:
         <h3>Performance Plots</h3>
         {plots}
 
+  # Example: Anchor-based drive recording (disabled by default)
+  # Records when vehicle leaves a fixed home location and stops when it returns.
+  # Useful for a fixed base (garage, depot, marina) where departures/arrivals
+  # define the start and end of an activity rather than movement detection.
+  anchor_drive_recording:
+    enabled: false
+    name: "Anchor-Based Drive Recording"
+    description: "Record when vehicle departs from home anchor and stop when it returns"
+
+    monitor_topics:
+      - "gps/latitude/0"
+      - "gps/longitude/0"
+
+    # Start condition: Vehicle has moved outside the anchor zone
+    start_condition:
+      type: "anchor_departure"
+      anchor_lat: -35.0938041                # Home latitude
+      anchor_lon: 117.9565888                # Home longitude
+      radius: 100                            # meters - zone radius around anchor
+      duration: 10                           # seconds outside zone before triggering
+
+    # Stop condition: Vehicle has returned inside the anchor zone
+    stop_condition:
+      type: "anchor_return"
+      anchor_lat: -35.0938041                # Home latitude
+      anchor_lon: 117.9565888                # Home longitude
+      radius: 100                            # meters - zone radius around anchor
+      duration: 30                           # seconds inside zone before triggering
+
+    record_topics:
+      - "gps/#"
+      - "battery/#"
+
+    plots:
+      - type: "map"
+        title: "Route Map"
+        topics: ["gps/latitude/0", "gps/longitude/0"]
+
+    wordpress:
+      site: "default_site"
+      category: "Drive Logs"
+      auto_publish: false
+
   # Example: Solar high production event (disabled by default)
   solar_high_production:
     enabled: false
