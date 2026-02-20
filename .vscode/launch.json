@@ -1,0 +1,95 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "emonLogToInflux",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/emonLogToInflux.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-i",
+                "localhost",
+                "-s",
+                "${workspaceFolder}/python/testing_emon_settings/emon_config/",
+                "--fromFile",
+                "20260130.TXT",
+                "--toFile",
+                "20260130.TXT",
+                "${workspaceFolder}/python/testing_emon_settings"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "test_emonLib",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/pyEmon/pyemonlib/test_emonLib.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-f",
+                "${workspaceFolder}/python/testing_emon_settings/20241113.TXT",
+                "-m",
+                "localhost",
+                "-s",
+                "${workspaceFolder}/python/testing_emon_settings/emon_config/emon_config.yml",
+            ],
+            "cwd": "${workspaceFolder}"
+        },        {
+            "name": "emonCSVToMQTT",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/emonCSVToMQTT.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-f",
+                "${workspaceFolder}/python/event_recorder/test_event_recorder/data/20250904.TXT",
+                "-m",
+                "localhost",
+                "-s",
+                "${workspaceFolder}/python/event_recorder/test_event_recorder/emon_config/",
+                "-l",
+                "${workspaceFolder}/python/event_recorder/test_event_recorder/output",
+                "-x",
+                "2"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "emonMQTTToInflux",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/emonMQTTToInflux.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-i",
+                "localhost",
+                "-m",
+                "localhost",
+                "-s",
+                "${workspaceFolder}/python/testing_emon_settings/emon_config/emon_config.yml"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Event Recorder (Docker Attach)",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}/python/event_recorder",
+                    "remoteRoot": "/app/event_recorder"
+                }
+            ],
+            "justMyCode": true
+        }
+    ]
+}

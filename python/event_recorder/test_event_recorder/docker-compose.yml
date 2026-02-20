@@ -60,9 +60,11 @@ services:
     container_name: test_event_recorder
     ports:
       - "5001:5000"
+      - "5678:5678"  # debugpy remote debugging
     volumes:
       - ./config:/config
       - ./data:/data
+      - ../:/app/event_recorder  # Mount local source for live editing
     environment:
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
@@ -70,6 +72,7 @@ services:
       - WP_USERNAME=${WP_USERNAME}
       - WP_APP_PASSWORD=${WP_APP_PASSWORD}
       - TZ=${TIMEZONE}
+      - DEBUG=${DEBUG:-0}  # Set DEBUG=1 to enable debugpy
     depends_on:
       - mosquitto
       - wordpress

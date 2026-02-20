@@ -36,7 +36,8 @@ Analyse_python/pandas/
 ./Emon_LogToJson/Emon_LogToJson
 
 #remove .vscode folder
-.vscode/
+.vscode/*
+!.vscode/launch.json
 .vs/
 
 #python built modules

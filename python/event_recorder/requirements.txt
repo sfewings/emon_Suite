@@ -33,6 +33,9 @@ Werkzeug>=2.3.0,<3.0.0
 requests>=2.31.0,<3.0.0
 python-dateutil>=2.8.2,<3.0.0  # For flexible date parsing
 
+# === Development / Debugging ===
+debugpy>=1.8.0,<2.0.0  # Remote debugging from VSCode
+
 # === Development Dependencies (Optional) ===
 # pytest>=7.4.0
 # pytest-cov>=4.1.0

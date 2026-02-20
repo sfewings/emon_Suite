@@ -9,6 +9,7 @@ Main entry point that orchestrates all components:
 """
 
 import logging
+import os
 import signal
 import sys
 import time
@@ -402,7 +403,23 @@ Examples:
         help='Logging level (default: INFO)'
     )
 
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable remote debugging via debugpy on port 5678'
+    )
+
+    parser.add_argument(
+        '--wait-for-debugger',
+        action='store_true',
+        help='Pause startup until VSCode debugger attaches (implies --debug)'
+    )
+
     args = parser.parse_args()
+
+    # --wait-for-debugger implies --debug
+    if args.wait_for_debugger:
+        args.debug = True
 
     # Setup logging
     logging.basicConfig(
@@ -410,6 +427,18 @@ Examples:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
+
+    # Enable remote debugging if DEBUG env var or --debug flag is set
+    if args.debug or os.environ.get('DEBUG', '0') == '1':
+        try:
+            import debugpy
+            debugpy.listen(("0.0.0.0", 5678))
+            logging.info("debugpy listening on port 5678 - waiting for VSCode to attach...")
+            if args.wait_for_debugger:
+                debugpy.wait_for_client()
+                logging.info("Debugger attached")
+        except ImportError:
+            logging.warning("debugpy not installed - remote debugging unavailable (pip install debugpy)")
 
     # Create service
     try:
