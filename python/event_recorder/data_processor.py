@@ -530,7 +530,11 @@ class DataProcessor:
         # Prepare table data
         table_data = [['Metric', 'Value']]
 
-        # Add general stats
+        # Add timing stats
+        if 'start_time' in statistics:
+            table_data.append(['Start Time', statistics['start_time']])
+        if 'end_time' in statistics:
+            table_data.append(['End Time', statistics['end_time']])
         if 'duration' in statistics:
             table_data.append(['Duration', statistics['duration']])
         if 'message_count' in statistics:
@@ -720,6 +724,9 @@ class DataProcessor:
             start_time = datetime.fromisoformat(start_time)
         if end_time and isinstance(end_time, str):
             end_time = datetime.fromisoformat(end_time)
+
+        stats['start_time'] = start_time.strftime('%Y-%m-%d %H:%M:%S') if start_time else ''
+        stats['end_time'] = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else ''
 
         if end_time:
             duration = end_time - start_time
