@@ -84,9 +84,15 @@ class DataProcessor:
         lon_topics = [t for t in topics if 'longitude' in t.lower()]
 
         for lat_topic in lat_topics:
-            # Find matching longitude topic (same suffix, e.g. gps/latitude/0 → gps/longitude/0)
-            suffix = lat_topic.split('latitude')[-1]
-            matching_lon = [t for t in lon_topics if t.endswith(suffix)]
+            # Find matching longitude topic: primary strategy is direct string replacement
+            # e.g. "gps/latitude/0" → "gps/longitude/0"
+            expected_lon = lat_topic.replace('latitude', 'longitude')
+            matching_lon = [t for t in lon_topics if t == expected_lon]
+            if not matching_lon:
+                # Fallback: suffix matching for non-standard topic formats
+                suffix = lat_topic.split('latitude')[-1]
+                if suffix:
+                    matching_lon = [t for t in lon_topics if t.endswith(suffix)]
             if matching_lon:
                 plot_config.append({
                     'type': 'map',
@@ -443,8 +449,8 @@ class DataProcessor:
             return png_path
 
         except Exception as e:
-            logger.warning(f"Failed to convert map to PNG: {e}, keeping HTML")
-            return html_path
+            logger.warning(f"Failed to convert map to PNG (ChromeDriver unavailable): {e}, falling back to matplotlib")
+            return self._generate_matplotlib_route_map(recording_id, plot_spec, output_dir)
 
     def _generate_matplotlib_route_map(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
         """
