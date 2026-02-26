@@ -348,9 +348,6 @@ class WebInterface:
                 results = processor.process_recording(recording_id, plot_config)
 
                 if results['status'] == 'success':
-                    # Update recording status
-                    self.database.update_recording(recording_id, status=RecordingStatus.STOPPED)
-
                     return jsonify({
                         'success': True,
                         'results': results,

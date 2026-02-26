@@ -21,6 +21,7 @@ class RecordingStatus:
     ACTIVE = 'active'
     STOPPED = 'stopped'
     PROCESSING = 'processing'
+    PROCESSED = 'processed'
     PUBLISHED = 'published'
     FAILED = 'failed'
 

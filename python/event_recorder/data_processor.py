@@ -210,10 +210,12 @@ class DataProcessor:
 
             logger.info(f"Processing complete: {len(results['plots'])} plots generated")
 
+            self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
             return results
 
         except Exception as e:
             logger.error(f"Processing failed: {e}")
+            self.database.update_recording(recording_id, status=RecordingStatus.FAILED)
             return {
                 'plots': [],
                 'statistics': {},
