@@ -667,11 +667,25 @@ class DataProcessor:
             except (ValueError, KeyError):
                 continue
 
-        # Match timestamps
+        # Match timestamps using nearest-neighbour within a tolerance window.
+        # Lat and lon arrive as separate MQTT topics so their timestamps differ
+        # by milliseconds — exact equality almost never matches.
+        TOLERANCE = timedelta(seconds=5)
+        sorted_lon_times = sorted(lon_dict.keys())
         coords = []
-        for timestamp in sorted(lat_dict.keys()):
-            if timestamp in lon_dict:
-                coords.append((lat_dict[timestamp], lon_dict[timestamp]))
+        for lat_ts in sorted(lat_dict.keys()):
+            # Binary-search for the closest lon timestamp
+            import bisect
+            idx = bisect.bisect_left(sorted_lon_times, lat_ts)
+            best = None
+            for candidate_idx in [idx - 1, idx]:
+                if 0 <= candidate_idx < len(sorted_lon_times):
+                    diff = abs(sorted_lon_times[candidate_idx] - lat_ts)
+                    if diff <= TOLERANCE:
+                        if best is None or diff < abs(sorted_lon_times[best] - lat_ts):
+                            best = candidate_idx
+            if best is not None:
+                coords.append((lat_dict[lat_ts], lon_dict[sorted_lon_times[best]]))
 
         return coords
 
