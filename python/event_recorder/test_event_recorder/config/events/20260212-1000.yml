@@ -110,7 +110,7 @@ events:
   # Useful for a fixed base (garage, depot, marina) where departures/arrivals
   # define the start and end of an activity rather than movement detection.
   anchor_drive_recording:
-    enabled: false
+    enabled: true
     name: "Anchor-Based Recording"
     description: "Record when vessel departs from home anchor and stop when it returns"
 
