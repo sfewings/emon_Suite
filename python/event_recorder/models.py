@@ -51,6 +51,7 @@ class Database:
             self.init_database()
         else:
             logger.info(f"Using existing database at {self.db_path}")
+            self._migrate_database()
 
         # Enable WAL mode for crash resilience
         with self.get_connection() as conn:
@@ -82,6 +83,41 @@ class Database:
         finally:
             conn.close()
 
+    def _migrate_database(self):
+        """
+        Apply schema migrations to existing databases.
+
+        SQLite doesn't support ALTER TABLE to modify CHECK constraints, so
+        migrations that change constraints require table recreation.
+        """
+        with self.get_connection() as conn:
+            # Check if the recordings table CHECK constraint includes 'processed'
+            cursor = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='recordings'"
+            )
+            row = cursor.fetchone()
+            if row and "'processed'" not in row['sql']:
+                logger.info("Migrating recordings table: adding 'processed' status")
+                conn.execute("ALTER TABLE recordings RENAME TO recordings_old")
+                conn.execute("""
+                    CREATE TABLE recordings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        status TEXT NOT NULL CHECK(status IN ('active', 'stopped', 'processing', 'processed', 'published', 'failed')),
+                        start_time TIMESTAMP NOT NULL,
+                        end_time TIMESTAMP,
+                        trigger_type TEXT,
+                        wordpress_url TEXT,
+                        error_message TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.execute("INSERT INTO recordings SELECT * FROM recordings_old")
+                conn.execute("DROP TABLE recordings_old")
+                logger.info("Migration complete: recordings table updated")
+
     def init_database(self):
         """Create database schema with all tables and indexes."""
         with self.get_connection() as conn:
@@ -91,7 +127,7 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     description TEXT,
-                    status TEXT NOT NULL CHECK(status IN ('active', 'stopped', 'processing', 'published', 'failed')),
+                    status TEXT NOT NULL CHECK(status IN ('active', 'stopped', 'processing', 'processed', 'published', 'failed')),
                     start_time TIMESTAMP NOT NULL,
                     end_time TIMESTAMP,
                     trigger_type TEXT,
