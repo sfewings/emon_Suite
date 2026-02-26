@@ -773,16 +773,27 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Database stores UTC timestamps without a timezone marker (e.g. "2026-02-26 06:27:07").
+// Without 'Z', JavaScript treats them as local time, causing an offset equal to the
+// local UTC offset. This helper forces UTC parsing so times display correctly.
+function parseUtcTimestamp(timestamp) {
+    if (!timestamp) return null;
+    // Replace space separator with T for ISO 8601, then append Z to mark as UTC.
+    const iso = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T');
+    const utc = (iso.endsWith('Z') || iso.includes('+')) ? iso : iso + 'Z';
+    return new Date(utc);
+}
+
 function formatDateTime(timestamp) {
     if (!timestamp) return '-';
-    const date = new Date(timestamp);
+    const date = parseUtcTimestamp(timestamp);
     return date.toLocaleString();
 }
 
 function formatDuration(startTime) {
     if (!startTime) return '-';
 
-    const start = new Date(startTime);
+    const start = parseUtcTimestamp(startTime);
     const now = new Date();
     const diff = now - start;
 
