@@ -430,15 +430,20 @@ class DataProcessor:
         html_path = output_dir / f"{title.replace(' ', '_').lower()}.html"
         m.save(str(html_path))
 
-        # Convert to PNG using selenium
+        # Convert to PNG using selenium + system Chromium
         png_path = output_dir / f"{title.replace(' ', '_').lower()}.png"
         try:
             chrome_options = Options()
             chrome_options.add_argument('--headless')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
+            # Use the system-installed Chromium binary (installed via apt chromium/chromium-driver)
+            # rather than the selenium-manager auto-downloaded Chrome which requires the
+            # matching Chrome browser binary to also be present.
+            chrome_options.binary_location = '/usr/bin/chromium'
 
-            driver = webdriver.Chrome(options=chrome_options)
+            from selenium.webdriver.chrome.service import Service
+            driver = webdriver.Chrome(options=chrome_options, service=Service('/usr/bin/chromedriver'))
             driver.set_window_size(1200, 800)
             driver.get(f"file://{html_path.absolute()}")
             time.sleep(2)  # Wait for map to render

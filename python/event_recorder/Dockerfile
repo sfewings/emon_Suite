@@ -13,8 +13,11 @@ LABEL version="0.1.0"
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (minimal - no build tools needed)
+# Install system dependencies
+# chromium + chromium-driver: headless browser for folium map → PNG export
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application code
@@ -43,4 +46,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 CMD ["python", "-m", "event_recorder.main", \
      "--config", "/config/event_recorder_config.yml", \
      "--events-dir", "/config/events", \
-     "--data-dir", "/data"]
+     "--data-dir", "/data",
+     "--debug"
+     "--wait-for-debugger"]
