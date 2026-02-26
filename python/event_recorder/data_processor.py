@@ -5,9 +5,11 @@ Uses matplotlib for time-series plots and folium for GPS route maps.
 Calculates statistics including distance, speed, energy consumption.
 """
 
+import bisect
 import logging
 import math
 import os
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -680,7 +682,6 @@ class DataProcessor:
         coords = []
         for lat_ts in sorted(lat_dict.keys()):
             # Binary-search for the closest lon timestamp
-            import bisect
             idx = bisect.bisect_left(sorted_lon_times, lat_ts)
             best = None
             for candidate_idx in [idx - 1, idx]:
