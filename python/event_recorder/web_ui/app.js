@@ -334,7 +334,7 @@ async function loadRecordings() {
                                             Process
                                         </button>
                                     ` : ''}
-                                    ${rec.status === 'stopped' || rec.status === 'processing' ? `
+                                    ${['stopped', 'processing', 'processed'].includes(rec.status) ? `
                                         <button class="btn btn-sm btn-wp"
                                                 onclick="publishRecording(${rec.id})">
                                             Publish
@@ -708,7 +708,7 @@ async function viewRecording(recordingId) {
                 `;
             }
 
-            if (rec.status === 'stopped' || rec.status === 'processing') {
+            if (['stopped', 'processing', 'processed'].includes(rec.status)) {
                 modalContent += `
                     <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
                         Publish to WordPress
