@@ -85,7 +85,7 @@ class DataProcessor:
         lat_topics = [t for t in topics if 'latitude' in t.lower()]
         lon_topics = [t for t in topics if 'longitude' in t.lower()]
 
-        for lat_topic in lat_topics:
+        for i, lat_topic in enumerate(lat_topics):
             # Find matching longitude topic: primary strategy is direct string replacement
             # e.g. "gps/latitude/0" → "gps/longitude/0"
             expected_lon = lat_topic.replace('latitude', 'longitude')
@@ -96,9 +96,13 @@ class DataProcessor:
                 if suffix:
                     matching_lon = [t for t in lon_topics if t.endswith(suffix)]
             if matching_lon:
+                # Use a unique title per GPS stream so each map gets its own filename.
+                # With a single stream the title is plain "Route Map"; with multiple
+                # streams it becomes "Route Map 0", "Route Map 1", etc.
+                title = 'Route Map' if len(lat_topics) == 1 else f'Route Map {i}'
                 plot_config.append({
                     'type': 'map',
-                    'title': 'Route Map',
+                    'title': title,
                     'topics': [lat_topic, matching_lon[0]]
                 })
                 skip_topics.add(lat_topic)
