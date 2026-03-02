@@ -123,18 +123,18 @@ PayloadDalyBMS      g_payloadDalyBMS;
 
 typedef enum {
     eFirstDisplayMode = 0, 
-    eRPM = 0,
-    eGPSSpeed,
-	eWindSpeed,
+	eWindSpeed =0,
     eBatterySoC,
-    eLastDisplayMode = eBatterySoC,
+    eRPM,
+    eGPSSpeed,
+    eLastDisplayMode = eGPSSpeed,
 }  ButtonDisplayMode;
 
 const char* g_displayModeNames[][2] = {
-    "RPM", "RPM x100",
-    "Speed", "Speed - kts",
     "Wind", "Wind - kts",
     "Battery", "% SoC /4",
+    "RPM", "RPM x100",
+    "Speed", "Speed - kts",
 };
 #endif
 ButtonDisplayMode g_displayMode = eFirstDisplayMode;
