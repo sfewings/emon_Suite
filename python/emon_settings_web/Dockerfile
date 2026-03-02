@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir \
     Flask \
     PyYAML \
-    gunicorn
+    gunicorn\
+    requests
 
     # Copy the shared emon library (parent directory)
 COPY pyEmon/ /app/pyEmon/
