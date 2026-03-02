@@ -812,6 +812,7 @@ void loop()
 
     if (now - lastSendWindTime >= SEND_WIND_INTERVAL_MS) 
     {
+        //turn off the radio to avoid interference with RS232 reading
         lastSendWindTime = now;
         g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
         g_rs232Serial.listen();
@@ -824,8 +825,8 @@ void loop()
 
         digitalWrite(MOTEINO_LED, HIGH );
 
-        //calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
-
+        //Get the IMU data to publish
+        // Calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
         get_scaled_IMU(g_payloadIMU.Acc, g_payloadIMU.Mag);  //apply relative scale and offset to RAW data. UNITS are not important
         get_gyro(g_payloadIMU.Gyro);                         //get gyro data with offsets removed
         g_payloadIMU.heading = get_heading(g_payloadIMU.Acc, g_payloadIMU.Mag, p, declination);
@@ -836,11 +837,13 @@ void loop()
         {
             EmonSerial::PrintIMUPayload(&g_payloadIMU);
         }
+        digitalWrite(MOTEINO_LED, LOW );
 
         if (readAnemometerOK) 
         {
             //printValues(anemometerReadings);
 
+            digitalWrite(MOTEINO_LED, HIGH );
 
             //Send vessel relatative wind data first
             g_rf69.setHeaderId(ANEMOMETER_NODE);
