@@ -46,6 +46,9 @@
 // #include <Fonts/FreeSerifItalic24pt7b.h>
 
 
+#include <EEPROM.h>
+#define EEPROM_BASE 0x10	//where values are stored in EEPROM
+
 #include <APDS9930.h>
 #include <RH_RF69.h>
 #include <NeoPixelBus.h>
@@ -93,7 +96,7 @@ PayloadPulse        g_payloadPulse;
 PayloadTemperature  g_payloadTemperature;
 PayloadBattery      g_payloadBattery;
 PayloadInverter     g_payloadInverter[MAX_INVERTERS];
-PayloadGPS          g_payloadGPS;
+//PayloadGPS          g_payloadGPS;
 
 typedef enum {
     eFirstDisplayMode = 0, 
@@ -101,8 +104,8 @@ typedef enum {
 	eCurrentTemperatures,
     eRailVoltage,
 	eInverterIn,
-    eGPSSpeed,
-    eLastDisplayMode = eGPSSpeed,
+//    eGPSSpeed,
+    eLastDisplayMode = eInverterIn,
 }  ButtonDisplayMode;
 
 const char* g_displayModeNames[][2] = {
@@ -110,10 +113,9 @@ const char* g_displayModeNames[][2] = {
     "Temp", "Deg C",
     "Rail", "V /4",
     "Inv", "W x100",
-    "GPS", "kts",
+//    "GPS", "kts",
 };
 #elif defined(BOAT_BANNER)
-const uint8_t MAX_INVERTERS = 3;
 PayloadSevCon       g_payloadSevCon;
 PayloadGPS          g_payloadGPS;
 PayloadAnemometer   g_payloadAnemometer;
@@ -135,12 +137,37 @@ const char* g_displayModeNames[][2] = {
     "Battery", "% SoC /4",
 };
 #endif
+ButtonDisplayMode g_displayMode = eFirstDisplayMode;
 
 
-
-const uint8_t MOVING_AVERAGE_COUNT = 5;
+const uint8_t MOVING_AVERAGE_COUNT = 3;
 float g_tachometer_movingAverage[MOVING_AVERAGE_COUNT] = {0};
 uint8_t g_movingAverageIndex = 0;
+
+
+uint8_t readEEPROM(int offset)
+{
+	uint8_t value = 0;
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(uint8_t); l++)
+	{
+		*(pc + l) = EEPROM.read(EEPROM_BASE + offset * sizeof(uint8_t) + l);
+	}
+
+	return value;
+}
+
+void writeEEPROM(int offset, uint8_t value)
+{
+	char* pc = (char*)& value;
+
+	for (long l = 0; l < sizeof(uint8_t); l++)
+	{
+		EEPROM.write(EEPROM_BASE + offset * sizeof(uint8_t) + l, *(pc + l));
+	}
+}
+
 
 
 void setLedStrip(RgbwColor inColour, uint8_t intensity = 255 )
@@ -183,6 +210,8 @@ void setup()
     pinMode( LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, HIGH);
 
+  	wdt_enable(WDTO_1S);    //watchdog timer 1 second
+
     Serial.begin(9600);
     Serial.println("Tachometer starting");
 
@@ -217,6 +246,7 @@ void setup()
 
     pinMode( INSTRUMENT_LIGHT_PIN, INPUT);
 
+	wdt_reset();
 
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
@@ -230,14 +260,24 @@ void setup()
     g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
 	Serial.print(F("RF69 initialised Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println("MHz");
 
-#ifdef HOUSE_BANNER
-    EmonSerial::PrintGPSPayload(NULL);
-    EmonSerial::PrintTemperaturePayload(NULL);
-    EmonSerial::PrintPulsePayload(NULL);
-	EmonSerial::PrintBatteryPayload(NULL);
-    EmonSerial::PrintInverterPayload(NULL);
 
-    memset( &g_payloadGPS,0, sizeof(PayloadGPS));
+    uint8_t displayMode = readEEPROM(0);
+    if (displayMode >= eFirstDisplayMode && displayMode <= eLastDisplayMode)
+    {
+        g_displayMode = (ButtonDisplayMode)displayMode;
+    }
+    else
+    {
+        g_displayMode = eFirstDisplayMode;
+    }
+#ifdef HOUSE_BANNER
+    // EmonSerial::PrintGPSPayload(NULL);
+    // EmonSerial::PrintTemperaturePayload(NULL);
+    // EmonSerial::PrintPulsePayload(NULL);
+	// EmonSerial::PrintBatteryPayload(NULL);
+    // EmonSerial::PrintInverterPayload(NULL);
+
+    //memset( &g_payloadGPS,0, sizeof(PayloadGPS));
     memset( &g_payloadTemperature,0, sizeof(PayloadTemperature));
     memset( &g_payloadPulse,0, sizeof(PayloadPulse));
     memset( &g_payloadBattery,0, sizeof(PayloadBattery));
@@ -257,14 +297,14 @@ void setup()
     memset( &g_payloadDalyBMS,0, sizeof(PayloadDalyBMS));
 #endif
 
+	wdt_reset();
+
     //initialize LED strip
     strip.Begin();
     strip.Show();
 
     //initialise PWM timers for tachometer output
     InitTimersSafe();
-
-  	wdt_enable(WDTO_1S);    //watchdog timer 1 second
 
     digitalWrite(LED_PIN, LOW);
 }
@@ -277,7 +317,6 @@ void loop()
     const unsigned long DISPLAYMODE_PERIOD_MS = 2000;
     static unsigned long lastDisplayUpdateTime = millis();
     static unsigned long lastDisplayModeChangeTime = millis();
-    static ButtonDisplayMode displayMode = eFirstDisplayMode;
     static RgbwColor ledColor = RgbwColor(255, 255, 255, 255);
 
 	wdt_reset();
@@ -294,12 +333,13 @@ void loop()
 		if (g_rf69.recv(buf, &len))
 		{
 #ifdef HOUSE_BANNER
-            if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
-            {
-                g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
-                EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
-            }
-            else if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
+            // if (node_id == GPS_NODE && len == sizeof(PayloadGPS))
+            // {
+            //     g_payloadGPS = *(PayloadGPS*)buf;							// get payload data
+            //     EmonSerial::PrintGPSPayload(&g_payloadGPS);				// print data to serial
+            // }
+            // else
+             if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
             {
                 g_payloadPulse = *(PayloadPulse*)buf;							// get payload data
 
@@ -372,11 +412,12 @@ void loop()
         if( !proximityOn ) //was off, now on
         {
             digitalWrite(LED_PIN, HIGH);
-            if( displayMode == eLastDisplayMode)
-                displayMode = eFirstDisplayMode;
+            if( g_displayMode == eLastDisplayMode)
+                g_displayMode = eFirstDisplayMode;
             else
-                displayMode = (ButtonDisplayMode)((int)displayMode + 1);
-                lastDisplayModeChangeTime = millis();
+                g_displayMode = (ButtonDisplayMode)((int)g_displayMode + 1);
+            lastDisplayModeChangeTime = millis();
+            writeEEPROM(0, (uint8_t)g_displayMode); //save display mode to EEPROM so it is retained after power loss
         }
         else
         {
@@ -393,13 +434,13 @@ void loop()
         //centre the text to the OLED display
         uint8_t textOffset = (millis() - lastDisplayModeChangeTime) > DISPLAYMODE_PERIOD_MS;
         int16_t x1, y1, w, h;
-        display.getTextBounds(g_displayModeNames[displayMode][textOffset], 0, SCREEN_HEIGHT, &x1, &y1, &w, &h);
+        display.getTextBounds(g_displayModeNames[g_displayMode][textOffset], 0, SCREEN_HEIGHT, &x1, &y1, &w, &h);
         display.clearDisplay();
         display.setCursor((SCREEN_WIDTH-w)/2,SCREEN_HEIGHT - ((SCREEN_HEIGHT-h)/2));
-        display.print(g_displayModeNames[displayMode][textOffset]);
+        display.print(g_displayModeNames[g_displayMode][textOffset]);
         display.display();
 
-        switch(displayMode)
+        switch(g_displayMode)
         {
 #ifdef HOUSE_BANNER
             case eCurrentPower:
@@ -425,10 +466,10 @@ void loop()
                     ledColor = RgbwColor(0,255,0,0); // green
                 }
                 break;
-            case eGPSSpeed:
-                setTachometer(g_payloadGPS.speed/10.0);
-                ledColor = RgbwColor(0,0,255,0); // blue
-                break;
+            // case eGPSSpeed:
+            //     setTachometer(g_payloadGPS.speed/10.0);
+            //     ledColor = RgbwColor(0,0,255,0); // blue
+            //     break;
 
 #elif defined(BOAT_BANNER)
             case eRPM:
@@ -455,7 +496,7 @@ void loop()
     uint8_t intensity = 0;
     if( digitalRead(INSTRUMENT_LIGHT_PIN) == HIGH )
     {
-        intensity = 4;
+        intensity = 8;
     }
     else
     {
@@ -463,7 +504,7 @@ void loop()
         float ambient_light;
         apds.readAmbientLightLux(ambient_light);
         ambient_light = constrain(ambient_light, 0, 255.0);
-        intensity = map(ambient_light, 0, 255.0, 0, 255);   //0 turns off when light is very low!
+        intensity = map(ambient_light, 0, 255.0, 3, 255);   //Leave at least some glow (3) when it is otherwise dark
         //Serial.print(ambient_light);Serial.print(",");Serial.println(intensity);
     }
     setLedStrip(ledColor, intensity ); // adjust brightness based on ambient light
