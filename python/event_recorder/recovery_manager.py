@@ -131,7 +131,7 @@ class RecoveryManager:
             logger.info(f"Recording {recording_id}: no GPS history, cannot determine movement")
             return False
 
-        # Calculate if vehicle has moved significantly
+        # Calculate if vessel has moved significantly
         from .trigger_monitor import GPSTriggerMonitor
         monitor = GPSTriggerMonitor()  # Just for haversine_distance method
 
@@ -156,10 +156,10 @@ class RecoveryManager:
 
         # If moving faster than threshold, resume
         if movement_rate > movement_threshold:
-            logger.info(f"Recording {recording_id}: vehicle still moving, should resume")
+            logger.info(f"Recording {recording_id}: vessel still moving, should resume")
             return True
         else:
-            logger.info(f"Recording {recording_id}: vehicle stationary, should process")
+            logger.info(f"Recording {recording_id}: vessel stationary, should process")
             return False
 
     def _get_last_gps_position(self, recording_id: int) -> Optional[tuple]:

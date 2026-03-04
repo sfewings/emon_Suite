@@ -7,7 +7,7 @@ Tests the complete workflow:
 3. Start data recorder
 4. Simulate GPS movement via MQTT
 5. Verify recording started
-6. Simulate vehicle stopped
+6. Simulate vessel stopped
 7. Verify recording stopped
 8. Process recording (generate plots)
 9. Verify outputs

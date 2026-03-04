@@ -8,10 +8,10 @@
 
 ## 🎯 Project Goals - ACHIEVED
 
-**Primary Objective:** Create an autonomous service that monitors GPS position via MQTT, automatically records vehicle drive sessions with sensor data, generates comprehensive data visualizations, and publishes results to WordPress blog posts without manual intervention.
+**Primary Objective:** Create an autonomous service that monitors GPS position via MQTT, automatically records vessel drive sessions with sensor data, generates comprehensive data visualizations, and publishes results to WordPress blog posts without manual intervention.
 
 **Success Criteria:** ✅ ALL MET
-- ✅ Service automatically detects vehicle drives via GPS position changes
+- ✅ Service automatically detects vessel drives via GPS position changes
 - ✅ Records all specified MQTT topics during drive sessions
 - ✅ Survives power outages and resumes recording appropriately
 - ✅ Generates all four plot types (line, comparison, map, statistics)
@@ -289,7 +289,7 @@ WORDPRESS MOCK TEST: ALL TESTS PASSED ✅
 ## 🎓 Key Technical Achievements
 
 ### 1. GPS Position Monitoring
-**Challenge:** Accurately detect vehicle movement from GPS coordinates
+**Challenge:** Accurately detect vessel movement from GPS coordinates
 **Solution:** Haversine distance formula with configurable thresholds
 ```python
 def _haversine_distance(self, lat1, lon1, lat2, lon2):
@@ -305,7 +305,7 @@ def _haversine_distance(self, lat1, lon1, lat2, lon2):
 def recover_recordings(self):
     interrupted = query WHERE status='active'
     for recording in interrupted:
-        if is_vehicle_moving():
+        if is_vessel_moving():
             resume_recording(recording)
         else:
             complete_recording(recording)
@@ -484,7 +484,7 @@ While the core functionality is complete, potential future additions could inclu
 2. **Cloud Storage** - S3/Azure backup for images
 3. **Mobile App** - Companion mobile interface
 4. **Advanced Analytics** - ML-based insights
-5. **Multi-Vehicle Support** - Track multiple vehicles
+5. **Multi-Vessel Support** - Track multiple vessels
 6. **Social Media** - Post to Twitter/Facebook
 7. **Voice Announcements** - Alexa/Google integration
 8. **Real-time Streaming** - Live drive data

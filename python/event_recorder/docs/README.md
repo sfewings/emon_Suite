@@ -1,17 +1,17 @@
 # Event Recorder & WordPress Publisher
 
-Autonomous service for automatic vehicle drive logging with data visualization and WordPress blog publishing.
+Autonomous service for automatic vessel drive logging with data visualization and WordPress blog publishing.
 
 ## Overview
 
-Monitors GPS position via MQTT, automatically detects vehicle movement, records sensor data (battery, GPS, temperature, motor), generates comprehensive visualization plots, and publishes results to WordPress blog posts.
+Monitors GPS position via MQTT, automatically detects vessel movement, records sensor data (battery, GPS, temperature, motor), generates comprehensive visualization plots, and publishes results to WordPress blog posts.
 
-**Primary Use Case:** Autonomous vehicle drive documentation - no manual intervention required.
+**Primary Use Case:** Autonomous vessel drive documentation - no manual intervention required.
 
 ## Features
 
 ### 🚗 Automatic GPS-Based Triggers
-- Detects vehicle movement via GPS coordinate changes (Haversine distance calculation)
+- Detects vessel movement via GPS coordinate changes (Haversine distance calculation)
 - Configurable start threshold (default: 20m movement for 10 seconds)
 - Configurable stop threshold (default: stationary for 60 seconds)
 
@@ -22,7 +22,7 @@ Monitors GPS position via MQTT, automatically detects vehicle movement, records 
 
 ### 🔌 Power Outage Recovery
 - Detects interrupted recordings on startup
-- Automatic resume or completion based on vehicle state
+- Automatic resume or completion based on vessel state
 - No data loss (at most 5 seconds of messages)
 
 ### 📈 Comprehensive Visualizations
@@ -78,7 +78,7 @@ GPS Topics (latitude/longitude)
         → [TRIGGER: Movement detected]
             → data_recorder.py (subscribe to battery/gps/temp topics)
                 → Buffer to SQLite (flush every 5 seconds)
-                    → [STOP: Vehicle stopped 60+ seconds]
+                    → [STOP: Vessel stopped 60+ seconds]
                         → data_processor.py (generate plots & stats)
                             → wordpress_publisher.py (create blog post)
                                 → WordPress REST API
@@ -250,13 +250,13 @@ events:
       - "gps/latitude/0"
       - "gps/longitude/0"
 
-    # Start: Vehicle moving
+    # Start: Vessel moving
     start_condition:
       type: "gps_movement"
       distance_threshold: 20      # meters
       duration: 10                # seconds
 
-    # Stop: Vehicle stopped
+    # Stop: Vessel stopped
     stop_condition:
       type: "gps_stopped"
       distance_threshold: 5       # meters

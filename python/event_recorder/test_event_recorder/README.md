@@ -108,7 +108,7 @@ Publish test GPS data:
 # Install mosquitto-clients if needed
 # sudo apt-get install mosquitto-clients
 
-# Publish GPS coordinates (simulate vehicle movement)
+# Publish GPS coordinates (simulate vessel movement)
 mosquitto_pub -h localhost -t "gps/latitude/0" -m "-31.9505"
 mosquitto_pub -h localhost -t "gps/longitude/0" -m "115.8605"
 

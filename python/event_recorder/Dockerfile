@@ -7,7 +7,7 @@ ARG TARGETARCH
 ARG BUILDPLATFORM
 
 LABEL maintainer="Event Recorder"
-LABEL description="Autonomous vehicle drive logging with data visualization and WordPress publishing"
+LABEL description="Autonomous vessel drive logging with data visualization and WordPress publishing"
 LABEL version="0.1.0"
 
 # Set working directory
@@ -46,6 +46,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 CMD ["python", "-m", "event_recorder.main", \
      "--config", "/config/event_recorder_config.yml", \
      "--events-dir", "/config/events", \
-     "--data-dir", "/data",
-     "--debug"
+     "--data-dir", "/data", \
+     "--debug", \
      "--wait-for-debugger"]

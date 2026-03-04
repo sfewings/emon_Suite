@@ -9,9 +9,9 @@
 
 ## Overview
 
-The Event Recorder is an autonomous service that monitors GPS position via MQTT, automatically records vehicle drive sessions (battery, GPS, temperature, motor data), generates comprehensive plots and statistics, and publishes results to WordPress blog posts. This enables automatic documentation of vehicle performance without manual data collection.
+The Event Recorder is an autonomous service that monitors GPS position via MQTT, automatically records vessel drive sessions (battery, GPS, temperature, motor data), generates comprehensive plots and statistics, and publishes results to WordPress blog posts. This enables automatic documentation of vessel performance without manual data collection.
 
-**Primary Use Case:** Vehicle drive logging
+**Primary Use Case:** Vessel drive logging
 **Integration:** Standalone containerized service following emon_Suite patterns
 
 ---
@@ -68,7 +68,7 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 
 **Priority:** Must Have
 **Status:** 📋 Pending (Phase 1)
-**Description:** Monitor GPS latitude and longitude topics to detect vehicle movement
+**Description:** Monitor GPS latitude and longitude topics to detect vessel movement
 
 **Acceptance Criteria:**
 
@@ -280,8 +280,8 @@ CREATE TABLE configurations (
 - [ ] On startup, query `SELECT * FROM recordings WHERE status='active'`
 - [ ] For each interrupted recording:
   - [ ] Check current GPS position to determine if still moving
-  - [ ] Resume recording if vehicle moving
-  - [ ] Move to 'processing' state if vehicle stopped
+  - [ ] Resume recording if vessel moving
+  - [ ] Move to 'processing' state if vessel stopped
 - [ ] Process any recordings stuck in 'stopped' or 'processing' states
 - [ ] Maximum data loss: 5 seconds (buffer flush interval)
 
@@ -336,7 +336,7 @@ def recover_interrupted_recordings():
 **Source:** User consultation and codebase exploration
 **Decisions:**
 
-- Primary use case: Vehicle drive logging
+- Primary use case: Vessel drive logging
 - GPS monitoring: latitude/longitude topics for movement detection
 - Start condition: Movement > 20m for 10 seconds
 - Stop condition: Stationary > 60 seconds

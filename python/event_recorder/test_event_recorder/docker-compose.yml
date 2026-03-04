@@ -73,6 +73,7 @@ services:
       - WP_APP_PASSWORD=${WP_APP_PASSWORD}
       - TZ=${TIMEZONE}
       - DEBUG=${DEBUG:-0}  # Set DEBUG=1 to enable debugpy
+      - WAIT_FOR_DEBUGGER=${WAIT_FOR_DEBUGGER:-0}  # Set WAIT_FOR_DEBUGGER=1 to wait for debugger
     depends_on:
       - mosquitto
       - wordpress

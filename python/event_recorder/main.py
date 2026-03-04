@@ -434,7 +434,7 @@ Examples:
             import debugpy
             debugpy.listen(("0.0.0.0", 5678))
             logging.info("debugpy listening on port 5678 - waiting for VSCode to attach...")
-            if args.wait_for_debugger:
+            if args.wait_for_debugger or os.environ.get('WAIT_FOR_DEBUGGER', '0') == '1':
                 debugpy.wait_for_client()
                 logging.info("Debugger attached")
         except ImportError:

@@ -1,7 +1,7 @@
 """
 GPS trigger monitor for automatic recording start/stop detection.
 
-Monitors GPS position via MQTT and detects vehicle movement using Haversine
+Monitors GPS position via MQTT and detects vessel movement using Haversine
 distance formula. Implements state machine for trigger conditions.
 """
 
@@ -30,7 +30,7 @@ class GPSTriggerMonitor:
     Monitors GPS position and detects movement-based triggers.
 
     Uses Haversine formula to calculate distance between GPS coordinates
-    and detects when vehicle starts moving or stops.
+    and detects when vessel starts moving or stops.
     """
 
     def __init__(self, mqtt_broker: str = "localhost", mqtt_port: int = 1883):
@@ -253,7 +253,7 @@ class GPSTriggerMonitor:
         """
         Check if start condition is met.
 
-        Detects vehicle movement based on GPS position changes.
+        Detects vessel movement based on GPS position changes.
         Compares current position against an anchor point (last known
         stationary position) rather than the previous message, so that
         continuous small movements accumulate correctly.
@@ -278,7 +278,7 @@ class GPSTriggerMonitor:
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
             logger.debug(f"Monitor '{monitor_id}': distance from anchor = {distance:.1f}m")
             if distance > distance_threshold:
-                # Vehicle has moved away from anchor
+                # Vessel has moved away from anchor
                 if state['condition_start_time'] is None:
                     state['condition_start_time'] = timestamp
                     logger.debug(f"Monitor '{monitor_id}': movement detected ({distance:.1f}m from anchor)")
@@ -299,7 +299,7 @@ class GPSTriggerMonitor:
                 state['last_position'] = (lat, lon, timestamp)
 
         elif condition_type == 'anchor_departure':
-            # Start recording when vehicle moves outside a fixed anchor location.
+            # Start recording when vessel moves outside a fixed anchor location.
             # The anchor is a configured lat/lon - no dynamic position tracking needed.
             anchor_lat = start_condition.get('anchor_lat')
             anchor_lon = start_condition.get('anchor_lon')
@@ -336,8 +336,8 @@ class GPSTriggerMonitor:
         """
         Check if stop condition is met.
 
-        Detects vehicle stopped based on GPS position not changing.
-        Uses anchor-based comparison: sets an anchor when the vehicle
+        Detects vessel stopped based on GPS position not changing.
+        Uses anchor-based comparison: sets an anchor when the vessel
         first appears stationary, then checks subsequent positions
         stay within threshold of that anchor for the required duration.
         """
@@ -361,7 +361,7 @@ class GPSTriggerMonitor:
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
 
             if distance < distance_threshold:
-                # Vehicle stationary (within threshold of anchor)
+                # Vessel stationary (within threshold of anchor)
                 if state['stationary_start_time'] is None:
                     state['stationary_start_time'] = timestamp
                     logger.debug(f"Monitor '{monitor_id}': stationary detected ({distance:.1f}m from anchor)")
@@ -380,7 +380,7 @@ class GPSTriggerMonitor:
                 state['last_position'] = (lat, lon, timestamp)
 
         elif condition_type == 'anchor_return':
-            # Stop recording when vehicle returns inside a fixed anchor location.
+            # Stop recording when vessel returns inside a fixed anchor location.
             # Paired with anchor_departure start condition.
             anchor_lat = stop_condition.get('anchor_lat')
             anchor_lon = stop_condition.get('anchor_lon')

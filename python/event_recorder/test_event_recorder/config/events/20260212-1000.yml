@@ -3,10 +3,10 @@
 # Active from: 2026-02-12 10:00
 
 events:
-  # Vehicle drive recording - automatic logging when vehicle moves
+  # Vessel drive recording - automatic logging when vessel moves
   drive_recording:
     enabled: true
-    name: "Vehicle Drive Recording"
+    name: "Vessel Drive Recording"
     description: "Automatic logging of drive sessions with battery, GPS, temperature, and motor data"
 
     # GPS position monitoring topics
@@ -14,13 +14,13 @@ events:
       - "gps/latitude/0"
       - "gps/longitude/0"
 
-    # Start condition: Vehicle moving (GPS position changing)
+    # Start condition: Vessel moving (GPS position changing)
     start_condition:
       type: "gps_movement"
       distance_threshold: 20             # meters - movement required to trigger
       duration: 10                       # seconds - must move continuously
 
-    # Stop condition: Vehicle stopped (GPS position stationary)
+    # Stop condition: Vessel stopped (GPS position stationary)
     stop_condition:
       type: "gps_stopped"
       distance_threshold: 5              # meters - max movement while "stopped"
@@ -33,7 +33,7 @@ events:
       - "battery/voltage/+/+"            # Battery voltages
       - "temperature/bms/+"              # BMS temperatures
       - "sevCon/#"                       # Motor controller data
-      - "leaf/#"                         # Nissan Leaf vehicle data
+      - "leaf/#"                         # Nissan Leaf vessel data
       - "bms/#"                          # Battery management system
       - "scale/#"                        # Scale data
       - "rssi/#"                         # Signal strength data
@@ -106,7 +106,7 @@ events:
 
 
  # Example: Anchor-based drive recording (disabled by default)
-  # Records when vehicle leaves a fixed home location and stops when it returns.
+  # Records when vessel leaves a fixed home location and stops when it returns.
   # Useful for a fixed base (garage, depot, marina) where departures/arrivals
   # define the start and end of an activity rather than movement detection.
   anchor_drive_recording:
@@ -118,7 +118,7 @@ events:
       - "gps/latitude/0"
       - "gps/longitude/0"
 
-    # Start condition: Vehicle has moved outside the anchor zone
+    # Start condition: Vessel has moved outside the anchor zone
     start_condition:
       type: "anchor_departure"
       anchor_lat: -35.0938041                # Home latitude
@@ -126,7 +126,7 @@ events:
       radius: 100                            # meters - zone radius around anchor
       duration: 5                           # seconds outside zone before triggering
 
-    # Stop condition: Vehicle has returned inside the anchor zone
+    # Stop condition: Vessel has returned inside the anchor zone
     stop_condition:
       type: "anchor_return"
       anchor_lat: -35.0938041                # Home latitude
@@ -140,7 +140,7 @@ events:
       - "battery/voltage/+/+"            # Battery voltages
       - "temperature/bms/+"              # BMS temperatures
       - "sevCon/#"                       # Motor controller data
-      - "leaf/#"                         # Nissan Leaf vehicle data
+      - "leaf/#"                         # Nissan Leaf vessel data
       - "bms/#"                          # Battery management system
       - "scale/#"                        # Scale data
       - "rssi/#"                         # Signal strength data
