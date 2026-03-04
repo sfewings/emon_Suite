@@ -12,7 +12,7 @@
 
 ```bash
 # Navigate to event_recorder directory
-cd c:/Users/StephenFewings/OneDrive\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python/event_recorder
+cd c:/Users/StephenFewings/OneTrack\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python/event_recorder
 
 # Install dependencies
 pip install -r requirements.txt
@@ -27,7 +27,7 @@ docker-compose up -d mosquitto
 
 ### Run Full Integration Test (Phases 1-2)
 
-This test simulates a complete drive cycle:
+This test simulates a complete track cycle:
 
 - GPS position changes (start/stop detection)
 - Battery data recording
@@ -57,13 +57,13 @@ STEP 3: Connect to MQTT Broker
 STEP 4: Setup GPS Trigger Monitor
 ✓ Trigger monitor configured
 
-STEP 5: Simulate Drive Cycle
+STEP 5: Simulate Track Cycle
 Publishing GPS waypoints, speed, and battery data...
 
 Phase 1: Stationary at start
 Phase 2: Starting to move (trigger START)
 🟢 START TRIGGER FIRED!
-Created recording 1: Test Drive - 2026-02-12 ...
+Created recording 1: Test Track - 2026-02-12 ...
 Phase 3: Stopped at destination (trigger STOP)
 🔴 STOP TRIGGER FIRED!
 
@@ -78,7 +78,7 @@ STEP 7: Process Recording (Generate Plots)
     - Speed Over Time
     - Battery Power
     - Battery Voltage
-    - Drive Route
+    - Track Route
     - Statistics Summary
 
 STEP 8: Verify Outputs
@@ -100,7 +100,7 @@ sqlite3 test_recordings.db "SELECT * FROM recordings;"
 # View generated plots
 start test_plots/1/speed_over_time.png
 start test_plots/1/battery_power.png
-start test_plots/1/drive_route.png
+start test_plots/1/track_route.png
 start test_plots/1/statistics_summary.png
 ```
 
@@ -284,7 +284,7 @@ pip install folium selenium
 
 ```bash
 # From python directory
-cd c:/Users/StephenFewings/OneDrive\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python
+cd c:/Users/StephenFewings/OneTrack\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python
 
 # Set PYTHONPATH and start server
 set PYTHONPATH=.
@@ -345,7 +345,7 @@ curl -X POST http://localhost:5001/api/recordings/1/stop
 
    - Click "Manual Control" in sidebar
    - Fill out "Start New Recording" form:
-     - Recording Name: "My Test Drive"
+     - Recording Name: "My Test Track"
      - Description: "Testing manual recording"
      - Topics: "gps/#\nbattery/#"
    - Click "Start Recording"
@@ -408,7 +408,7 @@ curl -X POST http://localhost:5001/api/recordings/1/stop
 # 6. Copy the password: "xxxx xxxx xxxx xxxx xxxx xxxx"
 
 # 7. Create .env file (from example)
-cd c:/Users/StephenFewings/OneDrive\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python/event_recorder
+cd c:/Users/StephenFewings/OneTrack\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python/event_recorder
 cp .env.example .env
 
 # 8. Edit .env and add your credentials:
@@ -431,7 +431,7 @@ cp .env.example .env
 pip install requests python-dateutil
 
 # Method 1: Via CLI
-cd c:/Users/StephenFewings/OneDrive\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python
+cd c:/Users/StephenFewings/OneTrack\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python
 set PYTHONPATH=.
 python -m event_recorder.wordpress_publisher \
   --site-url "https://yourblog.com" \
@@ -457,7 +457,7 @@ curl http://localhost:5001/api/wordpress/test
 # Publish an existing recording to WordPress
 
 # 1. Start web server with WordPress configured
-cd c:/Users/StephenFewings/OneDrive\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python
+cd c:/Users/StephenFewings/OneTrack\ -\ terra15\ technologies/Documents/Home/emon/emon_Suite/python
 set PYTHONPATH=.
 
 # Load environment variables and start (assuming you have .env configured)
@@ -468,14 +468,14 @@ python -m event_recorder.web_interface \
 # 2. In another terminal, publish recording
 curl -X POST http://localhost:5001/api/recordings/1/publish \
   -H "Content-Type: application/json" \
-  -d "{\"category\": \"Drive Logs\", \"auto_publish\": false}"
+  -d "{\"category\": \"Track Logs\", \"auto_publish\": false}"
 
 # Expected response:
 # {
 #   "success": true,
 #   "post": {
 #     "id": 123,
-#     "title": "Test Drive - 2026-02-12 17:44:33",
+#     "title": "Test Track - 2026-02-12 17:44:33",
 #     "link": "https://yourblog.com/?p=123",
 #     "status": "draft",
 #     "date": "2026-02-12T20:00:00"
@@ -488,16 +488,16 @@ curl -X POST http://localhost:5001/api/recordings/1/publish \
 1. **Check WordPress Admin:**
 
    - Go to: Posts → All Posts
-   - Should see new post in drafts: "Test Drive - 2026-02-12 ..."
+   - Should see new post in drafts: "Test Track - 2026-02-12 ..."
    - Status: Draft
 2. **Check Post Content:**
 
    - Click on the draft post
    - Should see:
-     - Drive summary text
+     - Track summary text
      - Embedded images (speed, battery, route map, statistics)
      - Featured image set (first plot)
-     - Category: "Drive Logs"
+     - Category: "Track Logs"
 3. **Check Media Library:**
 
    - Go to: Media → Library

@@ -549,7 +549,7 @@ async function publishRecording(recordingId) {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                category: 'Drive Logs',
+                category: 'Track Logs',
                 auto_publish: false
             })
         });

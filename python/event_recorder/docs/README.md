@@ -1,12 +1,12 @@
 # Event Recorder & WordPress Publisher
 
-Autonomous service for automatic vessel drive logging with data visualization and WordPress blog publishing.
+Autonomous service for automatic vessel track logging with data visualization and WordPress blog publishing.
 
 ## Overview
 
 Monitors GPS position via MQTT, automatically detects vessel movement, records sensor data (battery, GPS, temperature, motor), generates comprehensive visualization plots, and publishes results to WordPress blog posts.
 
-**Primary Use Case:** Autonomous vessel drive documentation - no manual intervention required.
+**Primary Use Case:** Autonomous vessel track documentation - no manual intervention required.
 
 ## Features
 
@@ -46,7 +46,7 @@ Monitors GPS position via MQTT, automatically detects vessel movement, records s
 - WordPress test and publish controls
 - Purple gradient theme matching emon_settings_web
 
-### ⚙️ Configuration-Driven
+### ⚙️ Configuration-Trackn
 - Time-based YAML configs (YYYYMMDD-HHMM.yml pattern)
 - Environment variable substitution
 - Per-event trigger and plot customization
@@ -234,7 +234,7 @@ wordpress:
     site_url: "${WP_SITE_URL}"
     username: "${WP_USERNAME}"
     app_password: "${WP_APP_PASSWORD}"
-    category: "Drive Logs"
+    category: "Track Logs"
     publish_status: "draft"
 ```
 
@@ -242,7 +242,7 @@ wordpress:
 
 ```yaml
 events:
-  drive_recording:
+  track_recording:
     enabled: true
 
     # Monitor GPS topics
@@ -274,7 +274,7 @@ events:
         title: "Speed Over Time"
         topics: ["gps/speed/0"]
       - type: "map"
-        title: "Drive Route"
+        title: "Track Route"
         topics: ["gps/latitude/0", "gps/longitude/0"]
 ```
 
@@ -321,7 +321,7 @@ See `wordpress_config.example.yml` for detailed setup instructions.
 python test_full_cycle.py
 ```
 
-Simulates complete drive cycle: GPS movement → data recording → processing → plot generation
+Simulates complete track cycle: GPS movement → data recording → processing → plot generation
 
 ### Web Interface Test (Phase 3)
 ```bash

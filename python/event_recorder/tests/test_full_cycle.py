@@ -106,11 +106,11 @@ class MQTTSimulator:
         self.client.publish("battery/voltage/0/0", str(voltage))
         logger.debug(f"Published battery: {power}W, {voltage}V")
 
-    def simulate_drive_cycle(self, waypoints: list, speeds: list,
+    def simulate_track_cycle(self, waypoints: list, speeds: list,
                             battery_powers: list, battery_voltages: list,
                             interval: float = 2.0):
         """
-        Simulate a complete drive cycle.
+        Simulate a complete track cycle.
 
         Args:
             waypoints: List of (lat, lon) tuples
@@ -119,7 +119,7 @@ class MQTTSimulator:
             battery_voltages: List of voltage values
             interval: Time between updates (seconds)
         """
-        logger.info("Starting drive cycle simulation")
+        logger.info("Starting track cycle simulation")
 
         num_points = max(len(waypoints), len(speeds), len(battery_powers), len(battery_voltages))
 
@@ -139,7 +139,7 @@ class MQTTSimulator:
 
             time.sleep(interval)
 
-        logger.info("Drive cycle simulation complete")
+        logger.info("Track cycle simulation complete")
 
 
 def test_full_cycle():
@@ -220,7 +220,7 @@ def test_full_cycle():
         logger.info("🟢 START TRIGGER FIRED!")
 
         # Create recording
-        recording_name = f"Test Drive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        recording_name = f"Test Track - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         recording_id = db.create_recording(recording_name, "Integration test recording")
         logger.info(f"Created recording {recording_id}: {recording_name}")
 
@@ -265,12 +265,12 @@ def test_full_cycle():
         }
     }
 
-    trigger_monitor.add_monitor('test_drive', config, on_start, on_stop)
+    trigger_monitor.add_monitor('test_track', config, on_start, on_stop)
     logger.info("✓ Trigger monitor configured")
 
-    # 5. Simulate drive cycle
+    # 5. Simulate track cycle
     logger.info("\n" + "="*60)
-    logger.info("STEP 5: Simulate Drive Cycle")
+    logger.info("STEP 5: Simulate Track Cycle")
     logger.info("="*60)
     logger.info("Publishing GPS waypoints, speed, and battery data...")
     logger.info("This will take ~30 seconds...")
@@ -286,7 +286,7 @@ def test_full_cycle():
 
         # Start moving (should trigger START after 5 seconds)
         logger.info("\nPhase 2: Starting to move (trigger START)")
-        mqtt_simulator.simulate_drive_cycle(
+        mqtt_simulator.simulate_track_cycle(
             TestConfig.GPS_WAYPOINTS,
             TestConfig.SPEED_VALUES,
             TestConfig.BATTERY_POWER,
@@ -312,7 +312,7 @@ def test_full_cycle():
             mqtt_simulator.publish_battery_data(-50, 52.0)
             time.sleep(2)
 
-        logger.info("✓ Drive cycle simulation complete")
+        logger.info("✓ Track cycle simulation complete")
 
     except Exception as e:
         logger.error(f"✗ Simulation failed: {e}")
@@ -380,7 +380,7 @@ def test_full_cycle():
         },
         {
             'type': 'map',
-            'title': 'Drive Route',
+            'title': 'Track Route',
             'topics': ['gps/latitude/0', 'gps/longitude/0']
         }
     ]

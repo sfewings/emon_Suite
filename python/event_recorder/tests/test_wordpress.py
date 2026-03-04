@@ -91,7 +91,7 @@ def test_wordpress_connection():
         try:
             media_id = wp.upload_media(
                 str(test_image),
-                caption="Test Drive - Speed Over Time"
+                caption="Test Track - Speed Over Time"
             )
 
             if media_id:
@@ -106,7 +106,7 @@ def test_wordpress_connection():
                     title=f"Event Recorder Test - {wp_user}",
                     content="<h2>WordPress Integration Test</h2><p>This is a test post from Event Recorder Phase 4.</p>",
                     status="draft",
-                    categories=["Drive Logs"],
+                    categories=["Track Logs"],
                     featured_media=media_id,
                     excerpt="Test post for Event Recorder WordPress integration"
                 )

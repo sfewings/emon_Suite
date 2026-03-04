@@ -9,9 +9,9 @@
 
 ## Overview
 
-The Event Recorder is an autonomous service that monitors GPS position via MQTT, automatically records vessel drive sessions (battery, GPS, temperature, motor data), generates comprehensive plots and statistics, and publishes results to WordPress blog posts. This enables automatic documentation of vessel performance without manual data collection.
+The Event Recorder is an autonomous service that monitors GPS position via MQTT, automatically records vessel track sessions (battery, GPS, temperature, motor data), generates comprehensive plots and statistics, and publishes results to WordPress blog posts. This enables automatic documentation of vessel performance without manual data collection.
 
-**Primary Use Case:** Vessel drive logging
+**Primary Use Case:** Vessel track logging
 **Integration:** Standalone containerized service following emon_Suite patterns
 
 ---
@@ -336,7 +336,7 @@ def recover_interrupted_recordings():
 **Source:** User consultation and codebase exploration
 **Decisions:**
 
-- Primary use case: Vessel drive logging
+- Primary use case: Vessel track logging
 - GPS monitoring: latitude/longitude topics for movement detection
 - Start condition: Movement > 20m for 10 seconds
 - Stop condition: Stationary > 60 seconds
@@ -403,7 +403,7 @@ def recover_interrupted_recordings():
 
 **Question:** Should service support multiple recordings running at same time?
 **Current Plan:** Single recording at a time (simpler state management)
-**Use Case:** Could have multiple trigger configs (solar events + drive logging)
+**Use Case:** Could have multiple trigger configs (solar events + track logging)
 
 **Decision:** *Pending - initial version: single recording, multi-recording in future*
 

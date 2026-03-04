@@ -7,7 +7,7 @@ ARG TARGETARCH
 ARG BUILDPLATFORM
 
 LABEL maintainer="Event Recorder"
-LABEL description="Autonomous vessel drive logging with data visualization and WordPress publishing"
+LABEL description="Autonomous vessel track logging with data visualization and WordPress publishing"
 LABEL version="0.1.0"
 
 # Set working directory

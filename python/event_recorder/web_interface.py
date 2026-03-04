@@ -408,7 +408,7 @@ class WebInterface:
 
                 # Parse request body for options
                 data = request.get_json() or {}
-                category = data.get('category', 'Drive Logs')
+                category = data.get('category', 'Track Logs')
                 template = data.get('template', None)
                 auto_publish = data.get('auto_publish', False)
 

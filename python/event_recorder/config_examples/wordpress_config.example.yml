@@ -7,7 +7,7 @@ wordpress:
     site_url: "${WP_SITE_URL}"           # e.g., https://myblog.com
     username: "${WP_USERNAME}"           # WordPress admin username
     app_password: "${WP_APP_PASSWORD}"   # Application password (see setup below)
-    category: "Drive Logs"               # Default category for posts
+    category: "Track Logs"               # Default category for posts
     publish_status: "draft"              # "draft" or "publish"
 
   # Optional: Multiple WordPress sites
@@ -20,7 +20,7 @@ wordpress:
 
 # Post template (used if not specified in event config)
 wordpress_template: |
-  <h2>Drive Summary</h2>
+  <h2>Track Summary</h2>
   <p><strong>Date:</strong> {start_time}</p>
   <p><strong>Duration:</strong> {duration}</p>
   <p><strong>Description:</strong> {description}</p>

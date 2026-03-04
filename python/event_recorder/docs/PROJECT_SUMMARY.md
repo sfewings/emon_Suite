@@ -8,11 +8,11 @@
 
 ## 🎯 Project Goals - ACHIEVED
 
-**Primary Objective:** Create an autonomous service that monitors GPS position via MQTT, automatically records vessel drive sessions with sensor data, generates comprehensive data visualizations, and publishes results to WordPress blog posts without manual intervention.
+**Primary Objective:** Create an autonomous service that monitors GPS position via MQTT, automatically records vessel track sessions with sensor data, generates comprehensive data visualizations, and publishes results to WordPress blog posts without manual intervention.
 
 **Success Criteria:** ✅ ALL MET
-- ✅ Service automatically detects vessel drives via GPS position changes
-- ✅ Records all specified MQTT topics during drive sessions
+- ✅ Service automatically detects vessel tracks via GPS position changes
+- ✅ Records all specified MQTT topics during track sessions
 - ✅ Survives power outages and resumes recording appropriately
 - ✅ Generates all four plot types (line, comparison, map, statistics)
 - ✅ Creates WordPress blog posts with embedded images
@@ -131,7 +131,7 @@
 ### Testing Infrastructure
 
 1. **test_full_cycle.py** (500+ lines)
-   - Integration test simulating complete drive cycle
+   - Integration test simulating complete track cycle
    - MQTTSimulator class for test data
    - Verifies recording → processing → plot generation
 
@@ -480,14 +480,14 @@ WantedBy=multi-user.target
 
 While the core functionality is complete, potential future additions could include:
 
-1. **Email Notifications** - Alert when drives are published
+1. **Email Notifications** - Alert when tracks are published
 2. **Cloud Storage** - S3/Azure backup for images
 3. **Mobile App** - Companion mobile interface
 4. **Advanced Analytics** - ML-based insights
 5. **Multi-Vessel Support** - Track multiple vessels
 6. **Social Media** - Post to Twitter/Facebook
 7. **Voice Announcements** - Alexa/Google integration
-8. **Real-time Streaming** - Live drive data
+8. **Real-time Streaming** - Live track data
 9. **Geofencing** - Custom trigger zones
 10. **Video Integration** - Dashcam footage sync
 

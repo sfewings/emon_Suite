@@ -86,12 +86,12 @@ try:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = [
-            {'id': 5, 'name': 'Drive Logs'},
+            {'id': 5, 'name': 'Track Logs'},
             {'id': 6, 'name': 'Other Category'}
         ]
         mock_request.return_value = mock_response
 
-        category_id = wp.get_category_id('Drive Logs', create=False)
+        category_id = wp.get_category_id('Track Logs', create=False)
 
         if category_id == 5:
             print(f"[PASS] Category ID retrieved: {category_id}")
@@ -151,7 +151,7 @@ try:
         mock_response.status_code = 201
         mock_response.json.return_value = {
             'id': 456,
-            'title': {'rendered': 'Test Drive - 2026-02-12'},
+            'title': {'rendered': 'Test Track - 2026-02-12'},
             'link': 'https://mockblog.example.com/?p=456',
             'status': 'draft',
             'date': '2026-02-12T21:00:00'
@@ -159,10 +159,10 @@ try:
         mock_request.return_value = mock_response
 
         post = wp.create_post(
-            title="Test Drive - 2026-02-12",
+            title="Test Track - 2026-02-12",
             content="<h2>Test Content</h2><p>This is a test post.</p>",
             status="draft",
-            categories=["Drive Logs"],
+            categories=["Track Logs"],
             featured_media=123,
             excerpt="Test excerpt"
         )
@@ -189,7 +189,7 @@ try:
     # Create mock recording data
     recording_data = {
         'id': 1,
-        'name': 'Test Drive - 2026-02-12 17:44:33',
+        'name': 'Test Track - 2026-02-12 17:44:33',
         'description': 'Integration test recording',
         'start_time': '2026-02-12 09:44:33',
         'end_time': '2026-02-12 09:44:48',
@@ -219,7 +219,7 @@ try:
         # Mock post creation
         mock_create.return_value = {
             'id': 789,
-            'title': 'Test Drive - 2026-02-12 17:44:33',
+            'title': 'Test Track - 2026-02-12 17:44:33',
             'link': 'https://mockblog.example.com/?p=789',
             'status': 'draft',
             'date': '2026-02-12T21:00:00'
@@ -228,7 +228,7 @@ try:
         post = wp.publish_recording(
             recording_data=recording_data,
             images=mock_images,
-            category="Drive Logs",
+            category="Track Logs",
             auto_publish=False
         )
 
@@ -321,7 +321,7 @@ try:
     recording_data = {
         'start_time': '2026-02-12 09:44:33',
         'end_time': '2026-02-12 09:44:48',
-        'name': 'Test Drive',
+        'name': 'Test Track',
         'description': 'Test description',
         'message_count': 26
     }
@@ -330,7 +330,7 @@ try:
 
     result = wp._apply_template(recording_data, template)
 
-    expected = "<h2>Test Drive</h2><p>Started: 2026-02-12 09:44:33</p><p>Messages: 26</p>"
+    expected = "<h2>Test Track</h2><p>Started: 2026-02-12 09:44:33</p><p>Messages: 26</p>"
 
     if result == expected:
         print(f"[PASS] Template substitution works correctly")

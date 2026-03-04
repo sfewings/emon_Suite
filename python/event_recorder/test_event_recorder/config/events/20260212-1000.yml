@@ -3,11 +3,11 @@
 # Active from: 2026-02-12 10:00
 
 events:
-  # Vessel drive recording - automatic logging when vessel moves
-  drive_recording:
+  # Vessel track recording - automatic logging when vessel moves
+  track_recording:
     enabled: true
-    name: "Vessel Drive Recording"
-    description: "Automatic logging of drive sessions with battery, GPS, temperature, and motor data"
+    name: "Vessel Track Recording"
+    description: "Automatic logging of track sessions with battery, GPS, temperature, and motor data"
 
     # GPS position monitoring topics
     monitor_topics:
@@ -67,14 +67,14 @@ events:
 
       # GPS route map
       - type: "map"
-        title: "Drive Route"
+        title: "Track Route"
         topics: ["gps/latitude/0", "gps/longitude/0"]
         map_style: "OpenStreetMap"
         markers: ["start", "end"]
 
       # Statistics summary table
       - type: "statistics_table"
-        title: "Drive Summary"
+        title: "Track Summary"
         metrics:
           - topic: "gps/speed/0"
             stats: ["max", "mean"]
@@ -89,10 +89,10 @@ events:
     # WordPress publishing settings
     wordpress:
       site: "default_site"               # Reference to wordpress.default_site in main config
-      category: "Drive Logs"
+      category: "Track Logs"
       auto_publish: false                # Manual review before publish
       template: |
-        <h2>Drive Summary</h2>
+        <h2>Track Summary</h2>
         <p><strong>Date:</strong> {start_time}</p>
         <p><strong>Duration:</strong> {duration}</p>
         <p><strong>Distance:</strong> {distance} km</p>
@@ -105,11 +105,11 @@ events:
         {plots}
 
 
- # Example: Anchor-based drive recording (disabled by default)
+ # Example: Anchor-based track recording (disabled by default)
   # Records when vessel leaves a fixed home location and stops when it returns.
   # Useful for a fixed base (garage, depot, marina) where departures/arrivals
   # define the start and end of an activity rather than movement detection.
-  anchor_drive_recording:
+  anchor_track_recording:
     enabled: true
     name: "Anchor-Based Recording"
     description: "Record when vessel departs from home anchor and stop when it returns"
@@ -174,14 +174,14 @@ events:
 
       # GPS route map
       - type: "map"
-        title: "Drive Route"
+        title: "Track Route"
         topics: ["gps/latitude/0", "gps/longitude/0"]
         map_style: "OpenStreetMap"
         markers: ["start", "end"]
 
       # Statistics summary table
       - type: "statistics_table"
-        title: "Drive Summary"
+        title: "Track Summary"
         metrics:
           - topic: "gps/speed/0"
             stats: ["max", "mean"]
@@ -199,7 +199,7 @@ events:
       category: "Anchor Logs"
       auto_publish: false                # Manual review before publish
       template: |
-        <h2>Drive Summary</h2>
+        <h2>Track Summary</h2>
         <p><strong>Date:</strong> {start_time}</p>
         <p><strong>Duration:</strong> {duration}</p>
         <p><strong>Distance:</strong> {distance} km</p>

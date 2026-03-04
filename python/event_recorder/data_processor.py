@@ -588,7 +588,7 @@ class DataProcessor:
                 if i % 2 == 0:
                     cell.set_facecolor('#f0f0f0')
 
-        plt.title('Drive Statistics', fontsize=14, fontweight='bold', pad=20)
+        plt.title('Track Statistics', fontsize=14, fontweight='bold', pad=20)
 
         # Save
         filename = "statistics_summary.png"

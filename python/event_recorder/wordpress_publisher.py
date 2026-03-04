@@ -354,7 +354,7 @@ class WordPressPublisher:
         recording_data: Dict,
         images: List[Dict],
         template: str = None,
-        category: str = "Drive Logs",
+        category: str = "Track Logs",
         auto_publish: bool = False
     ) -> Optional[Dict]:
         """
@@ -399,7 +399,7 @@ class WordPressPublisher:
             )
 
             # Extract title
-            title = recording_data.get('name', f"Drive Log - {datetime.now().strftime('%Y-%m-%d')}")
+            title = recording_data.get('name', f"Track Log - {datetime.now().strftime('%Y-%m-%d')}")
 
             # Create excerpt
             excerpt = recording_data.get('description', '')
@@ -409,7 +409,7 @@ class WordPressPublisher:
                     recording_data.get('start_time'),
                     recording_data.get('end_time')
                 )
-                excerpt = f"Drive recording from {start_time}. Duration: {duration}"
+                excerpt = f"Track recording from {start_time}. Duration: {duration}"
 
             # Create post
             post_status = 'publish' if auto_publish else 'draft'
@@ -450,7 +450,7 @@ class WordPressPublisher:
             content = self._apply_template(recording_data, template)
         else:
             # Default template
-            content = f"<h2>Drive Summary</h2>\n"
+            content = f"<h2>Track Summary</h2>\n"
             content += f"<p><strong>Date:</strong> {recording_data.get('start_time', 'N/A')}</p>\n"
 
             duration = self._format_duration(
@@ -484,7 +484,7 @@ class WordPressPublisher:
                 recording_data.get('start_time'),
                 recording_data.get('end_time')
             ),
-            'name': recording_data.get('name', 'Drive Log'),
+            'name': recording_data.get('name', 'Track Log'),
             'description': recording_data.get('description', ''),
             'message_count': recording_data.get('message_count', 0)
         }

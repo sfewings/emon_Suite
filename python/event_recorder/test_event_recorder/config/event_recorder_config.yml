@@ -31,7 +31,7 @@ wordpress:
     site_url: "${WP_SITE_URL}"           # WordPress site URL (from env var)
     username: "${WP_USERNAME}"           # WordPress username (from env var)
     app_password: "${WP_APP_PASSWORD}"   # Application password (from env var)
-    category: "Drive Logs"               # Default post category
+    category: "Track Logs"               # Default post category
     publish_status: "draft"              # Post status: "draft" or "publish"
 
   retry_attempts: 3                      # Retry attempts for failed posts
