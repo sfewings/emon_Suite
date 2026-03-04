@@ -686,6 +686,20 @@ async function viewRecording(recordingId) {
             `;
         }
 
+        // Show download links for exported files
+        if (rec.exports && rec.exports.length > 0) {
+            modalContent += `<h5 style="margin-top: 1.5rem;">Downloads</h5>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                    ${rec.exports.map(exp => `
+                        <a href="${escapeHtml(exp.url)}" download
+                           class="btn btn-sm btn-secondary">
+                            ${escapeHtml(exp.label || exp.export_type.toUpperCase())}
+                            <span style="opacity:0.7;">(${exp.export_type.toUpperCase()})</span>
+                        </a>
+                    `).join('')}
+                </div>`;
+        }
+
         // Show WordPress publish link if published
         if (rec.wordpress_url) {
             modalContent += `

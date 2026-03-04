@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
@@ -80,6 +80,14 @@ class WebInterface:
             img['url'] = f"/plots/{recording_id}/{filename}"
 
         return img
+
+    def _export_with_url(self, exp: dict) -> dict:
+        """Add web-accessible download URL to export record."""
+        exp = dict(exp)
+        file_path = Path(exp['file_path'])
+        recording_id = exp.get('recording_id', '')
+        exp['url'] = f"/exports/{recording_id}/{file_path.name}"
+        return exp
 
     def _register_routes(self):
         """Register Flask routes."""
@@ -181,6 +189,10 @@ class WebInterface:
                 recording['images'] = [
                     self._image_with_url(img)
                     for img in self.database.get_recording_images(recording_id)
+                ]
+                recording['exports'] = [
+                    self._export_with_url(exp)
+                    for exp in self.database.get_recording_exports(recording_id)
                 ]
 
                 return jsonify({'success': True, 'recording': recording})
@@ -334,18 +346,40 @@ class WebInterface:
                 logger.error(f"Stop recording error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
 
+        @self.app.route('/exports/<int:recording_id>/<path:filename>')
+        def serve_export(recording_id, filename):
+            """Serve export file (CSV, KML, GPX) as a download."""
+            try:
+                export_dir = self.plots_dir / str(recording_id)
+                file_path = export_dir / filename
+                if not file_path.exists():
+                    return jsonify({'success': False, 'error': 'Export not found'}), 404
+
+                mime_map = {
+                    '.csv': 'text/csv',
+                    '.kml': 'application/vnd.google-earth.kml+xml',
+                    '.gpx': 'application/gpx+xml',
+                }
+                mimetype = mime_map.get(file_path.suffix.lower(), 'application/octet-stream')
+                return send_file(str(file_path), mimetype=mimetype,
+                                 as_attachment=True, download_name=file_path.name)
+            except Exception as e:
+                logger.error(f"Serve export error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
         @self.app.route('/api/recordings/<int:recording_id>/process', methods=['POST'])
         def process_recording(recording_id):
-            """Process recording (generate plots)."""
+            """Process recording (generate plots and export files)."""
             try:
                 data = request.get_json() or {}
                 plot_config = data.get('plot_config', [])
+                export_config = data.get('export_config', None)
 
                 # Import here to avoid circular dependency
                 from .data_processor import DataProcessor
 
                 processor = DataProcessor(self.database, str(self.plots_dir))
-                results = processor.process_recording(recording_id, plot_config)
+                results = processor.process_recording(recording_id, plot_config, export_config)
 
                 if results['status'] == 'success':
                     return jsonify({
@@ -412,11 +446,23 @@ class WebInterface:
                 template = data.get('template', None)
                 auto_publish = data.get('auto_publish', False)
 
+                # Collect export files for this recording
+                export_list = []
+                for exp in self.database.get_recording_exports(recording_id):
+                    exp_path = Path(exp['file_path'])
+                    if exp_path.exists():
+                        export_list.append({
+                            'path': str(exp_path),
+                            'label': exp.get('label', exp['export_type'].upper()),
+                            'export_type': exp['export_type']
+                        })
+
                 # Publish to WordPress
                 logger.info(f"Publishing recording {recording_id} to WordPress")
                 post = self.wordpress_publisher.publish_recording(
                     recording_data=recording,
                     images=image_list,
+                    exports=export_list,
                     template=template,
                     category=category,
                     auto_publish=auto_publish

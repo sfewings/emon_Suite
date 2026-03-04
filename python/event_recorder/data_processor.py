@@ -6,13 +6,17 @@ Calculates statistics including distance, speed, energy consumption.
 """
 
 import bisect
+import csv
 import logging
 import math
 import os
 import time
+import xml.etree.ElementTree as ET
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from xml.dom import minidom
 import json
 
 # Matplotlib configuration (must be before pyplot import)
@@ -143,21 +147,26 @@ class DataProcessor:
                 titled.append(part.capitalize())
         return ' '.join(titled)
 
-    def process_recording(self, recording_id: int, plot_config: List[Dict] = None) -> Dict:
+    def process_recording(self, recording_id: int, plot_config: List[Dict] = None,
+                          export_config: Dict = None) -> Dict:
         """
-        Process recording: generate plots and calculate statistics.
+        Process recording: generate plots, statistics, and export files.
 
         If plot_config is empty or None, auto-generates plots for all
-        recorded topics.
+        recorded topics. If export_config is None, auto-generates export
+        files based on available data (CSV always; KML/GPX when GPS data present).
 
         Args:
             recording_id: Recording ID
             plot_config: List of plot configuration dicts (optional)
+            export_config: Dict with keys 'csv', 'kml', 'gpx' (True/False).
+                           Pass None for auto-detection.
 
         Returns:
             Dict with processing results:
             {
                 'plots': [list of image paths],
+                'exports': [list of export file dicts],
                 'statistics': {stats dict},
                 'status': 'success' or 'failed',
                 'error': error message if failed
@@ -175,6 +184,7 @@ class DataProcessor:
 
             results = {
                 'plots': [],
+                'exports': [],
                 'statistics': {},
                 'status': 'success'
             }
@@ -220,7 +230,32 @@ class DataProcessor:
                     caption="Statistics Summary"
                 )
 
-            logger.info(f"Processing complete: {len(results['plots'])} plots generated")
+            # Generate export files
+            if export_config is None:
+                export_config = self._auto_generate_export_config(recording_id)
+            logger.info(f"Export config: {export_config}")
+
+            if export_config.get('csv', False):
+                csv_path = self.generate_csv_export(recording_id, output_dir)
+                if csv_path:
+                    self.database.add_export(recording_id, 'csv', str(csv_path), 'All Data')
+                    results['exports'].append({'type': 'csv', 'path': str(csv_path), 'label': 'All Data'})
+
+            if export_config.get('kml', False):
+                kml_paths = self.generate_kml_exports(recording_id, output_dir)
+                for j, kml_path in enumerate(kml_paths):
+                    label = 'Route Map' if len(kml_paths) == 1 else f'Route Map {j}'
+                    self.database.add_export(recording_id, 'kml', str(kml_path), label)
+                    results['exports'].append({'type': 'kml', 'path': str(kml_path), 'label': label})
+
+            if export_config.get('gpx', False):
+                gpx_path = self.generate_gpx_export(recording_id, output_dir)
+                if gpx_path:
+                    self.database.add_export(recording_id, 'gpx', str(gpx_path), 'GPS Track')
+                    results['exports'].append({'type': 'gpx', 'path': str(gpx_path), 'label': 'GPS Track'})
+
+            logger.info(f"Processing complete: {len(results['plots'])} plots, "
+                        f"{len(results['exports'])} exports")
 
             self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
             return results
@@ -702,6 +737,227 @@ class DataProcessor:
                 coords.append((lat_dict[lat_ts], lon_dict[sorted_lon_times[best]]))
 
         return coords
+
+    # === Export File Generation ===
+
+    def _find_gps_pairs(self, recording_id: int) -> List[Tuple[str, str]]:
+        """Return list of (lat_topic, lon_topic) pairs for the recording."""
+        topics = self.database.get_recording_topics(recording_id)
+        lat_topics = [t for t in topics if 'latitude' in t.lower()]
+        lon_topics = [t for t in topics if 'longitude' in t.lower()]
+        pairs = []
+        for lat_topic in lat_topics:
+            expected_lon = lat_topic.replace('latitude', 'longitude')
+            matching = [t for t in lon_topics if t == expected_lon]
+            if not matching:
+                suffix = lat_topic.split('latitude')[-1]
+                if suffix:
+                    matching = [t for t in lon_topics if t.endswith(suffix)]
+            if matching:
+                pairs.append((lat_topic, matching[0]))
+        return pairs
+
+    def _auto_generate_export_config(self, recording_id: int) -> Dict:
+        """Auto-generate export config: CSV always; KML/GPX when GPS pairs exist."""
+        has_gps = bool(self._find_gps_pairs(recording_id))
+        return {'csv': True, 'kml': has_gps, 'gpx': has_gps}
+
+    def generate_csv_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
+        """
+        Generate a merged time-series CSV for all topics in the recording.
+
+        Each row is one unique timestamp; topic values are forward-filled.
+        """
+        topics = self.database.get_recording_topics(recording_id)
+        if not topics:
+            return None
+
+        all_data = self.database.get_recording_data(recording_id)
+        if not all_data:
+            return None
+
+        output_path = output_dir / 'data_export.csv'
+        try:
+            ts_map = defaultdict(dict)
+            for row in all_data:
+                ts_map[row['timestamp']][row['topic']] = row['payload']
+
+            sorted_timestamps = sorted(ts_map.keys())
+            fieldnames = ['timestamp'] + sorted(topics)
+
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                current_values = {t: '' for t in topics}
+                for ts in sorted_timestamps:
+                    current_values.update(ts_map[ts])
+                    row = {'timestamp': ts}
+                    row.update(current_values)
+                    writer.writerow(row)
+
+            logger.info(f"CSV export: {output_path} ({len(sorted_timestamps)} rows)")
+            return output_path
+        except Exception as e:
+            logger.error(f"CSV export failed: {e}")
+            return None
+
+    def generate_kml_exports(self, recording_id: int, output_dir: Path) -> List[Path]:
+        """Generate one KML file per GPS lat/lon stream pair."""
+        pairs = self._find_gps_pairs(recording_id)
+        output_paths = []
+
+        for i, (lat_topic, lon_topic) in enumerate(pairs):
+            try:
+                lat_rows = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
+                lon_rows = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
+                if not lat_rows or not lon_rows:
+                    continue
+
+                lat_by_ts = {r['timestamp']: float(r['payload']) for r in lat_rows}
+                lon_series = sorted((r['timestamp'], float(r['payload'])) for r in lon_rows)
+
+                # Forward-fill lon against lat timestamps
+                lon_idx = 0
+                coords = []
+                for ts, lat in sorted(lat_by_ts.items()):
+                    while lon_idx + 1 < len(lon_series) and lon_series[lon_idx + 1][0] <= ts:
+                        lon_idx += 1
+                    if lon_series:
+                        coords.append((lon_series[lon_idx][1], lat))  # (lon, lat) for KML
+
+                if len(coords) < 2:
+                    continue
+
+                kml = ET.Element('kml', xmlns='http://www.opengis.net/kml/2.2')
+                doc = ET.SubElement(kml, 'Document')
+                name_el = ET.SubElement(doc, 'name')
+                name_el.text = 'Route Map' if len(pairs) == 1 else f'Route Map {i}'
+                pm = ET.SubElement(doc, 'Placemark')
+                ET.SubElement(pm, 'name').text = f'Track {i}' if len(pairs) > 1 else 'Track'
+                ls = ET.SubElement(pm, 'LineString')
+                ET.SubElement(ls, 'tessellate').text = '1'
+                ET.SubElement(ls, 'coordinates').text = '\n'.join(
+                    f'{lon},{lat},0' for lon, lat in coords
+                )
+
+                pretty = minidom.parseString(ET.tostring(kml, encoding='unicode')).toprettyxml(indent='  ')
+                filename = 'route_map.kml' if len(pairs) == 1 else f'route_map_{i}.kml'
+                output_path = output_dir / filename
+                output_path.write_text(pretty, encoding='utf-8')
+                output_paths.append(output_path)
+                logger.info(f"KML export: {output_path} ({len(coords)} points)")
+
+            except Exception as e:
+                logger.error(f"KML export failed for pair {i}: {e}")
+
+        return output_paths
+
+    def generate_gpx_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
+        """
+        Generate a single GPX file with all GPS streams as named tracks.
+
+        Speed and other gps/* extension topics are included in <extensions>.
+        """
+        pairs = self._find_gps_pairs(recording_id)
+        if not pairs:
+            return None
+
+        all_topics = self.database.get_recording_topics(recording_id)
+        ext_topics = [
+            t for t in all_topics
+            if t.lower().startswith('gps/')
+            and 'latitude' not in t.lower()
+            and 'longitude' not in t.lower()
+        ]
+        ext_data = {}
+        for topic in ext_topics:
+            rows = self.database.get_recording_data(recording_id, topic_filter=topic)
+            if rows:
+                ext_data[topic] = sorted((r['timestamp'], r['payload']) for r in rows)
+
+        gpx = ET.Element('gpx', {
+            'version': '1.1',
+            'creator': 'emon_Suite event_recorder',
+            'xmlns': 'http://www.topografix.com/GPX/1/1',
+        })
+
+        recording = self.database.get_recording(recording_id)
+        meta = ET.SubElement(gpx, 'metadata')
+        ET.SubElement(meta, 'name').text = recording.get('name', f'Recording {recording_id}')
+        ET.SubElement(meta, 'time').text = str(recording.get('start_time', ''))
+
+        for i, (lat_topic, lon_topic) in enumerate(pairs):
+            lat_rows = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
+            lon_rows = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
+            if not lat_rows or not lon_rows:
+                continue
+
+            lat_by_ts = {r['timestamp']: float(r['payload']) for r in lat_rows}
+            lon_series = sorted((r['timestamp'], float(r['payload'])) for r in lon_rows)
+            ext_series = {topic: list(series) for topic, series in ext_data.items()}
+            ext_indices = {topic: 0 for topic in ext_series}
+            lon_idx = 0
+
+            trk = ET.SubElement(gpx, 'trk')
+            ET.SubElement(trk, 'name').text = f'Track {i}' if len(pairs) > 1 else 'Track'
+            trkseg = ET.SubElement(trk, 'trkseg')
+
+            for ts, lat in sorted(lat_by_ts.items()):
+                while lon_idx + 1 < len(lon_series) and lon_series[lon_idx + 1][0] <= ts:
+                    lon_idx += 1
+                if not lon_series:
+                    continue
+                lon = lon_series[lon_idx][1]
+
+                trkpt = ET.SubElement(trkseg, 'trkpt',
+                                      lat=f'{lat:.8f}', lon=f'{lon:.8f}')
+                time_str = ts.replace(' ', 'T') + 'Z' if 'T' not in ts else ts
+                ET.SubElement(trkpt, 'time').text = time_str
+
+                # Elevation if available
+                for topic, series in ext_series.items():
+                    if 'altitude' in topic.lower() or 'elevation' in topic.lower():
+                        idx = ext_indices[topic]
+                        while idx + 1 < len(series) and series[idx + 1][0] <= ts:
+                            idx += 1
+                        ext_indices[topic] = idx
+                        if series:
+                            ET.SubElement(trkpt, 'ele').text = str(series[idx][1])
+                        break
+
+                # Other extensions
+                ext_values = {}
+                for topic, series in ext_series.items():
+                    if 'altitude' in topic.lower() or 'elevation' in topic.lower():
+                        continue
+                    idx = ext_indices[topic]
+                    while idx + 1 < len(series) and series[idx + 1][0] <= ts:
+                        idx += 1
+                    ext_indices[topic] = idx
+                    if series:
+                        tag = '_'.join(topic.split('/')[1:]).replace('/', '_') or topic.replace('/', '_')
+                        ext_values[tag] = str(series[idx][1])
+
+                if ext_values:
+                    extensions = ET.SubElement(trkpt, 'extensions')
+                    for tag, value in ext_values.items():
+                        ET.SubElement(extensions, tag).text = value
+
+        if not gpx.findall('trk'):
+            return None
+
+        xml_str = '<?xml version="1.0" encoding="UTF-8"?>' + ET.tostring(gpx, encoding='unicode')
+        pretty = minidom.parseString(xml_str).toprettyxml(indent='  ')
+        # Remove the extra declaration minidom adds
+        lines = pretty.splitlines()
+        if lines and lines[0].startswith('<?xml'):
+            lines = lines[1:]
+        pretty = '<?xml version="1.0" encoding="UTF-8"?>\n' + '\n'.join(lines)
+
+        output_path = output_dir / 'track.gpx'
+        output_path.write_text(pretty, encoding='utf-8')
+        logger.info(f"GPX export: {output_path}")
+        return output_path
 
     def calculate_statistics(self, recording_id: int) -> Dict:
         """

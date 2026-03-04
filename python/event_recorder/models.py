@@ -32,6 +32,13 @@ class ImageType:
     USER_UPLOAD = 'user_upload'
 
 
+class ExportType:
+    """Export file type constants."""
+    CSV = 'csv'
+    KML = 'kml'
+    GPX = 'gpx'
+
+
 class Database:
     """SQLite database manager with WAL mode for crash resilience."""
 
@@ -118,6 +125,29 @@ class Database:
                 conn.execute("DROP TABLE recordings_old")
                 logger.info("Migration complete: recordings table updated")
 
+            # Add recording_exports table if missing
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='recording_exports'"
+            )
+            if not cursor.fetchone():
+                logger.info("Migrating: adding recording_exports table")
+                conn.execute("""
+                    CREATE TABLE recording_exports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        recording_id INTEGER NOT NULL,
+                        export_type TEXT NOT NULL CHECK(export_type IN ('csv', 'kml', 'gpx')),
+                        file_path TEXT NOT NULL UNIQUE,
+                        label TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+                    )
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_recording_exports_recording_id
+                    ON recording_exports(recording_id)
+                """)
+                logger.info("Migration complete: recording_exports table added")
+
     def init_database(self):
         """Create database schema with all tables and indexes."""
         with self.get_connection() as conn:
@@ -175,6 +205,23 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
                 )
+            """)
+
+            # Recording exports table - CSV, KML, GPX download files
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS recording_exports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    recording_id INTEGER NOT NULL,
+                    export_type TEXT NOT NULL CHECK(export_type IN ('csv', 'kml', 'gpx')),
+                    file_path TEXT NOT NULL UNIQUE,
+                    label TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_recording_exports_recording_id
+                ON recording_exports(recording_id)
             """)
 
             # Configurations table - event trigger definitions
@@ -474,6 +521,55 @@ class Database:
         """
         with self.get_connection() as conn:
             conn.execute("DELETE FROM recording_images WHERE id = ?", (image_id,))
+
+    # === Export Operations ===
+
+    def add_export(self, recording_id: int, export_type: str,
+                   file_path: str, label: str = None) -> int:
+        """
+        Register an export file for a recording.
+
+        Uses INSERT OR IGNORE so re-processing is idempotent (UNIQUE on file_path).
+
+        Args:
+            recording_id: Recording ID
+            export_type: 'csv', 'kml', or 'gpx'
+            file_path: Absolute path to the file on disk
+            label: Human-readable label
+
+        Returns:
+            int: Export record ID (0 if row already existed)
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT OR IGNORE INTO recording_exports
+                    (recording_id, export_type, file_path, label)
+                VALUES (?, ?, ?, ?)
+            """, (recording_id, export_type, file_path, label))
+            return cursor.lastrowid
+
+    def get_recording_exports(self, recording_id: int) -> List[Dict]:
+        """
+        Get all export files for a recording.
+
+        Args:
+            recording_id: Recording ID
+
+        Returns:
+            List of export dicts
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT * FROM recording_exports
+                WHERE recording_id = ?
+                ORDER BY export_type, created_at
+            """, (recording_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def delete_export(self, export_id: int):
+        """Delete export record (does not delete the file on disk)."""
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM recording_exports WHERE id = ?", (export_id,))
 
     # === Configuration Operations ===
 

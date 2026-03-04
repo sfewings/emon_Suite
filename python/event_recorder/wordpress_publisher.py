@@ -213,16 +213,64 @@ class WordPressPublisher:
             logger.warning(f"Failed to update caption for media {media_id}: {e}")
 
     def _get_mime_type(self, file_path: Path) -> str:
-        """Get MIME type for file."""
+        """Get MIME type for image or export file."""
         ext = file_path.suffix.lower()
         mime_types = {
             '.jpg': 'image/jpeg',
             '.jpeg': 'image/jpeg',
             '.png': 'image/png',
             '.gif': 'image/gif',
-            '.webp': 'image/webp'
+            '.webp': 'image/webp',
+            '.csv': 'text/csv',
+            '.kml': 'application/vnd.google-earth.kml+xml',
+            '.gpx': 'application/gpx+xml',
         }
-        return mime_types.get(ext, 'image/jpeg')
+        return mime_types.get(ext, 'application/octet-stream')
+
+    def upload_export_file(self, file_path: str, label: str = None) -> Optional[Dict]:
+        """
+        Upload an export file (CSV, KML, GPX) to the WordPress media library.
+
+        Args:
+            file_path: Path to the export file
+            label: Optional description for the media item
+
+        Returns:
+            Dict with 'id' and 'url' if successful, None otherwise
+        """
+        file_path = Path(file_path)
+        if not file_path.exists():
+            logger.error(f"Export file not found: {file_path}")
+            return None
+
+        try:
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
+
+            headers = {
+                'Content-Disposition': f'attachment; filename="{file_path.name}"',
+                'Content-Type': self._get_mime_type(file_path),
+            }
+
+            logger.info(f"Uploading export file: {file_path.name}")
+            response = self._retry_request('POST', self._api_url('media'),
+                                            headers=headers, data=file_data)
+
+            if response.status_code == 201:
+                media_data = response.json()
+                media_id = media_data['id']
+                media_url = media_data.get('source_url', media_data.get('link', ''))
+                if label:
+                    self._update_media_caption(media_id, label)
+                logger.info(f"Export file uploaded: ID={media_id}")
+                return {'id': media_id, 'url': media_url}
+            else:
+                logger.error(f"Export upload failed: {response.status_code} - {response.text}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to upload export {file_path}: {e}")
+            return None
 
     def get_category_id(self, category_name: str, create: bool = True) -> Optional[int]:
         """
@@ -353,6 +401,7 @@ class WordPressPublisher:
         self,
         recording_data: Dict,
         images: List[Dict],
+        exports: List[Dict] = None,
         template: str = None,
         category: str = "Track Logs",
         auto_publish: bool = False
@@ -391,11 +440,23 @@ class WordPressPublisher:
                 logger.error("No images uploaded successfully")
                 return None
 
+            # Upload export files and collect download links
+            download_links = []
+            for exp in (exports or []):
+                result = self.upload_export_file(exp['path'], label=exp.get('label', ''))
+                if result:
+                    download_links.append({
+                        'url': result['url'],
+                        'label': exp.get('label', exp['export_type'].upper()),
+                        'export_type': exp['export_type'],
+                    })
+
             # Build HTML content
             content = self._build_post_content(
                 recording_data,
                 media_ids,
-                template
+                template,
+                download_links=download_links
             )
 
             # Extract title
@@ -432,7 +493,8 @@ class WordPressPublisher:
         self,
         recording_data: Dict,
         media_ids: List[Dict],
-        template: str = None
+        template: str = None,
+        download_links: List[Dict] = None
     ) -> str:
         """
         Build HTML content for post.
@@ -471,6 +533,16 @@ class WordPressPublisher:
             if caption:
                 content += f'  <figcaption>{caption}</figcaption>\n'
             content += f'</figure>\n\n'
+
+        # Add Downloads section if export files were uploaded
+        if download_links:
+            content += "\n<h2>Downloads</h2>\n<ul>\n"
+            for link in download_links:
+                label = link['label']
+                url = link['url']
+                ext = link['export_type'].upper()
+                content += f'  <li><a href="{url}" download>{label} ({ext})</a></li>\n'
+            content += "</ul>\n"
 
         return content
 

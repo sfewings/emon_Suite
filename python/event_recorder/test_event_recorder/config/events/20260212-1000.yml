@@ -86,6 +86,12 @@ events:
             stats: ["total"]
             labels: ["Distance (km)"]
 
+    # Export files generated during processing and attached to the WordPress post
+    exports:
+      csv: true
+      kml: true
+      gpx: true
+
     # WordPress publishing settings
     wordpress:
       site: "default_site"               # Reference to wordpress.default_site in main config

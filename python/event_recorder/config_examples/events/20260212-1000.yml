@@ -84,6 +84,13 @@ events:
             stats: ["total"]
             labels: ["Distance (km)"]
 
+    # Export files generated during processing and attached to the WordPress post
+    # Omit this section to auto-detect: CSV always; KML/GPX when GPS data present
+    exports:
+      csv: true          # Merged time-series of all recorded topics (timestamp + one column per topic)
+      kml: true          # One KML file per GPS lat/lon stream (opens in Google Earth, Maps etc.)
+      gpx: true          # Single GPX with all GPS streams + speed/altitude extensions
+
     # WordPress publishing settings
     wordpress:
       site: "default_site"               # Reference to wordpress.default_site in main config
