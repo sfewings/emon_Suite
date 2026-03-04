@@ -98,6 +98,11 @@ class WebInterface:
             """Serve main web interface."""
             return render_template('index.html')
 
+        @self.app.route('/upload')
+        def upload_page():
+            """Serve mobile photo upload page."""
+            return render_template('upload.html')
+
         # === Static files ===
         @self.app.route('/static/<path:filename>')
         def serve_static(filename):
@@ -429,7 +434,8 @@ class WebInterface:
                     if img_path.exists():
                         image_list.append({
                             'path': str(img_path),
-                            'caption': img.get('caption', '')
+                            'caption': img.get('caption', ''),
+                            'image_type': img.get('image_type', ImageType.PLOT)
                         })
                     else:
                         logger.warning(f"Image file not found: {img_path}")

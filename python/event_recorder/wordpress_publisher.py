@@ -3,6 +3,7 @@ WordPress Publisher - REST API Integration
 Handles authentication, media upload, and post creation
 """
 
+import html as html_module
 import logging
 import os
 import time
@@ -144,7 +145,7 @@ class WordPressPublisher:
 
         return response
 
-    def upload_media(self, file_path: str, caption: str = None) -> Optional[int]:
+    def upload_media(self, file_path: str, caption: str = None) -> Optional[Dict]:
         """
         Upload image to WordPress media library.
 
@@ -153,7 +154,7 @@ class WordPressPublisher:
             caption: Optional image caption
 
         Returns:
-            Media ID if successful, None otherwise
+            Dict with 'id' and 'url' if successful, None otherwise
         """
         file_path = Path(file_path)
 
@@ -184,13 +185,14 @@ class WordPressPublisher:
             if response.status_code == 201:
                 media_data = response.json()
                 media_id = media_data['id']
+                media_url = media_data.get('source_url', media_data.get('link', ''))
 
                 # Update caption if provided
                 if caption:
                     self._update_media_caption(media_id, caption)
 
                 logger.info(f"Media uploaded successfully: ID={media_id}")
-                return media_id
+                return {'id': media_id, 'url': media_url}
             else:
                 logger.error(f"Media upload failed: {response.status_code} - {response.text}")
                 return None
@@ -425,14 +427,16 @@ class WordPressPublisher:
             # Upload images to WordPress
             media_ids = []
             for image in images:
-                media_id = self.upload_media(
+                media_result = self.upload_media(
                     image['path'],
                     caption=image.get('caption', '')
                 )
-                if media_id:
+                if media_result:
                     media_ids.append({
-                        'id': media_id,
+                        'id': media_result['id'],
+                        'url': media_result['url'],
                         'caption': image.get('caption', ''),
+                        'image_type': image.get('image_type', 'plot'),
                         'path': image['path']
                     })
 
@@ -472,6 +476,10 @@ class WordPressPublisher:
                 )
                 excerpt = f"Track recording from {start_time}. Duration: {duration}"
 
+            # Use first plot as featured image; fall back to first image of any type
+            plots_for_featured = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
+            featured_id = plots_for_featured[0]['id'] if plots_for_featured else media_ids[0]['id']
+
             # Create post
             post_status = 'publish' if auto_publish else 'draft'
             post = self.create_post(
@@ -479,7 +487,7 @@ class WordPressPublisher:
                 content=content,
                 status=post_status,
                 categories=[category],
-                featured_media=media_ids[0]['id'],  # First image as featured
+                featured_media=featured_id,
                 excerpt=excerpt
             )
 
@@ -524,15 +532,34 @@ class WordPressPublisher:
             if recording_data.get('description'):
                 content += f"<p>{recording_data['description']}</p>\n"
 
-        # Add images
-        content += "\n<h2>Data Visualizations</h2>\n"
-        for media in media_ids:
-            caption = media.get('caption', '')
-            content += f'<figure class="wp-block-image">\n'
-            content += f'  <img src="{self.site_url}/wp-content/uploads/{Path(media["path"]).name}" alt="{caption}" />\n'
-            if caption:
-                content += f'  <figcaption>{caption}</figcaption>\n'
-            content += f'</figure>\n\n'
+        # Split images: user-uploaded photos go in their own section before plots
+        user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
+        plots = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
+
+        # Photos section — user uploads with by-line captions
+        if user_photos:
+            content += "\n<h2>Photos</h2>\n"
+            for media in user_photos:
+                caption = media.get('caption', '')
+                img_url = media.get('url', '')
+                alt_text = html_module.escape(caption) if caption else 'Photo'
+                content += f'<figure class="wp-block-image">\n'
+                content += f'  <img src="{img_url}" alt="{alt_text}" />\n'
+                if caption:
+                    content += f'  <figcaption><em>{html_module.escape(caption)}</em></figcaption>\n'
+                content += f'</figure>\n\n'
+
+        # Data Visualizations section — generated plots
+        if plots:
+            content += "\n<h2>Data Visualizations</h2>\n"
+            for media in plots:
+                caption = media.get('caption', '')
+                img_url = media.get('url', '')
+                content += f'<figure class="wp-block-image">\n'
+                content += f'  <img src="{img_url}" alt="{html_module.escape(caption)}" />\n'
+                if caption:
+                    content += f'  <figcaption>{html_module.escape(caption)}</figcaption>\n'
+                content += f'</figure>\n\n'
 
         # Add Downloads section if export files were uploaded
         if download_links:

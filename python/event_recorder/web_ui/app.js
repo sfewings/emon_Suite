@@ -204,6 +204,11 @@ async function loadActiveRecordings() {
                                 onclick="viewRecording(${rec.id})">
                             👁️ View
                         </button>
+                        <a href="/upload?recording_id=${rec.id}"
+                           class="btn btn-sm btn-primary" target="_blank"
+                           title="Open mobile photo upload page">
+                            📷 Upload Photo
+                        </a>
                     </div>
                 </div>
             `).join('');
@@ -670,12 +675,34 @@ async function viewRecording(recordingId) {
                 </ul>
         `;
 
-        // Show images if any
-        if (rec.images && rec.images.length > 0) {
+        // Separate user-uploaded photos from generated plots
+        const userPhotos = (rec.images || []).filter(img => img.image_type === 'user_upload');
+        const plots = (rec.images || []).filter(img => img.image_type !== 'user_upload');
+
+        // Show user-uploaded photos with by-line captions
+        if (userPhotos.length > 0) {
+            modalContent += `
+                <h5>Uploaded Photos</h5>
+                <div class="images-grid">
+                    ${userPhotos.map(img => `
+                        <div class="image-item">
+                            <img src="${img.url}" alt="${escapeHtml(img.caption || 'Photo')}"
+                                 onclick="window.open('${img.url}', '_blank')">
+                            ${img.caption
+                                ? `<p style="font-style:italic; color:#555;">${escapeHtml(img.caption)}</p>`
+                                : '<p style="color:#999;">No caption</p>'}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Show generated plots
+        if (plots.length > 0) {
             modalContent += `
                 <h5>Generated Plots</h5>
                 <div class="images-grid">
-                    ${rec.images.map(img => `
+                    ${plots.map(img => `
                         <div class="image-item">
                             <img src="${img.url}" alt="${escapeHtml(img.caption || 'Plot')}"
                                  onclick="window.open('${img.url}', '_blank')">
@@ -710,28 +737,35 @@ async function viewRecording(recordingId) {
             `;
         }
 
-        // Show action buttons for non-active recordings
-        if (rec.status !== 'active') {
-            modalContent += '<div style="margin-top: 1.5rem; display: flex; gap: 0.5rem;">';
+        // Action buttons
+        modalContent += '<div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">';
 
-            if (rec.status === 'stopped') {
-                modalContent += `
-                    <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
-                        Process
-                    </button>
-                `;
-            }
-
-            if (['stopped', 'processing', 'processed'].includes(rec.status)) {
-                modalContent += `
-                    <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
-                        Publish to WordPress
-                    </button>
-                `;
-            }
-
-            modalContent += '</div>';
+        if (rec.status === 'active') {
+            modalContent += `
+                <a href="/upload?recording_id=${rec.id}" target="_blank"
+                   class="btn btn-primary">
+                    📷 Upload Photo
+                </a>
+            `;
         }
+
+        if (rec.status === 'stopped') {
+            modalContent += `
+                <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
+                    Process
+                </button>
+            `;
+        }
+
+        if (['stopped', 'processing', 'processed'].includes(rec.status)) {
+            modalContent += `
+                <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
+                    Publish to WordPress
+                </button>
+            `;
+        }
+
+        modalContent += '</div>';
 
         modalContent += '</div>';
 
