@@ -1,0 +1,107 @@
+# nginx reverse proxy for Enchantee WiFi AP
+# Copy to /etc/nginx/sites-available/enchantee on the Raspberry Pi
+# Enable with: sudo ln -s /etc/nginx/sites-available/enchantee /etc/nginx/sites-enabled/enchantee
+#
+# Listens on the WiFi AP interface (192.168.4.1) port 80 only.
+# Mobile clients connected to the AP access services via friendly URLs:
+#
+#   http://enchantee/display  → Node-Red dashboard UI  (port 1880/ui)
+#   http://enchantee/grafana/ → Grafana                (port 3000, subpath enabled)
+#   http://enchantee/upload   → File upload service    (port 1880 node-red endpoint)
+#
+# All other traffic (non-enchantee hostnames, internet URLs) bypasses nginx
+# entirely and is routed via the Pi's normal NAT to the internet.
+#
+# Prerequisites:
+#   - docker-compose services running (node-red on 1880, grafana on 3000)
+#   - .env updated: GRAFANA_URL=http://enchantee/grafana
+#   - dnsmasq installed and configured (resolves 'enchantee' to 192.168.4.1)
+
+server {
+    # Bind only to the WiFi AP interface - internet-facing interfaces are unaffected
+    listen 192.168.4.1:80;
+    server_name enchantee;
+
+    # Simple landing page listing available services
+    location = / {
+        return 200 '<html><head><title>Enchantee</title><style>body{font-family:sans-serif;padding:2em}a{display:block;margin:0.5em 0;font-size:1.2em}</style></head><body><h1>Enchantee</h1><a href="/display">Display (Node-Red Dashboard)</a><a href="/grafana/">Grafana</a><a href="/upload">Upload</a></body></html>';
+        add_header Content-Type text/html;
+    }
+
+    # -----------------------------------------------------------------------
+    # Node-Red Dashboard UI at /display
+    #
+    # Node-Red serves its dashboard at /ui internally. Proxying /display/ to
+    # /ui/ means the browser also needs /ui/ and /socket.io/ to be reachable
+    # for static assets and real-time WebSocket connections.
+    # -----------------------------------------------------------------------
+
+    # Redirect /display (no trailing slash) to /display/
+    location = /display {
+        return 301 /display/;
+    }
+
+    # Proxy /display/ requests to Node-Red's /ui/ path
+    location /display/ {
+        proxy_pass http://localhost:1880/ui/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Node-Red UI static assets - browser requests these at /ui/ after the
+    # initial page load from /display/
+    location /ui/ {
+        proxy_pass http://localhost:1880/ui/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Node-Red Socket.IO - required for dashboard real-time data updates
+    location /socket.io/ {
+        proxy_pass http://localhost:1880/socket.io/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # -----------------------------------------------------------------------
+    # Grafana at /grafana/
+    #
+    # Grafana is configured with GF_SERVER_SERVE_FROM_SUB_PATH=true in
+    # docker-compose.yml. The full /grafana/ path is passed through to
+    # Grafana so it can handle its own subpath routing.
+    # Requires: GRAFANA_URL=http://enchantee/grafana in .env
+    # -----------------------------------------------------------------------
+    location /grafana/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # -----------------------------------------------------------------------
+    # File Upload service at /upload
+    #
+    # Default: proxied to Node-Red (port 1880) where a flow can handle
+    # HTTP POST file uploads at the /upload endpoint.
+    # Adjust proxy_pass if using a different service/port.
+    # -----------------------------------------------------------------------
+    location /upload {
+        proxy_pass http://localhost:1880;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Allow large file uploads
+        client_max_body_size 100m;
+    }
+}

@@ -1,6 +1,7 @@
 *.a
 *.o
 *.d
+!**/dnsmasq.d/
 *.hex
 *.elf
 *.db
