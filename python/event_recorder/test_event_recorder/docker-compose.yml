@@ -32,6 +32,7 @@ services:
       - "8080:80"
     volumes:
       - wordpress-data:/var/www/html
+      - ./mu-plugins:/var/www/html/wp-content/mu-plugins  # Allow KML/GPX uploads
     environment:
       - WORDPRESS_DB_HOST=mysql:3306
       - WORDPRESS_DB_USER=${MYSQL_USER}
