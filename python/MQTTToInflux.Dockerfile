@@ -1,4 +1,4 @@
-FROM python:3.13
+FROM python:3.9
 ARG TARGETARCH
 #update for numpy dependencies
 RUN apt-get update && apt-get install -y cmake
