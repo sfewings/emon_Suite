@@ -404,6 +404,7 @@ class WordPressPublisher:
         recording_data: Dict,
         images: List[Dict],
         exports: List[Dict] = None,
+        statistics: Dict = None,
         template: str = None,
         category: str = "Track Logs",
         auto_publish: bool = False
@@ -414,6 +415,8 @@ class WordPressPublisher:
         Args:
             recording_data: Recording metadata dict
             images: List of image dicts with 'path' and 'caption'
+            exports: List of export file dicts
+            statistics: Optional statistics dict from statistics_summary.json
             template: HTML template string (with {placeholders})
             category: WordPress category name
             auto_publish: Publish immediately (vs draft)
@@ -440,7 +443,7 @@ class WordPressPublisher:
                         'path': image['path']
                     })
 
-            if not media_ids:
+            if not media_ids and not statistics:
                 logger.error("No images uploaded successfully")
                 return None
 
@@ -460,7 +463,8 @@ class WordPressPublisher:
                 recording_data,
                 media_ids,
                 template,
-                download_links=download_links
+                download_links=download_links,
+                statistics=statistics
             )
 
             # Extract title
@@ -478,7 +482,12 @@ class WordPressPublisher:
 
             # Use first plot as featured image; fall back to first image of any type
             plots_for_featured = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
-            featured_id = plots_for_featured[0]['id'] if plots_for_featured else media_ids[0]['id']
+            if plots_for_featured:
+                featured_id = plots_for_featured[0]['id']
+            elif media_ids:
+                featured_id = media_ids[0]['id']
+            else:
+                featured_id = None
 
             # Create post
             post_status = 'publish' if auto_publish else 'draft'
@@ -502,7 +511,8 @@ class WordPressPublisher:
         recording_data: Dict,
         media_ids: List[Dict],
         template: str = None,
-        download_links: List[Dict] = None
+        download_links: List[Dict] = None,
+        statistics: Dict = None
     ) -> str:
         """
         Build HTML content for post.
@@ -511,6 +521,8 @@ class WordPressPublisher:
             recording_data: Recording metadata
             media_ids: List of uploaded media dicts
             template: Optional HTML template
+            download_links: List of download link dicts
+            statistics: Optional statistics dict; rendered as an HTML table
 
         Returns:
             HTML content string
@@ -531,6 +543,10 @@ class WordPressPublisher:
 
             if recording_data.get('description'):
                 content += f"<p>{recording_data['description']}</p>\n"
+
+        # Statistics table (HTML, not image)
+        if statistics:
+            content += self._build_statistics_table_html(statistics)
 
         # Split images: user-uploaded photos go in their own section before plots
         user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
@@ -572,6 +588,51 @@ class WordPressPublisher:
             content += "</ul>\n"
 
         return content
+
+    def _build_statistics_table_html(self, statistics: Dict) -> str:
+        """Render statistics dict as an HTML table for embedding in a WordPress post."""
+        # Human-readable labels and units for known keys
+        _label_map = {
+            'duration':          ('Duration',          ''),
+            'distance_km':       ('Distance',          'km'),
+            'max_speed':         ('Max Speed',         'km/h'),
+            'avg_speed':         ('Average Speed',     'km/h'),
+            'total_energy_wh':   ('Total Energy',      'Wh'),
+            'avg_power_w':       ('Average Power',     'W'),
+            'max_power_w':       ('Max Power',         'W'),
+            'message_count':     ('Messages Recorded', ''),
+        }
+        # Keys we skip entirely (internal / duplicate values)
+        _skip = {'start_time', 'end_time', 'duration_seconds'}
+
+        rows = []
+        for key, value in statistics.items():
+            if key in _skip:
+                continue
+            label, unit = _label_map.get(key, (key.replace('_', ' ').title(), ''))
+            # Format numeric values
+            if isinstance(value, float):
+                formatted = f"{value:.2f}"
+            else:
+                formatted = html_module.escape(str(value))
+            if unit:
+                formatted = f"{formatted} {html_module.escape(unit)}"
+            rows.append(
+                f'  <tr><th style="text-align:left;padding:6px 12px;'
+                f'background:#f2f2f2;border:1px solid #ddd;">'
+                f'{html_module.escape(label)}</th>'
+                f'<td style="padding:6px 12px;border:1px solid #ddd;">'
+                f'{formatted}</td></tr>\n'
+            )
+
+        if not rows:
+            return ''
+
+        html = '\n<h2>Statistics</h2>\n'
+        html += '<table style="border-collapse:collapse;width:100%;max-width:480px;">\n'
+        html += ''.join(rows)
+        html += '</table>\n'
+        return html
 
     def _apply_template(self, recording_data: Dict, template: str) -> str:
         """Apply template with placeholder substitution."""

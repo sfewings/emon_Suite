@@ -5,6 +5,7 @@ Provides endpoints for managing recordings, configurations, and service status.
 Follows pattern from emon_settings_web.py.
 """
 
+import json
 import os
 import logging
 from datetime import datetime
@@ -447,10 +448,27 @@ class WebInterface:
                     }), 400
 
                 # Parse request body for options
+                # (Note: image_list may be trimmed further below if statistics JSON is found)
                 data = request.get_json() or {}
                 category = data.get('category', 'Track Logs')
                 template = data.get('template', None)
                 auto_publish = data.get('auto_publish', False)
+
+                # Load statistics JSON sidecar if present; exclude the PNG from uploads
+                statistics = None
+                stats_json_path = self.plots_dir / str(recording_id) / 'statistics_summary.json'
+                if stats_json_path.exists():
+                    try:
+                        with open(stats_json_path) as f:
+                            statistics = json.load(f)
+                        # Remove the statistics PNG — it will be rendered as an HTML table instead
+                        image_list = [
+                            img for img in image_list
+                            if Path(img['path']).name != 'statistics_summary.png'
+                        ]
+                        logger.info("Loaded statistics JSON; statistics_summary.png excluded from upload")
+                    except Exception as e:
+                        logger.warning(f"Could not load statistics JSON: {e}")
 
                 # Collect export files for this recording
                 export_list = []
@@ -469,6 +487,7 @@ class WebInterface:
                     recording_data=recording,
                     images=image_list,
                     exports=export_list,
+                    statistics=statistics,
                     template=template,
                     category=category,
                     auto_publish=auto_publish

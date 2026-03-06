@@ -230,6 +230,17 @@ class DataProcessor:
                     caption="Statistics Summary"
                 )
 
+            # Save statistics as JSON sidecar so the publisher can render
+            # them as an HTML table instead of uploading the PNG image
+            if results['statistics']:
+                json_path = output_dir / 'statistics_summary.json'
+                try:
+                    with open(json_path, 'w') as f:
+                        json.dump(results['statistics'], f, indent=2, default=str)
+                    logger.info(f"Saved statistics JSON: {json_path}")
+                except Exception as e:
+                    logger.warning(f"Could not save statistics JSON: {e}")
+
             # Generate export files
             if export_config is None:
                 export_config = self._auto_generate_export_config(recording_id)
