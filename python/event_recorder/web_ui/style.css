@@ -1,6 +1,6 @@
 /**
  * Event Recorder - Web Interface Styles
- * Purple gradient theme matching emon_settings_web
+ * Red Shadow theme — matches the Red Shadow WordPress blog theme
  */
 
 /* === CSS Reset & Base === */
@@ -11,39 +11,72 @@
 }
 
 :root {
-    --primary: #667eea;
-    --primary-dark: #764ba2;
-    --success: #48bb78;
-    --warning: #ed8936;
-    --danger: #f56565;
-    --info: #4299e1;
-    --secondary: #718096;
+    --primary: #b30000;
+    --primary-dark: #7a0000;
+    --success: #2e7d32;
+    --warning: #e65100;
+    --danger: #c62828;
+    --info: #1565c0;
+    --secondary: #666666;
 
-    --bg-light: #f7fafc;
+    --bg-light: #f5f5f5;
     --bg-white: #ffffff;
-    --border: #e2e8f0;
-    --text-dark: #2d3748;
-    --text-light: #718096;
+    --border: #ddd;
+    --text-dark: #222222;
+    --text-light: #666666;
 
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
-    --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+    --shadow-sm: 0 1px 3px rgba(179,0,0,0.1);
+    --shadow-md: 0 4px 12px rgba(179,0,0,0.15);
+    --shadow-lg: 0 8px 20px rgba(179,0,0,0.2);
+}
+
+/* Full-screen background image — fixed so it always fills exactly 100vw × 100vh
+   regardless of page content height or scroll position */
+html::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: url('/static/images/img_3975.jpg');
+    background-size: cover;
+    background-position: center center;
+    z-index: -2;
+}
+
+/* Light wash overlay */
+html::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.18);
+    z-index: -1;
+    pointer-events: none;
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 14px;
     line-height: 1.6;
     color: var(--text-dark);
-    background-color: var(--bg-light);
+    background: transparent;
+}
+
+.header, .container, .toast-container {
+    position: relative;
+    z-index: 0;
 }
 
 /* === Header === */
 .header {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background-color: #b30000;
     color: white;
     padding: 1rem 2rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 8px rgba(179,0,0,0.4);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -102,10 +135,12 @@ body {
 /* === Sidebar === */
 .sidebar {
     width: 250px;
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.88);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 .nav-menu {
@@ -128,9 +163,10 @@ body {
 }
 
 .nav-item.active {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background-color: #b30000;
     color: white;
     font-weight: 600;
+    box-shadow: inset 4px 0 0 #7a0000;
 }
 
 .nav-icon {
@@ -140,7 +176,9 @@ body {
 .sidebar-footer {
     margin-top: auto;
     padding: 1rem;
-    border-top: 1px solid var(--border);
+    background-color: #b30000;
+    color: white;
+    box-shadow: 0 -4px 8px rgba(179,0,0,0.4);
 }
 
 .stats-summary {
@@ -156,12 +194,12 @@ body {
 }
 
 .stat-label {
-    color: var(--text-light);
+    color: rgba(255,255,255,0.75);
 }
 
 .stat-value {
     font-weight: 600;
-    color: var(--primary);
+    color: white;
 }
 
 /* === Main Content === */
@@ -199,11 +237,14 @@ body {
 
 /* === Cards === */
 .card {
-    background: var(--bg-white);
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 6px;
     padding: 1.5rem;
     margin-bottom: 1.5rem;
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 4px 12px rgba(179,0,0,0.15);
+    border-top: 3px solid #b30000;
 }
 
 .card h3 {
@@ -227,11 +268,12 @@ body {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background-color: #b30000;
     color: white;
 }
 
 .btn-primary:hover {
+    background-color: #7a0000;
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
 }
@@ -275,11 +317,14 @@ body {
 }
 
 .recording-card {
-    background: var(--bg-white);
-    border: 2px solid var(--border);
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
     padding: 1rem;
     transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(179,0,0,0.12);
 }
 
 .recording-card:hover {
@@ -289,7 +334,7 @@ body {
 
 .recording-card.active {
     border-color: var(--success);
-    background: linear-gradient(135deg, rgba(102,126,234,0.05), rgba(118,75,162,0.05));
+    background: rgba(179,0,0,0.03);
 }
 
 .recording-header {
@@ -327,16 +372,20 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 1rem;
-    background: var(--bg-light);
+    background: rgba(255, 255, 255, 0.62);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .recording-item:hover {
-    background: var(--primary);
+    background: #b30000;
     color: white;
     transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(179,0,0,0.25);
 }
 
 .recording-info {
@@ -354,11 +403,13 @@ body {
 .table {
     width: 100%;
     border-collapse: collapse;
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
 .table thead {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background-color: #b30000;
     color: white;
 }
 
@@ -391,11 +442,14 @@ body {
 .form-input, .form-textarea {
     width: 100%;
     padding: 0.75rem;
-    border: 2px solid var(--border);
+    border: 2px solid rgba(221,221,221,0.7);
     border-radius: 6px;
     font-size: 0.9rem;
     font-family: inherit;
     transition: border-color 0.2s;
+    background: rgba(255, 255, 255, 0.70);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 .form-input:focus, .form-textarea:focus {
@@ -412,10 +466,12 @@ body {
 
 .filter-select {
     padding: 0.5rem 1rem;
-    border: 2px solid var(--border);
+    border: 2px solid rgba(221,221,221,0.7);
     border-radius: 6px;
     font-size: 0.9rem;
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.70);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     cursor: pointer;
 }
 
@@ -444,7 +500,10 @@ body {
 
 .status-item {
     padding: 1rem;
-    background: var(--bg-light);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
     border-radius: 6px;
 }
 
@@ -491,7 +550,10 @@ body {
 }
 
 .modal-content {
-    background: var(--bg-white);
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
     border-radius: 8px;
     width: 90%;
     max-width: 800px;
@@ -508,7 +570,8 @@ body {
     align-items: center;
     padding: 1.5rem;
     border-bottom: 1px solid var(--border);
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    background-color: #b30000;
+    box-shadow: 0 4px 8px rgba(179,0,0,0.3);
     color: white;
 }
 

@@ -21,10 +21,13 @@
         }
 
         .upload-card {
-            background: white;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
             border-radius: 12px;
             padding: 1.25rem;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+            box-shadow: 0 4px 12px rgba(179,0,0,0.12);
         }
 
         .upload-card label {
@@ -39,18 +42,21 @@
         .upload-card textarea {
             width: 100%;
             padding: 0.75rem;
-            border: 1px solid #dee2e6;
+            border: 1px solid rgba(221,221,221,0.7);
             border-radius: 8px;
             font-size: 1rem;
             box-sizing: border-box;
             font-family: inherit;
+            background: rgba(255, 255, 255, 0.70);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
         }
 
         .upload-card select:focus,
         .upload-card textarea:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+            border-color: #b30000;
+            box-shadow: 0 0 0 3px rgba(179, 0, 0, 0.15);
         }
 
         .upload-card textarea {
@@ -76,7 +82,7 @@
 
         .upload-preview:hover,
         .upload-preview:active {
-            border-color: #667eea;
+            border-color: #b30000;
         }
 
         .upload-preview img {
@@ -134,13 +140,21 @@
         }
 
         .btn-select {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-color: #b30000;
             color: white;
         }
 
+        .btn-select:hover {
+            background-color: #7a0000;
+        }
+
         .btn-upload {
-            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            background-color: #2e7d32;
             color: white;
+        }
+
+        .btn-upload:hover:not(:disabled) {
+            background-color: #1b5e20;
         }
 
         /* Result messages */
