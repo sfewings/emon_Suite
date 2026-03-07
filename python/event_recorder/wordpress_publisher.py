@@ -579,13 +579,16 @@ class WordPressPublisher:
             content += self._build_statistics_table_html(statistics)
 
         # Interactive route map(s) — embedded folium HTML
+        # Wrapped in Gutenberg <!-- wp:html --> blocks so WordPress does NOT
+        # run wpautop() on the content (wpautop mangles <script> tags by
+        # wrapping them in <p> tags and inserting <br /> between them).
         if map_htmls:
             label = "Route Maps" if len(map_htmls) > 1 else "Route Map"
             content += f"\n<h2>{label}</h2>\n"
             for html_path in map_htmls:
                 embed = self._extract_folium_embed(html_path)
                 if embed:
-                    content += embed + '\n\n'
+                    content += '<!-- wp:html -->\n' + embed + '\n<!-- /wp:html -->\n\n'
 
         # Split images: user-uploaded photos go in their own section before plots
         user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
