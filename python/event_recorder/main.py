@@ -8,6 +8,7 @@ Main entry point that orchestrates all components:
 - Power outage recovery
 """
 
+import json
 import logging
 import os
 import signal
@@ -15,8 +16,10 @@ import sys
 import time
 import argparse
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+
+import paho.mqtt.client as mqtt
 
 from .models import Database, RecordingStatus
 from .config_manager import ConfigManager
@@ -131,6 +134,10 @@ class EventRecorderService:
         # Running flag
         self.running = False
 
+        # MQTT status publisher (separate client so it never interferes with data recording)
+        self._status_mqtt_client = None
+        self._status_publisher_thread = None
+
         # Set service manager reference for web interface
         self.web_interface.service_manager = self
 
@@ -160,6 +167,9 @@ class EventRecorderService:
 
             # Setup event monitors from configuration
             self._setup_event_monitors()
+
+            # Start MQTT recording status publisher
+            self._start_status_publisher()
 
             # Start web interface in separate thread
             logger.info("Starting web interface on port 5000")
@@ -300,6 +310,88 @@ class EventRecorderService:
 
         # TODO: Trigger data processing (Phase 2)
 
+    def _start_status_publisher(self):
+        """Connect a dedicated MQTT client and start the 1-second status publisher thread."""
+        try:
+            client = mqtt.Client()
+            client.connect(self.mqtt_broker, self.mqtt_port, keepalive=60)
+            client.loop_start()
+            self._status_mqtt_client = client
+            logger.info("Status publisher MQTT client connected")
+        except Exception as e:
+            logger.warning(f"Could not connect status publisher to MQTT broker: {e} — status publishing disabled")
+            return
+
+        self._status_publisher_thread = threading.Thread(
+            target=self._status_publisher_loop,
+            daemon=True,
+            name="StatusPublisher"
+        )
+        self._status_publisher_thread.start()
+        logger.info("Recording status publisher started (1 s interval, topic: event_recorder/recording/<id>/status)")
+
+    def _status_publisher_loop(self):
+        """Publish recording status every second for each active recording."""
+        while self.running:
+            try:
+                # Snapshot active_recordings to avoid races with trigger callbacks
+                active = list(self.active_recordings.items())
+                for _monitor_id, recording_id in active:
+                    self._publish_recording_status(recording_id)
+            except Exception as e:
+                logger.debug(f"Status publisher loop error: {e}")
+            time.sleep(1)
+
+    def _publish_recording_status(self, recording_id: int):
+        """Gather stats and publish a status message for one active recording."""
+        if not self._status_mqtt_client:
+            return
+        try:
+            recording = self.database.get_recording(recording_id)
+            if not recording:
+                return
+
+            # Calculate elapsed duration
+            start_raw = recording.get('start_time')
+            duration_seconds = 0
+            if start_raw:
+                from dateutil import parser as _du
+                start_dt = _du.parse(str(start_raw))
+                # Normalise timezone: compare in UTC
+                if start_dt.tzinfo is None:
+                    now = datetime.utcnow()
+                else:
+                    now = datetime.now(timezone.utc)
+                duration_seconds = max(0, int((now - start_dt).total_seconds()))
+
+            hours, remainder = divmod(duration_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+            message_count = self.database.get_recording_data_count(recording_id)
+            photo_count = self.database.get_recording_photo_count(recording_id)
+
+            payload = {
+                'recording_id': recording_id,
+                'name': recording.get('name', ''),
+                'duration': duration_str,
+                'duration_seconds': duration_seconds,
+                'message_count': message_count,
+                'photo_count': photo_count,
+                'start_time': str(recording.get('start_time', '')),
+                'status': 'active',
+            }
+
+            topic = f"event_recorder/recording/{recording_id}/status"
+            self._status_mqtt_client.publish(topic, json.dumps(payload), qos=0, retain=False)
+            logger.debug(
+                f"Status [{recording_id}] {duration_str} | "
+                f"{message_count} msgs | {photo_count} photos"
+            )
+
+        except Exception as e:
+            logger.warning(f"Could not publish status for recording {recording_id}: {e}")
+
     def _run_main_loop(self):
         """Main service loop."""
         check_interval = 60  # Check every 60 seconds
@@ -340,6 +432,12 @@ class EventRecorderService:
                 status=RecordingStatus.STOPPED,
                 end_time=datetime.utcnow()
             )
+
+        # Shutdown status publisher
+        if self._status_mqtt_client:
+            self._status_mqtt_client.loop_stop()
+            self._status_mqtt_client.disconnect()
+            self._status_mqtt_client = None
 
         # Shutdown components
         self.data_recorder.shutdown()

@@ -452,6 +452,16 @@ class Database:
             """, (recording_id,))
             return cursor.fetchone()['count']
 
+    def get_recording_photo_count(self, recording_id: int) -> int:
+        """Count user-uploaded photos for a recording."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM recording_images
+                WHERE recording_id = ? AND image_type = 'user_upload'
+            """, (recording_id,))
+            return cursor.fetchone()['count']
+
     def get_recording_topics(self, recording_id: int) -> List[str]:
         """
         Get list of unique topics in recording.
