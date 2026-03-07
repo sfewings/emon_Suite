@@ -1,8 +1,8 @@
 # Event Recorder & WordPress Publisher - Project Summary
 
-**Version:** 0.1.0
-**Status:** ✅ Complete (Phases 1-5 Implemented)
-**Date:** 2026-02-12
+**Version:** 0.3.0
+**Status:** ✅ Complete (All Phases Implemented)
+**Date:** 2026-03-06
 
 ---
 
@@ -15,11 +15,14 @@
 - ✅ Records all specified MQTT topics during track sessions
 - ✅ Survives power outages and resumes recording appropriately
 - ✅ Generates all four plot types (line, comparison, map, statistics)
-- ✅ Creates WordPress blog posts with embedded images
+- ✅ Creates WordPress blog posts with embedded images and interactive map
 - ✅ Web UI provides real-time monitoring and manual control
 - ✅ Configuration can be updated via YAML files without code changes
 - ✅ Runs in Docker container alongside existing emon_Suite services
 - ✅ Living requirements document tracked progress throughout development
+- ✅ Export files (CSV, KML, GPX) generated and linked in posts
+- ✅ Mobile photo upload page for crew photos during recording
+- ✅ MQTT status publishing for external instrument panels
 
 ---
 
@@ -44,68 +47,87 @@
 
 ### Core Components (9 Python Modules)
 
-1. **main.py** (371 lines)
-   - Service orchestrator
+1. **main.py**
+   - Service orchestrator and lifecycle management
    - Signal handlers for graceful shutdown
    - Event monitor setup from YAML configs
+   - MQTT status publishing thread (1 Hz, `event_recorder/recording/<id>/status`)
+   - Auto-process on stop: background thread triggered by `service_settings`
 
-2. **models.py** (675 lines)
+2. **models.py**
    - SQLite schema with WAL mode for crash resilience
-   - 4 tables: recordings, recording_data, recording_images, configurations
+   - 6 tables: recordings, recording_data, recording_images, configurations, recording_exports, service_settings
    - CRUD operations for all entities
+   - Runtime-configurable key/value settings (`get_setting` / `set_setting`)
+   - Schema migrations applied automatically on startup
 
-3. **config_manager.py** (397 lines)
+3. **config_manager.py**
    - Time-based YAML file selection (YYYYMMDD-HHMM.yml pattern)
    - Environment variable substitution (${VAR_NAME})
    - Follows emon_Suite configuration patterns
 
-4. **trigger_monitor.py** (538 lines)
+4. **trigger_monitor.py**
    - GPS position tracking with Haversine distance calculation
    - State machine: IDLE → MONITORING → TRIGGERED
    - Configurable thresholds (20m start, 5m stop)
+   - `seen_inside_anchor` guard prevents cold-start false triggers
 
-5. **data_recorder.py** (485 lines)
+5. **data_recorder.py**
    - MQTT subscription with wildcard support (+, #)
    - MessageBuffer class for batch writes (5s or 1000 messages)
    - Topic matching for dynamic subscriptions
 
-6. **data_processor.py** (750 lines)
-   - matplotlib plots: line, multi-line, route maps, statistics tables
-   - Statistics calculation: distance (Haversine), speed, energy (trapezoidal integration)
-   - GPS route map generation with folium + matplotlib fallback
+6. **data_processor.py**
+   - matplotlib plots: line, multi-line, route maps, statistics tables (PNG)
+   - Statistics saved as JSON sidecar (`statistics_summary.json`) for HTML rendering in WordPress
+   - CSV / KML / GPX export generation
+   - GPS route map: folium HTML + PNG via headless Chromium/Selenium
+   - Nearest-neighbour GPS timestamp matching (bisect module)
 
-7. **recovery_manager.py** (326 lines)
+7. **recovery_manager.py**
    - Detects interrupted recordings: query WHERE status='active'
    - Determines resume vs process based on GPS movement
-   - Cleanup old recordings with configurable retention
+   - Handles recordings stuck in 'processing' state
 
-8. **wordpress_publisher.py** (600 lines)
+8. **wordpress_publisher.py**
    - WordPress REST API client with Application Password auth
-   - Media upload to WordPress media library
-   - Blog post creation with embedded images
+   - Media upload to WordPress media library (images, CSV, KML, GPX)
+   - Structured HTML post: Photos, Data Visualisations, Statistics table, Interactive Map, Downloads
+   - `_extract_folium_embed()`: embeds interactive Leaflet/folium map inline
+   - `_build_statistics_table_html()`: renders statistics as HTML `<table>`
+   - Last user-uploaded photo used as featured image (falls back to first plot)
+   - Post publication date set to recording start time
    - Error handling with exponential backoff retry (3 attempts)
 
-9. **web_interface.py** (580 lines)
-   - Flask REST API with 15+ endpoints
-   - Status, recordings CRUD, images, WordPress integration
+9. **web_interface.py**
+   - Flask REST API with 15 endpoints including `/health`, `/api/settings`
+   - Status, recordings CRUD, images, WordPress integration, service settings
+   - `GET /health`: lightweight health check for Docker HEALTHCHECK (HTTP 200/503)
    - Image upload handling with secure_filename
 
-### Web Interface (3 Frontend Files)
+### Web Interface (5 Frontend Files)
 
-1. **index.html** (220 lines)
+1. **index.html**
    - SPA with 4 views: dashboard, recordings, manual control, settings
-   - Modal for recording details
-   - Toast notifications
+   - Settings page: Recording Behaviour card with auto-process toggle
+   - Modal for recording details; toast notifications
 
-2. **app.js** (650 lines)
+2. **app.js**
    - 2-second status polling
    - View management with switchView()
    - API calls for all CRUD operations
+   - `loadSettings()` / `saveAutoProcessSetting()` for settings persistence
 
-3. **style.css** (550 lines)
-   - Purple gradient theme: #667eea to #764ba2
-   - Responsive design with flexbox
-   - CSS variables for consistent theming
+3. **style.css**
+   - Red Shadow theme: dark palette with red accents (`#e53e3e`)
+   - Sailing background photo with glassmorphism cards (backdrop-filter blur)
+   - Toggle switch CSS for settings controls
+
+4. **upload.html** / **upload.js**
+   - Mobile-optimised standalone page for crew photo uploads
+   - Served at `/upload?recording_id=<id>`
+   - Dropdown lists non-published recordings; active recordings shown with LIVE badge
+   - Photo preview, optional by-line/caption, upload with feedback
 
 ### Configuration Files
 
@@ -153,45 +175,54 @@
 ## 📈 Key Features Delivered
 
 ### Phase 1: Core Recording Infrastructure ✅
-- **SQLite Database** with WAL mode for crash resilience
+- **SQLite Database** with WAL mode for crash resilience; 6-table schema with auto-migration
 - **MQTT Integration** with wildcard subscriptions and buffering
-- **GPS Trigger System** using Haversine distance formula
+- **GPS Trigger System** using Haversine distance formula; cold-start false trigger prevented
 - **Power Outage Recovery** with interrupted recording detection
 - **Configuration Management** with time-based YAML files
 
 ### Phase 2: Data Processing & Plotting ✅
 - **Line Plots** (speed, power, voltage over time)
 - **Multi-Line Plots** (battery bank comparisons)
-- **GPS Route Maps** (folium with matplotlib fallback)
-- **Statistics Tables** (distance, speed, energy)
+- **GPS Route Maps** (folium HTML + PNG via headless Chromium; interactive map in WordPress post)
+- **Statistics Tables** (PNG for web UI; HTML `<table>` via JSON sidecar for WordPress post)
+- **Export Files** (CSV, KML, GPX — uploaded to WordPress media library)
 - **Automatic Calculations** (distance via Haversine, energy via trapezoidal integration)
 
 ### Phase 3: Web Interface ✅
-- **Flask REST API** (15+ endpoints)
+- **Flask REST API** (15 endpoints including `/health` and `/api/settings`)
 - **Vanilla JavaScript SPA** (no frameworks)
 - **Real-time Polling** (2-second status updates)
 - **Dashboard View** (active recordings, service status)
 - **Recordings Management** (list, filter, view details)
 - **Manual Control** (start/stop recordings)
-- **Image Upload** (user photos)
-- **Purple Gradient Theme** (matches emon_settings_web)
+- **Image Upload** (user photos with by-line captions)
+- **Mobile Photo Upload Page** (`/upload`) for crew photos during recording
+- **Red Shadow Theme** (dark palette with glassmorphism cards, sailing background)
+- **Auto-Process on Stop** (toggle in Settings page; persisted in SQLite)
 
 ### Phase 4: WordPress Integration ✅
 - **Application Password Auth** (WordPress 5.6+)
-- **Media Upload** (images to WordPress library)
-- **Blog Post Creation** (with embedded images)
-- **Category Management** (auto-create categories)
-- **Template System** (customizable HTML templates)
+- **Media Upload** (images, CSV, KML, GPX to WordPress library)
+- **Structured Blog Posts** (Photos, Data Visualisations, Statistics table, Interactive Map, Downloads)
+- **Interactive Leaflet Map** embedded inline in post (folium HTML extraction)
+- **HTML Statistics Table** rendered from JSON sidecar (not uploaded PNG)
+- **Featured Image** — last user-uploaded photo; falls back to first generated plot
+- **Post Date** set to recording start time
+- **KML/GPX MIME Type Plugin** (WordPress mu-plugin for geo file uploads)
 - **Error Handling** (retry logic with exponential backoff)
-- **Web API** (test connection, publish recordings)
 
 ### Phase 5: Production Deployment ✅
 - **Multi-Platform Docker Image** (amd64, arm64, arm/v7)
 - **docker-compose Integration** (with emon_Suite)
 - **Build Scripts** (Linux and Windows)
-- **Health Checks** (API status monitoring)
+- **Health Check Endpoint** (`GET /health` returns 200/503; Dockerfile HEALTHCHECK via stdlib urllib)
 - **Volume Mounts** (config, data persistence)
 - **Environment Variables** (secure credential management)
+
+### Operational Enhancements ✅
+- **MQTT Status Publishing** (1 Hz; topic `event_recorder/recording/<id>/status`; name, duration, message count, photo count)
+- **Auto-Process on Stop** (user setting; background thread; SQLite persistence via `service_settings` table)
 
 ---
 
@@ -525,7 +556,7 @@ While the core functionality is complete, potential future additions could inclu
 - Follows existing patterns (time-based configs, Flask APIs, vanilla JS)
 - Integrates with MQTT infrastructure
 - Compatible with docker-compose orchestration
-- Matches design language (purple gradient theme)
+- Web UI styled to match Red Shadow WordPress blog theme
 
 ---
 
@@ -546,5 +577,5 @@ All phases implemented, tested, and documented. Ready for production deployment.
 
 **Built with ❤️ using Claude Code**
 **Author:** Stephen Fewings / terra15 technologies
-**Date:** 2026-02-12
-**Version:** 0.1.0
+**Date:** 2026-03-06
+**Version:** 0.3.0

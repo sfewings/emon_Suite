@@ -19,6 +19,7 @@ Monitors GPS position via MQTT, automatically detects vessel movement, records s
 - Wildcard subscription support (`gps/#`, `battery/#`, etc.)
 - Message buffering with batch writes (5s or 1000 messages)
 - SQLite persistence with WAL mode for crash resilience
+- MQTT status publishing every second: name, duration, message count, photo count
 
 ### 🔌 Power Outage Recovery
 - Detects interrupted recordings on startup
@@ -28,25 +29,30 @@ Monitors GPS position via MQTT, automatically detects vessel movement, records s
 ### 📈 Comprehensive Visualizations
 - **Line plots**: Speed, power, voltage over time
 - **Multi-line plots**: Battery bank comparisons
-- **GPS route maps**: Interactive maps with start/end markers
-- **Statistics tables**: Distance, speed, energy consumption
+- **GPS route maps**: PNG for web UI + interactive Leaflet map embedded in post
+- **Statistics tables**: PNG for web UI + HTML `<table>` in WordPress post
+- **Export files**: CSV, KML, GPX — uploaded to WordPress media library and linked in post
 
 ### 📝 WordPress Integration
 - Application Password authentication (WordPress 5.6+)
-- Automatic media upload (plots and images)
-- Blog post creation with customizable templates
-- Category management and featured images
+- Structured blog posts: Photos, Data Visualisations, Statistics table, Interactive Map, Downloads
+- Interactive Leaflet/folium map embedded inline (no screenshot needed)
+- Statistics rendered as HTML `<table>` directly in post body
+- Last user-uploaded crew photo used as featured image
+- Post publication date set to recording start time
+- KML/GPX MIME type mu-plugin for WordPress geo file uploads
 - Retry logic with exponential backoff
 
 ### 🌐 Web UI
 - Real-time status dashboard with 2-second polling
-- View all recordings with filtering
+- View all recordings with detail modal (plots, photos, exports)
 - Manual recording start/stop
-- Image upload functionality
+- Image upload and mobile photo upload page (`/upload`)
 - WordPress test and publish controls
-- Purple gradient theme matching emon_settings_web
+- Auto-process on stop toggle (Settings page)
+- Red Shadow theme: dark palette, sailing background, glassmorphism cards
 
-### ⚙️ Configuration-Trackn
+### ⚙️ Configuration
 - Time-based YAML configs (YYYYMMDD-HHMM.yml pattern)
 - Environment variable substitution
 - Per-event trigger and plot customization
@@ -56,19 +62,21 @@ Monitors GPS position via MQTT, automatically detects vessel movement, records s
 
 ```
 event_recorder/
-├── main.py                    # Service orchestrator
+├── main.py                    # Service orchestrator; MQTT status publisher
 ├── trigger_monitor.py         # GPS monitoring & movement detection
 ├── data_recorder.py           # MQTT buffering & SQLite persistence
-├── data_processor.py          # Plot generation & statistics
+├── data_processor.py          # Plot/export generation & statistics
 ├── wordpress_publisher.py     # WordPress REST API client
 ├── recovery_manager.py        # Power outage recovery
-├── web_interface.py           # Flask REST API
+├── web_interface.py           # Flask REST API (15 endpoints incl. /health)
 ├── config_manager.py          # Time-based YAML loading
-├── models.py                  # SQLite schema (WAL mode)
+├── models.py                  # SQLite schema (WAL mode, 6 tables)
 └── web_ui/                    # Vanilla JavaScript SPA
-    ├── index.html             # Main interface
-    ├── app.js                 # Dashboard, recordings, manual control
-    └── style.css              # Purple gradient theme
+    ├── index.html             # Main interface (Red Shadow theme)
+    ├── app.js                 # Dashboard, recordings, settings
+    ├── style.css              # Red Shadow theme, glassmorphism
+    ├── upload.html            # Mobile photo upload page
+    └── upload.js              # Upload page logic
 ```
 
 ### Data Flow
@@ -86,54 +94,60 @@ GPS Topics (latitude/longitude)
 
 ## Development Status
 
-**Version:** 0.1.0
+**Version:** 0.3.0
 
-**Current Status:** ✅ Phases 1-4 Complete, Phase 5 (Deployment) In Progress
+**Current Status:** ✅ All Phases Complete
 
 ### Completed Phases
 
 #### ✅ Phase 1: Core Recording Infrastructure
-- [x] SQLite schema with WAL mode
+- [x] SQLite schema with WAL mode (6 tables; auto-migration on startup)
 - [x] Configuration management (time-based YAML)
 - [x] MQTT data recorder with buffering
-- [x] GPS trigger monitor (Haversine distance)
+- [x] GPS trigger monitor with cold-start false trigger fix
 - [x] Power outage recovery
 - [x] Integration testing
 
 #### ✅ Phase 2: Data Processing & Plotting
 - [x] Line plot generation (matplotlib)
 - [x] Multi-line plots
-- [x] GPS route maps (folium + matplotlib fallback)
-- [x] Statistics calculation (distance, speed, energy)
-- [x] Statistics table generation
+- [x] GPS route maps (folium HTML + PNG via headless Chromium)
+- [x] Statistics calculation (distance, speed, energy) with JSON sidecar
+- [x] CSV / KML / GPX export file generation
 - [x] Image storage in database
 
 #### ✅ Phase 3: Web Interface
-- [x] Flask REST API (15+ endpoints)
+- [x] Flask REST API (15 endpoints)
 - [x] Vanilla JavaScript SPA
 - [x] Real-time status polling (2-second interval)
 - [x] Dashboard view
 - [x] Recordings management
 - [x] Manual control
-- [x] Settings view
-- [x] Purple gradient theme
+- [x] Settings view with auto-process on stop toggle
+- [x] Red Shadow theme (dark/red, glassmorphism, sailing background)
+- [x] Mobile photo upload page (`/upload`)
 
 #### ✅ Phase 4: WordPress Integration
 - [x] Application Password authentication
-- [x] Media upload to WordPress library
-- [x] Blog post creation with embedded images
+- [x] Media upload (images, CSV, KML, GPX)
+- [x] Structured posts (Photos, Data Visualisations, Statistics, Interactive Map, Downloads)
+- [x] Interactive Leaflet map embedded inline
+- [x] Statistics as HTML `<table>` (not uploaded PNG)
+- [x] Last user photo as featured image; post date = recording start
+- [x] KML/GPX MIME type mu-plugin
 - [x] Error handling with retry logic
-- [x] Category management
-- [x] Template system
-- [x] Web API endpoints
 
-#### 🚧 Phase 5: Production Deployment (In Progress)
-- [x] Dockerfile (multi-platform support)
-- [x] docker-compose integration
+#### ✅ Phase 5: Production Deployment
+- [x] Dockerfile (multi-platform: amd64, arm64, arm/v7)
+- [x] docker-compose test environment with all services
 - [x] Build scripts (Linux & Windows)
-- [ ] Docker Hub deployment
-- [ ] End-to-end testing
-- [ ] Documentation finalization
+- [x] Docker HEALTHCHECK (`GET /health`, stdlib urllib)
+- [x] End-to-end test suite
+- [x] Documentation
+
+#### ✅ Operational Enhancements
+- [x] MQTT recording status publishing (1 Hz, topic `event_recorder/recording/<id>/status`)
+- [x] Auto-process on stop setting (Settings page toggle, SQLite persistence)
 
 ## Quick Start
 
@@ -353,11 +367,11 @@ See [TESTING.md](TESTING.md) for comprehensive testing guide.
 
 ### REST API Endpoints
 
-#### Status
+#### Health & Status
 ```
-GET /api/status
+GET /health                            # Lightweight health check (200 ok / 503 error)
+GET /api/status                        # Full service status, active recordings, database stats
 ```
-Returns service status, active recordings, database stats
 
 #### Recordings
 ```
@@ -367,13 +381,21 @@ POST   /api/recordings                 # Start manual recording
 PUT    /api/recordings/<id>            # Update name/description
 DELETE /api/recordings/<id>            # Delete
 POST   /api/recordings/<id>/stop       # Stop recording
+POST   /api/recordings/<id>/process    # Trigger data processing
 POST   /api/recordings/<id>/publish    # Publish to WordPress
 ```
 
 #### Images
 ```
-POST   /api/recordings/<id>/images     # Upload image
+POST   /api/recordings/<id>/images     # Upload image (multipart, optional caption)
+GET    /api/recordings/<id>/images     # List images for recording
 DELETE /api/images/<id>                # Delete image
+```
+
+#### Settings
+```
+GET    /api/settings                   # Get service settings (auto_process_on_stop, etc.)
+POST   /api/settings                   # Update service settings
 ```
 
 #### WordPress
@@ -415,7 +437,9 @@ event_recorder/
 │   └── web_ui/                        # Web interface
 │       ├── index.html
 │       ├── app.js
-│       └── style.css
+│       ├── style.css
+│       ├── upload.html                # Mobile photo upload page
+│       └── upload.js
 │
 ├── docs/                              # Documentation
 │   └── EVENT_RECORDER_REQUIREMENTS.md # Living requirements
