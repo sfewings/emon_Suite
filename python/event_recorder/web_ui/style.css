@@ -678,6 +678,20 @@ body {
     color: var(--text-light);
 }
 
+/* === SVG Icons === */
+.icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    flex-shrink: 0;
+}
+
+.icon-xl {
+    width: 4rem;
+    height: 4rem;
+    opacity: 0.5;
+}
+
 /* === Toggle Switch === */
 .toggle-row {
     display: flex;

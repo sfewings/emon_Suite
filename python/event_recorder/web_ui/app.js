@@ -5,6 +5,18 @@
  * Follows vanilla JavaScript pattern from emon_settings_web.
  */
 
+// === SVG Icons (inline for dynamically generated HTML) ===
+// Feather Icons style: stroke-based, currentColor, no external dependency.
+const Icons = {
+    stop:    `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>`,
+    view:    `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    camera:  `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+    process: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+    publish: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>`,
+    delete:  `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+    upload:  `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+};
+
 // === Global State ===
 let currentView = 'dashboard';
 let statusPollInterval = null;
@@ -199,16 +211,16 @@ async function loadActiveRecordings() {
                     <div class="recording-actions">
                         <button class="btn btn-sm btn-danger"
                                 onclick="stopRecording(${rec.id})">
-                            ⏹️ Stop
+                            ${Icons.stop} Stop
                         </button>
                         <button class="btn btn-sm btn-secondary"
                                 onclick="viewRecording(${rec.id})">
-                            👁️ View
+                            ${Icons.view} View
                         </button>
                         <a href="/upload?recording_id=${rec.id}"
                            class="btn btn-sm btn-primary" target="_blank"
                            title="Open mobile photo upload page">
-                            📷 Upload Photo
+                            ${Icons.camera} Upload Photo
                         </a>
                     </div>
                 </div>
@@ -332,24 +344,24 @@ async function loadRecordings() {
                                 <td>
                                     <button class="btn btn-sm btn-primary"
                                             onclick="viewRecording(${rec.id})">
-                                        View
+                                        ${Icons.view} View
                                     </button>
                                     ${rec.status === 'stopped' ? `
                                         <button class="btn btn-sm btn-success"
                                                 onclick="processRecording(${rec.id})">
-                                            Process
+                                            ${Icons.process} Process
                                         </button>
                                     ` : ''}
                                     ${['stopped', 'processing', 'processed'].includes(rec.status) ? `
                                         <button class="btn btn-sm btn-wp"
                                                 onclick="publishRecording(${rec.id})">
-                                            Publish
+                                            ${Icons.publish} Publish
                                         </button>
                                     ` : ''}
                                     ${rec.status !== 'active' ? `
                                         <button class="btn btn-sm btn-danger"
                                                 onclick="deleteRecording(${rec.id})">
-                                            Delete
+                                            ${Icons.delete} Delete
                                         </button>
                                     ` : ''}
                                 </td>
@@ -395,7 +407,7 @@ async function loadActiveRecordingsForStop() {
                         </span>
                     </div>
                     <button class="btn btn-danger" onclick="stopRecording(${rec.id})">
-                        ⏹️ Stop Recording
+                        ${Icons.stop} Stop Recording
                     </button>
                 </div>
             `).join('');
@@ -776,7 +788,7 @@ async function viewRecording(recordingId) {
             modalContent += `
                 <a href="/upload?recording_id=${rec.id}" target="_blank"
                    class="btn btn-primary">
-                    📷 Upload Photo
+                    ${Icons.camera} Upload Photo
                 </a>
             `;
         }
@@ -784,7 +796,7 @@ async function viewRecording(recordingId) {
         if (rec.status === 'stopped') {
             modalContent += `
                 <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
-                    Process
+                    ${Icons.process} Process
                 </button>
             `;
         }
@@ -792,7 +804,7 @@ async function viewRecording(recordingId) {
         if (['stopped', 'processing', 'processed'].includes(rec.status)) {
             modalContent += `
                 <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
-                    Publish to WordPress
+                    ${Icons.publish} Publish to WordPress
                 </button>
             `;
         }

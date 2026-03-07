@@ -220,7 +220,7 @@
     <!-- Header -->
     <header class="header">
         <div class="header-content">
-            <h1>📸 Upload Photo</h1>
+            <h1><svg style="width:1em;height:1em;vertical-align:-0.125em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Upload Photo</h1>
             <a href="/" class="header-back">← Dashboard</a>
         </div>
     </header>
@@ -243,7 +243,9 @@
              onclick="document.getElementById('photoInput').click()"
              title="Tap to select a photo">
             <div class="upload-preview-placeholder" id="previewPlaceholder">
-                <div class="preview-icon">📷</div>
+                <div class="preview-icon">
+                    <svg style="width:4rem;height:4rem;opacity:0.45;fill:none;stroke:#b30000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                </div>
                 <p class="preview-hint">Tap to select a photo</p>
             </div>
             <img id="previewImg" style="display:none;" alt="Selected photo">
@@ -255,7 +257,8 @@
         <!-- Select photo button -->
         <button class="btn-large btn-select" id="selectBtn"
                 onclick="document.getElementById('photoInput').click()">
-            📷 Select Photo from Album
+            <svg style="width:1em;height:1em;vertical-align:-0.125em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Select Photo from Album
         </button>
 
         <!-- By-line / caption -->
@@ -269,7 +272,8 @@
         <!-- Upload button (disabled until photo selected) -->
         <button class="btn-large btn-upload" id="uploadBtn"
                 onclick="uploadPhoto()" disabled>
-            ⬆️ Upload Photo
+            <svg style="width:1em;height:1em;vertical-align:-0.125em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload Photo
         </button>
 
         <!-- Result feedback -->
