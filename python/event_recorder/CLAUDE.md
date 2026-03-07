@@ -1,4 +1,4 @@
-# Claude Working Instructions — emon_Suite
+# Claude Working Instructions — emon event_recorder
 
 ## Git Workflow
 - Always prepare a commit message and ask before committing — never commit without explicit user approval
@@ -7,10 +7,10 @@
 - Use conventional commit style: `scope: short summary` followed by a body explaining *why*
 
 ## Project Context
-The primary active project is the **emon event_recorder**.
+This is the **emon event_recorder** subproject.
 
 Living requirements document (read at the start of any event_recorder session):
-`python/event_recorder/docs/EVENT_RECORDER_REQUIREMENTS.md`
+`docs/EVENT_RECORDER_REQUIREMENTS.md`
 
 This document is the authoritative source for:
 - Feature requirements and completion status
@@ -24,6 +24,6 @@ This document is the authoritative source for:
 - Keep changes minimal and focused — do not "improve" surrounding code unless asked
 
 ## Testing Environment
-- Docker Compose stack in `python/event_recorder/test_event_recorder/`
-- Test data lives in `python/event_recorder/test_event_recorder/data/` (git-ignored)
+- Docker Compose stack in `test_event_recorder/`
+- Test data lives in `test_event_recorder/data/` (git-ignored)
 - WordPress instance runs locally via Docker for integration testing
