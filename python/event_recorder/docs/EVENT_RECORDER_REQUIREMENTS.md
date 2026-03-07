@@ -1,9 +1,9 @@
 # Event Recorder & WordPress Publisher - Living Requirements
 
-**Version:** 0.2.0
-**Last Updated:** 2026-03-05
+**Version:** 0.3.0
+**Last Updated:** 2026-03-06
 **Owner:** Stephen Fewings
-**Status:** Phases 1–4 Complete · Phase 5 In Progress
+**Status:** All Phases Complete
 
 ---
 
@@ -44,6 +44,8 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 - [x] **FR-12:** Manual recording control
 - [x] **FR-13:** Image upload functionality
 - [x] **FR-19:** Mobile photo upload page with by-line captions
+- [x] **FR-21:** Red Shadow web UI theme with sailing background
+- [x] **FR-23:** Auto-process on stop setting
 
 ### Phase 4: WordPress Integration ✅ Complete
 
@@ -54,11 +56,15 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 - [x] **FR-20:** WordPress KML/GPX MIME type support (mu-plugin)
 - [x] **TR-4:** Error handling and retry logic
 
-### Phase 5: Production Deployment 🚧 In Progress
+### Operational Enhancements ✅ Complete
+
+- [x] **FR-22:** MQTT recording status publishing (1 Hz)
+
+### Phase 5: Production Deployment ✅ Complete
 
 - [x] **TR-5:** Multi-platform Docker image
 - [x] **TR-6:** docker-compose.yml test environment
-- [ ] **TR-7:** Health checks
+- [x] **TR-7:** Health checks
 - [x] **TR-8:** End-to-end test suite
 - [x] **DOC-1:** Deployment documentation
 - [x] **DOC-2:** Configuration examples
@@ -70,7 +76,7 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 ### FR-1: GPS Position Monitoring
 
 **Priority:** Must Have
-**Status:** ✅ Implemented (2026-02-17)
+**Status:** ✅ Implemented (2026-02-17, bug fix 2026-03-05)
 **Description:** Monitor GPS latitude and longitude topics to detect vessel movement
 
 **Acceptance Criteria:**
@@ -79,6 +85,7 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 - [x] Calculate distance between successive GPS readings using Haversine formula
 - [x] Track position changes with configurable polling interval
 - [x] Handle missing or malformed GPS messages gracefully
+- [x] No false trigger on cold start when vessel is already outside anchor zone
 
 **Implementation Notes:**
 
@@ -86,6 +93,7 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 - Start condition: movement > 20 m sustained for 10 seconds
 - Stop condition: stationary < 5 m for 60 seconds
 - State machine: `idle → active → stopping → stopped`
+- **Cold-start false trigger fix (2026-03-05):** The `anchor_departure` condition was firing immediately on service start if the vessel was already outside the configured anchor zone. Fixed by adding a `seen_inside_anchor` lazy flag in trigger state. The departure timer only starts after the vessel has been confirmed inside the zone at least once since service start.
 - Implemented in `trigger_monitor.py`
 
 ---
@@ -181,6 +189,8 @@ CREATE TABLE configurations (
 **Schema changes since initial design:**
 
 - `status` CHECK constraint extended with `'processed'` state: represents a recording where data processing (plots, statistics, exports) is complete but the post has not yet been published to WordPress. This state enables the Publish button in the web UI.
+- `recording_exports` table added (2026-02-26): tracks CSV/KML/GPX files generated per recording.
+- `service_settings` table added (2026-03-06): key/value store for runtime-configurable settings (`key TEXT PRIMARY KEY, value TEXT NOT NULL`). Migrated automatically on startup for existing databases.
 
 ---
 
@@ -231,7 +241,7 @@ CREATE TABLE configurations (
 ### FR-6: GPS Route Map
 
 **Priority:** Must Have
-**Status:** ✅ Implemented (2026-02-17, bug fixes 2026-02-20)
+**Status:** ✅ Implemented (2026-02-17, bug fixes 2026-02-20, interactive embed 2026-03-05)
 **Description:** Generate map visualisation showing GPS route with start/end markers
 
 **Acceptance Criteria:**
@@ -241,15 +251,17 @@ CREATE TABLE configurations (
 - [x] Add start marker (green) and end marker (red)
 - [x] Export map as PNG (headless Chromium via Selenium)
 - [x] Auto-zoom to fit route bounds
+- [x] Embed interactive Leaflet/Folium map HTML directly in WordPress post
 
 **Implementation Notes:**
 
-- folium generates an interactive HTML map; Selenium with headless Chromium captures it as PNG
+- folium generates an interactive HTML map; Selenium with headless Chromium captures it as PNG for the recordings modal in the web UI
 - Chromium installed in Docker image via `apt-get install chromium` (not chromium-driver from pip) — resolved "Chromium not found" error in container
 - GPS coordinates extracted using nearest-neighbour timestamp lookup (`bisect` module) rather than exact-match join — resolves dropped points when latitude and longitude timestamps don't align perfectly
 - Duplicate route map bug fixed: when multiple GPS streams exist (e.g., two GPS units), each stream now generates its own named route map file rather than overwriting
 - `selenium.webdriver.ChromeOptions` configured with `--headless`, `--no-sandbox`, `--disable-dev-shm-usage` for Docker compatibility
-- Implemented in `data_processor.py → _generate_route_map()`
+- **Interactive WordPress embed (2026-03-05):** `wordpress_publisher._extract_folium_embed()` extracts CDN stylesheet/script tags from the folium HTML `<head>`, the map `<div>` with a fixed pixel height (replacing folium's `height: 100%`), and the initialisation `<script>` block from after `</body>`. This produces a self-contained embeddable snippet. WordPress admin users retain the `unfiltered_html` capability required to preserve `<script>` tags. The folium `.html` file is scanned from the plots directory alongside PNGs; any PNG matching the same stem is excluded from the image upload list.
+- Implemented in `data_processor.py → _generate_route_map()` and `wordpress_publisher.py → _extract_folium_embed()`
 
 **Pending question resolved:** Headless Chromium/Selenium accepted over matplotlib basemap — better map quality, no API key required.
 
@@ -258,25 +270,27 @@ CREATE TABLE configurations (
 ### FR-7: Statistics Summary
 
 **Priority:** Must Have
-**Status:** ✅ Implemented (2026-02-17, updated 2026-02-20)
-**Description:** Calculate statistics and generate summary table as image
+**Status:** ✅ Implemented (2026-02-17, updated 2026-02-20, HTML table 2026-03-06)
+**Description:** Calculate statistics and generate summary table
 
 **Acceptance Criteria:**
 
 - [x] Calculate for each configured metric: min, max, mean, median
 - [x] GPS-derived: total distance (Haversine), duration
 - [x] Energy: total Wh from power × time integration
-- [x] Generate table as matplotlib figure
+- [x] Generate table as matplotlib figure (PNG for web UI modal)
 - [x] Format values with appropriate units and precision
 - [x] Include recording start and end times in table
+- [x] Embed statistics as HTML `<table>` in WordPress post (not as uploaded image)
 
 **Implementation Notes:**
 
-- Statistics table rendered as a matplotlib `Table` object and saved as PNG
+- Statistics table rendered as a matplotlib `Table` object and saved as PNG for use in the recordings modal in the web UI
 - Start time and end time rows added to top of table (added 2026-02-20)
 - Duration computed from start/end timestamps
 - Distance computed by summing Haversine distances between consecutive GPS fixes
-- Implemented in `data_processor.py → _generate_statistics_summary()`
+- **HTML table for WordPress (2026-03-06):** `data_processor` also writes a `statistics_summary.json` sidecar file alongside the PNG. During publish, `web_interface` loads this JSON and passes it as a `statistics` parameter to `wordpress_publisher.publish_recording()`. The publisher renders it as an HTML `<table>` via `_build_statistics_table_html()`, with rows ordered: start time, end time, duration, distance, max/avg speed, energy, message count. The PNG is excluded from the WordPress media upload.
+- Implemented in `data_processor.py → _generate_statistics_summary()` and `wordpress_publisher.py → _build_statistics_table_html()`
 
 ---
 
@@ -308,6 +322,9 @@ CREATE TABLE configurations (
 | POST | `/api/recordings/<id>/images` | Upload image (multipart) |
 | GET | `/api/status` | Service status |
 | GET/POST | `/api/config` | Read/write YAML config |
+| GET | `/api/settings` | Get service settings |
+| POST | `/api/settings` | Update service settings |
+| GET | `/health` | Lightweight health check (Docker/load balancer) |
 
 **Implementation Notes:**
 
@@ -405,6 +422,87 @@ CREATE TABLE configurations (
 
 ---
 
+### FR-14: WordPress Authentication
+
+**Priority:** Must Have
+**Status:** ✅ Implemented (2026-02-17)
+**Description:** Authenticate with the WordPress REST API using Application Passwords
+
+**Acceptance Criteria:**
+
+- [x] Use WordPress Application Passwords (WordPress 5.6+)
+- [x] Credentials supplied via environment variables (`WP_SITE_URL`, `WP_USERNAME`, `WP_APP_PASSWORD`)
+- [x] Connection test endpoint (`GET /api/wordpress/test`) verifies credentials before publish
+
+**Implementation Notes:**
+
+- `HTTPBasicAuth(username, app_password)` used on all requests to `{site_url}/wp-json/wp/v2/`
+- App password is a 24-character string with spaces as generated by the WordPress admin panel
+- Implemented in `wordpress_publisher.py`
+
+---
+
+### FR-15: WordPress Media Upload
+
+**Priority:** Must Have
+**Status:** ✅ Implemented (2026-02-17)
+**Description:** Upload images and export files to the WordPress media library
+
+**Acceptance Criteria:**
+
+- [x] Upload PNG images as `image/png`
+- [x] Upload CSV, KML, GPX export files with correct MIME types
+- [x] Return `source_url` for use in post content
+- [x] Failed upload of any single file does not abort post creation
+
+**Implementation Notes:**
+
+- Multipart upload via `POST /wp-json/wp/v2/media`
+- `source_url` from the response JSON provides the public URL embedded in the post
+- KML and GPX upload requires FR-20 mu-plugin on the WordPress instance
+
+---
+
+### FR-16: WordPress Blog Post Creation
+
+**Priority:** Must Have
+**Status:** ✅ Implemented (2026-02-17, updated 2026-03-06)
+**Description:** Create structured WordPress blog posts from completed recordings
+
+**Acceptance Criteria:**
+
+- [x] Post structured as: Photos section, Data Visualisations section, Statistics table, Interactive Map, Downloads section
+- [x] User-uploaded photos displayed with `<em>` by-line captions under "Photos" heading
+- [x] Generated plots embedded under "Data Visualisations" heading
+- [x] Statistics rendered as HTML `<table>` (not uploaded image)
+- [x] Interactive Leaflet/Folium map embedded inline
+- [x] Export files (CSV, KML, GPX) linked in "Downloads" section
+- [x] Last user-uploaded photo used as WordPress featured image; falls back to first generated plot
+- [x] Post publication date set to recording start time
+- [x] Post created as draft by default (`publish_status: "draft"`)
+
+**Implementation Notes:**
+
+- Featured image priority (2026-03-06): user uploads are scanned for the last `image_type='user_upload'` entry; only if none exist does it fall back to the first plot. Previously always used the first plot.
+- Post `date` field (ISO 8601) set to `recording['start_time']` so the WordPress post appears dated at the time the recording began, not when it was published.
+- Implemented in `wordpress_publisher.py → publish_recording()` and `_build_post_content()`
+
+---
+
+### FR-17: Automatic Publishing After Recording
+
+**Priority:** Must Have
+**Status:** ✅ Implemented (2026-02-17)
+**Description:** Automatically publish recordings to WordPress after processing completes
+
+**Acceptance Criteria:**
+
+- [x] `auto_publish` flag in event configuration triggers publish after process pipeline
+- [x] Manual publish available via `POST /api/recordings/<id>/publish` for draft review
+- [x] Recording status transitions: `stopped → processing → processed → published`
+
+---
+
 ### FR-18: CSV / KML / GPX Export
 
 **Priority:** Must Have
@@ -480,6 +578,76 @@ CREATE TABLE configurations (
 
 ---
 
+### FR-21: Web UI Theme — Red Shadow
+
+**Priority:** Should Have
+**Status:** ✅ Implemented (2026-03-05)
+**Description:** Style the web interface to match the Red Shadow WordPress blog theme used on the vessel's site
+
+**Acceptance Criteria:**
+
+- [x] Red/dark colour palette consistent with Red Shadow WordPress theme
+- [x] Background: sailing photo with dark overlay
+- [x] Cards/widgets: semi-transparent glassmorphism style with backdrop blur
+- [x] Header: red gradient consistent with site identity
+
+**Implementation Notes:**
+
+- CSS custom properties define the colour palette (`--primary: #e53e3e`, `--card-bg: rgba(0,0,0,0.5)`)
+- Background image served as static asset; `background-attachment: fixed` for parallax effect
+- Glassmorphism cards: `backdrop-filter: blur(10px)` with `rgba` background and `border: 1px solid rgba(255,255,255,0.1)`
+- Implemented in `web_ui/style.css` and `index.html`
+
+---
+
+### FR-22: MQTT Recording Status Publishing
+
+**Priority:** Should Have
+**Status:** ✅ Implemented (2026-03-06)
+**Description:** Publish the status of each active recording via MQTT every second so external displays (e.g., instrument panels, dashboards) can show live recording state
+
+**Acceptance Criteria:**
+
+- [x] Publish once per second while a recording is active
+- [x] Topic: `event_recorder/recording/<recording_id>/status`
+- [x] Payload (JSON): recording name, duration (HH:MM:SS), duration in seconds, message count, photo count, start time, status
+- [x] Publishing does not block or slow down recording
+
+**Implementation Notes:**
+
+- Dedicated paho-mqtt client (`_status_mqtt_client`) separate from the data recording client; connected with `loop_start()` in a daemon thread
+- `_status_publisher_loop()` runs in a daemon thread, snapshots `active_recordings` each iteration to avoid race conditions with trigger callbacks
+- `_publish_recording_status()` queries database for recording metadata and counts on each call; QoS 0, no retain
+- Payload example: `{"recording_id": 5, "name": "Track 2026-03-06", "duration": "01:23:45", "duration_seconds": 5025, "message_count": 18432, "photo_count": 3, "start_time": "2026-03-06 ...", "status": "active"}`
+- Implemented in `main.py`
+
+---
+
+### FR-23: Auto-Process on Stop Setting
+
+**Priority:** Should Have
+**Status:** ✅ Implemented (2026-03-06)
+**Description:** User-configurable setting to automatically trigger data processing as soon as a recording stops, without requiring a manual press of the Process button
+
+**Acceptance Criteria:**
+
+- [x] Toggle switch on Settings page ("Recording Behaviour" card)
+- [x] Setting persisted in database (`service_settings` table, key `auto_process_on_stop`)
+- [x] When enabled, processing starts automatically in a background thread when recording stops
+- [x] Processing failure logged but does not crash the service
+- [x] Setting survives service restarts (persisted in SQLite, not in memory)
+
+**Implementation Notes:**
+
+- `service_settings` table: key/value store added to SQLite schema via migration for existing databases
+- `database.get_setting()` / `database.set_setting()` in `models.py`
+- `GET /api/settings` and `POST /api/settings` in `web_interface.py`
+- `_auto_process_recording(recording_id)` in `main.py` runs in a `daemon=True` thread; instantiates `DataProcessor` inline (same pattern as the manual process endpoint) to avoid circular imports
+- Toggle switch in `index.html` with Red Shadow CSS toggle style (active state uses `#e53e3e`)
+- `loadSettings()` and `saveAutoProcessSetting()` in `app.js`; settings tab loads both WordPress status and service settings on navigation
+
+---
+
 ## Technical Requirements
 
 ### TR-1: Power Outage Recovery
@@ -540,6 +708,7 @@ CREATE TABLE configurations (
 - [x] Register each plot in `recording_images` table
 - [x] Update recording status to `'processed'` on completion, `'failed'` on error
 - [x] Generate exports (CSV, KML, GPX) in same pipeline pass
+- [x] Pipeline triggered automatically in background when `auto_process_on_stop` setting is enabled (FR-23)
 
 **Bug fixes applied:**
 
@@ -608,8 +777,24 @@ CREATE TABLE configurations (
 ### TR-7: Health Checks
 
 **Priority:** Should Have
-**Status:** 📋 Not Yet Implemented
-**Description:** Docker HEALTHCHECK instructions and `/health` endpoint
+**Status:** ✅ Implemented (2026-03-06)
+**Description:** Docker HEALTHCHECK instruction and dedicated `/health` endpoint
+
+**Acceptance Criteria:**
+
+- [x] `GET /health` endpoint returns `{"status": "ok"}` with HTTP 200 when service is healthy
+- [x] `GET /health` returns HTTP 503 if database is unreachable
+- [x] Dockerfile `HEALTHCHECK` instruction points to `/health`
+- [x] Health check uses stdlib `urllib.request` (no external package dependency)
+
+**Implementation Notes:**
+
+- `/health` performs a minimal database round-trip (`get_database_stats()`) to confirm SQLite is reachable; this is fast (no full table scans) and catches the most likely failure mode
+- Returns HTTP 503 on error so Docker marks the container unhealthy rather than silently passing
+- Dockerfile parameters: `--interval=30s --timeout=10s --start-period=30s --retries=3`
+- `start-period=30s` accounts for Chromium and MQTT connection setup time on first start
+- Using `urllib.request` in the CMD avoids the overhead of importing the `requests` package for a one-liner health probe
+- Implemented in `web_interface.py` and `Dockerfile`
 
 ---
 
@@ -659,6 +844,33 @@ CREATE TABLE configurations (
 ---
 
 ## Change Log
+
+### 2026-03-06: Post-Theme and Operational Enhancements Update
+
+**Source:** Post-implementation review against git log (commits 8ad94b5 – a083528)
+**Updated by:** Claude Sonnet 4.6
+
+**Summary of changes documented:**
+
+- Added FR-14, FR-15, FR-17 detailed sections (previously listed only in status table)
+- Added full FR-16 section covering WordPress post structure; updated with 2026-03-06 changes: last user photo as featured image, post date set to recording start time
+- Added three new requirements:
+  - **FR-21** Red Shadow web UI theme with sailing background and glassmorphism cards
+  - **FR-22** MQTT recording status publishing at 1 Hz
+  - **FR-23** Auto-process on stop setting with persistent SQLite storage and Settings page toggle
+- Updated FR-1: documented cold-start anchor_departure false trigger fix (`seen_inside_anchor` guard)
+- Updated FR-6: documented interactive Leaflet/Folium HTML map embedding in WordPress post (`_extract_folium_embed()`)
+- Updated FR-7: documented statistics HTML table in WordPress post (JSON sidecar pattern, PNG excluded from upload)
+- Updated FR-8: added `/api/settings` GET and POST endpoints to endpoint table
+- Updated FR-3 schema notes: added `recording_exports` and `service_settings` table entries
+- Updated TR-3: added auto-process on stop as trigger for processing pipeline
+- Updated Phase 3 and Phase 4 implementation progress sections
+- Added new "Operational Enhancements" implementation progress section
+- TR-7 (health checks) implemented: `GET /health` endpoint + Dockerfile HEALTHCHECK updated
+- Phase 5 marked complete; overall status updated to "All Phases Complete"
+- Version bumped to 0.3.0
+
+---
 
 ### 2026-03-05: Phases 1–4 Completion Update
 
@@ -776,9 +988,9 @@ CREATE TABLE configurations (
 ### Phase 3: Web Interface
 
 **Status:** ✅ Complete
-**Completed:** 2026-02-17 (additions through 2026-03-04)
+**Completed:** 2026-02-17 (additions through 2026-03-06)
 
-- [x] Flask REST API — 11 endpoints (`web_interface.py`)
+- [x] Flask REST API — 13 endpoints (`web_interface.py`)
 - [x] Vanilla JS SPA (`web_ui/app.js`, `index.html`, `style.css`)
 - [x] Real-time dashboard with 2-second polling
 - [x] Recordings history with modal detail view
@@ -787,33 +999,52 @@ CREATE TABLE configurations (
 - [x] UTC timezone fix for active recording duration display
 - [x] Mobile photo upload page (`upload.html`, `upload.js`)
 - [x] Upload Photo button on active recording cards
+- [x] Red Shadow theme with sailing background and glassmorphism cards (FR-21)
+- [x] Settings page: Recording Behaviour card with auto-process toggle (FR-23)
+- [x] `GET /api/settings` and `POST /api/settings` endpoints
+- [x] `service_settings` table in SQLite with migration
 
 ---
 
 ### Phase 4: WordPress Integration
 
 **Status:** ✅ Complete
-**Completed:** 2026-02-17 (additions through 2026-03-05)
+**Completed:** 2026-02-17 (additions through 2026-03-06)
 
 - [x] WordPress REST API with Application Password authentication
 - [x] Image media upload returning `{'id', 'url'}` from `source_url`
 - [x] Export file upload (CSV, KML, GPX)
-- [x] Structured HTML post: Photos section, Data Visualisations section, Downloads section
+- [x] Structured HTML post: Photos section, Data Visualisations section, Statistics table, Interactive Map, Downloads section
 - [x] User photo by-line captions displayed with `<em>` in Photos section
-- [x] First generated plot used as WordPress featured image
+- [x] Last user-uploaded photo used as WordPress featured image (falls back to first plot)
+- [x] Post publication date set to recording start time
+- [x] Statistics rendered as HTML `<table>` in post (not uploaded PNG)
+- [x] Interactive Leaflet/Folium map embedded inline in post
 - [x] Draft-first publish workflow
 - [x] WordPress mu-plugin for KML/GPX MIME type unblocking
 
 ---
 
+### Operational Enhancements
+
+**Status:** ✅ Complete
+**Completed:** 2026-03-06
+
+- [x] MQTT recording status publishing at 1 Hz (FR-22) — `main.py`
+- [x] Auto-process on stop setting with SQLite persistence (FR-23) — `main.py`, `models.py`, `web_interface.py`
+- [x] Cold-start anchor_departure false trigger fix — `trigger_monitor.py`
+
+---
+
 ### Phase 5: Production Deployment
 
-**Status:** 🚧 In Progress
+**Status:** ✅ Complete
+**Completed:** 2026-03-06
 
 - [x] Multi-platform Docker build scripts (`build.sh`, `build.cmd`)
 - [x] Test docker-compose environment with all services
 - [x] WordPress mu-plugins bind-mount in docker-compose
-- [ ] Docker HEALTHCHECK instructions (TR-7)
+- [x] Docker HEALTHCHECK instruction pointing to `/health` (TR-7)
 - [x] End-to-end test suite
 - [x] Deployment and configuration documentation
 
@@ -830,5 +1061,5 @@ CREATE TABLE configurations (
 
 ---
 
-**Last Updated:** 2026-03-05 by Claude Sonnet 4.6
-**Next Review:** After TR-7 (health checks) implementation and first production deployment
+**Last Updated:** 2026-03-06 by Claude Sonnet 4.6
+**Next Review:** After first production deployment

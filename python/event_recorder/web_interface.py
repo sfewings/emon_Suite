@@ -110,6 +110,18 @@ class WebInterface:
             """Serve static files (JS, CSS)."""
             return send_from_directory(self.app.static_folder, filename)
 
+        # === Health Check ===
+        @self.app.route('/health', methods=['GET'])
+        def health():
+            """Lightweight health check for Docker HEALTHCHECK and load balancers."""
+            try:
+                # Verify database is reachable with a minimal query
+                self.database.get_database_stats()
+                return jsonify({'status': 'ok'}), 200
+            except Exception as e:
+                logger.error(f"Health check failed: {e}")
+                return jsonify({'status': 'error', 'error': str(e)}), 503
+
         # === Service Status ===
         @self.app.route('/api/status', methods=['GET'])
         def get_status():

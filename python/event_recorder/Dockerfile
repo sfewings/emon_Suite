@@ -38,9 +38,9 @@ ENV PYTHONPATH=/app
 # Expose web interface port
 EXPOSE 5000
 
-# Health check
+# Health check - uses stdlib urllib to avoid importing the full requests package
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/api/status', timeout=5)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)" || exit 1
 
 # Entry point
 CMD ["python", "-m", "event_recorder.main", \
