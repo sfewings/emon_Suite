@@ -6,6 +6,7 @@ Handles authentication, media upload, and post creation
 import html as html_module
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -405,6 +406,7 @@ class WordPressPublisher:
         images: List[Dict],
         exports: List[Dict] = None,
         statistics: Dict = None,
+        map_htmls: List[str] = None,
         template: str = None,
         category: str = "Track Logs",
         auto_publish: bool = False
@@ -417,6 +419,7 @@ class WordPressPublisher:
             images: List of image dicts with 'path' and 'caption'
             exports: List of export file dicts
             statistics: Optional statistics dict from statistics_summary.json
+            map_htmls: Optional list of folium HTML file paths to embed as interactive maps
             template: HTML template string (with {placeholders})
             category: WordPress category name
             auto_publish: Publish immediately (vs draft)
@@ -443,7 +446,7 @@ class WordPressPublisher:
                         'path': image['path']
                     })
 
-            if not media_ids and not statistics:
+            if not media_ids and not statistics and not map_htmls:
                 logger.error("No images uploaded successfully")
                 return None
 
@@ -464,7 +467,8 @@ class WordPressPublisher:
                 media_ids,
                 template,
                 download_links=download_links,
-                statistics=statistics
+                statistics=statistics,
+                map_htmls=map_htmls
             )
 
             # Extract title
@@ -512,7 +516,8 @@ class WordPressPublisher:
         media_ids: List[Dict],
         template: str = None,
         download_links: List[Dict] = None,
-        statistics: Dict = None
+        statistics: Dict = None,
+        map_htmls: List[str] = None
     ) -> str:
         """
         Build HTML content for post.
@@ -523,6 +528,7 @@ class WordPressPublisher:
             template: Optional HTML template
             download_links: List of download link dicts
             statistics: Optional statistics dict; rendered as an HTML table
+            map_htmls: Optional list of folium HTML paths; embedded as interactive maps
 
         Returns:
             HTML content string
@@ -547,6 +553,15 @@ class WordPressPublisher:
         # Statistics table (HTML, not image)
         if statistics:
             content += self._build_statistics_table_html(statistics)
+
+        # Interactive route map(s) — embedded folium HTML
+        if map_htmls:
+            label = "Route Maps" if len(map_htmls) > 1 else "Route Map"
+            content += f"\n<h2>{label}</h2>\n"
+            for html_path in map_htmls:
+                embed = self._extract_folium_embed(html_path)
+                if embed:
+                    content += embed + '\n\n'
 
         # Split images: user-uploaded photos go in their own section before plots
         user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
@@ -588,6 +603,93 @@ class WordPressPublisher:
             content += "</ul>\n"
 
         return content
+
+    def _extract_folium_embed(self, html_path: str, height: int = 500) -> str:
+        """
+        Extract an embeddable HTML snippet from a folium-generated map file.
+
+        Folium saves a full standalone HTML page.  This method pulls out:
+          - CDN <link> stylesheet tags
+          - CDN <script src="..."> tags
+          - The map <div> with corrected fixed height
+          - The Leaflet initialisation <script> (placed after </body> by folium)
+
+        The resulting snippet can be pasted directly into a WordPress post.
+        Admin users with the ``unfiltered_html`` capability can save <script>
+        tags through the REST API, so the interactive map renders correctly.
+
+        Args:
+            html_path: Path to the folium-saved .html file
+            height:    Height in pixels for the map container (default 500)
+
+        Returns:
+            HTML string ready for embedding, or '' on failure
+        """
+        try:
+            with open(html_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            parts = []
+
+            # CDN stylesheets
+            for m in re.finditer(
+                r'<link\b[^>]*\brel=["\']stylesheet["\'][^>]*>',
+                content, re.IGNORECASE
+            ):
+                parts.append(m.group(0))
+
+            # CDN JS scripts (external src only, not inline)
+            seen_srcs = set()
+            for m in re.finditer(
+                r'<script\b[^>]*\bsrc="([^"]+)"[^>]*>\s*</script>',
+                content, re.IGNORECASE
+            ):
+                src = m.group(1)
+                if src not in seen_srcs:
+                    seen_srcs.add(src)
+                    parts.append(f'<script src="{src}"></script>')
+
+            # Find the map div ID
+            id_m = re.search(
+                r'<div\b[^>]*\bclass="folium-map"[^>]*\bid="([^"]+)"',
+                content, re.IGNORECASE
+            )
+            if not id_m:
+                logger.warning(f"Could not find folium map div in {html_path}")
+                return ''
+            map_id = id_m.group(1)
+
+            # Map container — fixed pixel height, not 100%
+            parts.append(
+                f'<style>'
+                f'#{map_id}{{position:relative;width:100%;height:{height}px;}}'
+                f'.leaflet-container{{font-size:1rem;}}'
+                f'</style>'
+            )
+
+            # Leaflet initialisation flags (needed by awesome-markers plugin)
+            parts.append('<script>L_NO_TOUCH=false;L_DISABLE_3D=false;</script>')
+
+            # Map div
+            parts.append(f'<div class="folium-map" id="{map_id}"></div>')
+
+            # Initialisation script — folium puts it after </body>
+            body_end = content.lower().rfind('</body>')
+            if body_end != -1:
+                tail = content[body_end + len('</body>'):]
+                script_m = re.search(
+                    r'<script\b[^>]*>(.*?)</script>',
+                    tail, re.DOTALL | re.IGNORECASE
+                )
+                if script_m:
+                    parts.append(f'<script>{script_m.group(1)}</script>')
+
+            logger.info(f"Extracted folium embed from {Path(html_path).name}")
+            return '\n'.join(parts)
+
+        except Exception as e:
+            logger.warning(f"Could not extract folium embed from {html_path}: {e}")
+            return ''
 
     def _build_statistics_table_html(self, statistics: Dict) -> str:
         """Render statistics dict as an HTML table for embedding in a WordPress post."""

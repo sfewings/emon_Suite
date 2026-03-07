@@ -470,6 +470,22 @@ class WebInterface:
                     except Exception as e:
                         logger.warning(f"Could not load statistics JSON: {e}")
 
+                # Collect folium HTML map files; exclude matching PNGs from uploads
+                # so the interactive map replaces the static screenshot in the post
+                map_htmls = []
+                plots_dir_rec = self.plots_dir / str(recording_id)
+                for html_file in sorted(plots_dir_rec.glob('*.html')):
+                    map_htmls.append(str(html_file))
+                    image_list = [
+                        img for img in image_list
+                        if Path(img['path']).stem != html_file.stem
+                    ]
+                if map_htmls:
+                    logger.info(
+                        f"Found {len(map_htmls)} map HTML file(s); "
+                        "matching PNG(s) excluded from upload"
+                    )
+
                 # Collect export files for this recording
                 export_list = []
                 for exp in self.database.get_recording_exports(recording_id):
@@ -488,6 +504,7 @@ class WebInterface:
                     images=image_list,
                     exports=export_list,
                     statistics=statistics,
+                    map_htmls=map_htmls,
                     template=template,
                     category=category,
                     auto_publish=auto_publish
