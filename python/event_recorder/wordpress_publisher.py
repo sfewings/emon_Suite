@@ -331,7 +331,8 @@ class WordPressPublisher:
         status: str = 'draft',
         categories: List[str] = None,
         featured_media: int = None,
-        excerpt: str = None
+        excerpt: str = None,
+        date: str = None
     ) -> Optional[Dict]:
         """
         Create WordPress blog post.
@@ -343,6 +344,8 @@ class WordPressPublisher:
             categories: List of category names
             featured_media: Featured image media ID
             excerpt: Post excerpt
+            date: Publication date in ISO 8601 format (YYYY-MM-DDTHH:MM:SS);
+                  WordPress treats this as the site's local timezone
 
         Returns:
             Post data dict if successful, None otherwise
@@ -358,6 +361,10 @@ class WordPressPublisher:
             # Add excerpt
             if excerpt:
                 post_data['excerpt'] = excerpt
+
+            # Add publication date (sets both displayed date and sort order)
+            if date:
+                post_data['date'] = date
 
             # Add categories
             if categories:
@@ -484,14 +491,30 @@ class WordPressPublisher:
                 )
                 excerpt = f"Track recording from {start_time}. Duration: {duration}"
 
-            # Use first plot as featured image; fall back to first image of any type
+            # Featured image priority:
+            #   1. Last user-uploaded photo (most recent/relevant shot of the trip)
+            #   2. First generated plot (route map, speed chart, etc.)
+            #   3. Any uploaded image
+            user_uploads = [m for m in media_ids if m.get('image_type') == 'user_upload']
             plots_for_featured = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
-            if plots_for_featured:
+            if user_uploads:
+                featured_id = user_uploads[-1]['id']
+            elif plots_for_featured:
                 featured_id = plots_for_featured[0]['id']
             elif media_ids:
                 featured_id = media_ids[0]['id']
             else:
                 featured_id = None
+
+            # Format recording start time as ISO 8601 for WordPress date field
+            post_date = None
+            raw_start = recording_data.get('start_time')
+            if raw_start:
+                try:
+                    from dateutil import parser as _dateutil_parser
+                    post_date = _dateutil_parser.parse(str(raw_start)).strftime('%Y-%m-%dT%H:%M:%S')
+                except Exception:
+                    pass  # Leave post_date as None; WordPress will use current time
 
             # Create post
             post_status = 'publish' if auto_publish else 'draft'
@@ -501,7 +524,8 @@ class WordPressPublisher:
                 status=post_status,
                 categories=[category],
                 featured_media=featured_id,
-                excerpt=excerpt
+                excerpt=excerpt,
+                date=post_date
             )
 
             return post
@@ -693,8 +717,17 @@ class WordPressPublisher:
 
     def _build_statistics_table_html(self, statistics: Dict) -> str:
         """Render statistics dict as an HTML table for embedding in a WordPress post."""
+        # Ordered display list: keys rendered in this exact order, then any remaining keys
+        _ordered_keys = [
+            'start_time', 'end_time', 'duration',
+            'distance_km', 'max_speed', 'avg_speed',
+            'total_energy_wh', 'avg_power_w', 'max_power_w',
+            'message_count',
+        ]
         # Human-readable labels and units for known keys
         _label_map = {
+            'start_time':        ('Start Time',        ''),
+            'end_time':          ('End Time',          ''),
             'duration':          ('Duration',          ''),
             'distance_km':       ('Distance',          'km'),
             'max_speed':         ('Max Speed',         'km/h'),
@@ -704,28 +737,36 @@ class WordPressPublisher:
             'max_power_w':       ('Max Power',         'W'),
             'message_count':     ('Messages Recorded', ''),
         }
-        # Keys we skip entirely (internal / duplicate values)
-        _skip = {'start_time', 'end_time', 'duration_seconds'}
+        # Keys we skip entirely (internal / not user-facing)
+        _skip = {'duration_seconds'}
 
-        rows = []
-        for key, value in statistics.items():
-            if key in _skip:
-                continue
+        def _make_row(key, value):
             label, unit = _label_map.get(key, (key.replace('_', ' ').title(), ''))
-            # Format numeric values
             if isinstance(value, float):
                 formatted = f"{value:.2f}"
             else:
                 formatted = html_module.escape(str(value))
             if unit:
                 formatted = f"{formatted} {html_module.escape(unit)}"
-            rows.append(
+            return (
                 f'  <tr><th style="text-align:left;padding:6px 12px;'
                 f'background:#f2f2f2;border:1px solid #ddd;">'
                 f'{html_module.escape(label)}</th>'
                 f'<td style="padding:6px 12px;border:1px solid #ddd;">'
                 f'{formatted}</td></tr>\n'
             )
+
+        rows = []
+        seen = set()
+        # Render known keys in defined order first
+        for key in _ordered_keys:
+            if key in statistics and key not in _skip:
+                rows.append(_make_row(key, statistics[key]))
+                seen.add(key)
+        # Append any remaining keys not in the ordered list
+        for key, value in statistics.items():
+            if key not in seen and key not in _skip:
+                rows.append(_make_row(key, value))
 
         if not rows:
             return ''
