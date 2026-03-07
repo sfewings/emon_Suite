@@ -55,7 +55,7 @@
                 "-l",
                 "${workspaceFolder}/python/event_recorder/test_event_recorder/output",
                 "-x",
-                "2"
+                "1"
             ],
             "cwd": "${workspaceFolder}"
         },

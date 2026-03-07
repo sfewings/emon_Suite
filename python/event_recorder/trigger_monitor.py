@@ -301,6 +301,9 @@ class GPSTriggerMonitor:
         elif condition_type == 'anchor_departure':
             # Start recording when vessel moves outside a fixed anchor location.
             # The anchor is a configured lat/lon - no dynamic position tracking needed.
+            # IMPORTANT: departure detection is only armed after the vessel has been
+            # confirmed inside the anchor zone at least once, so that a cold startup
+            # with the vessel already outside doesn't falsely trigger recording.
             anchor_lat = start_condition.get('anchor_lat')
             anchor_lon = start_condition.get('anchor_lon')
             radius = start_condition.get('radius', 100)       # meters
@@ -313,8 +316,28 @@ class GPSTriggerMonitor:
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
             logger.debug(f"Monitor '{monitor_id}': {distance:.1f}m from configured anchor ({anchor_lat},{anchor_lon})")
 
-            if distance > radius:
-                # Outside the anchor zone
+            inside = distance <= radius
+
+            if inside:
+                # Vessel is inside the anchor zone — arm departure detection
+                if not state.get('seen_inside_anchor', False):
+                    logger.info(
+                        f"Monitor '{monitor_id}': vessel confirmed inside anchor zone "
+                        f"({distance:.1f}m <= {radius}m), departure detection armed"
+                    )
+                state['seen_inside_anchor'] = True
+                state['condition_start_time'] = None
+            else:
+                # Outside anchor zone
+                if not state.get('seen_inside_anchor', False):
+                    # Haven't confirmed the vessel was inside yet — ignore until it is
+                    logger.debug(
+                        f"Monitor '{monitor_id}': vessel outside anchor zone at startup "
+                        f"({distance:.1f}m > {radius}m), waiting to confirm inside before arming"
+                    )
+                    return
+
+                # Start departure timer
                 if state['condition_start_time'] is None:
                     state['condition_start_time'] = timestamp
                     logger.debug(f"Monitor '{monitor_id}': departed anchor zone ({distance:.1f}m > {radius}m radius)")
@@ -324,9 +347,6 @@ class GPSTriggerMonitor:
                         logger.info(f"Monitor '{monitor_id}': START trigger (anchor departure {distance:.1f}m for {elapsed:.0f}s)")
                         self._trigger_start(monitor_id, monitor, state)
                         state['condition_start_time'] = None
-            else:
-                # Still inside anchor zone, reset timer
-                state['condition_start_time'] = None
 
         else:
             logger.warning(f"Monitor '{monitor_id}': unknown start condition type '{condition_type}'")

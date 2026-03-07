@@ -48,3 +48,6 @@ build/
 pyemonlib.egg-info/
 __pycache__/
 
+#testing data for event_recorder
+python/event_recorder/test_event_recorder/data/
+python/event_recorder/test_event_recorder/data_old/

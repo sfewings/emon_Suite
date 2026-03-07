@@ -96,7 +96,7 @@ events:
     wordpress:
       site: "default_site"               # Reference to wordpress.default_site in main config
       category: "Track Logs"
-      auto_publish: false                # Manual review before publish
+      auto_publish: true                # Manual review before publish
       template: |
         <h2>Track Summary</h2>
         <p><strong>Date:</strong> {start_time}</p>
@@ -203,7 +203,7 @@ events:
     wordpress:
       site: "default_site"               # Reference to wordpress.default_site in main config
       category: "Anchor Logs"
-      auto_publish: false                # Manual review before publish
+      auto_publish: true                # Manual review before publish
       template: |
         <h2>Track Summary</h2>
         <p><strong>Date:</strong> {start_time}</p>
