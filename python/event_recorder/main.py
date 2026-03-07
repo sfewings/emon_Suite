@@ -351,13 +351,17 @@ class EventRecorderService:
         logger.info("Recording status publisher started (1 s interval, topic: event_recorder/recording/<id>/status)")
 
     def _status_publisher_loop(self):
-        """Publish recording status every second for each active recording."""
+        """Publish recording status every second for each active recording.
+
+        Queries the database rather than relying on the in-memory
+        active_recordings dict so that manually-started recordings (via the
+        web interface) are also included.
+        """
         while self.running:
             try:
-                # Snapshot active_recordings to avoid races with trigger callbacks
-                active = list(self.active_recordings.items())
-                for _monitor_id, recording_id in active:
-                    self._publish_recording_status(recording_id)
+                active = self.database.get_recordings_by_status(RecordingStatus.ACTIVE)
+                for recording in active:
+                    self._publish_recording_status(recording['id'])
             except Exception as e:
                 logger.debug(f"Status publisher loop error: {e}")
             time.sleep(1)
