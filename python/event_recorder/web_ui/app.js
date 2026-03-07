@@ -73,6 +73,7 @@ function switchView(viewName) {
             break;
         case 'settings':
             loadWordPressSettings();
+            loadSettings();
             break;
     }
 }
@@ -645,6 +646,37 @@ async function loadWordPressSettings() {
                 Generate an Application Password in WordPress: Users &rarr; Profile &rarr; Application Passwords
             </p>
         `;
+    }
+}
+
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        if (data.success) {
+            const toggle = document.getElementById('autoProcessOnStop');
+            if (toggle) toggle.checked = data.settings.auto_process_on_stop;
+        }
+    } catch (error) {
+        console.error('Failed to load settings:', error);
+    }
+}
+
+async function saveAutoProcessSetting(enabled) {
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_process_on_stop: enabled })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showToast(enabled ? 'Auto-process enabled' : 'Auto-process disabled', 'success');
+        } else {
+            showToast('Failed to save setting', 'error');
+        }
+    } catch (error) {
+        showToast('Failed to save setting', 'error');
     }
 }
 

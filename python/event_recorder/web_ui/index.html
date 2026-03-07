@@ -193,6 +193,20 @@
                 </section>
 
                 <section class="card">
+                    <h3>Recording Behaviour</h3>
+                    <div class="toggle-row">
+                        <span class="toggle-label">Auto-process recording when stopped</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoProcessOnStop" onchange="saveAutoProcessSetting(this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-light);">
+                        When enabled, processing starts automatically as soon as a recording stops.
+                    </p>
+                </section>
+
+                <section class="card">
                     <h3>Configuration</h3>
                     <p>Configuration files are managed via YAML files:</p>
                     <ul>

@@ -308,7 +308,27 @@ class EventRecorderService:
         if monitor_id in self.active_recordings:
             del self.active_recordings[monitor_id]
 
-        # TODO: Trigger data processing (Phase 2)
+        # Auto-process if setting is enabled
+        if self.database.get_setting('auto_process_on_stop', 'false') == 'true':
+            t = threading.Thread(
+                target=self._auto_process_recording,
+                args=(recording_id,),
+                daemon=True,
+                name=f"AutoProcess-{recording_id}"
+            )
+            t.start()
+            logger.info(f"Auto-processing started for recording {recording_id}")
+
+    def _auto_process_recording(self, recording_id: int):
+        """Background thread: process a recording after it stops."""
+        try:
+            logger.info(f"Auto-processing recording {recording_id}")
+            from .data_processor import DataProcessor
+            processor = DataProcessor(self.database, str(self.data_dir / "plots"))
+            processor.process_recording(recording_id)
+            logger.info(f"Auto-processing complete for recording {recording_id}")
+        except Exception as e:
+            logger.error(f"Auto-processing failed for recording {recording_id}: {e}")
 
     def _start_status_publisher(self):
         """Connect a dedicated MQTT client and start the 1-second status publisher thread."""

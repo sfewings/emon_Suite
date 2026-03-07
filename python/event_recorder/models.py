@@ -125,6 +125,20 @@ class Database:
                 conn.execute("DROP TABLE recordings_old")
                 logger.info("Migration complete: recordings table updated")
 
+            # Add service_settings table if missing
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='service_settings'"
+            )
+            if not cursor.fetchone():
+                logger.info("Migrating: adding service_settings table")
+                conn.execute("""
+                    CREATE TABLE service_settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                """)
+                logger.info("Migration complete: service_settings table added")
+
             # Add recording_exports table if missing
             cursor = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='recording_exports'"
@@ -239,6 +253,14 @@ class Database:
                     enabled BOOLEAN DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Service settings table - key/value store for runtime settings
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS service_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
                 )
             """)
 
@@ -580,6 +602,25 @@ class Database:
         """Delete export record (does not delete the file on disk)."""
         with self.get_connection() as conn:
             conn.execute("DELETE FROM recording_exports WHERE id = ?", (export_id,))
+
+    # === Service Settings Operations ===
+
+    def get_setting(self, key: str, default: str = None) -> Optional[str]:
+        """Get a service setting value by key."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT value FROM service_settings WHERE key = ?", (key,)
+            )
+            row = cursor.fetchone()
+            return row['value'] if row else default
+
+    def set_setting(self, key: str, value: str):
+        """Set a service setting value (insert or replace)."""
+        with self.get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO service_settings (key, value) VALUES (?, ?)",
+                (key, value)
+            )
 
     # === Configuration Operations ===
 

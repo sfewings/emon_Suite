@@ -561,6 +561,34 @@ class WebInterface:
                 logger.error(f"WordPress test error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
 
+        # === Service Settings ===
+        @self.app.route('/api/settings', methods=['GET'])
+        def get_settings():
+            """Get service settings."""
+            try:
+                return jsonify({
+                    'success': True,
+                    'settings': {
+                        'auto_process_on_stop': self.database.get_setting('auto_process_on_stop', 'false') == 'true'
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Get settings error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/api/settings', methods=['POST'])
+        def update_settings():
+            """Update service settings."""
+            try:
+                data = request.get_json()
+                if 'auto_process_on_stop' in data:
+                    value = 'true' if data['auto_process_on_stop'] else 'false'
+                    self.database.set_setting('auto_process_on_stop', value)
+                return jsonify({'success': True})
+            except Exception as e:
+                logger.error(f"Update settings error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
         # === Image Management ===
         @self.app.route('/api/recordings/<int:recording_id>/images', methods=['POST'])
         def upload_image(recording_id):
