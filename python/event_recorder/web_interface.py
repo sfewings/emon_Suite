@@ -8,6 +8,7 @@ Follows pattern from emon_settings_web.py.
 import json
 import os
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -355,9 +356,34 @@ class WebInterface:
                     end_time=datetime.utcnow()
                 )
 
+                # Auto-process if setting is enabled (mirrors _on_trigger_stop in main.py)
+                auto_processing = False
+                if self.database.get_setting('auto_process_on_stop', 'false') == 'true':
+                    plots_dir = str(self.plots_dir)
+                    database = self.database
+
+                    def _auto_process():
+                        try:
+                            from .data_processor import DataProcessor
+                            processor = DataProcessor(database, plots_dir)
+                            processor.process_recording(recording_id)
+                            logger.info(f"Auto-processing complete for recording {recording_id}")
+                        except Exception as e:
+                            logger.error(f"Auto-processing failed for recording {recording_id}: {e}")
+
+                    t = threading.Thread(
+                        target=_auto_process,
+                        daemon=True,
+                        name=f"AutoProcess-{recording_id}"
+                    )
+                    t.start()
+                    auto_processing = True
+                    logger.info(f"Auto-processing started for recording {recording_id}")
+
                 return jsonify({
                     'success': True,
-                    'message': f'Recording {recording_id} stopped'
+                    'message': f'Recording {recording_id} stopped',
+                    'auto_processing': auto_processing
                 })
 
             except Exception as e:
