@@ -490,7 +490,20 @@ class WebInterface:
                 data = request.get_json() or {}
                 category = data.get('category', 'Track Logs')
                 template = data.get('template', None)
-                auto_publish = data.get('auto_publish', False)
+
+                # Determine default publish mode from the main config's publish_status.
+                # publish_status: "publish" → auto_publish=True (post goes live immediately)
+                # publish_status: "draft"   → auto_publish=False (post saved as draft)
+                # The request body can still override this with an explicit auto_publish value.
+                default_auto_publish = False
+                if self.service_manager:
+                    try:
+                        wp_cfg = self.service_manager.config.get_wordpress_config()
+                        if wp_cfg:
+                            default_auto_publish = wp_cfg.get('publish_status', 'draft') == 'publish'
+                    except Exception:
+                        pass
+                auto_publish = data.get('auto_publish', default_auto_publish)
 
                 # Load statistics JSON sidecar if present; exclude the PNG from uploads
                 statistics = None
