@@ -39,7 +39,7 @@ if __name__ == '__main__':
     numSatellites = 0   #update from SKY class and transmit as our RSSI !
     with GPSDClient(host="127.0.0.1") as client:
        for report in client.dict_stream(convert_datetime=True):
-         if report['class'] == 'SKY':
+         if report['class'] == 'SKY' and 'uSat' in report.values():
              numSatellites = report['uSat']
          if report['class'] == 'TPV':
             log_message(logPath, report)
