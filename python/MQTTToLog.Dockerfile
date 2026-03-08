@@ -1,11 +1,13 @@
 FROM python:3.13
 ARG TARGETARCH
-RUN pip3 install pytz
-COPY ./platform.sh ./
+RUN apt-get update
+RUN pip3 install numpy pytz
 #writes platform specific wheel filename to /.platform_whl
+COPY ./platform.sh ./  
 COPY ./pyEmon/dist/* ./
 RUN ./platform.sh 
 RUN pip install $(cat /.platform_whl)
+#container specific dependencies from here down
 COPY ./emonMQTTToLog.py ./
 RUN mkdir -p /share/Input
 ENV MQTT_IP=localhost

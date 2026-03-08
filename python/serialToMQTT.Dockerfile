@@ -1,14 +1,14 @@
 FROM python:3.13
 ARG TARGETARCH
-#update for numpy dependencies
-RUN apt-get update && apt-get install -y cmake
-RUN pip3 install numpy
-RUN pip install pyserial
+RUN apt-get update
+RUN pip3 install numpy pytz
 #writes platform specific wheel filename to /.platform_whl
-COPY ./platform.sh ./
+COPY ./platform.sh ./  
 COPY ./pyEmon/dist/* ./
 RUN ./platform.sh 
 RUN pip install $(cat /.platform_whl)
+#container specific dependencies from here down
+RUN pip install pyserial
 COPY ./emonSerialToMQTT.py ./
 ENV MQTT_IP=localhost
 ENV SERIAL_PORT=/dev/ttyUSB0
