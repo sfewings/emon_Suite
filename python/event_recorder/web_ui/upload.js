@@ -9,6 +9,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const preselectedId = urlParams.get('recording_id') ? parseInt(urlParams.get('recording_id')) : null;
 
 let selectedFile = null;
+let recordingsCache = [];  // Cached list so we can populate title/description on select
 
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', () => {
@@ -49,6 +50,8 @@ async function loadRecordings() {
             return new Date(b.start_time) - new Date(a.start_time);
         });
 
+        recordingsCache = usable;
+
         select.innerHTML = usable.map(r => {
             const liveTag = r.status === 'active' ? '🔴 LIVE — ' : '';
             const dateStr = r.start_time
@@ -66,10 +69,23 @@ async function loadRecordings() {
             }
         }
 
+        // Populate title/description for the initially-selected recording
+        onRecordingChange();
+
     } catch (err) {
         console.error('Failed to load recordings:', err);
         select.innerHTML = '<option value="">Error loading recordings</option>';
     }
+}
+
+// === Populate title and description when recording selection changes ===
+function onRecordingChange() {
+    const select = document.getElementById('recordingSelect');
+    const id = parseInt(select.value);
+    const recording = recordingsCache.find(r => r.id === id);
+
+    document.getElementById('postTitle').value = recording ? (recording.name || '') : '';
+    document.getElementById('postDescription').value = recording ? (recording.description || '') : '';
 }
 
 // === File input: show preview and enable upload button ===
@@ -99,6 +115,8 @@ function showPreview(file) {
 // === Upload photo ===
 async function uploadPhoto() {
     const recordingId = document.getElementById('recordingSelect').value;
+    const title = document.getElementById('postTitle').value.trim();
+    const description = document.getElementById('postDescription').value.trim();
     const byline = document.getElementById('photoByline').value.trim();
 
     if (!recordingId) {
@@ -115,13 +133,37 @@ async function uploadPhoto() {
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Uploading…';
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    if (byline) {
-        formData.append('caption', byline);
-    }
-
     try {
+        // Save title and description to the recording if either has changed
+        const cached = recordingsCache.find(r => r.id === parseInt(recordingId));
+        const titleChanged = title && cached && title !== (cached.name || '');
+        const descChanged = description !== (cached ? (cached.description || '') : '');
+
+        if (titleChanged || descChanged) {
+            const updateBody = {};
+            if (titleChanged) updateBody.name = title;
+            if (descChanged) updateBody.description = description;
+
+            await fetch(`/api/recordings/${recordingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updateBody)
+            });
+
+            // Update cache so a second upload reflects the saved values
+            if (cached) {
+                if (titleChanged) cached.name = title;
+                if (descChanged) cached.description = description;
+            }
+        }
+
+        // Upload the photo
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        if (byline) {
+            formData.append('caption', byline);
+        }
+
         const response = await fetch(`/api/recordings/${recordingId}/images`, {
             method: 'POST',
             body: formData
@@ -130,20 +172,25 @@ async function uploadPhoto() {
         const data = await response.json();
 
         if (data.success) {
-            showResult('✓ Photo uploaded successfully!', 'success');
+            showResult('Photo uploaded successfully!', 'success');
             resetForm();
         } else {
             showResult(`Upload failed: ${data.error}`, 'error');
             uploadBtn.disabled = false;
-            uploadBtn.textContent = '⬆️ Upload Photo';
+            restoreUploadBtn();
         }
 
     } catch (err) {
         console.error('Upload failed:', err);
         showResult('Upload failed. Please check your connection and try again.', 'error');
         uploadBtn.disabled = false;
-        uploadBtn.textContent = '⬆️ Upload Photo';
+        restoreUploadBtn();
     }
+}
+
+function restoreUploadBtn() {
+    const btn = document.getElementById('uploadBtn');
+    btn.innerHTML = `<svg style="width:1em;height:1em;vertical-align:-0.125em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload Photo`;
 }
 
 // === Reset form after successful upload ===
@@ -153,8 +200,9 @@ function resetForm() {
     document.getElementById('photoByline').value = '';
     document.getElementById('previewImg').style.display = 'none';
     document.getElementById('previewPlaceholder').style.display = 'block';
-    document.getElementById('uploadBtn').disabled = true;
-    document.getElementById('uploadBtn').textContent = '⬆️ Upload Photo';
+    const btn = document.getElementById('uploadBtn');
+    btn.disabled = true;
+    restoreUploadBtn();
 }
 
 // === Show result message ===
