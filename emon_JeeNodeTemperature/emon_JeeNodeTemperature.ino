@@ -15,7 +15,7 @@
 
 
 #define NETWORK_FREQUENCY 915.0
-#define WHISPER_NODE 1
+#define WHISPER_NODE 0
 
 
 //---------------------------------------------------------------------------------------------------
@@ -37,8 +37,8 @@ int numberOfDevices;								//The number of temperature sensors connected to the
 PayloadTemperature temperaturePayload;
 
 //moving average buffer and index
-#define READING_HISTORY 4		//number of values to average over
-#define SLEEP_DELAY 30000		//ms between readings and transmit
+#define READING_HISTORY 2		//number of values to average over
+#define SLEEP_DELAY 10000		//ms between readings and transmit
 int readings[MAX_TEMPERATURE_SENSORS][READING_HISTORY];
 int readingIndex = 0;
 
@@ -248,7 +248,7 @@ void loop()
 				//despike the reading
 				for (int j = 0; j < READING_HISTORY; j++)
 					reading += readings[readingNum][j];
-				if( abs(thisReading - reading / READING_HISTORY) <100)  //if the difference of thisReading < 10c of our history we are good to use the value
+//				if( abs(thisReading - reading / READING_HISTORY) <2000)  //if the difference of thisReading < 20c of our history we are good to use the value
 				{
 					readings[readingNum][readingIndex] = thisReading;
 					reading = 0;
@@ -256,6 +256,10 @@ void loop()
 						reading += readings[readingNum][j];
 					temperaturePayload.temperature[readingNum] = reading / READING_HISTORY;
 				}
+				// else
+				// {
+				// 	Serial.print("Reading spike rejected on "); Serial.print(i);Serial.print(". Average reading:");Serial.print(reading/READING_HISTORY); Serial.print(". This reading:");Serial.println(thisReading);
+				// }
 				readingNum++;
 			}
 		}

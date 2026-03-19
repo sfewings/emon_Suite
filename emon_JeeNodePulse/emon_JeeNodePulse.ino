@@ -10,6 +10,8 @@
 //--------------------------------------------------------------------------------------
 #define TIMEOUT_PERIOD 420000		//7 minutes in ms. don't report watts if no tick recieved in 2 minutes.
 #define EEPROM_BASE 0x10	//where the pulse count is stored
+#define NETWORK_FREQUENCY 915.0
+#define LED_PIN 9
 
 RH_RF69 g_rf69;
 
@@ -22,6 +24,7 @@ PayloadPulse g_pulsePayload;
 
 int g_currentHour;
 
+const uint8_t PUSLE_INSTALLED_SENSORS = 1;	//number of sensors in this instance 
 
 unsigned long readEEPROM(int offset)
 {
@@ -118,6 +121,9 @@ unsigned long MeterTotalWatts(int channel)
 
 void setup()
 {
+	pinMode( LED_PIN, OUTPUT);
+	digitalWrite(LED_PIN, HIGH);
+
 	Serial.begin(9600);					//fast serial 
 	delay(1000);
 	Serial.println(F("Fewings emon Pulse"));
@@ -132,8 +138,12 @@ void setup()
 
 	if (!g_rf69.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(915.0))
+	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf69 setFrequency failed");
+	else
+	{
+		Serial.print("rf69 started on "); Serial.print(NETWORK_FREQUENCY); Serial.println("MHz");
+	}
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
@@ -152,7 +162,9 @@ void setup()
 		g_pulsePayload.power[i] = 0;
 		g_pulseCount[i] = readEEPROM(i * sizeof(unsigned long));
 		g_pulsePayload.pulse[i] = (unsigned long) (g_pulseCount[i] / g_pulsePerWH[i]); // convert from number of pulses since recoding started to wHrs since start
-
+	}
+	for(int i=0; i< PUSLE_INSTALLED_SENSORS; i++)
+	{
 		pinMode(g_pin[i], INPUT_PULLUP);
 		attachPinChangeInterrupt(g_pin[i], interruptHandlerIR, RISING);
 	}
@@ -162,6 +174,8 @@ void setup()
 	g_currentHour = hour();
 
 	EmonSerial::PrintPulsePayload(NULL);
+
+	digitalWrite(LED_PIN, LOW);
 	
 	Serial.println("---------------------------------------");
 }
@@ -170,7 +184,7 @@ void setup()
 void loop()
 {
 	//read values
-	for (int i = 0; i < PULSE_MAX_SENSORS; i++)
+	for (int i = 0; i < PUSLE_INSTALLED_SENSORS; i++)
 	{
 		g_pulsePayload.power[i] = MeterCurrentWatts(i);
 		g_pulsePayload.pulse[i] = MeterTotalWatts(i);
@@ -199,12 +213,15 @@ void loop()
 	g_rf69.send((const uint8_t*) &g_pulsePayload, sizeof (PayloadPulse));
 	if( g_rf69.waitPacketSent() )
 	{
+		digitalWrite(LED_PIN, HIGH);
 		EmonSerial::PrintPulsePayload(&g_pulsePayload);
 	}
 	else
 	{
 		Serial.println(F("No packet sent"));
 	}
+
+	digitalWrite(LED_PIN, LOW);
 
 	delay(2000);		//2s delay	
 }
