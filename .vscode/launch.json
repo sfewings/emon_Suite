@@ -47,13 +47,13 @@
             "console": "integratedTerminal",
             "args": [
                 "-f",
-                "${workspaceFolder}/python/event_recorder/test_event_recorder/data/20250904.TXT",
+                "/share/Input/20260211.TXT",
                 "-m",
                 "localhost",
                 "-s",
-                "${workspaceFolder}/python/event_recorder/test_event_recorder/emon_config/",
+                "/share/emon_Suite/provisioning/enchantee/emon_config/",
                 "-l",
-                "${workspaceFolder}/python/event_recorder/test_event_recorder/output",
+                "/share/Output/emonCSVToMQTT",
                 "-x",
                 "1"
             ],

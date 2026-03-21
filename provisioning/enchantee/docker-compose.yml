@@ -170,6 +170,26 @@ services:
       - 9000:9000
       - 9443:9443
 
+  event_recorder:
+    image: sfewings32/emon_event_recorder:latest
+    container_name: event_recorder
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - WP_SITE_URL=${WP_SITE_URL}
+      - WP_USERNAME=${WP_USERNAME}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      - TZ=${TIMEZONE}
+      #- DEBUG=1  # Set DEBUG=1 to enable debugpy
+      #- WAIT_FOR_DEBUGGER=1  # Set WAIT_FOR_DEBUGGER=1 to wait for debugger
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
 
 volumes:
   influxdb-storage:
@@ -178,3 +198,4 @@ volumes:
   mosquitto-logs:
   mosquitto-conf:
   portainer-data:
+  mysql-data:
