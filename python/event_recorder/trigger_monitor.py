@@ -270,15 +270,17 @@ class GPSTriggerMonitor:
             # Need anchor position to calculate distance from
             if state['last_position'] is None:
                 state['last_position'] = (lat, lon, timestamp)
+                state['stationary_start_time'] = timestamp
                 return
 
             anchor_lat, anchor_lon, anchor_time = state['last_position']
 
-            # Calculate distance from anchor (last stationary position)
+            # Calculate distance from anchor (last confirmed stationary position)
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
             logger.debug(f"Monitor '{monitor_id}': distance from anchor = {distance:.1f}m")
             if distance > distance_threshold:
-                # Vessel has moved away from anchor
+                # Vessel has moved away from anchor — reset stationary timer
+                state['stationary_start_time'] = None
                 if state['condition_start_time'] is None:
                     state['condition_start_time'] = timestamp
                     logger.debug(f"Monitor '{monitor_id}': movement detected ({distance:.1f}m from anchor)")
@@ -294,9 +296,18 @@ class GPSTriggerMonitor:
                         state['last_position'] = (lat, lon, timestamp)
                 # Don't update anchor while movement is being tracked
             else:
-                # Still near anchor, reset timer and update anchor
+                # Still near anchor — reset movement timer.
+                # Only advance the anchor once the vessel has been continuously near
+                # it for the full trigger 'duration'. This prevents the anchor from
+                # sliding along with a slowly-accelerating vessel: without this guard
+                # each 1-2 s GPS update moves the anchor by ~2m, so the vessel can
+                # never accumulate the required distance_threshold even while moving.
                 state['condition_start_time'] = None
-                state['last_position'] = (lat, lon, timestamp)
+                if state['stationary_start_time'] is None:
+                    state['stationary_start_time'] = timestamp
+                elif (timestamp - state['stationary_start_time']).total_seconds() >= duration:
+                    state['last_position'] = (lat, lon, timestamp)
+                    logger.debug(f"Monitor '{monitor_id}': anchor advanced (stationary ≥{duration}s near anchor)")
 
         elif condition_type == 'anchor_departure':
             # Start recording when vessel moves outside a fixed anchor location.
