@@ -112,7 +112,9 @@ class EventRecorderService:
             self.wordpress_publisher = WordPressPublisher(
                 site_url=wp_config.get('site_url'),
                 username=wp_config.get('username'),
-                app_password=wp_config.get('app_password')
+                app_password=wp_config.get('app_password'),
+                http_auth_username=wp_config.get('http_auth_username') or None,
+                http_auth_password=wp_config.get('http_auth_password') or None,
             )
         else:
             self.wordpress_publisher = None

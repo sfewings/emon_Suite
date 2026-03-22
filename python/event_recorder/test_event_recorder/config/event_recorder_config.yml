@@ -28,11 +28,13 @@ plots:
 # WordPress configuration
 wordpress:
   default_site:
-    site_url: "${WP_SITE_URL}"           # WordPress site URL (from env var)
-    username: "${WP_USERNAME}"           # WordPress username (from env var)
-    app_password: "${WP_APP_PASSWORD}"   # Application password (from env var)
-    category: "Track Logs"               # Default post category
-    publish_status: "draft"              # Post status: "draft" or "publish"
+    site_url: "${WP_SITE_URL}"                     # WordPress site URL (from env var)
+    username: "${WP_USERNAME}"                     # WordPress username (from env var)
+    app_password: "${WP_APP_PASSWORD}"             # Application password (from env var)
+    category: "Track Logs"                         # Default post category
+    publish_status: "draft"                        # Post status: "draft" or "publish"
+    http_auth_username: "${WP_HTTP_AUTH_USERNAME}" # Site gate username (optional)
+    http_auth_password: "${WP_HTTP_AUTH_PASSWORD}" # Site gate password (optional)
 
   retry_attempts: 3                      # Retry attempts for failed posts
   retry_delay: 2                         # Retry delay (seconds, exponential backoff)
