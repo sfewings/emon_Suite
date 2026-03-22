@@ -44,6 +44,66 @@ class DataProcessor:
     - Statistics summary tables
     """
 
+    # ── Automatic plot grouping / labelling tables ────────────────────────────
+
+    # Keyword → Y-axis unit string.  The first matching keyword wins.
+    _TOPIC_UNITS: Dict[str, str] = {
+        'windspeed':     'm/s',
+        'winddirection': '°',
+        'temperature':   '°C',
+        'speed':         'knots',
+        'course':        '°',
+        'heading':       '°',
+        'acc':           'm/s²',
+        'gyro':          '°/s',
+        'mag':           'µT',
+        'pressure':      'hPa',
+        'humidity':      '%',
+        'voltage':       'V',
+        'power':         'W',
+        'current':       'A',
+        'energy':        'Wh',
+        'altitude':      'm',
+        'elevation':     'm',
+        'distance':      'km',
+        'rssi':          'dBm',
+        'rpm':           'RPM',
+        'throttle':      '%',
+    }
+
+    # Sets of keywords: topic groups whose keys contain ANY keyword in a set
+    # are merged into a single chart (e.g. "course" and "heading" together).
+    _SEMANTIC_MERGE_GROUPS: List[frozenset] = [
+        frozenset({'heading', 'course'}),
+    ]
+
+    # Human-readable overrides for individual MQTT path components.
+    _TOPIC_COMPONENT_NAMES: Dict[str, str] = {
+        'imu':           'IMU',
+        'gps':           'GPS',
+        'rssi':          'RSSI',
+        'bms':           'BMS',
+        'acc':           'Acceleration',
+        'gyro':          'Gyroscope',
+        'mag':           'Magnetometer',
+        'windSpeed':     'Wind Speed',
+        'windDirection': 'Wind Direction',
+        'windspeed':     'Wind Speed',
+        'winddirection': 'Wind Direction',
+    }
+
+    # Axis labels used for 3-axis sensors (acc / gyro / mag).
+    _AXIS_LABELS: Dict[int, str] = {0: 'X', 1: 'Y', 2: 'Z'}
+    _AXIS_TOPICS: frozenset = frozenset({'acc', 'gyro', 'mag'})
+
+    # Colour cycle for auto-generated series.
+    _AUTO_COLORS: List[str] = [
+        '#667eea', '#e05c5c', '#48cae4', '#f72585',
+        '#2ec4b6', '#ff9f1c', '#a8dadc', '#6d6875',
+    ]
+
+    # ─────────────────────────────────────────────────────────────────────────
+
     def __init__(self, database: Database, plots_dir: str = "/data/plots"):
         """
         Initialize data processor.
@@ -68,64 +128,79 @@ class DataProcessor:
         """
         Auto-generate plot configurations from recorded topics.
 
-        Queries the database for all topics in the recording and creates
-        a line plot for each numeric topic. GPS latitude/longitude pairs
-        are combined into a route map instead of individual line plots.
+        Related topics are grouped into a single multi-line chart rather
+        than producing one chart per topic feed.  Grouping rules:
+
+        1.  GPS latitude/longitude pairs → interactive route map.
+        2.  Topics that share the same path prefix (after stripping the
+            trailing numeric channel index) are placed on one chart.
+            e.g. anemometer/temperature/0,1,2 → one "Temperature" chart.
+        3.  Semantic merge rules combine cross-family topics that are
+            logically the same quantity (e.g. gps/course/* + imu/0/heading).
+
+        Y-axis labels (with units) and series legend labels are assigned
+        automatically from lookup tables, but can be overridden by passing
+        an explicit plot_config.
 
         Args:
             recording_id: Recording ID
 
         Returns:
-            List of plot configuration dicts
+            List of plot configuration dicts (all type 'multi_line' or 'map')
         """
         topics = self.database.get_recording_topics(recording_id)
         if not topics:
             return []
 
         plot_config = []
-        skip_topics = set()
+        skip_topics: set = set()
 
-        # Check for GPS lat/lon pair → route map
+        # ── 1. GPS lat/lon pairs → route maps ─────────────────────────────
         lat_topics = [t for t in topics if 'latitude' in t.lower()]
         lon_topics = [t for t in topics if 'longitude' in t.lower()]
 
         for i, lat_topic in enumerate(lat_topics):
-            # Find matching longitude topic: primary strategy is direct string replacement
-            # e.g. "gps/latitude/0" → "gps/longitude/0"
             expected_lon = lat_topic.replace('latitude', 'longitude')
             matching_lon = [t for t in lon_topics if t == expected_lon]
             if not matching_lon:
-                # Fallback: suffix matching for non-standard topic formats
                 suffix = lat_topic.split('latitude')[-1]
                 if suffix:
                     matching_lon = [t for t in lon_topics if t.endswith(suffix)]
             if matching_lon:
-                # Use a unique title per GPS stream so each map gets its own filename.
-                # With a single stream the title is plain "Route Map"; with multiple
-                # streams it becomes "Route Map 0", "Route Map 1", etc.
                 title = 'Route Map' if len(lat_topics) == 1 else f'Route Map {i}'
                 plot_config.append({
                     'type': 'map',
                     'title': title,
-                    'topics': [lat_topic, matching_lon[0]]
+                    'topics': [lat_topic, matching_lon[0]],
                 })
                 skip_topics.add(lat_topic)
                 skip_topics.add(matching_lon[0])
 
-        # Generate line plot for each remaining topic
-        for topic in topics:
-            if topic in skip_topics:
-                continue
+        # ── 2. Group remaining topics by structural prefix ─────────────────
+        remaining = [t for t in topics if t not in skip_topics]
+        groups: Dict[str, List[str]] = defaultdict(list)
+        for topic in remaining:
+            groups[self._topic_group_key(topic)].append(topic)
 
-            # Build a readable title from topic path
-            title = self._topic_to_title(topic)
+        # ── 3. Apply semantic merges (e.g. heading + course) ───────────────
+        groups = self._apply_semantic_merges(dict(groups))
 
+        # ── 4. Build one multi_line spec per group ─────────────────────────
+        for group_topics in sorted(groups.values(), key=lambda g: g[0]):
+            group_topics = sorted(group_topics)
+            title   = self._group_plot_title(group_topics)
+            ylabel  = self._group_ylabel(group_topics)
+            labels  = self._group_series_labels(group_topics)
+            colors  = [self._AUTO_COLORS[i % len(self._AUTO_COLORS)]
+                       for i in range(len(group_topics))]
             plot_config.append({
-                'type': 'line',
-                'title': title,
-                'topics': [topic],
-                'ylabel': 'Value',
-                'color': '#667eea'
+                'type':   'multi_line',
+                'title':  title,
+                'topics': group_topics,
+                'labels': labels,
+                'ylabel': ylabel,
+                'colors': colors,
+                'legend': True,
             })
 
         logger.info(f"Auto-generated {len(plot_config)} plot configs from {len(topics)} topics")
@@ -146,6 +221,155 @@ class DataProcessor:
             else:
                 titled.append(part.capitalize())
         return ' '.join(titled)
+
+    # ── Grouping helpers ──────────────────────────────────────────────────────
+
+    def _readable_component(self, part: str) -> str:
+        """Return a human-readable label for one MQTT path component."""
+        override = (self._TOPIC_COMPONENT_NAMES.get(part)
+                    or self._TOPIC_COMPONENT_NAMES.get(part.lower()))
+        if override:
+            return override
+        if len(part) <= 4 and part.isalpha():
+            return part.upper()
+        return part.capitalize()
+
+    def _topic_group_key(self, topic: str) -> str:
+        """
+        Return the grouping key for a topic.
+
+        The key is the topic path with the trailing numeric channel/axis index
+        stripped, so that anemometer/temperature/0,1,2 all map to the same
+        key 'anemometer/temperature'.
+        """
+        parts = topic.split('/')
+        if parts and parts[-1].isdigit():
+            return '/'.join(parts[:-1])
+        return topic
+
+    def _apply_semantic_merges(self, groups: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """
+        Merge groups whose keys share semantic meaning.
+
+        Uses _SEMANTIC_MERGE_GROUPS: each entry is a frozenset of keywords;
+        any group key containing at least one keyword from the set is merged
+        with the others in the same set.
+        """
+        for keywords in self._SEMANTIC_MERGE_GROUPS:
+            matching = [k for k in list(groups.keys())
+                        if any(kw in k.lower() for kw in keywords)]
+            if len(matching) > 1:
+                primary = min(matching)   # deterministic: alphabetically first
+                for key in matching:
+                    if key != primary:
+                        groups[primary].extend(groups.pop(key))
+        return groups
+
+    def _group_plot_title(self, topics: List[str]) -> str:
+        """
+        Derive a chart title from the group of topics.
+
+        Finds the longest common MQTT path prefix (ignoring numeric components)
+        and converts it to a readable title.  When topics come from entirely
+        different topic families (semantic merge), the distinct roots are
+        joined with ' / '.
+        """
+        split_topics = [t.split('/') for t in topics]
+        common: List[str] = []
+        for components in zip(*split_topics):
+            unique = set(components)
+            if len(unique) == 1 and not list(unique)[0].isdigit():
+                common.append(list(unique)[0])
+            else:
+                break
+
+        if common:
+            return ' '.join(self._readable_component(p) for p in common)
+
+        # No common non-numeric prefix — combine root-level family names
+        roots = sorted({t.split('/')[0] for t in topics})
+        return ' / '.join(self._readable_component(r) for r in roots)
+
+    def _group_ylabel(self, topics: List[str]) -> str:
+        """
+        Return the Y-axis label (with units) for a group of topics.
+
+        Searches the combined topic strings for the first matching keyword
+        in _TOPIC_UNITS.  Longer/more-specific keywords are tried first.
+        """
+        combined = ' '.join(topics).lower()
+        # Sort by keyword length descending so more-specific terms win
+        for keyword, unit in sorted(self._TOPIC_UNITS.items(),
+                                    key=lambda kv: -len(kv[0])):
+            if keyword in combined:
+                return unit
+        return 'Value'
+
+    def _topic_readable_name(self, topic: str) -> str:
+        """
+        Full readable name for a topic, skipping non-terminal numeric parts.
+
+        e.g. 'imu/0/heading' → 'IMU Heading'
+             'gps/course/0'  → 'GPS Course 0'
+        """
+        parts = topic.split('/')
+        readable = []
+        for i, part in enumerate(parts):
+            is_last = (i == len(parts) - 1)
+            if part.isdigit() and not is_last:
+                continue   # skip node-ID digits in the middle
+            readable.append(self._readable_component(part))
+        return ' '.join(readable)
+
+    def _group_series_labels(self, topics: List[str]) -> List[str]:
+        """
+        Generate per-series legend labels for the topics in a group.
+
+        Strategy:
+        - Find the longest common MQTT path prefix shared by all topics.
+        - When topics share a prefix (same family, different channel index):
+            * Single trailing digit on a 3-axis sensor (acc/gyro/mag) → X/Y/Z
+            * Single trailing digit on anything else → the digit as a string
+            * Multi-part suffix → readable form of the suffix
+        - When there is no common prefix (topics from different families,
+          e.g. after a semantic merge) → full readable name for each topic.
+        """
+        if len(topics) == 1:
+            return [self._topic_readable_name(topics[0])]
+
+        # Find how many leading path components are identical across all topics
+        split_topics = [t.split('/') for t in topics]
+        common_len = 0
+        for components in zip(*split_topics):
+            if len(set(components)) == 1:
+                common_len += 1
+            else:
+                break
+
+        labels = []
+        for topic in topics:
+            parts = topic.split('/')
+            suffix = parts[common_len:]
+
+            if not suffix or common_len == 0:
+                # No (or empty) common prefix → use the full readable name
+                labels.append(self._topic_readable_name(topic))
+                continue
+
+            if len(suffix) == 1 and suffix[0].isdigit():
+                idx = int(suffix[0])
+                # 3-axis sensors get X / Y / Z labels
+                if any(kw in topic.lower() for kw in self._AXIS_TOPICS):
+                    labels.append(self._AXIS_LABELS.get(idx, str(idx)))
+                else:
+                    labels.append(str(idx))
+            else:
+                # Multi-component suffix → readable, skipping numeric node IDs
+                meaningful = [self._readable_component(p)
+                              for p in suffix if not p.isdigit()]
+                labels.append(' '.join(meaningful) if meaningful else topic)
+
+        return labels
 
     def process_recording(self, recording_id: int, plot_config: List[Dict] = None,
                           export_config: Dict = None) -> Dict:
