@@ -307,6 +307,7 @@ class GPSTriggerMonitor:
                     state['stationary_start_time'] = timestamp
                 elif (timestamp - state['stationary_start_time']).total_seconds() >= duration:
                     state['last_position'] = (lat, lon, timestamp)
+                    state['stationary_start_time'] = timestamp  # reset so anchor doesn't advance every message
                     logger.debug(f"Monitor '{monitor_id}': anchor advanced (stationary ≥{duration}s near anchor)")
 
         elif condition_type == 'anchor_departure':
