@@ -144,6 +144,19 @@ const uint8_t MOVING_AVERAGE_COUNT = 3;
 float g_tachometer_movingAverage[MOVING_AVERAGE_COUNT] = {0};
 uint8_t g_movingAverageIndex = 0;
 
+const unsigned long PACKET_TIMEOUT_MS = 60000; // 60 seconds
+#ifdef HOUSE_BANNER
+unsigned long g_lastPayloadPulseTime = 0;
+unsigned long g_lastPayloadTemperatureTime = 0;
+unsigned long g_lastPayloadBatteryTime = 0;
+unsigned long g_lastPayloadInverterTime = 0;
+#elif defined(BOAT_BANNER)
+unsigned long g_lastPayloadSevConTime = 0;
+unsigned long g_lastPayloadAnemometerTime = 0;
+unsigned long g_lastPayloadGPSTime = 0;
+unsigned long g_lastPayloadDalyBMSTime = 0;
+#endif
+
 
 uint8_t readEEPROM(int offset)
 {
@@ -342,6 +355,7 @@ void loop()
              if (node_id == PULSE_JEENODE && len == sizeof(PayloadPulse)) // === PULSE NODE ====
             {
                 g_payloadPulse = *(PayloadPulse*)buf;							// get payload data
+                g_lastPayloadPulseTime = millis();
 
                 EmonSerial::PrintPulsePayload(&g_payloadPulse);
             }
@@ -352,6 +366,7 @@ void loop()
                 {
                     //we only get the voltage from battery node 0
                     g_payloadBattery = *((PayloadBattery*)buf);
+                    g_lastPayloadBatteryTime = millis();
                     EmonSerial::PrintBatteryPayload(&g_payloadBattery);
                 }
             }
@@ -365,11 +380,13 @@ void loop()
                     return;
                 }
                 memcpy(&g_payloadInverter[subnode], &inv, sizeof(PayloadInverter));
+                g_lastPayloadInverterTime = millis();
                 EmonSerial::PrintInverterPayload(&g_payloadInverter[subnode]);			 // print data to serial
             }
             else if( node_id == TEMPERATURE_JEENODE && len == sizeof(PayloadTemperature)) // === TEMPERATURE NODE ====
             {
                 g_payloadTemperature = *(PayloadTemperature*)buf;							// get payload data
+                g_lastPayloadTemperatureTime = millis();
                 EmonSerial::PrintTemperaturePayload(&g_payloadTemperature);				// print data to serial
             }
 #elif defined(BOAT_BANNER)
@@ -379,17 +396,20 @@ void loop()
                 if(payloadGPS.subnode == 0)
                 {
                     g_payloadGPS = *(PayloadGPS*)buf;
+                    g_lastPayloadGPSTime = millis();
                     EmonSerial::PrintGPSPayload(&g_payloadGPS);
                 }
             }
 			else if (node_id == DALY_BMS_NODE  && (len == sizeof(PayloadDalyBMS)-2 || len == sizeof(PayloadDalyBMS)) )		//some Daly BMS don't send the crc
 			{
                 g_payloadDalyBMS = *(PayloadDalyBMS*)buf;
+                g_lastPayloadDalyBMSTime = millis();
                 EmonSerial::PrintDalyBMSPayload(&g_payloadDalyBMS);
 			}
             else if ( node_id == SEVCON_CAN_NODE && len == sizeof(PayloadSevCon))
             {
                 g_payloadSevCon = *(PayloadSevCon*)buf;
+                g_lastPayloadSevConTime = millis();
                 EmonSerial::PrintSevConPayload(&g_payloadSevCon);
             }
             else if ( node_id == ANEMOMETER_NODE && len == sizeof(PayloadAnemometer))
@@ -398,6 +418,7 @@ void loop()
                 if( payloadAnemometer.subnode == 2) //True wind is published on node 2
                 {    
                     g_payloadAnemometer = *(PayloadAnemometer*)buf;
+                    g_lastPayloadAnemometerTime = millis();
                     EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
                 }
             }
@@ -444,25 +465,39 @@ void loop()
         {
 #ifdef HOUSE_BANNER
             case eCurrentPower:
-                setTachometer((float)(g_payloadPulse.power[2]/2500.0));
+                if (millis() - g_lastPayloadPulseTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer((float)(g_payloadPulse.power[2]/2500.0));
                 ledColor = RgbwColor(255,255,255,255); // white
                 break;
             case eCurrentTemperatures:
-                setTachometer((float)(g_payloadTemperature.temperature[0]/100.0/25.0));
+                if (millis() - g_lastPayloadTemperatureTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer((float)(g_payloadTemperature.temperature[0]/100.0/25.0));
                 ledColor = RgbwColor(255,0,0,0); // red
                 break;
             case eRailVoltage:
-                setTachometer((float)(g_payloadBattery.voltage[0]/100.0/100.0));
+                if (millis() - g_lastPayloadBatteryTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer((float)(g_payloadBattery.voltage[0]/100.0/100.0));
                 ledColor = RgbwColor(0,255,255,0); // cyan
                 break;
             case eInverterIn:
                 {
-                    unsigned short inverterIn = 0;
-                    for(int i=0; i<MAX_INVERTERS;i++)
+                    if (millis() - g_lastPayloadInverterTime > PACKET_TIMEOUT_MS)
+                        setTachometer(0.0);
+                    else
                     {
-                        inverterIn += g_payloadInverter[i].pvInputPower;
+                        unsigned short inverterIn = 0;
+                        for(int i=0; i<MAX_INVERTERS;i++)
+                        {
+                            inverterIn += g_payloadInverter[i].pvInputPower;
+                        }
+                        setTachometer((float)(inverterIn/2500.0));
                     }
-                    setTachometer((float)(inverterIn/2500.0));
                     ledColor = RgbwColor(0,255,0,0); // green
                 }
                 break;
@@ -473,19 +508,31 @@ void loop()
 
 #elif defined(BOAT_BANNER)
             case eRPM:
-                setTachometer(fabs((float)(g_payloadSevCon.rpm/2500.0))); //engin RPM
+                if (millis() - g_lastPayloadSevConTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer(fabs((float)(g_payloadSevCon.rpm/2500.0))); //engin RPM
                 ledColor = RgbwColor(255,255,255,255); // white
                 break;
             case eWindSpeed:
-                setTachometer(g_payloadAnemometer.windSpeed/25.0);  //speed in knots
+                if (millis() - g_lastPayloadAnemometerTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer(g_payloadAnemometer.windSpeed/25.0);  //speed in knots
                 ledColor = RgbwColor(0,255,0,0); // green
                 break;
             case eGPSSpeed:
-                setTachometer(g_payloadGPS.speed/25.0);             //speed in knots
+                if (millis() - g_lastPayloadGPSTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer(g_payloadGPS.speed/25.0);             //speed in knots
                 ledColor = RgbwColor(0,0,255,0); // blue
                 break;
             case eBatterySoC:
-                setTachometer((float)(g_payloadDalyBMS.batterySoC/1000.0)); //SoC is in 0.1% units
+                if (millis() - g_lastPayloadDalyBMSTime > PACKET_TIMEOUT_MS)
+                    setTachometer(0.0);
+                else
+                    setTachometer((float)(g_payloadDalyBMS.batterySoC/1000.0)); //SoC is in 0.1% units
                 ledColor = RgbwColor(255,0,0,0); // red
                 break;
 #endif
