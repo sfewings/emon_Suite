@@ -1,0 +1,16 @@
+# Export configuration for export_csv.py
+#
+# List sensor names and/or group names (as defined in the settings YAML files).
+# Group names export ALL non-Unused sensors within that group.
+# Individual sensor names export just that sensor.
+#
+# Use --list-sensors to see all available names:
+#   python export_csv.py --list-sensors --settings-folder /path/to/settings
+
+sensors:
+  - "Office room 4"              # individual sensor name (from temp settings)
+  - "Roof space"                  # individual sensor name
+
+groups:
+  - "Mobile Box 1"               # group name → exports all t0..t3 in this group
+  - "Orin Power 0"               # group name → exports all s0..s2, v0..v2 in this group

@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  orin-emon:
+    image: orin-emon
+    container_name: orin-emon
+    restart: unless-stopped
+    privileged: true
+    environment:
+      SERIAL_PORT: /dev/ttyUSB2
+    volumes:
+      - /sys:/sys:ro
+      - /home/terra15/data_logging/logs:/data/logs
+    devices:
+      - /dev/ttyUSB2
