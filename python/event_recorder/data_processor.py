@@ -48,12 +48,12 @@ class DataProcessor:
 
     # Keyword → Y-axis unit string.  The first matching keyword wins.
     _TOPIC_UNITS: Dict[str, str] = {
-        'windspeed':     'm/s',
-        'winddirection': '°',
+        'windspeed':     'knots',
+        'winddirection': '°Degrees',
         'temperature':   '°C',
         'speed':         'knots',
-        'course':        '°',
-        'heading':       '°',
+        'course':        '°Degrees',
+        'heading':       '°Degrees',
         'acc':           'm/s²',
         'gyro':          '°/s',
         'mag':           'µT',
