@@ -33,8 +33,8 @@ wordpress:
     app_password: "${WP_APP_PASSWORD}"             # Application password (from env var)
     category: "Track Logs"                         # Default post category
     publish_status: "draft"                        # Post status: "draft" or "publish"
-    http_auth_username: "${WP_HTTP_AUTH_USERNAME}" # Site gate username (optional)
-    http_auth_password: "${WP_HTTP_AUTH_PASSWORD}" # Site gate password (optional)
+    # Optional: whitelist endpoint to call before first API request
+    whitelist_endpoint: "${WP_WHITELIST_ENDPOINT}" # Whitelist endpoint (optional, from env var)
 
   retry_attempts: 3                      # Retry attempts for failed posts
   retry_delay: 2                         # Retry delay (seconds, exponential backoff)
