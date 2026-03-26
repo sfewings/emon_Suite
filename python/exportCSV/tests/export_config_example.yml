@@ -18,3 +18,5 @@ groups:
   - "Orin Power 0"               # group name → exports all s0..s2, v0..v2 in this group
   - "Orin Power 1"               # group name → exports all s0..s2, v0..v2 in this group
   - "Power board"
+  - "EDFA"
+  - "SiFi"
