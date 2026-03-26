@@ -112,7 +112,9 @@ class EventRecorderService:
             self.wordpress_publisher = WordPressPublisher(
                 site_url=wp_config.get('site_url'),
                 username=wp_config.get('username'),
-                app_password=wp_config.get('app_password')
+                app_password=wp_config.get('app_password'),
+                http_auth_username=wp_config.get('http_auth_username') or None,
+                http_auth_password=wp_config.get('http_auth_password') or None,
             )
         else:
             self.wordpress_publisher = None
@@ -543,9 +545,20 @@ Examples:
     if args.wait_for_debugger:
         args.debug = True
 
+    # Determine initial log level: CLI arg overrides LOG_LEVEL env var
+    _env_log_level = os.environ.get('LOG_LEVEL', '').upper()
+    _valid_levels = {'DEBUG', 'INFO', 'WARNING', 'ERROR'}
+    if args.log_level != 'INFO':
+        # Explicit CLI override
+        initial_log_level = args.log_level
+    elif _env_log_level in _valid_levels:
+        initial_log_level = _env_log_level
+    else:
+        initial_log_level = args.log_level  # default 'INFO'
+
     # Setup logging
     logging.basicConfig(
-        level=getattr(logging, args.log_level),
+        level=getattr(logging, initial_log_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
@@ -569,6 +582,19 @@ Examples:
             args.events_dir,
             args.data_dir
         )
+
+        # Apply logging settings from YAML config (only when no CLI/env override was given)
+        _cfg_level = (service.config.get('logging.level') or '').upper()
+        _cfg_format = service.config.get('logging.format') or ''
+        _yaml_overrides_level = _cfg_level in _valid_levels and args.log_level == 'INFO' and not _env_log_level
+        if _yaml_overrides_level:
+            logging.getLogger().setLevel(getattr(logging, _cfg_level))
+        if _cfg_format:
+            for handler in logging.getLogger().handlers:
+                handler.setFormatter(logging.Formatter(
+                    fmt=_cfg_format,
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                ))
 
         # Setup signal handlers for graceful shutdown
         def signal_handler(sig, frame):

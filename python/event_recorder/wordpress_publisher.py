@@ -30,6 +30,8 @@ class WordPressPublisher:
         site_url: str,
         username: str,
         app_password: str,
+        http_auth_username: str = None,
+        http_auth_password: str = None,
         timeout: int = 30,
         max_retries: int = 3
     ):
@@ -40,16 +42,36 @@ class WordPressPublisher:
             site_url: WordPress site URL (e.g., https://example.com)
             username: WordPress username
             app_password: Application password (24-char with spaces)
+            http_auth_username: Optional site-level HTTP Basic Auth username
+                (for sites protected by nginx/Apache auth_basic)
+            http_auth_password: Optional site-level HTTP Basic Auth password
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts for failed requests
+
+        Notes on dual-auth (http_auth + WP Application Passwords):
+            Both layers use the HTTP Authorization header, so in a single request
+            only one set can be sent.  The implementation tries WP Application
+            Password credentials first (required by the WordPress REST API).
+            If the server returns a 401 that does NOT originate from WordPress
+            (i.e. the HTTP gate is blocking), the request is retried using the
+            site-level http_auth credentials.  For this to work in production the
+            server should be configured to either:
+              1. Exempt REST-API requests from HTTP Basic Auth, OR
+              2. Accept the WP Application Password in the site's htpasswd file.
         """
         self.site_url = site_url.rstrip('/')
         self.username = username
         self.auth = HTTPBasicAuth(username, app_password)
+        self.http_auth = (
+            HTTPBasicAuth(http_auth_username, http_auth_password)
+            if http_auth_username and http_auth_password else None
+        )
         self.timeout = timeout
         self.max_retries = max_retries
 
         logger.info(f"WordPressPublisher initialized for {self.site_url}")
+        if self.http_auth:
+            logger.info(f"Site-level HTTP Basic Auth configured (user: {http_auth_username})")
 
     def _api_url(self, endpoint: str) -> str:
         """
@@ -74,12 +96,41 @@ class WordPressPublisher:
             Tuple of (success: bool, message: str)
         """
         try:
-            # Test basic API access
+            # Test basic API access using WP Application Password credentials
             response = requests.get(
                 self._api_url('users/me'),
                 auth=self.auth,
                 timeout=self.timeout
             )
+
+            # If WP credentials returned 401 and site-level HTTP auth is configured,
+            # check whether the HTTP gate is blocking (realm won't mention WordPress)
+            if response.status_code == 401 and self.http_auth:
+                www_auth = response.headers.get('WWW-Authenticate', '')
+                if 'WordPress' not in www_auth:
+                    logger.warning(
+                        "WP API returned 401 — HTTP gate may be blocking. "
+                        "Ensure the REST-API endpoint is exempt from HTTP Basic Auth, "
+                        "or that the WP Application Password credentials are also in "
+                        "the server's htpasswd file."
+                    )
+                    # Attempt with site-level credentials so the user gets a clearer
+                    # error about what is happening
+                    gate_response = requests.get(
+                        self._api_url('users/me'),
+                        auth=self.http_auth,
+                        timeout=self.timeout
+                    )
+                    if gate_response.status_code == 401:
+                        return False, (
+                            "Both WP credentials and site HTTP auth returned 401. "
+                            "Check credentials and server configuration."
+                        )
+                    if gate_response.status_code == 200:
+                        return False, (
+                            "Site HTTP auth accepted but WP Application Password rejected. "
+                            "Ensure the WP user 'event_recorder' has a valid application password."
+                        )
 
             if response.status_code == 200:
                 user_data = response.json()
@@ -119,6 +170,7 @@ class WordPressPublisher:
         """
         for attempt in range(self.max_retries):
             try:
+                # Send request with WP Application Password (required by WordPress REST API)
                 response = requests.request(
                     method,
                     url,
@@ -126,6 +178,22 @@ class WordPressPublisher:
                     timeout=self.timeout,
                     **kwargs
                 )
+
+                # If 401 and site-level HTTP auth is configured, check whether the
+                # HTTP gate (not WordPress) is blocking the request and retry.
+                if response.status_code == 401 and self.http_auth:
+                    www_auth = response.headers.get('WWW-Authenticate', '')
+                    if 'WordPress' not in www_auth:
+                        logger.debug(
+                            "Retrying with site HTTP auth (HTTP gate may be blocking)"
+                        )
+                        response = requests.request(
+                            method,
+                            url,
+                            auth=self.http_auth,
+                            timeout=self.timeout,
+                            **kwargs
+                        )
 
                 # Check for success or client error (don't retry client errors)
                 if response.status_code < 500:
@@ -839,6 +907,10 @@ if __name__ == '__main__':
     parser.add_argument('--site-url', required=True, help="WordPress site URL")
     parser.add_argument('--username', required=True, help="WordPress username")
     parser.add_argument('--password', required=True, help="Application password")
+    parser.add_argument('--http-auth-username', default=None,
+                        help="Site-level HTTP Basic Auth username (if site is behind auth gate)")
+    parser.add_argument('--http-auth-password', default=None,
+                        help="Site-level HTTP Basic Auth password")
 
     args = parser.parse_args()
 
@@ -852,7 +924,9 @@ if __name__ == '__main__':
     publisher = WordPressPublisher(
         site_url=args.site_url,
         username=args.username,
-        app_password=args.password
+        app_password=args.password,
+        http_auth_username=args.http_auth_username,
+        http_auth_password=args.http_auth_password,
     )
 
     success, message = publisher.test_connection()

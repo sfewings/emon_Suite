@@ -270,15 +270,17 @@ class GPSTriggerMonitor:
             # Need anchor position to calculate distance from
             if state['last_position'] is None:
                 state['last_position'] = (lat, lon, timestamp)
+                state['stationary_start_time'] = timestamp
                 return
 
             anchor_lat, anchor_lon, anchor_time = state['last_position']
 
-            # Calculate distance from anchor (last stationary position)
+            # Calculate distance from anchor (last confirmed stationary position)
             distance = self._haversine_distance(anchor_lat, anchor_lon, lat, lon)
             logger.debug(f"Monitor '{monitor_id}': distance from anchor = {distance:.1f}m")
             if distance > distance_threshold:
-                # Vessel has moved away from anchor
+                # Vessel has moved away from anchor — reset stationary timer
+                state['stationary_start_time'] = None
                 if state['condition_start_time'] is None:
                     state['condition_start_time'] = timestamp
                     logger.debug(f"Monitor '{monitor_id}': movement detected ({distance:.1f}m from anchor)")
@@ -294,9 +296,29 @@ class GPSTriggerMonitor:
                         state['last_position'] = (lat, lon, timestamp)
                 # Don't update anchor while movement is being tracked
             else:
-                # Still near anchor, reset timer and update anchor
+                # Within distance_threshold of anchor — not clearly moving.
+                # Reset movement timer but only advance the anchor when the
+                # vessel is genuinely stationary (GPS-jitter only), not merely
+                # "within distance_threshold".  A tight threshold prevents the
+                # anchor from sliding with a slowly-moving vessel: at 5 knots
+                # the vessel moves ~8 m in 3 s which already exceeds the jitter
+                # band, so the anchor stays locked and distance accumulates
+                # until it crosses distance_threshold.
                 state['condition_start_time'] = None
-                state['last_position'] = (lat, lon, timestamp)
+                stationary_threshold = distance_threshold / 4  # ~5 m for default 20 m
+                if distance <= stationary_threshold:
+                    # Very close to anchor — likely GPS jitter, not movement
+                    if state['stationary_start_time'] is None:
+                        state['stationary_start_time'] = timestamp
+                    elif (timestamp - state['stationary_start_time']).total_seconds() >= duration:
+                        state['last_position'] = (lat, lon, timestamp)
+                        state['stationary_start_time'] = timestamp
+                        logger.debug(f"Monitor '{monitor_id}': anchor advanced (stationary ≥{duration}s within {stationary_threshold:.0f}m)")
+                else:
+                    # Between stationary_threshold and distance_threshold —
+                    # ambiguous zone (could be slow movement or GPS drift).
+                    # Don't advance anchor, don't start movement timer.
+                    state['stationary_start_time'] = None
 
         elif condition_type == 'anchor_departure':
             # Start recording when vessel moves outside a fixed anchor location.
