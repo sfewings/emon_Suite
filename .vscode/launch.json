@@ -22,8 +22,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/python/exportCSV/export_csv.py",
             "args": [
-                "--start", "2026-03-23 17:00:00",
-                "--end", "2026-03-24 23:59:59",
+                "--start", "2026-03-24 17:00:00",
+                "--end", "2026-03-25 23:59:59",
                 "--log-folder", "${workspaceFolder}/python/exportCSV/tests/data",
                 "--settings-folder", "${workspaceFolder}/python/exportCSV/tests/data/emon_config",
                 "--config", "${workspaceFolder}/python/exportCSV/tests/export_config_example.yml",
@@ -43,6 +43,65 @@
             ],
             "cwd": "${workspaceFolder}/python/exportCSV",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Annotations - get all",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/influxAnnotations/get_annotations.py",
+            "cwd": "${workspaceFolder}/python/influxAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Annotations - list dashboards",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/influxAnnotations/get_annotations.py",
+            "args": ["--list-dashboards"],
+            "cwd": "${workspaceFolder}/python/influxAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Annotations - by dashboard",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/influxAnnotations/get_annotations.py",
+            "args": [
+                "--dashboard", "${input:dashboardUid}"
+            ],
+            "cwd": "${workspaceFolder}/python/influxAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Annotations - date range",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/influxAnnotations/get_annotations.py",
+            "args": [
+                "--from", "${input:fromDate}",
+                "--to", "${input:toDate}"
+            ],
+            "cwd": "${workspaceFolder}/python/influxAnnotations",
+            "console": "integratedTerminal"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "dashboardUid",
+            "description": "Dashboard UID (use 'Annotations - list dashboards' to find it)",
+            "type": "promptString"
+        },
+        {
+            "id": "fromDate",
+            "description": "Start date (YYYY-MM-DD)",
+            "type": "promptString",
+            "default": "2026-03-01"
+        },
+        {
+            "id": "toDate",
+            "description": "End date (YYYY-MM-DD)",
+            "type": "promptString",
+            "default": "2026-03-26"
         }
     ]
 }
