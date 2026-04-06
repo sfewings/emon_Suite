@@ -55,9 +55,11 @@ class WordPressPublisher:
         self.timeout = timeout
         self.max_retries = max_retries
 
-        logger.info(f"WordPressPublisher initialized for {self.site_url}")
+        logger.info(f"WordPressPublisher initialized for {self.site_url}, {self.username}, {app_password})")
         if self.whitelist_endpoint:
             logger.info(f"Whitelist endpoint configured: {self.whitelist_endpoint}")
+        else:
+            logger.info(f"No whitelist endpoint")
 
     def _api_url(self, endpoint: str) -> str:
         """
