@@ -112,7 +112,7 @@ services:
     image: sfewings32/emon_settings_web:latest
     container_name: emon_settings_web
     ports:
-      - '5000:5000'
+      - '5001:5000'
     volumes:
       - ./emon_config:/config
     environment:
@@ -173,17 +173,19 @@ services:
   event_recorder:
     image: sfewings32/emon_event_recorder:latest
     container_name: event_recorder
-    ports:
-      - "5001:5000"
+    network_mode: "host"
+    #ports:
+    #  - "5001:5000"
     volumes:
       - ./config:/config
       - ./data:/data
     environment:
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
+#      - MQTT_BROKER=localhost
+#      - MQTT_PORT=1883
       - WP_SITE_URL=${WP_SITE_URL}
       - WP_USERNAME=${WP_USERNAME}
       - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      - WP_WHITELIST_ENDPOINT=${WP_WHITELIST_ENDPOINT}
       - TZ=${TIMEZONE}
       #- DEBUG=1  # Set DEBUG=1 to enable debugpy
       #- WAIT_FOR_DEBUGGER=1  # Set WAIT_FOR_DEBUGGER=1 to wait for debugger
