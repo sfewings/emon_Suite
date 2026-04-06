@@ -441,6 +441,28 @@ class WebInterface:
                 logger.error(f"Process recording error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
 
+        @self.app.route('/api/recordings/<int:recording_id>/reset', methods=['POST'])
+        def reset_recording_status(recording_id):
+            """Reset recording status from failed or published back to processed."""
+            try:
+                recording = self.database.get_recording(recording_id)
+                if not recording:
+                    return jsonify({'success': False, 'error': 'Recording not found'}), 404
+
+                if recording['status'] not in (RecordingStatus.FAILED, RecordingStatus.PUBLISHED):
+                    return jsonify({
+                        'success': False,
+                        'error': f"Cannot reset from status '{recording['status']}'"
+                    }), 400
+
+                self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
+                logger.info(f"Recording {recording_id} reset to processed (was {recording['status']})")
+                return jsonify({'success': True, 'message': f'Recording reset to processed'})
+
+            except Exception as e:
+                logger.error(f"Reset recording status error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
         @self.app.route('/api/recordings/<int:recording_id>/publish', methods=['POST'])
         def publish_recording(recording_id):
             """Publish recording to WordPress."""

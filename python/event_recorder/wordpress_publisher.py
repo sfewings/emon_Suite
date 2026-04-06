@@ -135,7 +135,14 @@ class WordPressPublisher:
                 logger.info(f"WordPress connection successful: {user_data.get('name')}")
                 return True, f"Connected as {user_data.get('name')} ({user_data.get('roles')})"
             elif response.status_code == 401:
-                logger.error("WordPress authentication failed")
+                www_auth = response.headers.get('WWW-Authenticate', '')
+                self._whitelist_called = False  # Allow whitelist to be re-called on next attempt
+                logger.error(
+                    f"WordPress 401. WWW-Authenticate: {www_auth!r}. "
+                    f"Response body: {response.text[:500]!r}"
+                )
+                if 'WordPress' not in www_auth:
+                    return False, "Access blocked (401) — see logs for detail"
                 return False, "Authentication failed - check username and app password"
             else:
                 logger.error(f"WordPress API error: {response.status_code}")
@@ -186,6 +193,8 @@ class WordPressPublisher:
                 )
 
                 # Check for success or client error (don't retry client errors)
+                if response.status_code == 401:
+                    self._whitelist_called = False  # Allow whitelist re-call on next request
                 if response.status_code < 500:
                     return response
 

@@ -589,6 +589,29 @@ async function publishRecording(recordingId) {
     }
 }
 
+async function resetRecordingToProcessed(recordingId) {
+    if (!confirm(`Reset recording ${recordingId} to "processed" status?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/recordings/${recordingId}/reset`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('Recording reset to processed', 'success');
+            loadRecordings();
+        } else {
+            showToast(`Reset failed: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Failed to reset recording:', error);
+        showToast('Failed to reset recording status', 'error');
+    }
+}
+
 async function testWordPressConnection() {
     const resultEl = document.getElementById('wpTestResult');
     resultEl.innerHTML = '<span class="badge badge-info">Testing...</span>';
@@ -805,6 +828,14 @@ async function viewRecording(recordingId) {
             modalContent += `
                 <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
                     ${Icons.publish} Publish to WordPress
+                </button>
+            `;
+        }
+
+        if (['failed', 'published'].includes(rec.status)) {
+            modalContent += `
+                <button class="btn btn-secondary" onclick="closeModal(); resetRecordingToProcessed(${rec.id})">
+                    &#8635; Reset to Processed
                 </button>
             `;
         }
