@@ -60,6 +60,26 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "name": "emonCSVToSerial",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/emonCSVToSerial.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-f",
+                "C:\\Users\\sfewi\\Documents\\Temp\\emonCSVToSerial_Mar26\\Input\\20260315.TXT",
+                "-p",
+                "COM4",
+                "-l",
+                "C:\\Users\\sfewi\\Documents\\Temp\\emonCSVToSerial_Mar26\\Log",
+                "-x",
+                "1",
+                "-o",
+                "10:30",
+            ],
+            "cwd": "${workspaceFolder}"
+        },        
+        {
             "name": "emonMQTTToInflux",
             "type": "debugpy",
             "request": "launch",

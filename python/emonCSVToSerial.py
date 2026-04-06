@@ -66,8 +66,6 @@ def send_packet(ser, packet_str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Read CSV log file and replay to serial port")
     parser.add_argument("-f", "--file", help="Path to CSV input file", required=True)
-    parser.add_argument("-s", "--settingsPath", help="Path to emon_config.yml containing emon configuration",
-                        default="/share/emon_Suite/python/emon_config.yml")
     parser.add_argument("-l", "--logPath", help="Path to log directory",
                         default="/share/Output/emonCSVToSerial")
     parser.add_argument("-p", "--port", type=str, default=DEFAULT_SERIAL_PORT,
