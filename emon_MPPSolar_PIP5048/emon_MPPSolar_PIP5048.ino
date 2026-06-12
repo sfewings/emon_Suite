@@ -136,7 +136,7 @@ void CreateCmdString(char* c )
 }
 
 
-int ReadFromInverter(Stream& stream, String & cmdString)
+int ReadFromInverter(Stream& stream, String & cmdString, int inverterNum)
 {
   const uint16_t BUF_SIZE = 255;
   char buffer[BUF_SIZE];
@@ -198,7 +198,7 @@ int ReadFromInverter(Stream& stream, String & cmdString)
   char first ='(';
   char* pch = strtok(buffer-1, &first);
   if(pch == NULL) return 0;
-  if( 0 == strcmp(cmdString.c_str(), "QPISG"))
+  if( inverterNum == 0)
   {
     if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // BBB.B      Grid voltage              B: 0~9, unit: 0.1V
     if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // CC.C       Grid frequency            C: 0~9, unit: 0.1Hz
@@ -245,7 +245,7 @@ int ReadFromInverter(Stream& stream, String & cmdString)
                                                                             101: Charging on with AC charge on
                                                                             111: Charging on with SCC and AC charge on*/
   }
-  else if( 0 == strcmp(cmdString.c_str(), "QPISG2"))
+  else if( inverterNum==1)
   {
     if (NULL == (pch = strtok(NULL, &delimiter))) return 0;    // N1N2N3N4        PV Input current 2              unit: A
     int inputCurrent = atoi(pch);
@@ -302,8 +302,6 @@ void setup()
   // char cmd[] = {"QPIGS2"};
   // CreateCmdString(cmd); 
 
-  return;
-
   Serial1.begin(2400);
 
   pinMode(LED_PIN, OUTPUT);
@@ -359,13 +357,13 @@ void loop()
 {
   digitalWrite(LED_PIN, HIGH);
 
-  if( ReadFromInverter( Serial1, QPIGS ) )
+  if( ReadFromInverter( Serial1, QPIGS, 0 ) )
   {
     calculateWattHoursAndStore(0);
     g_payloadInverter.subnode = 0;
     SendPacket();
   }
-  if( ReadFromInverter( Serial1, QPIGS2 ) )
+  if( ReadFromInverter( Serial1, QPIGS2 , 1 ) )
   {
     calculateWattHoursAndStore(1);
     g_payloadInverter.subnode = 1;
