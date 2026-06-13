@@ -70,10 +70,10 @@ services:
     image: sfewings32/emon_serial_to_mqtt:latest
     container_name: emon_serial
     devices:
-      - /dev/ttyAMA0
+      - /dev/ttyUSB0
     environment:
       - SETTINGS_PATH=/data/emon_config.yml
-      - SERIAL_PORT=/dev/ttyAMA0
+      - SERIAL_PORT=/dev/ttyUSB0
       - MQTT_IP=mqtt
       - TZ=${TIMEZONE}
     volumes:
