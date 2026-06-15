@@ -4,24 +4,17 @@
       {
         "builtIn": 1,
         "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
+          "type": "grafana",
+          "uid": "-- Grafana --"
         },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [],
-          "type": "dashboard"
-        },
         "type": "dashboard"
       }
     ]
   },
-  "description": "Daily Consumed, Produced, Import and Car",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -39,22 +32,24 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 15,
+            "drawStyle": "line",
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
-            "pointSize": 4,
+            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
@@ -69,7 +64,6 @@
             }
           },
           "mappings": [],
-          "max": 45000,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -84,76 +78,15 @@
             ]
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Car"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Imported"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Solar production (Schneider)"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "light-blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Consumed"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "semi-dark-green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
-        "h": 23,
-        "w": 17,
+        "h": 14,
+        "w": 15,
         "x": 0,
         "y": 0
       },
-      "id": 2,
+      "id": 1,
       "options": {
         "legend": {
           "calcs": [],
@@ -176,13 +109,13 @@
           "groupBy": [
             {
               "params": [
-                "1d"
+                "$__interval"
               ],
               "type": "time"
             },
             {
               "params": [
-                "sensorName"
+                "sensorName::tag"
               ],
               "type": "tag"
             },
@@ -193,11 +126,9 @@
               "type": "fill"
             }
           ],
-          "measurement": "pulse",
+          "measurement": "pantech",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT difference(mean(\"value\")) FROM \"pulse\" WHERE (\"sensorName\" = 'Imported' OR \"sensorName\" = 'Solar production (Schneider)' OR \"sensorName\" = 'Car' OR \"sensorName\" = 'Consumed') AND $timeFilter GROUP BY time(1d), \"sensorName\" fill(null)",
-          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -211,59 +142,30 @@
               {
                 "params": [],
                 "type": "mean"
-              },
-              {
-                "params": [],
-                "type": "difference"
               }
             ]
           ],
-          "tags": [
-            {
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Imported"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Solar production (Schneider)"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Car"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Consumed"
-            }
-          ]
+          "tags": []
         }
       ],
-      "title": "Daily Power",
+      "title": "Panel Title",
       "type": "timeseries"
     }
   ],
   "refresh": "",
-  "schemaVersion": 37,
-  "style": "dark",
+  "schemaVersion": 39,
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now/y",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Daily Power",
-  "uid": "2K_KVNzRz",
+  "title": "Weather Station",
+  "uid": "e1e6daed-b19f-4f48-98ce-aa1ff40efb14",
   "version": 1,
   "weekStart": ""
 }

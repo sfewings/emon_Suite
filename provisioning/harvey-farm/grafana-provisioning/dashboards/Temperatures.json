@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 29,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -714,6 +713,6 @@
   "timezone": "",
   "title": "Temperatures",
   "uid": "JNuaOxZRk",
-  "version": 6,
+  "version": 1,
   "weekStart": ""
 }
