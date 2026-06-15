@@ -109,7 +109,9 @@ ButtonDisplayMode lastPushButton = eDiagnosisEEPROMSettings;
 //---------------------------------------------------------------------------------------------------
 // Dallas temperature sensor	on pin 5, Jeenode port 2
 //---------------------------------------------------------------------------------------------------
-OneWire oneWire(A4);
+//#define TEMPERATURE_PIN A4	//PCB has temp sensor on pin D3, but leave A4 in for backwards compatibility with old wirewrap version 
+#define TEMPERATURE_PIN		3	//PCB has temp sensor on pin D3, but leave A4 in for backwards compatibility with old wirewrap version 
+OneWire oneWire(TEMPERATURE_PIN);
 DallasTemperature temperatureSensor(&oneWire);
 int numberOfTemperatureSensors = 0;
 
