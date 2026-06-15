@@ -23,7 +23,7 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -39,8 +39,8 @@
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
-        "h": 18,
-        "w": 14,
+        "h": 9,
+        "w": 12,
         "x": 0,
         "y": 0
       },
@@ -62,7 +62,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "9.3.1",
+      "pluginVersion": "10.2.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -97,9 +97,11 @@
               "type": "fill"
             }
           ],
-          "measurement": "scale",
+          "measurement": "air",
           "orderByTime": "ASC",
           "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"air\" WHERE (\"sensorName\" = 'Kitchen - 2.5' OR \"sensorName\" = 'Garage - 2.5') AND $timeFilter GROUP BY time($__interval), \"sensorName\" fill(linear)",
+          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -115,13 +117,12 @@
                 "type": "mean"
               }
             ]
-          ],
-          "tags": []
+          ]
         }
       ],
       "thresholds": [],
       "timeRegions": [],
-      "title": "Dog food",
+      "title": "Air quality",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -135,13 +136,13 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:88",
-          "format": "massg",
+          "$$hashKey": "object:304",
+          "format": "short",
           "logBase": 1,
           "show": true
         },
         {
-          "$$hashKey": "object:89",
+          "$$hashKey": "object:305",
           "format": "short",
           "logBase": 1,
           "show": true
@@ -153,20 +154,19 @@
     }
   ],
   "refresh": "1m",
-  "schemaVersion": 37,
-  "style": "dark",
+  "schemaVersion": 39,
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-7d",
-    "to": "now"
+    "from": "now/d",
+    "to": "now/d"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Dog food-scales",
-  "uid": "NbVoMfZRk",
+  "title": "Air Quality",
+  "uid": "U1cNQwRgz",
   "version": 1,
   "weekStart": ""
 }

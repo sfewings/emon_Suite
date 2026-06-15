@@ -3,48 +3,34 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
+        "datasource": "-- Grafana --",
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [],
-          "type": "dashboard"
-        },
         "type": "dashboard"
       }
     ]
   },
   "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": 3,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
       "aliasColors": {},
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": {
-        "type": "influxdb",
-        "uid": "P951FEA4DE68E13C5"
-      },
+      "datasource": "InfluxDB",
       "fill": 1,
-      "fillGradient": 0,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
         "y": 0
       },
-      "hiddenSeries": false,
       "id": 2,
       "legend": {
         "avg": false,
@@ -57,12 +43,9 @@
       },
       "lines": true,
       "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
+      "links": [],
+      "nullPointMode": "null as zero",
       "percentage": false,
-      "pluginVersion": "9.3.1",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -72,32 +55,22 @@
       "steppedLine": false,
       "targets": [
         {
-          "alias": "$tag_sensorName",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "P951FEA4DE68E13C5"
-          },
+          "alias": "Request Rate",
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "1s"
               ],
               "type": "time"
             },
             {
               "params": [
-                "sensorName"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "linear"
+                "null"
               ],
               "type": "fill"
             }
           ],
-          "measurement": "air",
+          "measurement": "latency",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -112,28 +85,17 @@
               },
               {
                 "params": [],
-                "type": "mean"
+                "type": "count"
               }
             ]
           ],
-          "tags": [
-            {
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 2.5"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 2.5"
-            }
-          ]
+          "tags": []
         }
       ],
       "thresholds": [],
-      "timeRegions": [],
-      "title": "2.5 ppq air quality",
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Request Rate",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -141,26 +103,33 @@
       },
       "type": "graph",
       "xaxis": {
+        "buckets": null,
         "mode": "time",
+        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
-          "$$hashKey": "object:304",
           "format": "short",
+          "label": null,
           "logBase": 1,
+          "max": null,
+          "min": null,
           "show": true
         },
         {
-          "$$hashKey": "object:305",
           "format": "short",
+          "label": null,
           "logBase": 1,
+          "max": null,
+          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false
+        "align": false,
+        "alignLevel": null
       }
     },
     {
@@ -168,20 +137,136 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": {
-        "type": "influxdb",
-        "uid": "P951FEA4DE68E13C5"
-      },
+      "datasource": null,
       "fill": 1,
-      "fillGradient": 0,
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 8,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null as zero",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "$$hashKey": "object:1250",
+          "alias": "Non-2XX Count",
+          "groupBy": [
+            {
+              "params": [
+                "1s"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "latency",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "B",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "count"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "response",
+              "operator": "!=",
+              "value": "200"
+            }
+          ]
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Errors",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": null,
+      "fill": 1,
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
         "y": 9
       },
-      "hiddenSeries": false,
-      "id": 4,
+      "id": 6,
       "legend": {
         "avg": false,
         "current": false,
@@ -193,13 +278,10 @@
       },
       "lines": true,
       "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
+      "links": [],
+      "nullPointMode": "null as zero",
       "percentage": false,
-      "pluginVersion": "9.3.1",
-      "pointradius": 2,
+      "pointradius": 5,
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
@@ -208,32 +290,23 @@
       "steppedLine": false,
       "targets": [
         {
-          "alias": "$tag_sensorName",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "P951FEA4DE68E13C5"
-          },
+          "$$hashKey": "object:1401",
+          "alias": "Latency (mean)",
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "1s"
               ],
               "type": "time"
             },
             {
               "params": [
-                "sensorName"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "linear"
+                "null"
               ],
               "type": "fill"
             }
           ],
-          "measurement": "air",
+          "measurement": "latency",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -252,151 +325,29 @@
               }
             ]
           ],
-          "tags": [
-            {
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 0.3"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 0.5"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 1.0"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 2.5"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 5.0"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Kitchen - 10.0"
-            }
-          ]
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Kitchen Air quality",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "$$hashKey": "object:304",
-          "format": "short",
-          "logBase": 1,
-          "show": true
+          "tags": []
         },
         {
-          "$$hashKey": "object:305",
-          "format": "short",
-          "logBase": 1,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": {
-        "type": "influxdb",
-        "uid": "P951FEA4DE68E13C5"
-      },
-      "fill": 1,
-      "fillGradient": 0,
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 18
-      },
-      "hiddenSeries": false,
-      "id": 5,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "9.3.1",
-      "pointradius": 2,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "alias": "$tag_sensorName",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "P951FEA4DE68E13C5"
-          },
+          "$$hashKey": "object:1402",
+          "alias": "Latency (max)",
           "groupBy": [
             {
               "params": [
-                "$__interval"
+                "1s"
               ],
               "type": "time"
             },
             {
               "params": [
-                "sensorName"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "linear"
+                "null"
               ],
               "type": "fill"
             }
           ],
-          "measurement": "air",
+          "measurement": "latency",
           "orderByTime": "ASC",
           "policy": "default",
-          "refId": "A",
+          "refId": "C",
           "resultFormat": "time_series",
           "select": [
             [
@@ -408,52 +359,17 @@
               },
               {
                 "params": [],
-                "type": "mean"
+                "type": "max"
               }
             ]
           ],
-          "tags": [
-            {
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 0.3"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 0.5"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 1.0"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 2.5"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 5.0"
-            },
-            {
-              "condition": "OR",
-              "key": "sensorName",
-              "operator": "=",
-              "value": "Garage - 10.0"
-            }
-          ]
+          "tags": []
         }
       ],
       "thresholds": [],
-      "timeRegions": [],
-      "title": "Garage Air quality",
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client Latency",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -461,44 +377,74 @@
       },
       "type": "graph",
       "xaxis": {
+        "buckets": null,
         "mode": "time",
+        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
-          "$$hashKey": "object:304",
           "format": "short",
+          "label": null,
           "logBase": 1,
+          "max": null,
+          "min": null,
           "show": true
         },
         {
-          "$$hashKey": "object:305",
           "format": "short",
+          "label": null,
           "logBase": 1,
+          "max": null,
+          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false
+        "align": false,
+        "alignLevel": null
       }
     }
   ],
-  "refresh": "1m",
-  "schemaVersion": 37,
+  "refresh": "5s",
+  "schemaVersion": 16,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now/d",
-    "to": "now/d"
+    "from": "now-5m",
+    "to": "now"
   },
-  "timepicker": {},
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "2d",
+      "7d",
+      "30d"
+    ]
+  },
   "timezone": "",
-  "title": "Air Quality",
-  "uid": "U1cNQwRgz",
-  "version": 1,
-  "weekStart": ""
+  "title": "Artillery",
+  "uid": "Abwq412mz",
+  "version": 2
 }

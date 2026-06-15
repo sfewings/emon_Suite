@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 22,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -517,6 +516,6 @@
   "timezone": "",
   "title": "Nissan Leaf",
   "uid": "o22hbWRgk",
-  "version": 9,
+  "version": 1,
   "weekStart": ""
 }

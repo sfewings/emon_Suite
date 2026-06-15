@@ -1,6 +1,8 @@
 FROM python:3.13
 ARG TARGETARCH
-RUN pip3 install pytz
+#update for numpy dependencies
+RUN apt-get update && apt-get install -y cmake
+RUN pip3 install numpy pytz
 COPY ./platform.sh ./
 #writes platform specific wheel filename to /.platform_whl
 COPY ./pyEmon/dist/* ./

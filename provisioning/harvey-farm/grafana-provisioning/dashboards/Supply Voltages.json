@@ -36,11 +36,11 @@
         "type": "influxdb",
         "uid": "P951FEA4DE68E13C5"
       },
-      "fill": 1,
+      "fill": 0,
       "fillGradient": 0,
       "gridPos": {
-        "h": 18,
-        "w": 14,
+        "h": 20,
+        "w": 23,
         "x": 0,
         "y": 0
       },
@@ -62,7 +62,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "9.3.1",
+      "pluginVersion": "10.2.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -75,7 +75,7 @@
           "alias": "$tag_sensorName",
           "datasource": {
             "type": "influxdb",
-            "uid": "P951FEA4DE68E13C5"
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -97,9 +97,11 @@
               "type": "fill"
             }
           ],
-          "measurement": "scale",
+          "measurement": "supplyV",
           "orderByTime": "ASC",
           "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"supplyV\" WHERE (\"sensorName\" != 'Rain tank and HWS') AND $timeFilter GROUP BY time($__interval), \"sensorName\" fill(linear)",
+          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -116,12 +118,18 @@
               }
             ]
           ],
-          "tags": []
+          "tags": [
+            {
+              "key": "sensorName",
+              "operator": "!=",
+              "value": "Rain tank and HWS"
+            }
+          ]
         }
       ],
       "thresholds": [],
       "timeRegions": [],
-      "title": "Dog food",
+      "title": "Supply Voltages",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -135,13 +143,13 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:88",
-          "format": "massg",
+          "$$hashKey": "object:606",
+          "format": "short",
           "logBase": 1,
           "show": true
         },
         {
-          "$$hashKey": "object:89",
+          "$$hashKey": "object:607",
           "format": "short",
           "logBase": 1,
           "show": true
@@ -152,21 +160,20 @@
       }
     }
   ],
-  "refresh": "1m",
-  "schemaVersion": 37,
-  "style": "dark",
+  "refresh": "",
+  "schemaVersion": 39,
   "tags": [],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-7d",
+    "from": "now-24h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Dog food-scales",
-  "uid": "NbVoMfZRk",
+  "title": "Supply Voltages",
+  "uid": "luq5A-Zgz",
   "version": 1,
   "weekStart": ""
 }
