@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 26,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -288,6 +287,6 @@
   "timezone": "",
   "title": "Water Usage",
   "uid": "DDIibaZgz",
-  "version": 10,
+  "version": 1,
   "weekStart": ""
 }

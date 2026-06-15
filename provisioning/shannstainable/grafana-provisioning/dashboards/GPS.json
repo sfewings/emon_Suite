@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 37,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -337,6 +336,6 @@
   "timezone": "",
   "title": "GPS",
   "uid": "tgx4vmgRk",
-  "version": 8,
+  "version": 1,
   "weekStart": ""
 }
