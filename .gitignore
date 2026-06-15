@@ -47,3 +47,5 @@ build/
 pyemonlib.egg-info/
 __pycache__/
 
+python/event_recorder/tests
+python/event_recorder/test_event_recorder
