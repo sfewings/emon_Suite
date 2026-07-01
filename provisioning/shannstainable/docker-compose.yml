@@ -6,7 +6,7 @@ services:
     ports:
       - '8086:8086'
     volumes:
-      - influxdb-storage:/var/lib/influxdb
+      - influxdb-storage_2026:/var/lib/influxdb
       - /share/influxdb/influxdb_backup:/backups
     environment:
       - INFLUXDB_DB=sensors
@@ -14,18 +14,18 @@ services:
       - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_HTTP_FLUX_ENABLED=true
     restart: always
-  chronograf:
-    image: chronograf:latest
-    ports:
-      - '127.0.0.1:8888:8888'
-    volumes:
-      - chronograf-storage:/var/lib/chronograf
-    depends_on:
-      - influxdb
-    environment:
-      - INFLUXDB_URL=http://influxdb:8086
-      - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
-      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
+  # chronograf:
+  #   image: chronograf:latest
+  #   ports:
+  #     - '127.0.0.1:8888:8888'
+  #   volumes:
+  #     - chronograf-storage:/var/lib/chronograf
+  #   depends_on:
+  #     - influxdb
+  #   environment:
+  #     - INFLUXDB_URL=http://influxdb:8086
+  #     - INFLUXDB_USERNAME=${INFLUXDB_USERNAME}
+  #     - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
   grafana:
     image: grafana/grafana:latest
     container_name: grafana1
@@ -45,6 +45,7 @@ services:
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SECURITY_ALLOW_EMBEDDING=true
     restart: always
+
   mosquitto:
     image: eclipse-mosquitto
     container_name: mqtt
@@ -250,7 +251,7 @@ services:
 
 
 volumes:
-  influxdb-storage:
+  influxdb-storage_2026:
   chronograf-storage:
   grafana-storage:
   mosquitto-data:
