@@ -1,0 +1,99 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+        "name": "Python: Current File",
+        "type": "python",
+        "request": "launch",
+        "program": "${file}",
+        "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "/share/emon_Suite/python/emonLogToInflux.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["--fromFile", "20190314.TXT", "--toFile", "20191231.TXT", "--settingsPath", "/share/emon_Suite/python/emon_config.yml", "/share/Input"]
+        },
+        {
+            "name": "getAnnotations - all annotations",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": [],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "getAnnotations - list dashboards",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": ["--list-dashboards"],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "getAnnotations - specific dashboard",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": ["--dashboard", "Orin"],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "getAnnotations - date range",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": [
+                "--from", "2026-03-20",
+                "--to", "2026-03-31"
+            ],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "getAnnotations - custom limit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": ["--limit", "50"],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "getAnnotations - add from file",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": ["--add", "annotations.txt"],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "getAnnotations - add from stdin",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+            "args": ["--add", "-"],
+            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Grafana Export Dashboards",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/grafanaExportDashboards/grafana_export_dashboards.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args": ["--help"]
+        }
+    ]
+}

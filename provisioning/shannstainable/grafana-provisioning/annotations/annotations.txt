@@ -1,0 +1,13 @@
+Time|End Time|Text|Tags|Dashboard|Panel ID
+2025-11-01 16:15:16||Add active balancer to 320Ah battery||4z66RJWgk|17
+2025-11-15 16:31:17||Connect balancer to series B1-1||advdmsz|6
+2025-11-16 20:00:45||Start active balancer on 280Ah battery||advdmsz|12
+2025-11-17 03:20:26||Add active balancer||4z66RJWgk|12
+2025-11-22 08:05:58||Swap active balancers over to see if it fixes cells 0-2 on 280 bank||advdmsz|12
+2025-11-22 08:07:04||Swap active balancers to see if it fixes cells 0-2 on 280Ah bank||advdmsz|17
+2025-11-24 19:13:19||Moved ballancer from row 1 to row 2||advdmsz|6
+2025-12-02 22:58:35||Updated Voltage monitor with calibration routine||advdmsz|21
+2025-12-03 10:24:43||Move balancer from series 2 to series 4||advdmsz|6
+2025-12-13 05:55:17||Moved balancer from series 4 to series 3||advdmsz|6
+2025-12-13 05:55:56||Move active balancer from series 4 to series 3||advdmsz|21
+2026-04-01 10:55:30||Change battery from 10kwh to 50kwh||o22hbWRgk|4
