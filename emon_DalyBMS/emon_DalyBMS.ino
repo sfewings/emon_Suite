@@ -20,7 +20,6 @@ ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 	#define NETWORK_FREQUENCY 915.0
 #endif
 
-#define GREEN_LED 9			// Green LED on emonTx
 
 //Pinout for MAX485
 //DI = TXD = 3
@@ -39,63 +38,78 @@ PayloadDalyBMS g_payloadDalyBMS;
 
 #define EEPROM_BASE 0x10			//where the water
 
-RH_RF69 g_rf69;
+#define GREEN_LED 		9
+
+#define LORA_RF95
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define RFM69_RST     	4
+	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
+#endif
 
 
-bool isRF69HW()
-{
-	g_rf69.setFrequency(NETWORK_FREQUENCY + 0.5);
-	g_rf69.setTxPower(13,false);
+// bool isRF69HW()
+// {
+// 	g_rfRadio.setFrequency(NETWORK_FREQUENCY + 0.5);
+// 	g_rfRadio.setTxPower(13,false);
 
-	g_rf69.setModeIdle();
-	int8_t tempW = g_rf69.temperatureRead();
-	Serial.print(F("Temperature W start="));
-	Serial.print(tempW);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-	for(int i = 0; i< 300; i++)
-	{
-		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
-		g_rf69.waitPacketSent();
-	}
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-	g_rf69.setModeIdle();
-	int8_t tempWend = g_rf69.temperatureRead();
-	tempW =  tempWend - tempW;
-	Serial.print(F(", end="));
-	Serial.print(tempWend);
-	Serial.print(F(", diff="));
-	Serial.print(tempW);
-	delay(500);
+// 	g_rfRadio.setModeIdle();
+// 	int8_t tempW = g_rfRadio.temperatureRead();
+// 	Serial.print(F("Temperature W start="));
+// 	Serial.print(tempW);
+// 	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+// 	for(int i = 0; i< 300; i++)
+// 	{
+// 		g_rfRadio.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
+// 		g_rfRadio.waitPacketSent();
+// 	}
+// 	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+// 	g_rfRadio.setModeIdle();
+// 	int8_t tempWend = g_rfRadio.temperatureRead();
+// 	tempW =  tempWend - tempW;
+// 	Serial.print(F(", end="));
+// 	Serial.print(tempWend);
+// 	Serial.print(F(", diff="));
+// 	Serial.print(tempW);
+// 	delay(500);
 
-	g_rf69.setTxPower(18,true);
-	g_rf69.setModeIdle();
-	int8_t tempHW = g_rf69.temperatureRead();
-	Serial.print(F("Temperature HW start="));
-	Serial.print(tempHW);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-	for(int i = 0; i< 300; i++)
-	{
-		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
-		g_rf69.waitPacketSent();
-	}
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-	g_rf69.setModeIdle();
-	int8_t tempHWend = g_rf69.temperatureRead();
-	Serial.print(F(", end="));
-	Serial.print(tempHWend);
-	tempHW = tempHWend - tempHW;
-	Serial.print(F(", diff="));
-	Serial.print(tempHW);
+// 	g_rfRadio.setTxPower(18,true);
+// 	g_rfRadio.setModeIdle();
+// 	int8_t tempHW = g_rfRadio.temperatureRead();
+// 	Serial.print(F("Temperature HW start="));
+// 	Serial.print(tempHW);
+// 	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+// 	for(int i = 0; i< 300; i++)
+// 	{
+// 		g_rfRadio.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
+// 		g_rfRadio.waitPacketSent();
+// 	}
+// 	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+// 	g_rfRadio.setModeIdle();
+// 	int8_t tempHWend = g_rfRadio.temperatureRead();
+// 	Serial.print(F(", end="));
+// 	Serial.print(tempHWend);
+// 	tempHW = tempHWend - tempHW;
+// 	Serial.print(F(", diff="));
+// 	Serial.print(tempHW);
 
-	Serial.print( "This is a RFM69" );
-	Serial.println( tempHW > tempW ? "HW" : "W" );
+// 	Serial.print( "This is a RFM69" );
+// 	Serial.println( tempHW > tempW ? "HW" : "W" );
 	
-	//restore settings
-	g_rf69.setFrequency(NETWORK_FREQUENCY);
-	g_rf69.setTxPower(13,false);
+// 	//restore settings
+// 	g_rfRadio.setFrequency(NETWORK_FREQUENCY);
+// 	g_rfRadio.setTxPower(13,false);
 	
-	return tempHW > tempW;
-}
+// 	return tempHW > tempW;
+// }
 //--------------------------------------------------------------------------------------------
 // Setup
 //--------------------------------------------------------------------------------------------
@@ -108,19 +122,22 @@ void setup()
 
 	Serial.println(F("Daly BMS sensor start"));
 
-	if (!g_rf69.init())
+	if (!g_rfRadio.init())
 		Serial.println("rf69 init failed");
-	if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
+	if (!g_rfRadio.setFrequency(NETWORK_FREQUENCY))
 		Serial.println("rf69 setFrequency failed");
+	g_rfRadio.setHeaderId(DALY_BMS_NODE);
+	// The encryption key has to be the same as the one in the client
+#ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client
 	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 					0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-	g_rf69.setEncryptionKey(key);
-	g_rf69.setHeaderId(DALY_BMS_NODE);
-	g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+	g_rfRadio.setEncryptionKey(key);
+	g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 	// if( isRF69HW() )
 	// {
-	// 	g_rf69.setTxPower(18,true);
+	// 	g_rfRadio.setTxPower(18,true);
 	// }
 
 	Serial.print(F("RF69 initialise node: "));
@@ -170,9 +187,11 @@ void loop ()
 
 		g_payloadDalyBMS.crc = EmonSerial::CalcCrc((const void*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS)-2);
 
-		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-		g_rf69.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
-		if( g_rf69.waitPacketSent() )
+#ifndef LORA_RF95
+		g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+#endif
+		g_rfRadio.send((const uint8_t*) &g_payloadDalyBMS, sizeof(PayloadDalyBMS));
+		if( g_rfRadio.waitPacketSent() )
 		{
 			EmonSerial::PrintDalyBMSPayload(&g_payloadDalyBMS);
 		}
@@ -180,7 +199,11 @@ void loop ()
 		{
 			Serial.println(F("No packet sent"));
 		}
-		g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#ifdef LORA_RF95
+		g_rfRadio.sleep();
+#else
+		g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
 
 		// And print them out!
 		Serial.print(F("Basic BMS Data:              ")); Serial.println((String)g_daly_bms.get.packVoltage + "V " + (String)g_daly_bms.get.packCurrent + "I " + (String)g_daly_bms.get.packSOC + "\% ");
