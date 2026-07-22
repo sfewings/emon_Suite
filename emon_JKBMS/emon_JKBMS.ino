@@ -214,7 +214,7 @@ int32_t  getInt32 (const uint8_t* d) { return (int32_t)(((uint32_t)d[0] << 24) |
 
 //-------------------------------------------------------------------
 // Read all required values from JK BMS via Modbus
-// Returns true if pack-level reads succeeded (cell failures are non-fatal)
+// Returns true if pack-level reads succeeded 
 //-------------------------------------------------------------------
 bool readJKBMS()
 {
@@ -240,6 +240,7 @@ bool readJKBMS()
 	if (cellFailures > 0)
 	{
 		Serial.print(F("Cell read failures: ")); Serial.println(cellFailures);
+		packSuccess = false;
 	}
 
 	// Battery voltage: UINT32 in mV, convert to 0.1V for payload
