@@ -137,9 +137,9 @@ TrueWind calculateTrueWind(float aws, float awd, float sog, float hdg) {
   float vx = sog * sin(hdgRad);
   float vy = sog * cos(hdgRad);
 
-  // True wind = apparent wind + vessel motion
-  float twx = awx + vx;
-  float twy = awy + vy;
+  // True wind (FROM) = apparent wind (FROM) - vessel motion (TOWARD)
+  float twx = awx - vx;
+  float twy = awy - vy;
 
   // Convert back to polar
   float tws = sqrt(twx * twx + twy * twy);
@@ -828,9 +828,9 @@ void loop()
 
         //Get the IMU data to publish
         // Calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
-        get_scaled_IMU(g_payloadIMU.Acc, g_payloadIMU.Mag);  //apply relative scale and offset to RAW data. UNITS are not important
-        get_gyro(g_payloadIMU.Gyro);                         //get gyro data with offsets removed
-        g_payloadIMU.heading = get_heading(g_payloadIMU.Acc, g_payloadIMU.Mag, p, declination);
+        get_scaled_IMU(g_payloadIMU.acc, g_payloadIMU.mag);  //apply relative scale and offset to RAW data. UNITS are not important
+        get_gyro(g_payloadIMU.gyro);                         //get gyro data with offsets removed
+        g_payloadIMU.heading = get_heading(g_payloadIMU.acc, g_payloadIMU.mag, p, declination);
 
         g_rf69.setHeaderId(IMU_NODE);
         g_rf69.send((const uint8_t*) &g_payloadIMU, sizeof(PayloadIMU) );
@@ -906,7 +906,7 @@ void loop()
                 // send pressure packet
                 g_rf69.setHeaderId(PRESSURE_NODE);
                 g_payloadPressure.subnode = 1;
-                g_payloadPressure.pressure = anemometerReadings.pressure;
+                g_payloadPressure.pressure = anemometerReadings.pressure*100.0;
                 g_payloadPressure.humidity = anemometerReadings.humidity;
                 g_payloadPressure.temperature = anemometerReadings.temperature;
 

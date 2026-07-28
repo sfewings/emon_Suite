@@ -26,7 +26,14 @@
       "Bash(git -C 'C:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite' status)",
       "Bash(git -C 'C:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite' add python/event_recorder/web_interface.py)",
       "Bash(git -C:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebSearch",
+      "Bash(find /tmp/Open-Vehicle-Monitoring-System-3-Outlander -name \"*.cpp\" -path \"*/vehicle*\" | grep -i -E \"outlander|mitsubishi|mo\\\\.\" | head -20)",
+      "Read(//tmp/**)",
+      "Bash(find /tmp/Open-Vehicle-Monitoring-System-3-Outlander -name \"*.cpp\" -path \"*vehicle_*\" | head -20)",
+      "Bash(find /tmp/Open-Vehicle-Monitoring-System-3-Outlander -name \"*.cpp\" -path \"*vehicle_mitsubishi*\" -o -name \"*.cpp\" -path \"*vehicle_mo*\" -o -name \"*.h\" -path \"*vehicle_mitsubishi*\" -o -name \"*.h\" -path \"*vehicle_mo*\" | head -20)",
+      "Bash(git rebase *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

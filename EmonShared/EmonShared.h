@@ -191,18 +191,18 @@ typedef struct PayloadLeaf : PayloadRelay {
 } PayloadLeaf;
 
 typedef struct PayloadGPS : PayloadRelay {
-	byte subnode;                           // 
-	float latitude;
-	float longitude;
-	float course;
-	float speed;
+	byte subnode;                           	// 
+	float latitude;								// degrees WGS84
+	float longitude;							// degrees WGS84
+	float course;								// degrees
+	float speed;								// knots
 } PayloadGPS;
 
 typedef struct PayloadPressure : PayloadRelay {
 	byte subnode;
-	float pressure;
-	float temperature;
-	float humidity;
+	float pressure;								// pascals
+	float temperature;							// celcius
+	float humidity;								// percentage
 } PayloadPressure;
 
 typedef struct PayloadDalyBMS : PayloadRelay {
@@ -219,26 +219,26 @@ typedef struct PayloadDalyBMS : PayloadRelay {
 
 typedef struct PayloadSevCon : PayloadRelay {
 	byte subnode;
-	int8_t motorTemperature;		            	// 
-	int8_t controllerTemperature;                 //
-	float capVoltage;							//
-	float batteryCurrent;						//
-	int16_t rpm;									//
+	int8_t motorTemperature;		            // degrees
+	int8_t controllerTemperature;               // degrees
+	float capVoltage;							// volts
+	float batteryCurrent;						// amps
+	int16_t rpm;								// rpm
 } PayloadSevCon;
 
 typedef struct PayloadAnemometer : PayloadRelay {
 	byte subnode;
-	float windSpeed;
-	float windDirection;
-	float temperature;
+	float windSpeed;							// knots
+	float windDirection;						// degrees
+	float temperature;							// celcius
 } PayloadAnemometer;
 
 typedef struct PayloadIMU : PayloadRelay {
 	byte subnode;
-	float acc[3];
-	float mag[3];
-	float gyro[3];
-	float heading;
+	float acc[3];								// xyz, g
+	float mag[3];								// xyz,
+	float gyro[3];								// xyz,
+	float heading;								// degrees
 } PayloadIMU;
 
 class EmonSerial{
