@@ -11,3 +11,5 @@ Time|End Time|Text|Tags|Dashboard|Panel ID
 2025-12-13 05:55:17||Moved balancer from series 4 to series 3||advdmsz|6
 2025-12-13 05:55:56||Move active balancer from series 4 to series 3||advdmsz|21
 2026-04-01 10:55:30||Change battery from 10kwh to 50kwh||o22hbWRgk|4
+2026-07-22 11:18:16||Replace household consumption 3-phase meter.  Previous meter had stopped reporting one phase||4z66RJWgk|8
+2026-07-28 05:44:15||Added Outlander EV reporting to Leaf dashboard||o22hbWRgk|9
