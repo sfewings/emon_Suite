@@ -258,7 +258,7 @@ bool readJKBMS()
 	if (len >= 4)
 	{
 		int32_t currentmA = getInt32(data);
-		g_payloadDalyBMS.current = currentmA / 1000.0;
+		g_payloadDalyBMS.current = -currentmA / 1000.0;
 	}
 	else
 		packSuccess = false;
