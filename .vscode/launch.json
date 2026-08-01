@@ -12,13 +12,13 @@
         "console": "integratedTerminal"
         },
         {
-            "name": "Python: Current File",
+            "name": "emonLogToInflux",
             "type": "python",
             "request": "launch",
             "program": "/share/emon_Suite/python/emonLogToInflux.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "args": ["--fromFile", "20190314.TXT", "--toFile", "20191231.TXT", "--settingsPath", "/share/emon_Suite/python/emon_config.yml", "/share/Input"]
+            "args": ["--fromFile", "20260601.TXT", "--toFile", "20260701.TXT", "--settingsPath", "/share/emon_Suite/provisioning/shannstainable/emon_config/emon_config.yml", "/share/Input"]
         },
         {
             "name": "getAnnotations - all annotations",

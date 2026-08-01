@@ -402,7 +402,7 @@
           "orderByTime": "ASC",
           "policy": "default",
           "query": "SELECT mean(\"value\") FROM \"power\" WHERE (\"sensorName\"::tag = 'Inverter Three - PV' OR \"sensorName\"::tag = 'Inverter Two - PV' OR \"sensorName\"::tag = 'Inverter One - PV') AND $timeFilter GROUP BY time($__interval), \"sensorName\" fill(linear)",
-          "rawQuery": true,
+          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -427,15 +427,21 @@
             },
             {
               "condition": "OR",
-              "key": "sensor",
+              "key": "sensorName::tag",
               "operator": "=",
-              "value": "inverter/pvInputPower/1"
+              "value": "Inverter One - PV"
             },
             {
               "condition": "OR",
               "key": "sensor",
               "operator": "=",
               "value": "power/0/1"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName::tag",
+              "operator": "=",
+              "value": "Inverter Two - PV"
             }
           ]
         }
@@ -1426,6 +1432,191 @@
             },
             "showPoints": "auto",
             "showValues": false,
+            "spanNulls": 60000,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 3,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "BMS - Leaf Bank"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "BMS - Leaf Bank - cell 0",
+                  "BMS - Leaf Bank - cell 1",
+                  "BMS - Leaf Bank - cell 10",
+                  "BMS - Leaf Bank - cell 11",
+                  "BMS - Leaf Bank - cell 2",
+                  "BMS - Leaf Bank - cell 3",
+                  "BMS - Leaf Bank - cell 4",
+                  "BMS - Leaf Bank - cell 5",
+                  "BMS - Leaf Bank - cell 6",
+                  "BMS - Leaf Bank - cell 7",
+                  "BMS - Leaf Bank - cell 8",
+                  "BMS - Leaf Bank - cell 9"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.0",
+      "targets": [
+        {
+          "alias": "$tag_sensorName",
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "sensorName::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "voltage",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "sensorGroup::tag",
+              "operator": "=",
+              "value": "BMS - Leaf Bank"
+            }
+          ]
+        }
+      ],
+      "title": "Nissan Leaf Bank",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -1456,7 +1647,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 80
       },
       "id": 16,
       "options": {
@@ -1667,7 +1858,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 83
+        "y": 91
       },
       "id": 19,
       "options": {
