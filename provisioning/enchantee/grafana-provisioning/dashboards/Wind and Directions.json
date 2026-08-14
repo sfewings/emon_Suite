@@ -18,7 +18,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 7,
   "links": [],
   "panels": [
     {
@@ -585,5 +584,5 @@
   "timezone": "browser",
   "title": "Wind and Directions",
   "uid": "admqqr5",
-  "version": 13
+  "version": 1
 }

@@ -56,6 +56,23 @@ def list_sites() -> list[str]:
     )
 
 
+def expand_grafana_url(url: str, env: dict[str, str]) -> str:
+    """
+    Expand Grafana's config-style placeholders in a URL.
+
+    GRAFANA_URL doubles as GF_SERVER_ROOT_URL in docker-compose, so it is often
+    written as '%(protocol)s://%(domain)s/grafana/'. Grafana expands those
+    itself; requests cannot, so substitute them from the same .env here.
+    Returns "" if any placeholder is left unresolved.
+    """
+    if "%(" not in url:
+        return url
+    protocol = env.get("GF_SERVER_PROTOCOL") or env.get("PROTOCOL") or "http"
+    domain = env.get("DOMAIN_NAME") or env.get("GF_SERVER_DOMAIN") or "localhost"
+    expanded = url.replace("%(protocol)s", protocol).replace("%(domain)s", domain)
+    return "" if "%(" in expanded else expanded
+
+
 def apply_site(args, site_name: str):
     """Load .env from a provisioning site and fill in args defaults."""
     site_dir = PROVISIONING_DIR / site_name
@@ -71,7 +88,7 @@ def apply_site(args, site_name: str):
     env = load_env_file(env_path)
 
     if not args.url:
-        args.url = env.get("GRAFANA_URL")
+        args.url = expand_grafana_url(env.get("GRAFANA_URL", ""), env) or None
     if not args.user:
         args.user = env.get("GRAFANA_USERNAME")
     if not args.password:
