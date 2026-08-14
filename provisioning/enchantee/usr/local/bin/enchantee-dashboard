@@ -69,17 +69,21 @@ until curl -sf -o /dev/null -m 3 "$URL"; do
 done
 
 # --- 4. launch --------------------------------------------------------------
-# A normal browser window, not --app and not --kiosk: the window keeps its
-# title bar buttons, and --start-maximized fills the work area rather than the
-# whole output, so the wf-panel-pi taskbar stays visible.
+# --app gives web contents only: no tab strip, no omnibox, no bookmarks bar.
+# This is the same rendering path the original PWA autostart used, and it is
+# deliberately NOT --kiosk: the window still maximises to the work area rather
+# than the whole output, so the taskbar stays visible along the top and labwc
+# still draws its own title bar with minimise / maximise / close.
+# Reclaiming the ~150px of browser chrome is also what stops the dashboard
+# overflowing into scrollbars.
 # --disable-session-crashed-bubble is kept for older Chromium builds, but it no
 # longer suppresses the restore prompt on this one; step 2 above is what
 # actually does it.
 exec chromium \
     --profile-directory=Default \
+    --app="$URL" \
     --start-maximized \
     --no-first-run \
     --no-default-browser-check \
     --disable-session-crashed-bubble \
-    --noerrdialogs \
-    "$URL"
+    --noerrdialogs

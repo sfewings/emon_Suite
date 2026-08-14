@@ -671,9 +671,9 @@ mv ~/.local/share/keyrings/Default_Keyring.keyring ~/.local/share/keyrings/old_D
 
 ## 9. Dashboard on the Pi's own screen at login
 
-The Pi opens the dashboard by itself at login, in an ordinary maximised
-Chromium window: taskbar still along the top, minimise / maximise / close
-buttons still on the window.
+The Pi opens the dashboard by itself at login: web contents only, with the
+taskbar still along the top and labwc's own title bar carrying the minimise /
+maximise / close buttons.
 
 ```bash
 sudo install -m 755 usr/local/bin/enchantee-dashboard /usr/local/bin/enchantee-dashboard
@@ -705,10 +705,17 @@ up the instant the desktop is, so launching straight away lands on a "site
 cannot be reached" page that nobody is there to reload. The script polls the URL
 for up to two minutes, then opens anyway.
 
-`--start-maximized` fills the work area rather than the whole output, which is
-what leaves the taskbar visible; `--kiosk` or `--app=` would take the whole
-screen and drop the window buttons. Override the address with
-`ENCHANTEE_URL=... enchantee-dashboard` for a one-off.
+**Window style.** `--app=` renders web contents only: no tab strip, no omnibox,
+no bookmarks bar. That is the same path the original PWA autostart used, and it
+is worth being clear that it is *not* `--kiosk`. `--kiosk` takes the whole
+output, covers the taskbar and removes the window controls; `--app=` leaves an
+ordinary window, so `--start-maximized` fills the work area and the taskbar
+stays visible. Reclaiming the roughly 150px of browser chrome is also what keeps
+the dashboard from overflowing into scrollbars.
+
+Override the address with `ENCHANTEE_URL=... enchantee-dashboard` for a one-off.
+Drop `--app=` and pass the URL as a plain argument if you ever want the full
+browser UI with an address bar.
 
 This replaces an older Chromium PWA autostart entry that pointed at
 `http://localhost:1880` directly. It is left in place as
