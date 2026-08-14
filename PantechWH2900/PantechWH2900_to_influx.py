@@ -68,6 +68,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     mqttServer = str(args.MQTT)
+    print(f"mqttServer:{mqttServer}, influx:{args.influx}, logpath:{args.logPath}")
 
     url = f"http://{args.influx}:8086"
     

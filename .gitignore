@@ -35,8 +35,9 @@ Analyse_python/pandas/
 ./Emon_SerialToMQTT/Emon_SerialToMQTT
 ./Emon_LogToJson/Emon_LogToJson
 
-#remove .vscode folder
-.vscode/
+#remove .vscode folder but keep launch.json
+.vscode/*
+!.vscode/launch.json
 .vs/
 
 #python built modules
@@ -47,3 +48,6 @@ build/
 pyemonlib.egg-info/
 __pycache__/
 
+python/event_recorder/test*/
+python/exportCSV/tests/
+python/testing_emon_settings/

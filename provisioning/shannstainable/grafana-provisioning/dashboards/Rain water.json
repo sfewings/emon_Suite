@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 32,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -293,6 +292,6 @@
   "timezone": "",
   "title": "Rain water",
   "uid": "khml0aZgz",
-  "version": 5,
+  "version": 1,
   "weekStart": ""
 }

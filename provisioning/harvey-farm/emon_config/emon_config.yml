@@ -1,0 +1,127 @@
+temp:
+  0:
+    name: House temperatures
+    t0: Under roof
+    t1: Living room slab
+    t2: Living room
+    t3: Ceiling space
+  1:
+    name: Fridge temperatures
+    t0: On top of fridge
+    t1: Big Fridge
+    t2: Small Fridge
+  2:
+    name: Node 2
+    t0: Sensor 2-1
+    t1: Sensor 2-2
+    t2: Sensor 2-3
+    t3: Sensor 2-4
+  3:
+    name: Node 3
+    t0: Sensor 3-1
+    t1: Sensor 3-2
+    t2: Sensor 3-3
+    t3: Sensor 3-4
+hws:
+  0:
+    name: Hot water system
+    t0: Top of Panel (T1)
+    t1: Water (T3)
+    t2: Inlet (T6)
+    t3: Water 2 (T2)
+    t4: Water 3 (T5)
+    t5: (T4)
+    t6: PCB
+    p0: Solar pump
+    p1: Heat Exchange pump
+    p2: Heat pump booster
+disp:
+  0:
+    name: Kitchen
+  1:
+    name: Office
+  2:
+    name: Unused
+  3:
+    name: Upstairs
+wtr:
+  0:
+    name: Garden water tank
+    f0: Water Used
+    f0_litresPerPulse: 0.2
+    h0: Tank water height
+  1:
+    name: Green water tank
+    f0: Green tank
+    f0_litresPerPulse: 0.2
+    h0: Green tank water height    
+pulse:
+  0:
+    name: Power board
+    p0: Unused
+    p1: Produced
+    p2: Consumed
+    p3: Unused
+    p4: Unused
+    p5: Unused
+    p0_wPerPulse: 0.25
+    p1_wPerPulse: 0.25
+    p2_wPerPulse: 2.5
+    p3_wPerPulse: 1
+    p4_wPerPulse: 0.25
+    p5_wPerPulse: 1
+    p2_wPerPulse: 2.5
+    p3_wPerPulse: 1
+    p4_wPerPulse: 0.25
+    p5_wPerPulse: 1
+bat:
+  0:
+    name: Battery monitor
+    s0: Bank 1
+    s1: Unused
+    s2: Unused
+    v0: Battery
+    v0_reference: true
+    v1: Mid-voltage
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Unused
+  2:
+    name: Reverse Current Tester
+    s0: Bank 1 - Rev
+    s1: Bank 1 - Forward
+    s2: Unused
+    v0: 50v ref
+    v0_reference: true
+    v1: V_In
+    v2: Unused
+    v3: Unused
+    v4: Unused
+    v5: Unused
+    v6: Unused
+    v7: Unused
+    v8: Unused
+air:
+  0:
+    name: Outside
+  1:
+    name: Garage
+inv: #inverters
+  0:
+    name: Inverter 1
+  1:
+    name: Inverter 2
+rain:
+  0:
+    name: Rain gauge
+    mmPerPulse: 0.2
+bee:
+  0:
+leaf:
+  0:
+    name: Leaf
+

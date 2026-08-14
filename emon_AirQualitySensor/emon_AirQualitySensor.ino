@@ -24,8 +24,8 @@
 #define VERSION "2.6"
 /*--------------------------- Configuration ------------------------------*/
 /* Particulate Matter Sensor */
-uint32_t    g_pms_warmup_period   =  30;             // Seconds to warm up PMS before reading
-uint32_t    g_pms_report_period   = 300;             // Seconds between reports
+const uint32_t    g_pms_warmup_period   =  30;             // Seconds to warm up PMS before reading
+const uint32_t    g_pms_report_period   = 300;             // Seconds between reports
 
 /* ----------------- Hardware-specific config ---------------------- */
 #define     PMS_RX_PIN              A5               // Rx from PMS (== PMS Tx)
@@ -39,9 +39,25 @@ uint32_t    g_pms_report_period   = 300;             // Seconds between reports
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 #include <EmonShared.h>
 #include <EmonEEPROM.h>
+
 //Radiohead RF_69 support
 #include <SPI.h>
-#include <RH_RF69.h>
+#define LORA_RF95
+
+#ifdef LORA_RF95
+	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
+	#include <RH_RF95.h>
+	RH_RF95 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define NODE_INITIALISED_STRING F("RF95 initialise node: ")
+#else
+	#include <RH_RF69.h>
+	RH_RF69 g_rfRadio;
+	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
+	#define RFM69_RST     	4
+	#define NODE_INITIALISED_STRING F("RF69 initialise node: ")
+#endif
+
 //watchdog timer
 #include <avr/wdt.h>
 
@@ -72,8 +88,6 @@ uint32_t  g_pm10p0_ppd_value    = 0;  // Particles Per Deciliter pm10.0 reading
 
 uint8_t   g_uk_aqi_value        = 0;  // Air Quality Index value using UK reporting system
 uint16_t  g_us_aqi_value        = 0;  // Air Quality Index value using US reporting system
-
-RH_RF69 g_rf69;
 
 EEPROMSettings  eepromSettings;
 
@@ -131,22 +145,24 @@ void setup()
   pms.wakeUp();                     // Tell PMS to wake up (turn on fan and laser)
 
 
-  if (!g_rf69.init())
-    Serial.println("g_rf69 init failed");
+  if (!g_rfRadio.init())
+    Serial.println("g_rfRadio init failed");
   // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
   // No encryption
-  if (!g_rf69.setFrequency(915.0))
+  if (!g_rfRadio.setFrequency(915.0))
     Serial.println("setFrequency failed");
-  g_rf69.setHeaderId(AIRQUALITY_NODE);
-
-  // If you are using a high power g_rf69 eg RFM69HW, you *must* set a Tx power with the
-  // ishighpowermodule flag set like this:
-  //g_rf69.setTxPower(14, true);
-
+  
+  #ifndef LORA_RF95
   // The encryption key has to be the same as the one in the client
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-  g_rf69.setEncryptionKey(key);
+  g_rfRadio.setEncryptionKey(key);
+#endif
+  g_rfRadio.setHeaderId(AIRQUALITY_NODE);
+
+	Serial.print(NODE_INITIALISED_STRING);
+	Serial.print(AIRQUALITY_NODE);
+	Serial.println(" Freq: 915MHz");
 
   Serial.println(F("Watchdog timer set for 8 seconds"));
   wdt_enable(WDTO_8S);  
@@ -237,20 +253,15 @@ void loop()
       pms.sleep();
       digitalWrite(PMS_SET_PIN,LOW);
 
-      // Calculate AQI values for the various reporting standards
-      //calculateUkAqi();
-
       // Report the new values
-      //reportToMqtt();
       reportToSerial();
       if( g_pms_ppd_readings_taken )
       {
-        //Serial.println(F("g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);"));
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
-        //Serial.println(F("g_rf69.send();"));
-        g_rf69.send((const uint8_t*) &g_payloadAirQuality, sizeof(g_payloadAirQuality));
-        //Serial.println(F("g_rf69.waitPacketSent();"));
-        if( g_rf69.waitPacketSent() )
+#ifndef LORA_RF95
+    		g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
+#endif
+        g_rfRadio.send((const uint8_t*) &g_payloadAirQuality, sizeof(g_payloadAirQuality));
+        if( g_rfRadio.waitPacketSent() )
         {
           EmonSerial::PrintAirQualityPayload(&g_payloadAirQuality);
         }
@@ -258,8 +269,11 @@ void loop()
         {
           Serial.println(F("No packet sent"));
         }
-        //Serial.println(F("g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);"));
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#ifdef LORA_RF95
+    		g_rfRadio.sleep();
+#else
+		    g_rfRadio.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
+#endif
       }
 
       g_pms_state_start = time_now;

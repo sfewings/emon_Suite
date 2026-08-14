@@ -24,7 +24,6 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 36,
   "links": [],
   "liveNow": false,
   "panels": [
@@ -710,6 +709,6 @@
   "timezone": "",
   "title": "Beehive",
   "uid": "Nwk_zSgRk",
-  "version": 3,
+  "version": 1,
   "weekStart": ""
 }

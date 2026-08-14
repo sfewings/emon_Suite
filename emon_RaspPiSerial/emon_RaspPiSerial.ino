@@ -6,18 +6,19 @@
 #include <EmonShared.h>
 #include <SPI.h>
 
-#undef LORA_RF95
+#define LORA_RF95
 
 #ifdef LORA_RF95
 	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
 	#include <RH_RF95.h>
 	RH_RF95 g_rfRadio;
 	#define RADIO_BUF_LEN   RH_RF95_MAX_PAYLOAD_LEN
+	#define LED_PIN 		9
 #else
 	#include <RH_RF69.h>
 	RH_RF69 g_rfRadio;
 	#define RADIO_BUF_LEN   RH_RF69_MAX_MESSAGE_LEN
-	#define GREEN_LED 		9
+	#define LED_PIN 		9
 	#define RFM69_RST     	4
 #endif
 
@@ -32,10 +33,8 @@
 
 void SetLed(uint8_t val)
 {
-#ifndef LORA_RF95
-	pinMode(GREEN_LED, OUTPUT);
-	digitalWrite(GREEN_LED, val );
-#endif
+	pinMode(LED_PIN, OUTPUT);
+	digitalWrite(LED_PIN, val );
 }
 
 
@@ -125,8 +124,8 @@ void loop ()
 			//RH_RF95::printBuffer("Received: ", buf, len);
 			//Serial.print("Got request: ");
 			//Serial.print((char*)buf);
-			//Serial.print("RSSI: ");
-			//Serial.println(g_rfRadio.lastRssi(), DEC);
+			Serial.print("RSSI: ");
+			Serial.println(g_rfRadio.lastRssi(), DEC);
 
 			data = buf;
 

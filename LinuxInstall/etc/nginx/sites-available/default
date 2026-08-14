@@ -30,7 +30,7 @@ server {
   listen 443 default ssl;
   #ssl on;
   ssl_certificate_key /etc/letsencrypt/live/shannstainable.fewings.org/privkey.pem;
-  ssl_certificate /etc/letsencrypt/live/shannstainable.fewings.org/cert.pem;
+  ssl_certificate /etc/letsencrypt/live/shannstainable.fewings.org/fullchain.pem;
 
   ssl_verify_depth 3;
   ssl_protocols TLSv1.1 TLSv1.2;

@@ -139,7 +139,7 @@ typedef struct PayloadBattery : PayloadRelay {
 	int power[BATTERY_SHUNTS];										//w
 	unsigned long pulseIn[BATTERY_SHUNTS];				//wH
 	unsigned long pulseOut[BATTERY_SHUNTS];				//wH
-	short voltage[MAX_VOLTAGES];
+	short voltage[MAX_VOLTAGES];						//100ths of a volt
 	uint16_t crc;									//2 byte CRC value 
 }PayloadBattery;
 

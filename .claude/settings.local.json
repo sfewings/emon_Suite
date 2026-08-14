@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(start:*)",
+      "Bash(pip install:*)",
+      "Bash(test:*)",
+      "Bash(set:*)",
+      "Bash(python:*)",
+      "Bash(bash build.sh:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker exec:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(docker ps:*)",
+      "Bash(pip3 install:*)",
+      "Bash(py -m pip install:*)",
+      "Bash(where:*)",
+      "Bash(\"c:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite/python/pyEmon/venv/Scripts/python.exe\" \"c:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite/_make_slides.py\")",
+      "Bash(git check-ignore:*)",
+      "Bash(git rm:*)",
+      "Bash(git -C \"c:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite\" diff python/event_recorder/web_interface.py)",
+      "Bash(git -C 'C:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite' status)",
+      "Bash(git -C 'C:/Users/StephenFewings/OneDrive - terra15 technologies/Documents/Home/emon/emon_Suite' add python/event_recorder/web_interface.py)",
+      "Bash(git -C:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}
