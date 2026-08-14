@@ -20,15 +20,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
-COPY event_recorder/ ./event_recorder/
+# Create directories
+RUN mkdir -p /data /config /data/plots /data/uploads
 
-# Install Python dependencies
+# Install Python dependencies.
+# Copy requirements.txt on its own, before the application code, so that editing
+# source does not invalidate this layer. Copying the whole package first meant
+# every source change re-ran the full pip install, which is slow on a Pi.
 COPY event_recorder/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create directories
-RUN mkdir -p /data /config /data/plots /data/uploads
+# Copy application code last: it changes most often, so everything above it
+# stays cached.
+COPY event_recorder/ ./event_recorder/
 
 # Environment variables
 ENV TZ=UTC
