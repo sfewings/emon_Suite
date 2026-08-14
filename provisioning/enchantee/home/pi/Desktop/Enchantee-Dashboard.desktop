@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Enchantee Dashboard
+GenericName=Vessel dashboard
+Comment=Open the Enchantee dashboard in an app window
+Exec=/usr/local/bin/enchantee-dashboard
+Icon=chrome-hhmcimhcepdfmdmnefjhjeoljlkcbkbg-Default
+Terminal=false
+StartupNotify=false
+Categories=Network;

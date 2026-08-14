@@ -717,6 +717,17 @@ Override the address with `ENCHANTEE_URL=... enchantee-dashboard` for a one-off.
 Drop `--app=` and pass the URL as a plain argument if you ever want the full
 browser UI with an address bar.
 
+The same launcher is also on the desktop as **Enchantee Dashboard**, for
+reopening it after closing it:
+
+```bash
+install -m 755 home/pi/Desktop/Enchantee-Dashboard.desktop /home/pi/Desktop/
+```
+
+One script serves both, so a click behaves exactly like the login launch. The
+wait loop costs nothing once the services are up, and it reuses the icon the
+original PWA left behind in `~/.local/share/icons/hicolor/`.
+
 This replaces an older Chromium PWA autostart entry that pointed at
 `http://localhost:1880` directly. It is left in place as
 `chrome-*.desktop.disabled` should you want it back.
@@ -782,6 +793,7 @@ Copy each to the path its directory mirrors.
 | [`tools/make-qr-sheet.py`](tools/make-qr-sheet.py) | run in place | builds the printable QR sheet; see section 10 |
 | [`usr/local/bin/enchantee-dashboard`](usr/local/bin/enchantee-dashboard) | `/usr/local/bin/` | mode 755; opens the dashboard at login, see section 9 |
 | [`home/pi/.config/autostart/enchantee-dashboard.desktop`](home/pi/.config/autostart/enchantee-dashboard.desktop) | `/home/pi/.config/autostart/` | autostart entry for the above |
+| [`home/pi/Desktop/Enchantee-Dashboard.desktop`](home/pi/Desktop/Enchantee-Dashboard.desktop) | `/home/pi/Desktop/` | mode 755; desktop shortcut for the same launcher |
 | [`docker-compose.yml`](docker-compose.yml) | run from this directory | |
 | [`.env.example`](.env.example) | copy to `.env` alongside the compose file | credentials, `DOMAIN_NAME`, `GRAFANA_URL`; `.env` is gitignored |
 | [`emon_config/`](emon_config/) | mounted into the emon containers | |
