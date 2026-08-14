@@ -200,7 +200,8 @@ them:
 
 Only one of the two runs at a time. `wlan0` cannot be an access point and a
 client simultaneously in any reliable way, so the modes are switched with
-[`enchantee-mode`](usr/local/bin/enchantee-mode) (section 7.7).
+[`enchantee-mode`](usr/local/bin/enchantee-mode) from a shell (section 7.8) or
+the desktop launcher (section 7.9).
 
 ### 7.2 How the name resolves
 
@@ -433,27 +434,71 @@ file before switching modes:
 dnsmasq --test --conf-file=/etc/NetworkManager/dnsmasq-shared.d/enchantee.conf
 ```
 
-### 7.8 Switching modes
+### 7.8 Switching modes from the command line
 
 ```bash
-sudo cp usr/local/bin/enchantee-mode /usr/local/bin/enchantee-mode
-sudo chmod 755 /usr/local/bin/enchantee-mode
+sudo install -m 755 usr/local/bin/enchantee-mode /usr/local/bin/enchantee-mode
 ```
 
 ```
 enchantee-mode status         # which mode is active, and the URL to use
-enchantee-mode ap             # start the Enchantee hotspot
-enchantee-mode wifi [SSID]    # rejoin a wifi network (default: netplan-wlan0-ZORAN)
+enchantee-mode current        # just ap | wifi | none, for scripts
+sudo enchantee-mode toggle    # switch to whichever mode is not active
+sudo enchantee-mode ap        # start the Enchantee hotspot
+sudo enchantee-mode wifi [SSID]
 ```
+
+`status` and `current` work as any user; bringing a profile up needs root.
 
 Switching drops the wireless link, which over SSH means dropping the session
 that issued the command. The script hands the `nmcli` call to `systemd-run` so
-the switch completes after the ssh connection dies with it. Edit `DEFAULT_WIFI`
-in the script if the usual network is not `netplan-wlan0-ZORAN`.
+the switch completes after the ssh connection dies with it. That also makes the
+call asynchronous: it returns before the new mode is up, so poll `current` if
+you need to know when the switch has landed.
+
+With no SSID given, `wifi` returns to the infrastructure profile with the most
+recent `TIMESTAMP`, so toggling off the hotspot rejoins the network you actually
+came from rather than a hardcoded one. `FALLBACK_WIFI` in the script is only
+used when nothing has ever connected.
 
 The wifi profiles themselves are managed by netplan on this image
 (`/etc/netplan/90-NM-*.yaml`), so add new networks with `nmcli device wifi
 connect` rather than hand-editing NetworkManager files.
+
+### 7.9 Switching modes from the desktop
+
+A launcher on the Pi's own screen, for when there is no keyboard: one icon that
+flips to whichever mode is not currently active.
+
+```bash
+sudo install -m 755 usr/local/bin/enchantee-mode-gui /usr/local/bin/enchantee-mode-gui
+install -m 755 home/pi/Desktop/Enchantee-Wifi-Mode.desktop /home/pi/Desktop/
+install -m 644 home/pi/Desktop/Enchantee-Wifi-Mode.desktop /home/pi/.local/share/applications/
+```
+
+The `Desktop` copy is the icon; the `applications` copy puts it in the
+Preferences menu as well. Both need `zenity`, which is already installed on
+Raspberry Pi OS.
+
+[`enchantee-mode-gui`](usr/local/bin/enchantee-mode-gui) asks for confirmation
+before doing anything, because switching drops the network and a stray tap on a
+touchscreen should not take it down. It then calls `sudo enchantee-mode toggle`
+and **polls until the new mode is actually up**, so the dialog reports what
+happened rather than what was requested, and a failed switch is reported as a
+failure rather than silently looking like success.
+
+The dialogs run as the desktop user and only the switch goes through `sudo`.
+That needs no password because Raspberry Pi OS ships
+`/etc/sudoers.d/010_pi-nopasswd`. On an image without it, add:
+
+```
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/enchantee-mode
+```
+
+Doing it through `sudo` rather than letting NetworkManager's own polkit rules
+handle it is deliberate: `org.freedesktop.NetworkManager.wifi.share.protected`,
+which a WPA-protected shared connection needs, is denied to ordinary users on
+this image, so an unprivileged `nmcli connection up enchantee` fails.
 
 ---
 
@@ -496,6 +541,8 @@ Copy each to the path its directory mirrors.
 | [`etc/NetworkManager/system-connections/enchantee.nmconnection.example`](etc/NetworkManager/system-connections/enchantee.nmconnection.example) | `/etc/NetworkManager/system-connections/enchantee.nmconnection` | reference only, PSK removed, `root:root` `600` |
 | [`etc/hosts.append`](etc/hosts.append) | append to `/etc/hosts` | on-Pi resolution of `enchantee.local` |
 | [`usr/local/bin/enchantee-mode`](usr/local/bin/enchantee-mode) | `/usr/local/bin/enchantee-mode` | mode 755 |
+| [`usr/local/bin/enchantee-mode-gui`](usr/local/bin/enchantee-mode-gui) | `/usr/local/bin/enchantee-mode-gui` | mode 755, needs zenity |
+| [`home/pi/Desktop/Enchantee-Wifi-Mode.desktop`](home/pi/Desktop/Enchantee-Wifi-Mode.desktop) | `/home/pi/Desktop/` and `/home/pi/.local/share/applications/` | mode 755 on the Desktop copy |
 | [`docker-compose.yml`](docker-compose.yml) | run from this directory | |
 | [`.env.example`](.env.example) | copy to `.env` alongside the compose file | credentials, `DOMAIN_NAME`, `GRAFANA_URL`; `.env` is gitignored |
 | [`emon_config/`](emon_config/) | mounted into the emon containers | |

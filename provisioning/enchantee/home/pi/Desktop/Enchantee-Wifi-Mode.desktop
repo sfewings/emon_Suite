@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Enchantee Wifi Mode
+GenericName=Wifi mode switch
+Comment=Switch between joining a wifi network and running the Enchantee hotspot
+Exec=/usr/local/bin/enchantee-mode-gui
+Icon=network-wireless-hotspot
+Terminal=false
+StartupNotify=false
+Categories=Settings;
