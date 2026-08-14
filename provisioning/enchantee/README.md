@@ -667,6 +667,46 @@ mv ~/.local/share/keyrings/Default_Keyring.keyring ~/.local/share/keyrings/old_D
 
 ---
 
+---
+
+## 9. Printable QR sheet for phones
+
+Nobody is going to type `http://enchantee.local/nodered/hud` into a phone. This
+is the one-page A4 sheet you print and stick up: scan to join the hotspot, then
+scan to open whichever service you want.
+
+```bash
+sudo /share/emon_Suite/provisioning/enchantee/tools/make-qr-sheet.py
+# writes /home/pi/enchantee-urls.pdf, or pass a path as the first argument
+```
+
+`sudo` is only needed to read the hotspot passphrase out of NetworkManager for
+the join code. Without it the sheet still builds, but the wifi code carries no
+passphrase and the phone will prompt for it.
+
+The sheet carries a `WIFI:` join code for SSID `Enchantee` and one QR per
+service: `/`, `/nodered/hud`, `/grafana/`, `/events/`, `/settings/` and
+`/portainer/`.
+
+**The generated PDF contains the hotspot passphrase in scannable form.** That is
+what makes the join code work, and it is why this directory holds the generator
+rather than the PDF: the passphrase is read at run time and never written into
+the repo. `.gitignore` blocks `*.pdf` under this directory as a second line of
+defence. Re-run the generator after changing the hotspot passphrase, and treat a
+printed copy the way you would treat the password written on a card.
+
+The only dependency is reportlab, already installed, whose built-in QR widget
+draws vector codes that stay sharp at any print size. Service codes print at
+30mm square and the wifi code at 36mm, comfortably scannable at arm's length.
+
+To check a rebuilt sheet actually scans rather than merely looking right:
+
+```bash
+pdftoppm -r 300 -png -singlefile enchantee-urls.pdf /tmp/qr && zbarimg -q --raw /tmp/qr.png
+```
+
+`zbarimg` comes from `zbar-tools`, and `pdftoppm` from `poppler-utils`.
+
 ## File manifest
 
 Copy each to the path its directory mirrors.
@@ -685,6 +725,7 @@ Copy each to the path its directory mirrors.
 | [`etc/systemd/system/enchantee-mode-restore.service`](etc/systemd/system/enchantee-mode-restore.service) | `/etc/systemd/system/` | `systemctl enable` it; see section 7.11 |
 | [`etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg`](etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg) | `/etc/cloud/cloud.cfg.d/` | stops cloud-init resetting the hostname |
 | [`tests/hotspot-check.sh`](tests/hotspot-check.sh) | run in place | end-to-end hotspot verification; see Verification |
+| [`tools/make-qr-sheet.py`](tools/make-qr-sheet.py) | run in place | builds the printable QR sheet; see section 9 |
 | [`docker-compose.yml`](docker-compose.yml) | run from this directory | |
 | [`.env.example`](.env.example) | copy to `.env` alongside the compose file | credentials, `DOMAIN_NAME`, `GRAFANA_URL`; `.env` is gitignored |
 | [`emon_config/`](emon_config/) | mounted into the emon containers | |

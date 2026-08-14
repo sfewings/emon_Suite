@@ -58,3 +58,8 @@ python/event_recorder/test_event_recorder/data_old/
 provisioning/enchantee/data/
 #per-provision secrets. Commit provisioning/*/.env.example instead
 provisioning/enchantee/.env
+
+#the QR sheet embeds the hotspot passphrase in scannable form. Generate it with
+#provisioning/enchantee/tools/make-qr-sheet.py; never commit the output.
+enchantee-urls.pdf
+provisioning/enchantee/**/*.pdf
