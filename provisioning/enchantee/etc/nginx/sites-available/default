@@ -12,6 +12,7 @@
 #   /nodered/   -> Node-RED editor     (node_red    :1880/)
 #   /grafana/   -> Grafana             (grafana1    :3000)   serve_from_sub_path=true
 #   /portainer/ -> Portainer           (portainer   :9000)   --base-url=/portainer
+#   /events/    -> event recorder     (host net   :5000)
 #   /settings/  -> emon settings web   (:5001)
 #
 # The websocket $connection_upgrade map lives in /etc/nginx/conf.d/upgrade-map.conf
@@ -91,6 +92,26 @@ server {
         proxy_send_timeout 3600s;
     }
     location = /portainer { return 301 /portainer/; }
+
+    # emon event recorder (Flask on the host network, port 5000).
+    #
+    # The app has no built-in subpath support, so its pages, assets and fetch
+    # calls were made root-relative instead (see the README). Relative URLs
+    # resolve against the document, so they work both here under /events/ and
+    # at the app's own root on :5000. That depends on the page being at a
+    # directory-style URL, which is what the redirect below guarantees: from
+    # /events (no slash) a relative "api/status" would resolve to /api/status.
+    location /events/ {
+        proxy_pass http://127.0.0.1:5000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # photo uploads from the phone page
+        client_max_body_size 100m;
+    }
+    location = /events { return 301 /events/; }
 
     # emon settings web (Flask, relative asset paths)
     location /settings/ {

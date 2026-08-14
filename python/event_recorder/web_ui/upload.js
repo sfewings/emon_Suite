@@ -23,7 +23,7 @@ async function loadRecordings() {
     const noNote = document.getElementById('noRecordingsNote');
 
     try {
-        const response = await fetch('/api/recordings');
+        const response = await fetch('api/recordings');
         const data = await response.json();
 
         if (!data.success || data.recordings.length === 0) {
@@ -144,7 +144,7 @@ async function uploadPhoto() {
             if (titleChanged) updateBody.name = title;
             if (descChanged) updateBody.description = description;
 
-            await fetch(`/api/recordings/${recordingId}`, {
+            await fetch(`api/recordings/${recordingId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updateBody)
@@ -164,7 +164,7 @@ async function uploadPhoto() {
             formData.append('caption', byline);
         }
 
-        const response = await fetch(`/api/recordings/${recordingId}/images`, {
+        const response = await fetch(`api/recordings/${recordingId}/images`, {
             method: 'POST',
             body: formData
         });

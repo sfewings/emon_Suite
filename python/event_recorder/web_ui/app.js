@@ -112,7 +112,7 @@ async function pollStatus() {
     pollInProgress = true;
 
     try {
-        const response = await fetch('/api/status');
+        const response = await fetch('api/status');
         const data = await response.json();
 
         if (data.success) {
@@ -191,7 +191,7 @@ function refreshDashboard() {
 
 async function loadActiveRecordings() {
     try {
-        const response = await fetch('/api/recordings?status=active');
+        const response = await fetch('api/recordings?status=active');
         const data = await response.json();
 
         const container = document.getElementById('activeRecordings');
@@ -217,7 +217,7 @@ async function loadActiveRecordings() {
                                 onclick="viewRecording(${rec.id})">
                             ${Icons.view} View
                         </button>
-                        <a href="/upload?recording_id=${rec.id}"
+                        <a href="upload?recording_id=${rec.id}"
                            class="btn btn-sm btn-primary" target="_blank"
                            title="Open mobile photo upload page">
                             ${Icons.camera} Upload Photo
@@ -273,7 +273,7 @@ async function loadServiceStatus() {
 
 async function loadRecentRecordings() {
     try {
-        const response = await fetch('/api/recordings?limit=5');
+        const response = await fetch('api/recordings?limit=5');
         const data = await response.json();
 
         const container = document.getElementById('recentRecordings');
@@ -306,8 +306,8 @@ async function loadRecordings() {
     try {
         const statusFilter = document.getElementById('statusFilter')?.value || '';
         const url = statusFilter
-            ? `/api/recordings?status=${statusFilter}`
-            : '/api/recordings';
+            ? `api/recordings?status=${statusFilter}`
+            : 'api/recordings';
 
         const response = await fetch(url);
         const data = await response.json();
@@ -390,7 +390,7 @@ function loadManualControl() {
 
 async function loadActiveRecordingsForStop() {
     try {
-        const response = await fetch('/api/recordings?status=active');
+        const response = await fetch('api/recordings?status=active');
         const data = await response.json();
 
         const container = document.getElementById('stopRecordingSection');
@@ -446,7 +446,7 @@ async function handleStartRecording(event) {
     }
 
     try {
-        const response = await fetch('/api/recordings', {
+        const response = await fetch('api/recordings', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ name, description, topics })
@@ -478,7 +478,7 @@ async function stopRecording(recordingId) {
     }
 
     try {
-        const response = await fetch(`/api/recordings/${recordingId}/stop`, {
+        const response = await fetch(`api/recordings/${recordingId}/stop`, {
             method: 'POST'
         });
 
@@ -510,7 +510,7 @@ async function processRecording(recordingId) {
     showToast('Processing recording... This may take a minute', 'info');
 
     try {
-        const response = await fetch(`/api/recordings/${recordingId}/process`, {
+        const response = await fetch(`api/recordings/${recordingId}/process`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({})
@@ -536,7 +536,7 @@ async function deleteRecording(recordingId) {
     }
 
     try {
-        const response = await fetch(`/api/recordings/${recordingId}`, {
+        const response = await fetch(`api/recordings/${recordingId}`, {
             method: 'DELETE'
         });
 
@@ -563,7 +563,7 @@ async function publishRecording(recordingId) {
     showToast('Publishing to WordPress...', 'info');
 
     try {
-        const response = await fetch(`/api/recordings/${recordingId}/publish`, {
+        const response = await fetch(`api/recordings/${recordingId}/publish`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -595,7 +595,7 @@ async function resetRecordingToProcessed(recordingId) {
     }
 
     try {
-        const response = await fetch(`/api/recordings/${recordingId}/reset`, {
+        const response = await fetch(`api/recordings/${recordingId}/reset`, {
             method: 'POST'
         });
         const data = await response.json();
@@ -617,7 +617,7 @@ async function testWordPressConnection() {
     resultEl.innerHTML = '<span class="badge badge-info">Testing...</span>';
 
     try {
-        const response = await fetch('/api/wordpress/test');
+        const response = await fetch('api/wordpress/test');
         const data = await response.json();
 
         if (data.success) {
@@ -686,7 +686,7 @@ async function loadWordPressSettings() {
 
 async function loadSettings() {
     try {
-        const response = await fetch('/api/settings');
+        const response = await fetch('api/settings');
         const data = await response.json();
         if (data.success) {
             const toggle = document.getElementById('autoProcessOnStop');
@@ -699,7 +699,7 @@ async function loadSettings() {
 
 async function saveAutoProcessSetting(enabled) {
     try {
-        const response = await fetch('/api/settings', {
+        const response = await fetch('api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ auto_process_on_stop: enabled })
@@ -717,7 +717,7 @@ async function saveAutoProcessSetting(enabled) {
 
 async function viewRecording(recordingId) {
     try {
-        const response = await fetch(`/api/recordings/${recordingId}`);
+        const response = await fetch(`api/recordings/${recordingId}`);
         const data = await response.json();
 
         if (!data.success) {
@@ -809,7 +809,7 @@ async function viewRecording(recordingId) {
 
         if (rec.status === 'active') {
             modalContent += `
-                <a href="/upload?recording_id=${rec.id}" target="_blank"
+                <a href="upload?recording_id=${rec.id}" target="_blank"
                    class="btn btn-primary">
                     ${Icons.camera} Upload Photo
                 </a>

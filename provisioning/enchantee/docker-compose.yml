@@ -175,6 +175,9 @@ services:
   event_recorder:
     image: sfewings32/emon_event_recorder:latest
     container_name: event_recorder
+    # Host networking to reach mosquitto and gpsd on localhost. That also puts
+    # the web interface on the host's port 5000, which is where nginx proxies
+    # http://enchantee.local/events/ to; no published port is needed.
     network_mode: "host"
     #ports:
     #  - "5001:5000"

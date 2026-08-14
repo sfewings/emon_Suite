@@ -165,9 +165,10 @@ Services:
 | `grafana1` | grafana/grafana | 3000 | `/grafana/` |
 | `portainer` | portainer/portainer-ce | 9000, 9443 | `/portainer/` |
 | `emon_settings_web` | sfewings32/emon_settings_web | 5001 | `/settings/` |
+| `event_recorder` | sfewings32/emon_event_recorder | 5000 (host net) | `/events/` |
 | `influx` | arm32v7/influxdb | 8086 | direct |
 | `mqtt` | eclipse-mosquitto | 1883 | direct |
-| `emon_serial`, `emon_gpsd`, `emon_log`, `emon_influx`, `emon_logtojson`, `event_recorder` | | | no HTTP |
+| `emon_serial`, `emon_gpsd`, `emon_log`, `emon_influx`, `emon_logtojson` | | | no HTTP |
 
 Two settings in `docker-compose.yml` exist purely to make the reverse proxy
 work, and are explained in [section 7.4](#74-grafana-under-grafana) and
@@ -200,8 +201,8 @@ them:
 
 Only one of the two runs at a time. `wlan0` cannot be an access point and a
 client simultaneously in any reliable way, so the modes are switched with
-[`enchantee-mode`](usr/local/bin/enchantee-mode) from a shell (section 7.8) or
-the desktop launcher (section 7.9).
+[`enchantee-mode`](usr/local/bin/enchantee-mode) from a shell (section 7.9) or
+the desktop launcher (section 7.10).
 
 ### 7.2 How the name resolves
 
@@ -216,7 +217,7 @@ modes, and the raw IP always works as a fallback.
 `.local` is the mDNS domain. Nothing on the network has to know about it: the Pi
 answers for itself over multicast, which is why the same name works on a home
 network, a marina wifi and the Pi's own hotspot without any router
-configuration. avahi provides this (section 7.6).
+configuration. avahi provides this (section 7.7).
 
 The wrinkle is that mDNS *hostname* resolution is unreliable on Android. Service
 discovery works there, but resolving `foo.local` through the system resolver and
@@ -225,7 +226,7 @@ Anything that only speaks unicast DNS has the same problem: minimal containers,
 some embedded clients, older Windows.
 
 In hotspot mode that is covered, because the Pi is also the DNS server for its
-clients and answers `enchantee.local` over ordinary DNS as well (section 7.7).
+clients and answers `enchantee.local` over ordinary DNS as well (section 7.8).
 Clients that resolve `.local` by multicast never ask dnsmasq, so the two paths
 do not conflict, and every client is served by one or the other.
 
@@ -267,6 +268,7 @@ Routes, from [`etc/nginx/sites-available/default`](etc/nginx/sites-available/def
 | `/nodered/` | Node-RED flow editor, `:1880/` |
 | `/grafana/` | Grafana, `:3000` |
 | `/portainer/` | Portainer, `:9000` |
+| `/events/` | event recorder, `:5000` on the host network |
 | `/settings/` | emon settings web, `:5001` |
 
 The server block uses `server_name _` as the sole `default_server`. That is
@@ -344,7 +346,71 @@ curl -s -o /dev/null -w '%{http_code}\n' http://enchantee.local/portainer/
 curl -s http://enchantee.local/portainer/api/system/status
 ```
 
-### 7.6 mDNS: `enchantee.local`
+### 7.6 Event recorder under `/events/`
+
+The third pattern, and the one that needed real work. Grafana has subpath
+support built in and Portainer half has it; the event recorder has none. Its
+pages, stylesheet, scripts and every `fetch()` call referenced the site root
+(`/api/status`, `/static/app.js`, `/upload`), and the server handed back
+absolute URLs for uploads, plots and exports. Served under `/events/`, the page
+would load and then every asset and API call would go to the wrong place.
+
+Flask's `SCRIPT_NAME`/`ProxyFix` does not help, because the broken URLs are
+built in the browser: `fetch('/api/status')` resolves against the origin, and
+nothing the server sends can change that.
+
+The fix was to make the whole app **root-relative** rather than subpath-aware,
+in `python/event_recorder/`:
+
+| Was | Now |
+|---|---|
+| `fetch('/api/status')` | `fetch('api/status')` |
+| `href="/static/style.css"` | `href="static/style.css"` |
+| `href="/upload?recording_id=..."` | `href="upload?recording_id=..."` |
+| `href="/"` (back to dashboard) | `href="./"` |
+| `url('/static/images/...')` in CSS | `url('images/...')` |
+| `img['url'] = f"/plots/{id}/{name}"` | `img['url'] = f"plots/{id}/{name}"` |
+
+Relative URLs resolve against the document, so the same build works unchanged
+at `/events/` behind nginx **and** at `/` when the container is hit directly on
+port 5000. That is why this is better than hardcoding a `/events` prefix: no
+configuration to keep in sync, and local development is unaffected. The CSS
+image is relative to the stylesheet rather than the document, which lands in
+the same place.
+
+It rests on one condition: **the page must be at a directory-style URL**. From
+`/events` with no trailing slash, a relative `api/status` resolves to
+`/api/status` and everything breaks. Hence:
+
+```nginx
+location = /events { return 301 /events/; }
+```
+
+`/events/upload` is fine without a slash of its own, since its base directory
+is still `/events/`.
+
+nginx strips the prefix, so the app keeps serving at its own root:
+
+```nginx
+location /events/ {
+    proxy_pass http://127.0.0.1:5000/;   # trailing slash strips /events
+    client_max_body_size 100m;           # photo uploads from the phone page
+}
+```
+
+`127.0.0.1:5000` and not a container name because `event_recorder` runs with
+`network_mode: host`, which it needs to reach mosquitto and gpsd on localhost.
+That also means no `ports:` entry is required for nginx to reach it.
+
+Changing the app source means the image must be rebuilt for the change to take
+effect, since `web_ui/` is baked in by the Dockerfile:
+
+```bash
+cd /share/emon_Suite/python/event_recorder && ./build.sh local
+cd /share/emon_Suite/provisioning/enchantee && docker compose up -d event_recorder
+```
+
+### 7.7 mDNS: `enchantee.local`
 
 `avahi-daemon` ships enabled on Debian. It publishes `<hostname>.local`, so the
 name follows the hostname:
@@ -379,7 +445,7 @@ sudo systemctl restart avahi-daemon
 getent ahostsv4 enchantee.local      # should be the wlan0 address, not 172.x
 ```
 
-### 7.7 The `Enchantee` hotspot
+### 7.8 The `Enchantee` hotspot
 
 The hotspot is a NetworkManager profile, not hostapd. NetworkManager starts
 wpa_supplicant in AP mode and, because `ipv4.method` is `shared`, also brings up
@@ -434,7 +500,7 @@ file before switching modes:
 dnsmasq --test --conf-file=/etc/NetworkManager/dnsmasq-shared.d/enchantee.conf
 ```
 
-### 7.8 Switching modes from the command line
+### 7.9 Switching modes from the command line
 
 ```bash
 sudo install -m 755 usr/local/bin/enchantee-mode /usr/local/bin/enchantee-mode
@@ -465,7 +531,7 @@ The wifi profiles themselves are managed by netplan on this image
 (`/etc/netplan/90-NM-*.yaml`), so add new networks with `nmcli device wifi
 connect` rather than hand-editing NetworkManager files.
 
-### 7.9 Switching modes from the desktop
+### 7.10 Switching modes from the desktop
 
 A launcher on the Pi's own screen, for when there is no keyboard: one icon that
 flips to whichever mode is not currently active.
@@ -560,13 +626,23 @@ and the `enchantee` NetworkManager profile.
 From the Pi, on either mode:
 
 ```bash
-for u in / /nodered/ /grafana/ /portainer/ /settings/; do
+for u in / /nodered/ /grafana/ /portainer/ /events/ /settings/; do
     printf '%-12s ' "$u"
     curl -s -o /dev/null -w '%{http_code}\n' -m 10 "http://enchantee.local$u"
 done
 ```
 
-`/`, `/nodered/`, `/grafana/` and `/portainer/` should be `200`.
+`/`, `/nodered/`, `/grafana/`, `/portainer/` and `/events/` should be `200`.
+
+For the event recorder also confirm its assets resolve under the subpath, since
+that is what the root-relative change in section 7.6 fixes:
+
+```bash
+curl -s http://enchantee.local/events/ | grep -oE '(href|src)="[^"]*"' | head
+#   src="static/app.js"      <- relative, correct
+#   src="/static/app.js"     <- absolute, the image predates the fix; rebuild it
+curl -s -o /dev/null -w '%{http_code}\n' http://enchantee.local/events/static/app.js
+```
 
 `/settings/` currently returns `000` (timeout), and the fault is in the
 `emon_settings_web` container rather than in nginx: gunicorn logs that it is
@@ -590,10 +666,19 @@ enchantee-mode status        # confirms mode and prints the URL
 
 ## Gotchas
 
-**Grafana and Portainer need opposite nginx treatment.** Grafana wants the
-`/grafana` prefix forwarded; Portainer wants `/portainer` stripped. Getting
-either backwards produces a 404 or a blank page with broken assets. See
-sections [7.4](#74-grafana-under-grafana) and [7.5](#75-portainer-under-portainer).
+**Each proxied app needs different treatment; there is no single recipe.**
+Grafana wants the `/grafana` prefix forwarded intact. Portainer wants
+`/portainer` stripped. The event recorder had no subpath support at all and its
+source had to be made root-relative. Node-RED's dashboard already emits relative
+paths, which is the only reason mapping it onto `/` works. Getting any of these
+backwards produces a 404 or a page whose assets all fail. See sections
+[7.4](#74-grafana-under-grafana), [7.5](#75-portainer-under-portainer) and
+[7.6](#76-event-recorder-under-events).
+
+**The event recorder's `/events/` route depends on the trailing-slash
+redirect.** Its URLs are relative, so from `/events` with no slash they resolve
+one level too high and every asset and API call breaks. See
+[7.6](#76-event-recorder-under-events).
 
 **Android cannot be relied on to resolve `.local` by mDNS.** In hotspot mode
 that is handled, because the Pi's dnsmasq answers the name over unicast DNS as
@@ -602,7 +687,7 @@ Private DNS in strict mode breaks name resolution in both modes. See
 [7.2](#72-how-the-name-resolves).
 
 **avahi on a docker host over-advertises.** Without `allow-interfaces=wlan0` it
-hands out container bridge addresses for `enchantee.local`. See [7.6](#76-mdns-enchanteelocal).
+hands out container bridge addresses for `enchantee.local`. See [7.7](#77-mdns-enchanteelocal).
 
 **Switching mode kills your SSH session.** `enchantee-mode` detaches the
 `nmcli` call so the switch itself survives, but the shell will not.
@@ -615,7 +700,7 @@ fewer moving parts. Check `git log` for the old files if needed.
 
 **Credentials live in `.env`, which is gitignored.** Commit
 [`.env.example`](.env.example) instead, with placeholders. Do not put the
-hotspot PSK in either file; it is set on the Pi with `nmcli` (section 7.7).
+hotspot PSK in either file; it is set on the Pi with `nmcli` (section 7.8).
 
 **`.env` was tracked until now, so its real credentials are in this repo's
 history** and reachable from the GitHub remote. Untracking it stops further

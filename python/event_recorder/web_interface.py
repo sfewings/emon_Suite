@@ -77,9 +77,9 @@ class WebInterface:
         filename = image_path.name
 
         if img.get('image_type') == ImageType.USER_UPLOAD:
-            img['url'] = f"/uploads/{recording_id}/{filename}"
+            img['url'] = f"uploads/{recording_id}/{filename}"
         else:
-            img['url'] = f"/plots/{recording_id}/{filename}"
+            img['url'] = f"plots/{recording_id}/{filename}"
 
         return img
 
@@ -88,7 +88,7 @@ class WebInterface:
         exp = dict(exp)
         file_path = Path(exp['file_path'])
         recording_id = exp.get('recording_id', '')
-        exp['url'] = f"/exports/{recording_id}/{file_path.name}"
+        exp['url'] = f"exports/{recording_id}/{file_path.name}"
         return exp
 
     def _register_routes(self):

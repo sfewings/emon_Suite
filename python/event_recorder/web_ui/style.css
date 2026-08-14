@@ -39,7 +39,7 @@ html::before {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-image: url('/static/images/img_3975.jpg');
+    background-image: url('images/img_3975.jpg');
     background-size: cover;
     background-position: center center;
     z-index: -2;
