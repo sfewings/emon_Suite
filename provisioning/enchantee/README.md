@@ -419,6 +419,23 @@ name follows the hostname:
 sudo hostnamectl set-hostname enchantee
 ```
 
+**This does not stick on its own.** `/etc/cloud/cloud.cfg` ships
+`preserve_hostname: false`, and cloud-init's `set_hostname` / `update_hostname`
+modules then restore the image's original name on every boot. The symptom is
+quiet and easy to miss: everything still works *on the Pi*, because the
+`/etc/hosts` entry resolves `enchantee.local` locally, while avahi has gone back
+to publishing `EnchanteePi5.local` and no client device can find the Pi by name
+at all. Install the drop-in:
+
+```bash
+sudo cp etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg /etc/cloud/cloud.cfg.d/
+```
+
+A drop-in rather than an edit to `cloud.cfg`, so a cloud-init package update
+cannot silently take it back. Check with
+`sudo journalctl -u avahi-daemon -b | grep 'Host name is'` after a reboot, not
+just with `hostnamectl`.
+
 Also set the `127.0.1.1` line in `/etc/hosts` to `127.0.1.1 enchantee` and
 append the block in [`etc/hosts.append`](etc/hosts.append). That points
 `enchantee.local` at loopback for requests originating on the Pi itself, so
@@ -666,6 +683,8 @@ Copy each to the path its directory mirrors.
 | [`usr/local/bin/enchantee-mode-gui`](usr/local/bin/enchantee-mode-gui) | `/usr/local/bin/enchantee-mode-gui` | mode 755, needs zenity |
 | [`home/pi/Desktop/Enchantee-Wifi-Mode.desktop`](home/pi/Desktop/Enchantee-Wifi-Mode.desktop) | `/home/pi/Desktop/` and `/home/pi/.local/share/applications/` | mode 755 on the Desktop copy |
 | [`etc/systemd/system/enchantee-mode-restore.service`](etc/systemd/system/enchantee-mode-restore.service) | `/etc/systemd/system/` | `systemctl enable` it; see section 7.11 |
+| [`etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg`](etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg) | `/etc/cloud/cloud.cfg.d/` | stops cloud-init resetting the hostname |
+| [`tests/hotspot-check.sh`](tests/hotspot-check.sh) | run in place | end-to-end hotspot verification; see Verification |
 | [`docker-compose.yml`](docker-compose.yml) | run from this directory | |
 | [`.env.example`](.env.example) | copy to `.env` alongside the compose file | credentials, `DOMAIN_NAME`, `GRAFANA_URL`; `.env` is gitignored |
 | [`emon_config/`](emon_config/) | mounted into the emon containers | |
@@ -721,6 +740,33 @@ Network → Private DNS* is not set to a specific hostname.
 ```bash
 enchantee-mode status        # confirms mode, the URL, and the boot behaviour
 ```
+
+Hotspot mode is awkward to verify by hand, because switching drops the link you
+would be reporting over. [`tests/hotspot-check.sh`](tests/hotspot-check.sh) does
+it detached: it switches to the hotspot, runs 23 checks, and returns to wifi on
+every exit path including failure. Arm a failsafe alongside it so a crash cannot
+strand the Pi on its own hotspot:
+
+```bash
+sudo systemd-run --on-active=10min --collect --quiet -- \
+  /bin/bash -c '[ "$(enchantee-mode current)" = ap ] && nmcli connection up netplan-wlan0-ZORAN'
+sudo systemd-run --unit=hotspot-check --collect --quiet -- \
+  /bin/bash /share/emon_Suite/provisioning/enchantee/tests/hotspot-check.sh
+# ssh drops here; read the result once the link returns
+cat /var/tmp/enchantee-hotspot-check.log
+```
+
+It covers the radio and SSID, the `10.42.0.1` address, NetworkManager's dnsmasq
+and its DHCP range, NAT and forwarding, every nginx route over both the IP and
+the name, and both name-resolution paths: unicast DNS from dnsmasq (the Android
+path) and a genuine multicast query answered by avahi.
+[`tests/mdnsq.py`](tests/mdnsq.py) sends that mDNS query, because there is no
+`avahi-resolve` on this image and `getent` would be answered by `/etc/hosts`
+rather than by avahi on the wire.
+
+Expect avahi to need a few seconds after the switch before it answers: it
+re-probes and re-announces when the address changes, so the check retries rather
+than sampling once.
 
 Reboot persistence (section 7.11) is worth checking once in each direction,
 since it is the part that only shows up after a power cycle:
