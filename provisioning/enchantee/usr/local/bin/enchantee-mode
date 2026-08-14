@@ -1,0 +1,48 @@
+#!/bin/bash
+# enchantee-mode -- switch wlan0 between joining a wifi network and running the
+# "Enchantee" hotspot. The services (Node-RED / Grafana / Portainer) are reached
+# at http://enchantee.local/ either way.
+#
+#   enchantee-mode ap          start the Enchantee hotspot
+#   enchantee-mode wifi [SSID] rejoin a wifi network
+#   enchantee-mode status      show what is active right now
+#
+# Switching drops the current wireless link, so the nmcli call is handed to
+# systemd-run: it keeps going after your ssh session dies with it.
+
+set -euo pipefail
+
+AP_PROFILE="enchantee"
+DEFAULT_WIFI="netplan-wlan0-ZORAN"
+URL="http://enchantee.local/"
+
+usage() { sed -n '2,11p' "$0" | sed 's/^# \?//'; exit 1; }
+
+detached() {
+    systemd-run --unit="enchantee-mode-switch-$$" --collect --quiet -- "$@"
+}
+
+case "${1:-status}" in
+  ap)
+    echo "Starting hotspot '$AP_PROFILE'. This link will drop."
+    echo "Reconnect to SSID Enchantee, then browse to $URL"
+    detached nmcli connection up "$AP_PROFILE"
+    ;;
+
+  wifi)
+    profile="${2:-$DEFAULT_WIFI}"
+    echo "Joining '$profile'. This link will drop."
+    echo "Then browse to $URL"
+    detached nmcli connection up "$profile"
+    ;;
+
+  status)
+    active=$(nmcli -t -g NAME,TYPE connection show --active | awk -F: '$2=="802-11-wireless"{print $1}')
+    mode=$(nmcli -t -g 802-11-wireless.mode connection show "${active:-$AP_PROFILE}" 2>/dev/null || true)
+    addr=$(ip -4 -br addr show wlan0 | awk '{print $3}')
+    printf 'profile : %s\nmode    : %s\nwlan0   : %s\nurl     : %s\n' \
+           "${active:-none}" "${mode:-?}" "${addr:-none}" "$URL"
+    ;;
+
+  *) usage ;;
+esac

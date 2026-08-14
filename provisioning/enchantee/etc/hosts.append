@@ -1,0 +1,12 @@
+# Append this block to /etc/hosts on the Pi.
+#
+# Also set the 127.0.1.1 line to just the short hostname:
+#     127.0.1.1 enchantee
+
+# Enchantee front door. Loopback here on purpose: this line only affects
+# requests originating on the Pi, and it means local checks do not depend on
+# avahi being up. It shadows the mDNS answer locally, which is fine.
+# Client devices resolve enchantee.local over mDNS (avahi), plus unicast DNS
+# from NM's dnsmasq in hotspot mode
+# (/etc/NetworkManager/dnsmasq-shared.d/enchantee.conf).
+127.0.0.1 enchantee.local enchantee

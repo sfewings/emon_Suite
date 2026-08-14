@@ -159,6 +159,8 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
+    # Served behind nginx at http://enchantee.local/portainer/
+    command: --base-url=/portainer
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

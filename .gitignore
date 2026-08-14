@@ -1,7 +1,11 @@
 *.a
 *.o
 *.d
+#*.d is for C dependency files, but it also swallows config directories such as
+#conf.d and dnsmasq-shared.d under provisioning/*/etc/. Keep those.
 !**/dnsmasq.d/
+!**/dnsmasq-shared.d/
+!**/conf.d/
 *.hex
 *.elf
 *.db
@@ -51,3 +55,6 @@ __pycache__/
 #testing data for event_recorder
 python/event_recorder/test_event_recorder/data/
 python/event_recorder/test_event_recorder/data_old/
+provisioning/enchantee/data/
+#per-provision secrets. Commit provisioning/*/.env.example instead
+provisioning/enchantee/.env
