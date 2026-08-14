@@ -112,7 +112,7 @@ services:
     image: sfewings32/emon_settings_web:latest
     container_name: emon_settings_web
     ports:
-      - '5000:5000'
+      - '5001:5000'
     volumes:
       - ./emon_config:/config
     environment:
@@ -159,6 +159,8 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
+    # Served behind nginx at http://enchantee.local/portainer/
+    command: --base-url=/portainer
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -170,6 +172,31 @@ services:
       - 9000:9000
       - 9443:9443
 
+  event_recorder:
+    image: sfewings32/emon_event_recorder:latest
+    container_name: event_recorder
+    # Host networking to reach mosquitto and gpsd on localhost. That also puts
+    # the web interface on the host's port 5000, which is where nginx proxies
+    # http://enchantee.local/events/ to; no published port is needed.
+    network_mode: "host"
+    #ports:
+    #  - "5001:5000"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    environment:
+#      - MQTT_BROKER=localhost
+#      - MQTT_PORT=1883
+      - WP_SITE_URL=${WP_SITE_URL}
+      - WP_USERNAME=${WP_USERNAME}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD}
+      - WP_WHITELIST_ENDPOINT=${WP_WHITELIST_ENDPOINT}
+      - TZ=${TIMEZONE}
+      #- DEBUG=1  # Set DEBUG=1 to enable debugpy
+      #- WAIT_FOR_DEBUGGER=1  # Set WAIT_FOR_DEBUGGER=1 to wait for debugger
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
 
 volumes:
   influxdb-storage:
@@ -178,3 +205,4 @@ volumes:
   mosquitto-logs:
   mosquitto-conf:
   portainer-data:
+  mysql-data:

@@ -1,0 +1,20 @@
+[Unit]
+Description=Reapply the last Enchantee wifi mode
+Documentation=file:///share/emon_Suite/provisioning/enchantee/README.md
+# NetworkManager only, not NetworkManager-wait-online: when the remembered mode
+# is the hotspot there may be no network to wait for, and wait-online would
+# stall the boot until it timed out.
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/enchantee-mode restore
+# The remembered mode is a preference, not a hard requirement. If the hotspot
+# fails to come up, leave whatever NetworkManager managed on its own rather
+# than failing the boot target.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target

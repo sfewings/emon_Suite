@@ -1,0 +1,1356 @@
+"""
+Data processor for generating plots and statistics from recorded data.
+
+Uses matplotlib for time-series plots and folium for GPS route maps.
+Calculates statistics including distance, speed, energy consumption.
+"""
+
+import bisect
+import csv
+import logging
+import math
+import os
+import time
+import xml.etree.ElementTree as ET
+from collections import defaultdict
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from xml.dom import minidom
+import json
+
+# Matplotlib configuration (must be before pyplot import)
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for Docker
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.ticker import MaxNLocator
+import numpy as np
+
+from .models import Database, RecordingStatus, ImageType
+
+logger = logging.getLogger(__name__)
+
+
+class DataProcessor:
+    """
+    Processes recorded data to generate plots and statistics.
+
+    Handles:
+    - Time-series line plots
+    - Multi-metric comparison plots
+    - GPS route maps (folium)
+    - Statistics calculation
+    - Statistics summary tables
+    """
+
+    # ── Automatic plot grouping / labelling tables ────────────────────────────
+
+    # Keyword → Y-axis unit string.  The first matching keyword wins.
+    _TOPIC_UNITS: Dict[str, str] = {
+        'windspeed':     'knots',
+        'winddirection': '°Degrees',
+        'temperature':   '°C',
+        'speed':         'knots',
+        'course':        '°Degrees',
+        'heading':       '°Degrees',
+        'acc':           'm/s²',
+        'gyro':          '°/s',
+        'mag':           'µT',
+        'pressure':      'hPa',
+        'humidity':      '%',
+        'voltage':       'V',
+        'power':         'W',
+        'current':       'A',
+        'energy':        'Wh',
+        'altitude':      'm',
+        'elevation':     'm',
+        'distance':      'km',
+        'rssi':          'dBm',
+        'rpm':           'RPM',
+        'throttle':      '%',
+    }
+
+    # Sets of keywords: topic groups whose keys contain ANY keyword in a set
+    # are merged into a single chart (e.g. "course" and "heading" together).
+    _SEMANTIC_MERGE_GROUPS: List[frozenset] = [
+        frozenset({'heading', 'course'}),
+    ]
+
+    # Human-readable overrides for individual MQTT path components.
+    _TOPIC_COMPONENT_NAMES: Dict[str, str] = {
+        'imu':           'IMU',
+        'gps':           'GPS',
+        'rssi':          'RSSI',
+        'bms':           'BMS',
+        'acc':           'Acceleration',
+        'gyro':          'Gyroscope',
+        'mag':           'Magnetometer',
+        'windSpeed':     'Wind Speed',
+        'windDirection': 'Wind Direction',
+        'windspeed':     'Wind Speed',
+        'winddirection': 'Wind Direction',
+    }
+
+    # Axis labels used for 3-axis sensors (acc / gyro / mag).
+    _AXIS_LABELS: Dict[int, str] = {0: 'X', 1: 'Y', 2: 'Z'}
+    _AXIS_TOPICS: frozenset = frozenset({'acc', 'gyro', 'mag'})
+
+    # Colour cycle for auto-generated series.
+    _AUTO_COLORS: List[str] = [
+        '#667eea', '#e05c5c', '#48cae4', '#f72585',
+        '#2ec4b6', '#ff9f1c', '#a8dadc', '#6d6875',
+    ]
+
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def __init__(self, database: Database, plots_dir: str = "/data/plots"):
+        """
+        Initialize data processor.
+
+        Args:
+            database: Database instance
+            plots_dir: Directory for plot output
+        """
+        self.database = database
+        self.plots_dir = Path(plots_dir)
+        self.plots_dir.mkdir(parents=True, exist_ok=True)
+
+        # Plot defaults
+        self.default_dpi = 150
+        self.default_width = 12
+        self.default_height = 6
+        self.default_style = 'seaborn-v0_8'
+
+        logger.info(f"DataProcessor initialized (plots_dir={plots_dir})")
+
+    def _auto_generate_plot_config(self, recording_id: int) -> List[Dict]:
+        """
+        Auto-generate plot configurations from recorded topics.
+
+        Related topics are grouped into a single multi-line chart rather
+        than producing one chart per topic feed.  Grouping rules:
+
+        1.  GPS latitude/longitude pairs → interactive route map.
+        2.  Topics that share the same path prefix (after stripping the
+            trailing numeric channel index) are placed on one chart.
+            e.g. anemometer/temperature/0,1,2 → one "Temperature" chart.
+        3.  Semantic merge rules combine cross-family topics that are
+            logically the same quantity (e.g. gps/course/* + imu/0/heading).
+
+        Y-axis labels (with units) and series legend labels are assigned
+        automatically from lookup tables, but can be overridden by passing
+        an explicit plot_config.
+
+        Args:
+            recording_id: Recording ID
+
+        Returns:
+            List of plot configuration dicts (all type 'multi_line' or 'map')
+        """
+        topics = self.database.get_recording_topics(recording_id)
+        if not topics:
+            return []
+
+        plot_config = []
+        skip_topics: set = set()
+
+        # ── 1. GPS lat/lon pairs → route maps ─────────────────────────────
+        lat_topics = [t for t in topics if 'latitude' in t.lower()]
+        lon_topics = [t for t in topics if 'longitude' in t.lower()]
+
+        for i, lat_topic in enumerate(lat_topics):
+            expected_lon = lat_topic.replace('latitude', 'longitude')
+            matching_lon = [t for t in lon_topics if t == expected_lon]
+            if not matching_lon:
+                suffix = lat_topic.split('latitude')[-1]
+                if suffix:
+                    matching_lon = [t for t in lon_topics if t.endswith(suffix)]
+            if matching_lon:
+                title = 'Route Map' if len(lat_topics) == 1 else f'Route Map {i}'
+                plot_config.append({
+                    'type': 'map',
+                    'title': title,
+                    'topics': [lat_topic, matching_lon[0]],
+                })
+                skip_topics.add(lat_topic)
+                skip_topics.add(matching_lon[0])
+
+        # ── 2. Group remaining topics by structural prefix ─────────────────
+        remaining = [t for t in topics if t not in skip_topics]
+        groups: Dict[str, List[str]] = defaultdict(list)
+        for topic in remaining:
+            groups[self._topic_group_key(topic)].append(topic)
+
+        # ── 3. Apply semantic merges (e.g. heading + course) ───────────────
+        groups = self._apply_semantic_merges(dict(groups))
+
+        # ── 4. Build one multi_line spec per group ─────────────────────────
+        for group_topics in sorted(groups.values(), key=lambda g: g[0]):
+            group_topics = sorted(group_topics)
+            title   = self._group_plot_title(group_topics)
+            ylabel  = self._group_ylabel(group_topics)
+            labels  = self._group_series_labels(group_topics)
+            colors  = [self._AUTO_COLORS[i % len(self._AUTO_COLORS)]
+                       for i in range(len(group_topics))]
+            plot_config.append({
+                'type':   'multi_line',
+                'title':  title,
+                'topics': group_topics,
+                'labels': labels,
+                'ylabel': ylabel,
+                'colors': colors,
+                'legend': True,
+            })
+
+        logger.info(f"Auto-generated {len(plot_config)} plot configs from {len(topics)} topics")
+        return plot_config
+
+    def _topic_to_title(self, topic: str) -> str:
+        """Convert MQTT topic path to readable plot title."""
+        # e.g. "gps/speed/0" → "GPS Speed 0"
+        # e.g. "rssi/Breaksea location" → "RSSI Breaksea Location"
+        # e.g. "scale/1" → "Scale 1"
+        parts = topic.replace('/', ' ').split()
+        titled = []
+        for part in parts:
+            if part.isnumeric():
+                titled.append(part)
+            elif len(part) <= 4 and part.isalpha():
+                titled.append(part.upper())
+            else:
+                titled.append(part.capitalize())
+        return ' '.join(titled)
+
+    # ── Grouping helpers ──────────────────────────────────────────────────────
+
+    def _readable_component(self, part: str) -> str:
+        """Return a human-readable label for one MQTT path component."""
+        override = (self._TOPIC_COMPONENT_NAMES.get(part)
+                    or self._TOPIC_COMPONENT_NAMES.get(part.lower()))
+        if override:
+            return override
+        if len(part) <= 4 and part.isalpha():
+            return part.upper()
+        return part.capitalize()
+
+    def _topic_group_key(self, topic: str) -> str:
+        """
+        Return the grouping key for a topic.
+
+        The key is the topic path with the trailing numeric channel/axis index
+        stripped, so that anemometer/temperature/0,1,2 all map to the same
+        key 'anemometer/temperature'.
+        """
+        parts = topic.split('/')
+        if parts and parts[-1].isdigit():
+            return '/'.join(parts[:-1])
+        return topic
+
+    def _apply_semantic_merges(self, groups: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """
+        Merge groups whose keys share semantic meaning.
+
+        Uses _SEMANTIC_MERGE_GROUPS: each entry is a frozenset of keywords;
+        any group key containing at least one keyword from the set is merged
+        with the others in the same set.
+        """
+        for keywords in self._SEMANTIC_MERGE_GROUPS:
+            matching = [k for k in list(groups.keys())
+                        if any(kw in k.lower() for kw in keywords)]
+            if len(matching) > 1:
+                primary = min(matching)   # deterministic: alphabetically first
+                for key in matching:
+                    if key != primary:
+                        groups[primary].extend(groups.pop(key))
+        return groups
+
+    def _group_plot_title(self, topics: List[str]) -> str:
+        """
+        Derive a chart title from the group of topics.
+
+        Finds the longest common MQTT path prefix (ignoring numeric components)
+        and converts it to a readable title.  When topics come from entirely
+        different topic families (semantic merge), the distinct roots are
+        joined with ' / '.
+        """
+        split_topics = [t.split('/') for t in topics]
+        common: List[str] = []
+        for components in zip(*split_topics):
+            unique = set(components)
+            if len(unique) == 1 and not list(unique)[0].isdigit():
+                common.append(list(unique)[0])
+            else:
+                break
+
+        if common:
+            return ' '.join(self._readable_component(p) for p in common)
+
+        # No common non-numeric prefix — combine root-level family names
+        roots = sorted({t.split('/')[0] for t in topics})
+        return ' / '.join(self._readable_component(r) for r in roots)
+
+    def _group_ylabel(self, topics: List[str]) -> str:
+        """
+        Return the Y-axis label (with units) for a group of topics.
+
+        Searches the combined topic strings for the first matching keyword
+        in _TOPIC_UNITS.  Longer/more-specific keywords are tried first.
+        """
+        combined = ' '.join(topics).lower()
+        # Sort by keyword length descending so more-specific terms win
+        for keyword, unit in sorted(self._TOPIC_UNITS.items(),
+                                    key=lambda kv: -len(kv[0])):
+            if keyword in combined:
+                return unit
+        return 'Value'
+
+    def _topic_readable_name(self, topic: str) -> str:
+        """
+        Full readable name for a topic, skipping non-terminal numeric parts.
+
+        e.g. 'imu/0/heading' → 'IMU Heading'
+             'gps/course/0'  → 'GPS Course 0'
+        """
+        parts = topic.split('/')
+        readable = []
+        for i, part in enumerate(parts):
+            is_last = (i == len(parts) - 1)
+            if part.isdigit() and not is_last:
+                continue   # skip node-ID digits in the middle
+            readable.append(self._readable_component(part))
+        return ' '.join(readable)
+
+    def _group_series_labels(self, topics: List[str]) -> List[str]:
+        """
+        Generate per-series legend labels for the topics in a group.
+
+        Strategy:
+        - Find the longest common MQTT path prefix shared by all topics.
+        - When topics share a prefix (same family, different channel index):
+            * Single trailing digit on a 3-axis sensor (acc/gyro/mag) → X/Y/Z
+            * Single trailing digit on anything else → the digit as a string
+            * Multi-part suffix → readable form of the suffix
+        - When there is no common prefix (topics from different families,
+          e.g. after a semantic merge) → full readable name for each topic.
+        """
+        if len(topics) == 1:
+            return [self._topic_readable_name(topics[0])]
+
+        # Find how many leading path components are identical across all topics
+        split_topics = [t.split('/') for t in topics]
+        common_len = 0
+        for components in zip(*split_topics):
+            if len(set(components)) == 1:
+                common_len += 1
+            else:
+                break
+
+        labels = []
+        for topic in topics:
+            parts = topic.split('/')
+            suffix = parts[common_len:]
+
+            if not suffix or common_len == 0:
+                # No (or empty) common prefix → use the full readable name
+                labels.append(self._topic_readable_name(topic))
+                continue
+
+            if len(suffix) == 1 and suffix[0].isdigit():
+                idx = int(suffix[0])
+                # 3-axis sensors get X / Y / Z labels
+                if any(kw in topic.lower() for kw in self._AXIS_TOPICS):
+                    labels.append(self._AXIS_LABELS.get(idx, str(idx)))
+                else:
+                    labels.append(str(idx))
+            else:
+                # Multi-component suffix → readable, skipping numeric node IDs
+                meaningful = [self._readable_component(p)
+                              for p in suffix if not p.isdigit()]
+                labels.append(' '.join(meaningful) if meaningful else topic)
+
+        return labels
+
+    def process_recording(self, recording_id: int, plot_config: List[Dict] = None,
+                          export_config: Dict = None) -> Dict:
+        """
+        Process recording: generate plots, statistics, and export files.
+
+        If plot_config is empty or None, auto-generates plots for all
+        recorded topics. If export_config is None, auto-generates export
+        files based on available data (CSV always; KML/GPX when GPS data present).
+
+        Args:
+            recording_id: Recording ID
+            plot_config: List of plot configuration dicts (optional)
+            export_config: Dict with keys 'csv', 'kml', 'gpx' (True/False).
+                           Pass None for auto-detection.
+
+        Returns:
+            Dict with processing results:
+            {
+                'plots': [list of image paths],
+                'exports': [list of export file dicts],
+                'statistics': {stats dict},
+                'status': 'success' or 'failed',
+                'error': error message if failed
+            }
+        """
+        logger.info(f"Processing recording {recording_id}")
+
+        # Update status
+        self.database.update_recording(recording_id, status=RecordingStatus.PROCESSING)
+
+        try:
+            # Create output directory for this recording
+            output_dir = self.plots_dir / str(recording_id)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            results = {
+                'plots': [],
+                'exports': [],
+                'statistics': {},
+                'status': 'success'
+            }
+
+            # Auto-generate plot config if none provided
+            if not plot_config:
+                plot_config = self._auto_generate_plot_config(recording_id)
+
+            # Generate plots
+            if plot_config:
+                logger.info(f"Generating {len(plot_config)} plots")
+                for plot_spec in plot_config:
+                    try:
+                        plot_path = self._generate_plot(recording_id, plot_spec, output_dir)
+                        if plot_path:
+                            results['plots'].append(str(plot_path))
+                            # Add to database
+                            self.database.add_image(
+                                recording_id,
+                                str(plot_path),
+                                ImageType.PLOT,
+                                caption=plot_spec.get('title', 'Plot')
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to generate plot '{plot_spec.get('title')}': {e}")
+
+            # Calculate statistics
+            logger.info("Calculating statistics")
+            results['statistics'] = self.calculate_statistics(recording_id)
+
+            # Generate statistics table as image
+            stats_table_path = self._generate_statistics_table(
+                recording_id,
+                results['statistics'],
+                output_dir
+            )
+            if stats_table_path:
+                results['plots'].append(str(stats_table_path))
+                self.database.add_image(
+                    recording_id,
+                    str(stats_table_path),
+                    ImageType.PLOT,
+                    caption="Statistics Summary"
+                )
+
+            # Save statistics as JSON sidecar so the publisher can render
+            # them as an HTML table instead of uploading the PNG image
+            if results['statistics']:
+                json_path = output_dir / 'statistics_summary.json'
+                try:
+                    with open(json_path, 'w') as f:
+                        json.dump(results['statistics'], f, indent=2, default=str)
+                    logger.info(f"Saved statistics JSON: {json_path}")
+                except Exception as e:
+                    logger.warning(f"Could not save statistics JSON: {e}")
+
+            # Generate export files
+            if export_config is None:
+                export_config = self._auto_generate_export_config(recording_id)
+            logger.info(f"Export config: {export_config}")
+
+            if export_config.get('csv', False):
+                csv_path = self.generate_csv_export(recording_id, output_dir)
+                if csv_path:
+                    self.database.add_export(recording_id, 'csv', str(csv_path), 'All Data')
+                    results['exports'].append({'type': 'csv', 'path': str(csv_path), 'label': 'All Data'})
+
+            if export_config.get('kml', False):
+                kml_paths = self.generate_kml_exports(recording_id, output_dir)
+                for j, kml_path in enumerate(kml_paths):
+                    label = 'Route Map' if len(kml_paths) == 1 else f'Route Map {j}'
+                    self.database.add_export(recording_id, 'kml', str(kml_path), label)
+                    results['exports'].append({'type': 'kml', 'path': str(kml_path), 'label': label})
+
+            if export_config.get('gpx', False):
+                gpx_path = self.generate_gpx_export(recording_id, output_dir)
+                if gpx_path:
+                    self.database.add_export(recording_id, 'gpx', str(gpx_path), 'GPS Track')
+                    results['exports'].append({'type': 'gpx', 'path': str(gpx_path), 'label': 'GPS Track'})
+
+            logger.info(f"Processing complete: {len(results['plots'])} plots, "
+                        f"{len(results['exports'])} exports")
+
+            self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
+            return results
+
+        except Exception as e:
+            logger.error(f"Processing failed: {e}")
+            self.database.update_recording(recording_id, status=RecordingStatus.FAILED)
+            return {
+                'plots': [],
+                'statistics': {},
+                'status': 'failed',
+                'error': str(e)
+            }
+
+    def _generate_plot(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Optional[Path]:
+        """
+        Generate plot based on specification.
+
+        Args:
+            recording_id: Recording ID
+            plot_spec: Plot specification dict
+            output_dir: Output directory
+
+        Returns:
+            Path to generated plot or None
+        """
+        plot_type = plot_spec.get('type', 'line')
+
+        if plot_type == 'line':
+            return self._generate_line_plot(recording_id, plot_spec, output_dir)
+        elif plot_type == 'multi_line':
+            return self._generate_multi_line_plot(recording_id, plot_spec, output_dir)
+        elif plot_type == 'map':
+            return self._generate_route_map(recording_id, plot_spec, output_dir)
+        elif plot_type == 'statistics_table':
+            # Handled separately
+            return None
+        else:
+            logger.warning(f"Unknown plot type: {plot_type}")
+            return None
+
+    def _generate_line_plot(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
+        """
+        Generate single-line time-series plot.
+
+        Args:
+            recording_id: Recording ID
+            plot_spec: Plot specification with 'topics', 'title', 'ylabel', etc.
+            output_dir: Output directory
+
+        Returns:
+            Path to generated plot
+        """
+        title = plot_spec.get('title', 'Plot')
+        topics = plot_spec.get('topics', [])
+        ylabel = plot_spec.get('ylabel', 'Value')
+        color = plot_spec.get('color', '#667eea')
+
+        if not topics:
+            raise ValueError("No topics specified for line plot")
+
+        # Get data
+        data = self._get_topic_data(recording_id, topics[0])
+        if not data:
+            raise ValueError(f"No data found for topic {topics[0]}")
+
+        timestamps, values = data
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
+
+        ax.plot(timestamps, values, linewidth=2, color=color)
+        ax.set_title(title, fontsize=16, fontweight='bold')
+        ax.set_xlabel('Time', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.grid(True, alpha=0.3)
+
+        # Format x-axis
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        plt.xticks(rotation=45, ha='right')
+
+        # Format y-axis
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=10))
+
+        plt.tight_layout()
+
+        # Save
+        filename = f"{title.replace(' ', '_').lower()}.png"
+        output_path = output_dir / filename
+        plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"Generated line plot: {filename}")
+        return output_path
+
+    def _generate_multi_line_plot(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
+        """
+        Generate multi-line comparison plot.
+
+        Args:
+            recording_id: Recording ID
+            plot_spec: Plot specification with multiple topics
+            output_dir: Output directory
+
+        Returns:
+            Path to generated plot
+        """
+        title = plot_spec.get('title', 'Comparison Plot')
+        topics = plot_spec.get('topics', [])
+        labels = plot_spec.get('labels', topics)
+        ylabel = plot_spec.get('ylabel', 'Value')
+        colors = plot_spec.get('colors', ['#667eea', '#764ba2', '#48cae4', '#f72585'])
+        show_legend = plot_spec.get('legend', True)
+
+        if not topics:
+            raise ValueError("No topics specified for multi-line plot")
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
+
+        for i, topic in enumerate(topics):
+            data = self._get_topic_data(recording_id, topic)
+            if data:
+                timestamps, values = data
+                label = labels[i] if i < len(labels) else topic
+                color = colors[i % len(colors)]
+                ax.plot(timestamps, values, linewidth=2, label=label, color=color)
+
+        ax.set_title(title, fontsize=16, fontweight='bold')
+        ax.set_xlabel('Time', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.grid(True, alpha=0.3)
+
+        if show_legend:
+            ax.legend(fontsize=10, loc='best')
+
+        # Format x-axis
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        plt.xticks(rotation=45, ha='right')
+
+        plt.tight_layout()
+
+        # Save
+        filename = f"{title.replace(' ', '_').lower()}.png"
+        output_path = output_dir / filename
+        plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"Generated multi-line plot: {filename}")
+        return output_path
+
+    def _generate_route_map(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
+        """
+        Generate GPS route map using folium.
+
+        Args:
+            recording_id: Recording ID
+            plot_spec: Plot specification
+            output_dir: Output directory
+
+        Returns:
+            Path to generated map image
+        """
+        try:
+            import folium
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+        except ImportError:
+            logger.warning("folium or selenium not installed, skipping route map")
+            # Fallback: generate matplotlib map
+            return self._generate_matplotlib_route_map(recording_id, plot_spec, output_dir)
+
+        title = plot_spec.get('title', 'Route Map')
+        topics = plot_spec.get('topics', ['gps/latitude/0', 'gps/longitude/0'])
+
+        # Get GPS coordinates
+        coords = self._get_gps_coordinates(recording_id, topics)
+        if not coords or len(coords) < 2:
+            raise ValueError("Insufficient GPS data for route map")
+
+        # Create folium map centered on route
+        center_lat = sum(lat for lat, lon in coords) / len(coords)
+        center_lon = sum(lon for lat, lon in coords) / len(coords)
+
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
+
+        # Add route polyline
+        folium.PolyLine(
+            coords,
+            color='#667eea',
+            weight=4,
+            opacity=0.8
+        ).add_to(m)
+
+        # Add start marker (green)
+        folium.Marker(
+            coords[0],
+            popup='Start',
+            icon=folium.Icon(color='green', icon='play')
+        ).add_to(m)
+
+        # Add end marker (red)
+        folium.Marker(
+            coords[-1],
+            popup='End',
+            icon=folium.Icon(color='red', icon='stop')
+        ).add_to(m)
+
+        # Fit bounds to show entire route
+        m.fit_bounds(coords)
+
+        # Save as HTML
+        html_path = output_dir / f"{title.replace(' ', '_').lower()}.html"
+        m.save(str(html_path))
+
+        # Convert to PNG using selenium + system Chromium
+        png_path = output_dir / f"{title.replace(' ', '_').lower()}.png"
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            # Use the system-installed Chromium binary (installed via apt chromium/chromium-driver)
+            # rather than the selenium-manager auto-downloaded Chrome which requires the
+            # matching Chrome browser binary to also be present.
+            chrome_options.binary_location = '/usr/bin/chromium'
+
+            from selenium.webdriver.chrome.service import Service
+            driver = webdriver.Chrome(options=chrome_options, service=Service('/usr/bin/chromedriver'))
+            driver.set_window_size(1200, 800)
+            driver.get(f"file://{html_path.absolute()}")
+            time.sleep(2)  # Wait for map to render
+            driver.save_screenshot(str(png_path))
+            driver.quit()
+
+            logger.info(f"Generated route map: {png_path.name}")
+            return png_path
+
+        except Exception as e:
+            logger.warning(f"Failed to convert map to PNG (ChromeDriver unavailable): {e}, falling back to matplotlib")
+            return self._generate_matplotlib_route_map(recording_id, plot_spec, output_dir)
+
+    def _generate_matplotlib_route_map(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
+        """
+        Generate simple GPS route map using matplotlib (fallback).
+
+        Args:
+            recording_id: Recording ID
+            plot_spec: Plot specification
+            output_dir: Output directory
+
+        Returns:
+            Path to generated plot
+        """
+        title = plot_spec.get('title', 'Route Map')
+        topics = plot_spec.get('topics', ['gps/latitude/0', 'gps/longitude/0'])
+
+        # Get GPS coordinates
+        coords = self._get_gps_coordinates(recording_id, topics)
+        if not coords or len(coords) < 2:
+            raise ValueError("Insufficient GPS data for route map")
+
+        lats = [lat for lat, lon in coords]
+        lons = [lon for lat, lon in coords]
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
+
+        # Plot route
+        ax.plot(lons, lats, linewidth=2, color='#667eea', marker='o', markersize=2)
+
+        # Mark start (green) and end (red)
+        ax.plot(lons[0], lats[0], 'go', markersize=12, label='Start')
+        ax.plot(lons[-1], lats[-1], 'ro', markersize=12, label='End')
+
+        ax.set_title(title, fontsize=16, fontweight='bold')
+        ax.set_xlabel('Longitude', fontsize=12)
+        ax.set_ylabel('Latitude', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+
+        # Equal aspect ratio for accurate map representation
+        ax.set_aspect('equal', adjustable='box')
+
+        plt.tight_layout()
+
+        # Save
+        filename = f"{title.replace(' ', '_').lower()}.png"
+        output_path = output_dir / filename
+        plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"Generated matplotlib route map: {filename}")
+        return output_path
+
+    def _generate_statistics_table(self, recording_id: int, statistics: Dict, output_dir: Path) -> Optional[Path]:
+        """
+        Generate statistics summary table as image.
+
+        Args:
+            recording_id: Recording ID
+            statistics: Statistics dict
+            output_dir: Output directory
+
+        Returns:
+            Path to generated table image
+        """
+        if not statistics:
+            return None
+
+        # Prepare table data
+        table_data = [['Metric', 'Value']]
+
+        # Add timing stats
+        if 'start_time' in statistics:
+            table_data.append(['Start Time', statistics['start_time']])
+        if 'end_time' in statistics:
+            table_data.append(['End Time', statistics['end_time']])
+        if 'duration' in statistics:
+            table_data.append(['Duration', statistics['duration']])
+        if 'message_count' in statistics:
+            table_data.append(['Messages Recorded', f"{statistics['message_count']:,}"])
+
+        # Add GPS-derived stats
+        if 'distance_km' in statistics:
+            table_data.append(['Distance', f"{statistics['distance_km']:.2f} km"])
+        if 'max_speed' in statistics:
+            table_data.append(['Max Speed', f"{statistics['max_speed']:.1f} km/h"])
+        if 'avg_speed' in statistics:
+            table_data.append(['Avg Speed', f"{statistics['avg_speed']:.1f} km/h"])
+
+        # Add energy stats
+        if 'energy_used_wh' in statistics:
+            table_data.append(['Energy Used', f"{statistics['energy_used_wh']:.1f} Wh"])
+        if 'efficiency_wh_per_km' in statistics:
+            table_data.append(['Efficiency', f"{statistics['efficiency_wh_per_km']:.1f} Wh/km"])
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=(8, len(table_data) * 0.4 + 1))
+        ax.axis('tight')
+        ax.axis('off')
+
+        # Create table
+        table = ax.table(
+            cellText=table_data,
+            cellLoc='left',
+            loc='center',
+            colWidths=[0.5, 0.5]
+        )
+
+        table.auto_set_font_size(False)
+        table.set_fontsize(11)
+        table.scale(1, 2)
+
+        # Style header row
+        for i in range(2):
+            cell = table[(0, i)]
+            cell.set_facecolor('#667eea')
+            cell.set_text_props(weight='bold', color='white')
+
+        # Alternate row colors
+        for i in range(1, len(table_data)):
+            for j in range(2):
+                cell = table[(i, j)]
+                if i % 2 == 0:
+                    cell.set_facecolor('#f0f0f0')
+
+        plt.title('Track Statistics', fontsize=14, fontweight='bold', pad=20)
+
+        # Save
+        filename = "statistics_summary.png"
+        output_path = output_dir / filename
+        plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"Generated statistics table: {filename}")
+        return output_path
+
+    def _get_topic_data(self, recording_id: int, topic: str) -> Optional[Tuple[List[datetime], List[float]]]:
+        """
+        Get time-series data for a topic.
+
+        Args:
+            recording_id: Recording ID
+            topic: MQTT topic
+
+        Returns:
+            Tuple of (timestamps, values) or None
+        """
+        # Get data from database
+        data = self.database.get_recording_data(recording_id, topic_filter=topic)
+
+        if not data:
+            return None
+
+        timestamps = []
+        values = []
+
+        for record in data:
+            try:
+                timestamp = record['timestamp']
+                if isinstance(timestamp, str):
+                    timestamp = datetime.fromisoformat(timestamp)
+
+                value = float(record['payload'])
+
+                timestamps.append(timestamp)
+                values.append(value)
+            except (ValueError, KeyError):
+                continue
+
+        if not timestamps:
+            return None
+
+        return (timestamps, values)
+
+    def _get_gps_coordinates(self, recording_id: int, topics: List[str]) -> List[Tuple[float, float]]:
+        """
+        Get GPS coordinates from recording.
+
+        Args:
+            recording_id: Recording ID
+            topics: List of [latitude_topic, longitude_topic]
+
+        Returns:
+            List of (latitude, longitude) tuples
+        """
+        if len(topics) < 2:
+            return []
+
+        lat_topic = topics[0]
+        lon_topic = topics[1]
+
+        # Get latitude and longitude data
+        lat_data = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
+        lon_data = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
+
+        if not lat_data or not lon_data:
+            return []
+
+        # Build coordinate pairs by timestamp
+        lat_dict = {}
+        for record in lat_data:
+            try:
+                timestamp = record['timestamp']
+                if isinstance(timestamp, str):
+                    timestamp = datetime.fromisoformat(timestamp)
+                lat_dict[timestamp] = float(record['payload'])
+            except (ValueError, KeyError):
+                continue
+
+        lon_dict = {}
+        for record in lon_data:
+            try:
+                timestamp = record['timestamp']
+                if isinstance(timestamp, str):
+                    timestamp = datetime.fromisoformat(timestamp)
+                lon_dict[timestamp] = float(record['payload'])
+            except (ValueError, KeyError):
+                continue
+
+        # Match timestamps using nearest-neighbour within a tolerance window.
+        # Lat and lon arrive as separate MQTT topics so their timestamps differ
+        # by milliseconds — exact equality almost never matches.
+        TOLERANCE = timedelta(seconds=5)
+        sorted_lon_times = sorted(lon_dict.keys())
+        coords = []
+        for lat_ts in sorted(lat_dict.keys()):
+            # Binary-search for the closest lon timestamp
+            idx = bisect.bisect_left(sorted_lon_times, lat_ts)
+            best = None
+            for candidate_idx in [idx - 1, idx]:
+                if 0 <= candidate_idx < len(sorted_lon_times):
+                    diff = abs(sorted_lon_times[candidate_idx] - lat_ts)
+                    if diff <= TOLERANCE:
+                        if best is None or diff < abs(sorted_lon_times[best] - lat_ts):
+                            best = candidate_idx
+            if best is not None:
+                coords.append((lat_dict[lat_ts], lon_dict[sorted_lon_times[best]]))
+
+        return coords
+
+    # === Export File Generation ===
+
+    def _find_gps_pairs(self, recording_id: int) -> List[Tuple[str, str]]:
+        """Return list of (lat_topic, lon_topic) pairs for the recording."""
+        topics = self.database.get_recording_topics(recording_id)
+        lat_topics = [t for t in topics if 'latitude' in t.lower()]
+        lon_topics = [t for t in topics if 'longitude' in t.lower()]
+        pairs = []
+        for lat_topic in lat_topics:
+            expected_lon = lat_topic.replace('latitude', 'longitude')
+            matching = [t for t in lon_topics if t == expected_lon]
+            if not matching:
+                suffix = lat_topic.split('latitude')[-1]
+                if suffix:
+                    matching = [t for t in lon_topics if t.endswith(suffix)]
+            if matching:
+                pairs.append((lat_topic, matching[0]))
+        return pairs
+
+    def _auto_generate_export_config(self, recording_id: int) -> Dict:
+        """Auto-generate export config: CSV always; KML/GPX when GPS pairs exist."""
+        has_gps = bool(self._find_gps_pairs(recording_id))
+        return {'csv': True, 'kml': has_gps, 'gpx': has_gps}
+
+    def generate_csv_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
+        """
+        Generate a merged time-series CSV for all topics in the recording.
+
+        Each row is one unique timestamp; topic values are forward-filled.
+        """
+        topics = self.database.get_recording_topics(recording_id)
+        if not topics:
+            return None
+
+        all_data = self.database.get_recording_data(recording_id)
+        if not all_data:
+            return None
+
+        output_path = output_dir / 'data_export.csv'
+        try:
+            ts_map = defaultdict(dict)
+            for row in all_data:
+                ts_map[row['timestamp']][row['topic']] = row['payload']
+
+            sorted_timestamps = sorted(ts_map.keys())
+            fieldnames = ['timestamp'] + sorted(topics)
+
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                current_values = {t: '' for t in topics}
+                for ts in sorted_timestamps:
+                    current_values.update(ts_map[ts])
+                    row = {'timestamp': ts}
+                    row.update(current_values)
+                    writer.writerow(row)
+
+            logger.info(f"CSV export: {output_path} ({len(sorted_timestamps)} rows)")
+            return output_path
+        except Exception as e:
+            logger.error(f"CSV export failed: {e}")
+            return None
+
+    def generate_kml_exports(self, recording_id: int, output_dir: Path) -> List[Path]:
+        """Generate one KML file per GPS lat/lon stream pair."""
+        pairs = self._find_gps_pairs(recording_id)
+        output_paths = []
+
+        for i, (lat_topic, lon_topic) in enumerate(pairs):
+            try:
+                lat_rows = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
+                lon_rows = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
+                if not lat_rows or not lon_rows:
+                    continue
+
+                lat_by_ts = {r['timestamp']: float(r['payload']) for r in lat_rows}
+                lon_series = sorted((r['timestamp'], float(r['payload'])) for r in lon_rows)
+
+                # Forward-fill lon against lat timestamps
+                lon_idx = 0
+                coords = []
+                for ts, lat in sorted(lat_by_ts.items()):
+                    while lon_idx + 1 < len(lon_series) and lon_series[lon_idx + 1][0] <= ts:
+                        lon_idx += 1
+                    if lon_series:
+                        coords.append((lon_series[lon_idx][1], lat))  # (lon, lat) for KML
+
+                if len(coords) < 2:
+                    continue
+
+                kml = ET.Element('kml', xmlns='http://www.opengis.net/kml/2.2')
+                doc = ET.SubElement(kml, 'Document')
+                name_el = ET.SubElement(doc, 'name')
+                name_el.text = 'Route Map' if len(pairs) == 1 else f'Route Map {i}'
+                pm = ET.SubElement(doc, 'Placemark')
+                ET.SubElement(pm, 'name').text = f'Track {i}' if len(pairs) > 1 else 'Track'
+                ls = ET.SubElement(pm, 'LineString')
+                ET.SubElement(ls, 'tessellate').text = '1'
+                ET.SubElement(ls, 'coordinates').text = '\n'.join(
+                    f'{lon},{lat},0' for lon, lat in coords
+                )
+
+                pretty = minidom.parseString(ET.tostring(kml, encoding='unicode')).toprettyxml(indent='  ')
+                filename = 'route_map.kml' if len(pairs) == 1 else f'route_map_{i}.kml'
+                output_path = output_dir / filename
+                output_path.write_text(pretty, encoding='utf-8')
+                output_paths.append(output_path)
+                logger.info(f"KML export: {output_path} ({len(coords)} points)")
+
+            except Exception as e:
+                logger.error(f"KML export failed for pair {i}: {e}")
+
+        return output_paths
+
+    def generate_gpx_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
+        """
+        Generate a single GPX file with all GPS streams as named tracks.
+
+        Speed and other gps/* extension topics are included in <extensions>.
+        """
+        pairs = self._find_gps_pairs(recording_id)
+        if not pairs:
+            return None
+
+        all_topics = self.database.get_recording_topics(recording_id)
+        ext_topics = [
+            t for t in all_topics
+            if t.lower().startswith('gps/')
+            and 'latitude' not in t.lower()
+            and 'longitude' not in t.lower()
+        ]
+        ext_data = {}
+        for topic in ext_topics:
+            rows = self.database.get_recording_data(recording_id, topic_filter=topic)
+            if rows:
+                ext_data[topic] = sorted((r['timestamp'], r['payload']) for r in rows)
+
+        gpx = ET.Element('gpx', {
+            'version': '1.1',
+            'creator': 'emon_Suite event_recorder',
+            'xmlns': 'http://www.topografix.com/GPX/1/1',
+        })
+
+        recording = self.database.get_recording(recording_id)
+        meta = ET.SubElement(gpx, 'metadata')
+        ET.SubElement(meta, 'name').text = recording.get('name', f'Recording {recording_id}')
+        ET.SubElement(meta, 'time').text = str(recording.get('start_time', ''))
+
+        for i, (lat_topic, lon_topic) in enumerate(pairs):
+            lat_rows = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
+            lon_rows = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
+            if not lat_rows or not lon_rows:
+                continue
+
+            lat_by_ts = {r['timestamp']: float(r['payload']) for r in lat_rows}
+            lon_series = sorted((r['timestamp'], float(r['payload'])) for r in lon_rows)
+            ext_series = {topic: list(series) for topic, series in ext_data.items()}
+            ext_indices = {topic: 0 for topic in ext_series}
+            lon_idx = 0
+
+            trk = ET.SubElement(gpx, 'trk')
+            ET.SubElement(trk, 'name').text = f'Track {i}' if len(pairs) > 1 else 'Track'
+            trkseg = ET.SubElement(trk, 'trkseg')
+
+            for ts, lat in sorted(lat_by_ts.items()):
+                while lon_idx + 1 < len(lon_series) and lon_series[lon_idx + 1][0] <= ts:
+                    lon_idx += 1
+                if not lon_series:
+                    continue
+                lon = lon_series[lon_idx][1]
+
+                trkpt = ET.SubElement(trkseg, 'trkpt',
+                                      lat=f'{lat:.8f}', lon=f'{lon:.8f}')
+                time_str = ts.replace(' ', 'T') + 'Z' if 'T' not in ts else ts
+                ET.SubElement(trkpt, 'time').text = time_str
+
+                # Elevation if available
+                for topic, series in ext_series.items():
+                    if 'altitude' in topic.lower() or 'elevation' in topic.lower():
+                        idx = ext_indices[topic]
+                        while idx + 1 < len(series) and series[idx + 1][0] <= ts:
+                            idx += 1
+                        ext_indices[topic] = idx
+                        if series:
+                            ET.SubElement(trkpt, 'ele').text = str(series[idx][1])
+                        break
+
+                # Other extensions
+                ext_values = {}
+                for topic, series in ext_series.items():
+                    if 'altitude' in topic.lower() or 'elevation' in topic.lower():
+                        continue
+                    idx = ext_indices[topic]
+                    while idx + 1 < len(series) and series[idx + 1][0] <= ts:
+                        idx += 1
+                    ext_indices[topic] = idx
+                    if series:
+                        tag = '_'.join(topic.split('/')[1:]).replace('/', '_') or topic.replace('/', '_')
+                        ext_values[tag] = str(series[idx][1])
+
+                if ext_values:
+                    extensions = ET.SubElement(trkpt, 'extensions')
+                    for tag, value in ext_values.items():
+                        ET.SubElement(extensions, tag).text = value
+
+        if not gpx.findall('trk'):
+            return None
+
+        xml_str = '<?xml version="1.0" encoding="UTF-8"?>' + ET.tostring(gpx, encoding='unicode')
+        pretty = minidom.parseString(xml_str).toprettyxml(indent='  ')
+        # Remove the extra declaration minidom adds
+        lines = pretty.splitlines()
+        if lines and lines[0].startswith('<?xml'):
+            lines = lines[1:]
+        pretty = '<?xml version="1.0" encoding="UTF-8"?>\n' + '\n'.join(lines)
+
+        output_path = output_dir / 'track.gpx'
+        output_path.write_text(pretty, encoding='utf-8')
+        logger.info(f"GPX export: {output_path}")
+        return output_path
+
+    def calculate_statistics(self, recording_id: int) -> Dict:
+        """
+        Calculate statistics for recording.
+
+        Args:
+            recording_id: Recording ID
+
+        Returns:
+            Dict with statistics
+        """
+        stats = {}
+
+        # Get recording info
+        recording = self.database.get_recording(recording_id)
+        if not recording:
+            return stats
+
+        # Duration
+        start_time = recording['start_time']
+        end_time = recording['end_time']
+
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time)
+        if end_time and isinstance(end_time, str):
+            end_time = datetime.fromisoformat(end_time)
+
+        stats['start_time'] = start_time.strftime('%Y-%m-%d %H:%M:%S') if start_time else ''
+        stats['end_time'] = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else ''
+
+        if end_time:
+            duration = end_time - start_time
+            stats['duration'] = str(duration).split('.')[0]  # Remove microseconds
+            stats['duration_seconds'] = duration.total_seconds()
+
+        # Message count
+        stats['message_count'] = self.database.get_recording_data_count(recording_id)
+
+        # GPS-based statistics
+        gps_stats = self._calculate_gps_statistics(recording_id)
+        stats.update(gps_stats)
+
+        # Energy statistics
+        energy_stats = self._calculate_energy_statistics(recording_id)
+        stats.update(energy_stats)
+
+        return stats
+
+    def _calculate_gps_statistics(self, recording_id: int) -> Dict:
+        """Calculate GPS-based statistics (distance, speed)."""
+        stats = {}
+
+        # Get GPS coordinates
+        coords = self._get_gps_coordinates(recording_id, ['gps/latitude/0', 'gps/longitude/0'])
+
+        if len(coords) < 2:
+            return stats
+
+        # Calculate total distance using Haversine
+        total_distance = 0
+        for i in range(1, len(coords)):
+            lat1, lon1 = coords[i-1]
+            lat2, lon2 = coords[i]
+            distance = self._haversine_distance(lat1, lon1, lat2, lon2)
+            total_distance += distance
+
+        stats['distance_km'] = total_distance / 1000  # Convert to km
+
+        # Get speed data
+        speed_data = self._get_topic_data(recording_id, 'gps/speed/0')
+        if speed_data:
+            timestamps, speeds = speed_data
+            stats['max_speed'] = max(speeds)
+            stats['avg_speed'] = sum(speeds) / len(speeds)
+
+        return stats
+
+    def _calculate_energy_statistics(self, recording_id: int) -> Dict:
+        """Calculate energy consumption statistics."""
+        stats = {}
+
+        # Get battery power data
+        power_data = self._get_topic_data(recording_id, 'battery/power/0/0')
+        if not power_data:
+            return stats
+
+        timestamps, powers = power_data
+
+        # Calculate energy using trapezoidal integration
+        total_energy = 0
+        for i in range(1, len(timestamps)):
+            dt = (timestamps[i] - timestamps[i-1]).total_seconds() / 3600  # hours
+            avg_power = (powers[i] + powers[i-1]) / 2
+            total_energy += avg_power * dt
+
+        stats['energy_used_wh'] = abs(total_energy)
+
+        # Calculate efficiency (Wh/km)
+        if 'distance_km' in stats and stats['distance_km'] > 0:
+            stats['efficiency_wh_per_km'] = stats['energy_used_wh'] / stats['distance_km']
+
+        return stats
+
+    def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Calculate distance between two GPS points (meters)."""
+        R = 6371000  # Earth radius in meters
+
+        lat1_rad = math.radians(lat1)
+        lat2_rad = math.radians(lat2)
+        delta_lat = math.radians(lat2 - lat1)
+        delta_lon = math.radians(lon2 - lon1)
+
+        a = (math.sin(delta_lat / 2) ** 2 +
+             math.cos(lat1_rad) * math.cos(lat2_rad) *
+             math.sin(delta_lon / 2) ** 2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        return R * c
+
+
+def main():
+    """CLI for testing data processor."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Data Processor Test")
+    parser.add_argument('--db', default='/data/recordings.db', help="Database path")
+    parser.add_argument('--recording-id', type=int, required=True, help="Recording ID to process")
+    parser.add_argument('--plots-dir', default='/tmp/plots', help="Plots output directory")
+
+    args = parser.parse_args()
+
+    # Setup logging
+    logging.basicConfig(level=logging.INFO,
+                       format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    from .models import Database
+    db = Database(args.db)
+    processor = DataProcessor(db, args.plots_dir)
+
+    # Example plot config
+    plot_config = [
+        {'type': 'line', 'title': 'Speed', 'topics': ['gps/speed/0'], 'ylabel': 'Speed (km/h)'},
+        {'type': 'multi_line', 'title': 'Battery Power', 'topics': ['battery/power/0/0', 'battery/power/0/1'],
+         'labels': ['Bank 1', 'Bank 2'], 'ylabel': 'Power (W)'},
+        {'type': 'map', 'title': 'Route Map', 'topics': ['gps/latitude/0', 'gps/longitude/0']}
+    ]
+
+    results = processor.process_recording(args.recording_id, plot_config)
+
+    print("\nProcessing Results:")
+    print(f"  Status: {results['status']}")
+    print(f"  Plots generated: {len(results['plots'])}")
+    for plot in results['plots']:
+        print(f"    - {plot}")
+    print(f"\nStatistics:")
+    for key, value in results['statistics'].items():
+        print(f"    {key}: {value}")
+
+
+if __name__ == '__main__':
+    main()

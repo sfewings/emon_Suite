@@ -1,0 +1,152 @@
+#!/bin/bash
+# enchantee-mode -- switch wlan0 between joining a wifi network and running the
+# "Enchantee" hotspot. The services (Node-RED / Grafana / Portainer / events)
+# are reached at http://enchantee.local/ either way.
+#
+#   enchantee-mode status      show what is active right now
+#   enchantee-mode current     print just ap | wifi | none, for scripts
+#   enchantee-mode toggle      switch to whichever mode is not active
+#   enchantee-mode ap          start the Enchantee hotspot
+#   enchantee-mode wifi [SSID] rejoin a wifi network
+#   enchantee-mode restore     reapply the remembered mode (boot-time, see below)
+#
+# Bringing up either profile needs root. Switching drops the current wireless
+# link, so the nmcli call is handed to systemd-run: it keeps going after an ssh
+# session dies with it. The call is asynchronous, so poll `current` to find out
+# when the switch has landed; enchantee-mode-gui does exactly that.
+#
+# Surviving a reboot is two mechanisms working together:
+#
+#   1. The mode last asked for is written to $STATE_FILE, and
+#      enchantee-mode-restore.service replays it at boot via `restore`.
+#   2. The AP profile has autoconnect=yes at autoconnect-priority -999, so if
+#      no known network is reachable NetworkManager starts the hotspot on its
+#      own. That covers somewhere the Pi has never been before, which a
+#      remembered mode cannot.
+#
+# So `restore` only has to act when the remembered mode is "ap". Remembering
+# "wifi" means "let NetworkManager decide", and its fallback handles the rest.
+
+set -euo pipefail
+
+AP_PROFILE="enchantee"
+FALLBACK_WIFI="netplan-wlan0-ZORAN"
+URL="http://enchantee.local/"
+STATE_FILE="/var/lib/enchantee/mode"
+
+usage() { sed -n '2,15p' "$0" | sed 's/^# \?//'; exit 1; }
+
+need_root() {
+    [ "$(id -u)" -eq 0 ] || { echo "$1 needs root: try sudo enchantee-mode $1" >&2; exit 1; }
+}
+
+# Name of the wireless profile NetworkManager currently has up, if any.
+active_profile() {
+    nmcli -t -g NAME,TYPE connection show --active |
+        awk -F: '$2=="802-11-wireless"{print $1; exit}'
+}
+
+# ap | wifi | none
+current_mode() {
+    local active mode
+    active=$(active_profile)
+    if [ -z "$active" ]; then echo none; return; fi
+    mode=$(nmcli -t -g 802-11-wireless.mode connection show "$active" 2>/dev/null || true)
+    case "$mode" in ap) echo ap ;; *) echo wifi ;; esac
+}
+
+# The infrastructure profile used most recently, so toggling back off the
+# hotspot returns to the network we actually came from rather than a hardcoded
+# one. Falls back to FALLBACK_WIFI if nothing has ever connected.
+last_wifi_profile() {
+    local best="" best_ts=0 name ts mode
+    while IFS=: read -r name ts; do
+        [ -n "$name" ] || continue
+        mode=$(nmcli -t -g 802-11-wireless.mode connection show "$name" 2>/dev/null || true)
+        [ "$mode" = "infrastructure" ] || continue
+        if [ "${ts:-0}" -gt "$best_ts" ]; then best_ts=$ts; best=$name; fi
+    done < <(nmcli -t -f NAME,TIMESTAMP,TYPE connection show |
+                 awk -F: '$3=="802-11-wireless"{print $1":"$2}')
+    printf '%s' "${best:-$FALLBACK_WIFI}"
+}
+
+# Records intent, not outcome: the switch is asynchronous, and what we want to
+# come back to after a reboot is the mode that was asked for.
+remember() {
+    mkdir -p "$(dirname "$STATE_FILE")"
+    printf '%s\n' "$1" > "$STATE_FILE"
+}
+
+wait_for_nm() {
+    local i
+    for i in $(seq 30); do
+        nmcli general status >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
+}
+
+detached() {
+    systemd-run --unit="enchantee-mode-switch-$$" --collect --quiet -- "$@"
+}
+
+go_ap() {
+    need_root ap
+    remember ap
+    echo "Starting hotspot '$AP_PROFILE'. This link will drop."
+    echo "Reconnect to SSID Enchantee, then browse to $URL"
+    detached nmcli connection up "$AP_PROFILE"
+}
+
+go_wifi() {
+    need_root wifi
+    local profile="${1:-$(last_wifi_profile)}"
+    remember wifi
+    echo "Joining '$profile'. This link will drop."
+    echo "Then browse to $URL"
+    detached nmcli connection up "$profile"
+}
+
+case "${1:-status}" in
+  status)
+    profile=$(active_profile)
+    addr=$(ip -4 -br addr show wlan0 | awk '{print $3}')
+    printf 'profile : %s\nmode    : %s\nwlan0   : %s\nurl     : %s\nat boot : %s\n' \
+           "${profile:-none}" "$(current_mode)" "${addr:-none}" "$URL" \
+           "$(cat "$STATE_FILE" 2>/dev/null || echo 'wifi (no state recorded yet)')"
+    ;;
+
+  current)
+    current_mode
+    ;;
+
+  toggle)
+    need_root toggle
+    if [ "$(current_mode)" = "ap" ]; then go_wifi; else go_ap; fi
+    ;;
+
+  ap)
+    go_ap
+    ;;
+
+  wifi)
+    go_wifi "${2:-}"
+    ;;
+
+  restore)
+    need_root restore
+    mode=$(cat "$STATE_FILE" 2>/dev/null || echo wifi)
+    if [ "$mode" = "ap" ]; then
+        echo "Remembered mode is 'ap'; starting hotspot '$AP_PROFILE'."
+        wait_for_nm || { echo "NetworkManager did not become ready" >&2; exit 1; }
+        # Not detached: at boot there is no ssh session to outlive, and running
+        # in the foreground lets systemd see whether it worked.
+        nmcli connection up "$AP_PROFILE"
+    else
+        echo "Remembered mode is 'wifi'; leaving it to NetworkManager autoconnect."
+        echo "If no known network is reachable it falls back to '$AP_PROFILE'."
+    fi
+    ;;
+
+  *) usage ;;
+esac

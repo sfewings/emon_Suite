@@ -5,7 +5,7 @@
 case $TARGETARCH in
 
     "amd64")
-	echo "pyemonlib-0.1.0-cp39-cp39m-linux_x86_64.whl" > /.platform_whl
+	echo "pyemonlib-0.1.0-cp314-cp314-win_amd64.whl" > /.platform_whl
 	;;
     "arm64") 
 	echo "pyemonlib-0.1.0-cp313-cp313-linux_aarch64.whl" > /.platform_whl

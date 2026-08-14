@@ -1,0 +1,70 @@
+#!/bin/bash
+# enchantee-mode-gui -- desktop front end for enchantee-mode, launched from
+# Enchantee-Wifi-Mode.desktop on the Pi's own screen.
+#
+# Confirms first, because switching drops the wireless link and an accidental
+# tap on a touchscreen should not take the network down. Then flips the mode and
+# waits for it to land, so the dialog reports what actually happened rather than
+# what was asked for.
+#
+# The GUI runs as the desktop user; only the switch itself goes through sudo
+# (pi has NOPASSWD, so no password prompt).
+
+set -uo pipefail
+
+MODE_BIN=/usr/local/bin/enchantee-mode
+TITLE="Enchantee wifi mode"
+TIMEOUT=45
+
+# Real newline. Zenity does not expand backslash escapes, so "\n" in a --text
+# would be shown literally.
+NL=$'\n'
+
+zen() { zenity --title="$TITLE" "$@" 2>/dev/null; }
+
+current=$("$MODE_BIN" current)
+
+case "$current" in
+    ap)
+        target=wifi
+        question="Currently running the <b>Enchantee</b> hotspot.${NL}${NL}Rejoin a wifi network?"
+        settled="Joined a wifi network."
+        ;;
+    *)
+        target=ap
+        question="Currently joined to a wifi network.${NL}${NL}Start the <b>Enchantee</b> hotspot?"
+        settled="Hotspot <b>Enchantee</b> is running."
+        ;;
+esac
+
+zen --question --width=380 \
+    --text="${question}${NL}${NL}The wireless connection drops while it switches." \
+    --ok-label="Switch" --cancel-label="Cancel" || exit 0
+
+# --no-markup here: nmcli's message is interpolated, and a stray < or & in it
+# would otherwise break Pango parsing and blank the dialog.
+if ! err=$(sudo -n "$MODE_BIN" toggle 2>&1); then
+    zen --error --no-markup --width=380 --text="Could not switch mode.${NL}${NL}${err}"
+    exit 1
+fi
+
+# enchantee-mode returns as soon as the switch is handed to systemd-run, so poll
+# for the result rather than assuming it worked.
+(
+    for _ in $(seq "$TIMEOUT"); do
+        [ "$("$MODE_BIN" current)" = "$target" ] && break
+        echo "#Switching to ${target}..."
+        sleep 1
+    done
+) | zen --progress --pulsate --auto-close --no-cancel --width=380 \
+        --text="Switching to ${target}..."
+
+if [ "$("$MODE_BIN" current)" = "$target" ]; then
+    addr=$(ip -4 -br addr show wlan0 | awk '{print $3}')
+    zen --info --width=380 \
+        --text="${settled}${NL}${NL}wlan0: <tt>${addr:-none}</tt>${NL}Services: <tt>http://enchantee.local/</tt>"
+else
+    zen --error --width=380 \
+        --text="Still not in <b>${target}</b> mode after ${TIMEOUT}s.${NL}${NL}Check <tt>enchantee-mode status</tt> and <tt>nmcli device status</tt>."
+    exit 1
+fi

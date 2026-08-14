@@ -1,7 +1,11 @@
 *.a
 *.o
 *.d
+#*.d is for C dependency files, but it also swallows config directories such as
+#conf.d and dnsmasq-shared.d under provisioning/*/etc/. Keep those.
 !**/dnsmasq.d/
+!**/dnsmasq-shared.d/
+!**/conf.d/
 *.hex
 *.elf
 *.db
@@ -51,3 +55,12 @@ __pycache__/
 python/event_recorder/test*/
 python/exportCSV/tests/
 python/testing_emon_settings/
+provisioning/enchantee/data/
+
+#per-provision secrets. Commit provisioning/*/.env.example instead
+provisioning/enchantee/.env
+
+#the QR sheet embeds the hotspot passphrase in scannable form. Generate it with
+#provisioning/enchantee/tools/make-qr-sheet.py; never commit the output.
+enchantee-urls.pdf
+provisioning/enchantee/**/*.pdf

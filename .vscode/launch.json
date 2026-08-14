@@ -4,96 +4,229 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        {
-        "name": "Python: Current File",
-        "type": "python",
-        "request": "launch",
-        "program": "${file}",
-        "console": "integratedTerminal"
-        },
-        {
-            "name": "emonLogToInflux",
-            "type": "python",
-            "request": "launch",
-            "program": "/share/emon_Suite/python/emonLogToInflux.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "args": ["--fromFile", "20260601.TXT", "--toFile", "20260701.TXT", "--settingsPath", "/share/emon_Suite/provisioning/shannstainable/emon_config/emon_config.yml", "/share/Input"]
-        },
-        {
-            "name": "getAnnotations - all annotations",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": [],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "getAnnotations - list dashboards",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": ["--list-dashboards"],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "getAnnotations - specific dashboard",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": ["--dashboard", "Orin"],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "getAnnotations - date range",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": [
-                "--from", "2026-03-20",
-                "--to", "2026-03-31"
-            ],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "getAnnotations - custom limit",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": ["--limit", "50"],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "getAnnotations - add from file",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": ["--add", "annotations.txt"],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "getAnnotations - add from stdin",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
-            "args": ["--add", "-"],
-            "cwd": "${workspaceFolder}/python/grafanaAnnotations",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Python: Grafana Export Dashboards",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/python/grafanaExportDashboards/grafana_export_dashboards.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "args": ["--help"]
-        }
+            {
+                    "name": "emonLogToInflux",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/emonLogToInflux.py",
+                    "console": "integratedTerminal",
+                    "args": [
+                            "-i",
+                            "localhost",
+                            "-s",
+                            "${workspaceFolder}/python/testing_emon_settings/emon_config/",
+                            "--fromFile",
+                            "20260130.TXT",
+                            "--toFile",
+                            "20260130.TXT",
+                            "${workspaceFolder}/python/testing_emon_settings"
+                    ],
+                    "cwd": "${workspaceFolder}"
+            },
+            {
+                    "name": "test_emonLib",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/pyEmon/pyemonlib/test_emonLib.py",
+                    "console": "integratedTerminal",
+                    "args": [
+                            "-f",
+                            "${workspaceFolder}/python/testing_emon_settings/20241113.TXT",
+                            "-m",
+                            "localhost",
+                            "-s",
+                            "${workspaceFolder}/python/testing_emon_settings/emon_config/emon_config.yml"
+                    ],
+                    "cwd": "${workspaceFolder}"
+            },
+            {
+                    "name": "emonCSVToMQTT",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/emonCSVToMQTT.py",
+                    "console": "integratedTerminal",
+                    "args": [
+                            "-f",
+                            "/share/Input/20260211.TXT",
+                            "-m",
+                            "localhost",
+                            "-s",
+                            "/share/emon_Suite/provisioning/enchantee/emon_config/",
+                            "-l",
+                            "/share/Output/emonCSVToMQTT",
+                            "-x",
+                            "1"
+                    ],
+                    "cwd": "${workspaceFolder}"
+            },
+            {
+                    "name": "emonCSVToSerial",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/emonCSVToSerial.py",
+                    "console": "integratedTerminal",
+                    "args": [
+                            "-f",
+                            "C:\\Users\\sfewi\\Documents\\Temp\\emonCSVToSerial_Mar26\\Input\\20260315.TXT",
+                            "-p",
+                            "COM4",
+                            "-l",
+                            "C:\\Users\\sfewi\\Documents\\Temp\\emonCSVToSerial_Mar26\\Log",
+                            "-x",
+                            "1",
+                            "-o",
+                            "10:30"
+                    ],
+                    "cwd": "${workspaceFolder}"
+            },
+            {
+                    "name": "emonMQTTToInflux",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/emonMQTTToInflux.py",
+                    "console": "integratedTerminal",
+                    "args": [
+                            "-i",
+                            "localhost",
+                            "-m",
+                            "localhost",
+                            "-s",
+                            "${workspaceFolder}/python/testing_emon_settings/emon_config/emon_config.yml"
+                    ],
+                    "cwd": "${workspaceFolder}"
+            },
+            {
+                    "name": "Event Recorder (Docker Attach)",
+                    "type": "debugpy",
+                    "request": "attach",
+                    "connect": {
+                            "host": "localhost",
+                            "port": 5678
+                    },
+                    "pathMappings": [
+                            {
+                                    "localRoot": "${workspaceFolder}/python/event_recorder",
+                                    "remoteRoot": "/app/event_recorder"
+                            }
+                    ],
+                    "justMyCode": true
+            },
+            {
+                    "name": "Python: Current File",
+                    "type": "python",
+                    "request": "launch",
+                    "program": "${file}",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "emonLogToInflux (shannstainable logs)",
+                    "type": "python",
+                    "request": "launch",
+                    "program": "/share/emon_Suite/python/emonLogToInflux.py",
+                    "console": "integratedTerminal",
+                    "justMyCode": false,
+                    "args": [
+                            "--fromFile",
+                            "20260601.TXT",
+                            "--toFile",
+                            "20260701.TXT",
+                            "--settingsPath",
+                            "/share/emon_Suite/provisioning/shannstainable/emon_config/emon_config.yml",
+                            "/share/Input"
+                    ]
+            },
+            {
+                    "name": "getAnnotations - all annotations",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "getAnnotations - list dashboards",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [
+                            "--list-dashboards"
+                    ],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "getAnnotations - specific dashboard",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [
+                            "--dashboard",
+                            "Orin"
+                    ],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "getAnnotations - date range",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [
+                            "--from",
+                            "2026-03-20",
+                            "--to",
+                            "2026-03-31"
+                    ],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "getAnnotations - custom limit",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [
+                            "--limit",
+                            "50"
+                    ],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "getAnnotations - add from file",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [
+                            "--add",
+                            "annotations.txt"
+                    ],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "getAnnotations - add from stdin",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaAnnotations/get_annotations.py",
+                    "args": [
+                            "--add",
+                            "-"
+                    ],
+                    "cwd": "${workspaceFolder}/python/grafanaAnnotations",
+                    "console": "integratedTerminal"
+            },
+            {
+                    "name": "Python: Grafana Export Dashboards",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/python/grafanaExportDashboards/grafana_export_dashboards.py",
+                    "console": "integratedTerminal",
+                    "cwd": "${workspaceFolder}",
+                    "args": [
+                            "--help"
+                    ]
+            }
     ]
 }

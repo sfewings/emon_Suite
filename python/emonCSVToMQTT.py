@@ -39,13 +39,36 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--logPath", help="Path to log directory", 
                         default="/share/Output/emonCSVToMQTT")
     parser.add_argument("-m", "--MQTT", help="IP address of MQTT server", default="localhost")
+    parser.add_argument("-x", "--speed", help="Playback speed multiplier (e.g. 10 = 10x faster, 0.5 = half speed)",
+                        type=float, default=1.0)
+    parser.add_argument("-o", "--offset", help="Start offset in H:MM or HH:MM format (e.g. 1:10 = skip 1 hour 10 minutes into file)",
+                        type=str, default=None)
     args = parser.parse_args()
-    
+
     mqttServer = str(args.MQTT)
     csvFile = str(args.file)
     logPath = str(args.logPath)
-    
-    writeLog(logPath, f"Starting emonCSVToMQTT with file: {csvFile}, MQTT: {mqttServer}")
+    playbackSpeed = args.speed
+
+    if playbackSpeed <= 0:
+        print("Error: Speed multiplier must be greater than 0")
+        exit(1)
+
+    # Parse offset time if provided
+    offsetSeconds = 0
+    if args.offset:
+        try:
+            offset_parts = args.offset.split(':')
+            if len(offset_parts) != 2:
+                raise ValueError("Expected H:MM or HH:MM format")
+            offsetSeconds = int(offset_parts[0]) * 3600 + int(offset_parts[1]) * 60
+        except (ValueError, IndexError) as e:
+            print(f"Error: Invalid offset format '{args.offset}'. Use H:MM or HH:MM (e.g. 1:10)")
+            exit(1)
+
+    speedLabel = f"{playbackSpeed}x speed" if playbackSpeed != 1.0 else "real-time"
+    offsetLabel = f", offset: {args.offset}" if args.offset else ""
+    writeLog(logPath, f"Starting emonCSVToMQTT with file: {csvFile}, MQTT: {mqttServer}, playback: {speedLabel}{offsetLabel}")
 
      # Create MQTT instance
     try:
@@ -66,7 +89,9 @@ if __name__ == "__main__":
             exit(1)
 
         previous_timestamp = None
-        
+        start_after_timestamp = None
+        skipping = offsetSeconds > 0
+
         for line_num, line in enumerate(lines, 1):
             line = line.rstrip('\r\n')
             if not line.strip():
@@ -85,20 +110,30 @@ if __name__ == "__main__":
                 
                 # Parse timestamp
                 current_timestamp = parse_timestamp(timestamp_str)
-                
+
+                # Calculate start timestamp on first valid line
+                if skipping and start_after_timestamp is None:
+                    start_after_timestamp = current_timestamp + datetime.timedelta(seconds=offsetSeconds)
+                    writeLog(logPath, f"Skipping to {start_after_timestamp.strftime('%d/%m/%Y %H:%M:%S')}")
+
+                # Skip lines until we reach the offset time
+                if skipping:
+                    if current_timestamp < start_after_timestamp:
+                        continue
+                    else:
+                        skipping = False
+                        writeLog(logPath, f"Resuming playback at {current_timestamp.strftime('%d/%m/%Y %H:%M:%S')}")
+
                 # If not the first line, wait for the time difference
                 if previous_timestamp is not None:
                     time_diff = (current_timestamp - previous_timestamp).total_seconds()
                     if time_diff > 0:
-                        writeLog(logPath, f"Waiting {time_diff} seconds before processing next line")
-                        time.sleep(time_diff)
+                        sleep_time = time_diff / playbackSpeed
+                        writeLog(logPath, f"Waiting {sleep_time:.1f}s (original: {time_diff}s at {playbackSpeed}x)")
+                        time.sleep(sleep_time)
                     elif time_diff < 0:
                         writeLog(logPath, f"Warning: Line {line_num} has earlier timestamp than previous line")
-                
-                # Extract device name (remove trailing digits)
-                device_name_parts = device_data.split(',')
-                device_name = device_name_parts[0].rstrip('0123456789')
-                
+                                
                 writeLog(logPath, f"Processing: {line}")
                 emonMQTT.process_line(device_data)
                 
