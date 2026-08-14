@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Enchantee Dashboard
+Comment=Open the Enchantee dashboard maximised at login
+Exec=/usr/local/bin/enchantee-dashboard
+Icon=chromium
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

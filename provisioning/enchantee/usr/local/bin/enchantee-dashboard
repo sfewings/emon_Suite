@@ -1,0 +1,85 @@
+#!/bin/bash
+# Open the Enchantee dashboard on the Pi's own screen at login, in an ordinary
+# maximised Chromium window: taskbar still visible along the top, and the
+# minimise / maximise / close buttons still there.
+#
+# Launched from ~/.config/autostart/enchantee-dashboard.desktop, which labwc
+# processes via lxsession-xdg-autostart.
+#
+# Two things this does that a bare Exec= line in the .desktop cannot:
+#
+#  1. Clears a stale Chromium profile lock left by a hostname change. Chromium
+#     records "hostname-pid" in ~/.config/chromium/SingletonLock and refuses to
+#     start when the hostname no longer matches, reporting the profile as in use
+#     "on another computer". Renaming this Pi from EnchanteePi5 to enchantee did
+#     exactly that and silently broke every Chromium launch, autostart included.
+#
+#  2. Waits for the dashboard to answer. nginx and the node-red container are
+#     not up the instant the desktop is, so launching immediately lands on a
+#     "site cannot be reached" page that nobody is there to reload.
+
+set -u
+
+URL="${ENCHANTEE_URL:-http://enchantee.local/}"
+PROFILE="$HOME/.config/chromium"
+WAIT_SECONDS=120
+
+# --- 1. stale lock from a rename -------------------------------------------
+lock="$PROFILE/SingletonLock"
+if [ -L "$lock" ]; then
+    target=$(readlink "$lock")          # "hostname-pid"
+    if [ "${target%-*}" != "$(hostname)" ]; then
+        echo "enchantee-dashboard: clearing Chromium lock from '${target%-*}' (now '$(hostname)')"
+        rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonCookie" "$PROFILE/SingletonSocket"
+    fi
+fi
+
+# --- 2. suppress the "Restore pages?" bubble --------------------------------
+# After an unclean power-off Chromium shows a "Chromium didn't shut down
+# correctly" bubble, which parks itself over the dashboard until someone
+# dismisses it by hand. --disable-session-crashed-bubble no longer suppresses
+# it, so mark the last exit clean in the profile instead. Only safe while
+# Chromium is not running, which at login it is not.
+if ! pgrep -u "$(id -u)" -x chromium >/dev/null 2>&1; then
+    python3 - "$PROFILE/Default/Preferences" <<'PY' 2>/dev/null || true
+import json, sys
+path = sys.argv[1]
+try:
+    with open(path) as fh:
+        prefs = json.load(fh)
+except Exception:
+    sys.exit(0)
+profile = prefs.setdefault("profile", {})
+if profile.get("exit_type") != "Normal" or profile.get("exited_cleanly") is not True:
+    profile["exit_type"] = "Normal"
+    profile["exited_cleanly"] = True
+    with open(path, "w") as fh:
+        json.dump(prefs, fh, separators=(",", ":"))
+PY
+fi
+
+# --- 3. wait for the dashboard ---------------------------------------------
+deadline=$((SECONDS + WAIT_SECONDS))
+until curl -sf -o /dev/null -m 3 "$URL"; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+        echo "enchantee-dashboard: $URL still not answering after ${WAIT_SECONDS}s; opening anyway"
+        break
+    fi
+    sleep 2
+done
+
+# --- 4. launch --------------------------------------------------------------
+# A normal browser window, not --app and not --kiosk: the window keeps its
+# title bar buttons, and --start-maximized fills the work area rather than the
+# whole output, so the wf-panel-pi taskbar stays visible.
+# --disable-session-crashed-bubble is kept for older Chromium builds, but it no
+# longer suppresses the restore prompt on this one; step 2 above is what
+# actually does it.
+exec chromium \
+    --profile-directory=Default \
+    --start-maximized \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-session-crashed-bubble \
+    --noerrdialogs \
+    "$URL"

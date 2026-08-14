@@ -669,7 +669,54 @@ mv ~/.local/share/keyrings/Default_Keyring.keyring ~/.local/share/keyrings/old_D
 
 ---
 
-## 9. Printable QR sheet for phones
+## 9. Dashboard on the Pi's own screen at login
+
+The Pi opens the dashboard by itself at login, in an ordinary maximised
+Chromium window: taskbar still along the top, minimise / maximise / close
+buttons still on the window.
+
+```bash
+sudo install -m 755 usr/local/bin/enchantee-dashboard /usr/local/bin/enchantee-dashboard
+install -m 644 home/pi/.config/autostart/enchantee-dashboard.desktop /home/pi/.config/autostart/
+```
+
+labwc runs `lxsession-xdg-autostart` from `/etc/xdg/labwc/autostart`, which is
+what picks entries out of `~/.config/autostart/`.
+
+[`enchantee-dashboard`](usr/local/bin/enchantee-dashboard) exists rather than a
+bare `Exec=chromium ...` line because three things have to happen first.
+
+**Clear a stale profile lock after a rename.** Chromium writes `hostname-pid`
+into `~/.config/chromium/SingletonLock` and refuses to start when the hostname
+no longer matches, reporting the profile as in use *"on another computer"*.
+Renaming this Pi to `enchantee` (section 7.7) left a lock saying
+`EnchanteePi5-2088` and silently broke **every** Chromium launch, autostart
+included. The script clears the lock when the recorded hostname differs from
+the current one.
+
+**Suppress the "Restore pages?" bubble.** After an unclean power-off Chromium
+parks a *"Chromium didn't shut down correctly"* prompt over the dashboard until
+somebody dismisses it by hand. `--disable-session-crashed-bubble` no longer
+suppresses it on this build, so the script marks the previous exit clean in the
+profile's `Preferences` before launching, which does work.
+
+**Wait for the dashboard to answer.** nginx and the node-red container are not
+up the instant the desktop is, so launching straight away lands on a "site
+cannot be reached" page that nobody is there to reload. The script polls the URL
+for up to two minutes, then opens anyway.
+
+`--start-maximized` fills the work area rather than the whole output, which is
+what leaves the taskbar visible; `--kiosk` or `--app=` would take the whole
+screen and drop the window buttons. Override the address with
+`ENCHANTEE_URL=... enchantee-dashboard` for a one-off.
+
+This replaces an older Chromium PWA autostart entry that pointed at
+`http://localhost:1880` directly. It is left in place as
+`chrome-*.desktop.disabled` should you want it back.
+
+---
+
+## 10. Printable QR sheet for phones
 
 Nobody is going to type `http://enchantee.local/nodered/hud` into a phone. This
 is the one-page A4 sheet you print and stick up: scan to join the hotspot, then
@@ -725,7 +772,9 @@ Copy each to the path its directory mirrors.
 | [`etc/systemd/system/enchantee-mode-restore.service`](etc/systemd/system/enchantee-mode-restore.service) | `/etc/systemd/system/` | `systemctl enable` it; see section 7.11 |
 | [`etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg`](etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg) | `/etc/cloud/cloud.cfg.d/` | stops cloud-init resetting the hostname |
 | [`tests/hotspot-check.sh`](tests/hotspot-check.sh) | run in place | end-to-end hotspot verification; see Verification |
-| [`tools/make-qr-sheet.py`](tools/make-qr-sheet.py) | run in place | builds the printable QR sheet; see section 9 |
+| [`tools/make-qr-sheet.py`](tools/make-qr-sheet.py) | run in place | builds the printable QR sheet; see section 10 |
+| [`usr/local/bin/enchantee-dashboard`](usr/local/bin/enchantee-dashboard) | `/usr/local/bin/` | mode 755; opens the dashboard at login, see section 9 |
+| [`home/pi/.config/autostart/enchantee-dashboard.desktop`](home/pi/.config/autostart/enchantee-dashboard.desktop) | `/home/pi/.config/autostart/` | autostart entry for the above |
 | [`docker-compose.yml`](docker-compose.yml) | run from this directory | |
 | [`.env.example`](.env.example) | copy to `.env` alongside the compose file | credentials, `DOMAIN_NAME`, `GRAFANA_URL`; `.env` is gitignored |
 | [`emon_config/`](emon_config/) | mounted into the emon containers | |
