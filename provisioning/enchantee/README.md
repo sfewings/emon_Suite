@@ -456,7 +456,8 @@ Create the profile (the PSK is not stored in this repo):
 
 ```bash
 sudo nmcli connection add type wifi ifname wlan0 con-name enchantee \
-    ssid Enchantee autoconnect no \
+    ssid Enchantee \
+    autoconnect yes connection.autoconnect-priority -999 \
     802-11-wireless.mode ap \
     802-11-wireless-security.key-mgmt wpa-psk \
     802-11-wireless-security.psk 'YOUR-HOTSPOT-PASSWORD' \
@@ -471,8 +472,15 @@ NetworkManager ignores it.
 `ipv4.addresses` is pinned rather than left to NetworkManager's default so the
 address in the dnsmasq config below cannot drift.
 
-`autoconnect no` keeps the Pi joining wifi by preference; the hotspot only comes
-up when asked for.
+`autoconnect yes` at priority `-999` is what makes the hotspot a fallback rather
+than a competitor. NetworkManager orders autoconnect candidates by priority
+descending, so the known networks (priority `0`) are always tried first, and the
+hotspot is only reached when none of them can be joined. Leave the
+netplan-managed wifi profiles at their default priority; the gap does the work.
+
+The consequence to know about: once NetworkManager has fallen back to the
+hotspot it considers `wlan0` connected and will not go looking for wifi again.
+Use `enchantee-mode wifi` to come back. See section 7.11.
 
 Then give hotspot clients the name over unicast DNS as well as mDNS:
 
@@ -507,11 +515,12 @@ sudo install -m 755 usr/local/bin/enchantee-mode /usr/local/bin/enchantee-mode
 ```
 
 ```
-enchantee-mode status         # which mode is active, and the URL to use
+enchantee-mode status         # active mode, the URL, and what it will do at boot
 enchantee-mode current        # just ap | wifi | none, for scripts
 sudo enchantee-mode toggle    # switch to whichever mode is not active
 sudo enchantee-mode ap        # start the Enchantee hotspot
 sudo enchantee-mode wifi [SSID]
+sudo enchantee-mode restore   # reapply the remembered mode; see section 7.11
 ```
 
 `status` and `current` work as any user; bringing a profile up needs root.
@@ -566,6 +575,53 @@ handle it is deliberate: `org.freedesktop.NetworkManager.wifi.share.protected`,
 which a WPA-protected shared connection needs, is denied to ordinary users on
 this image, so an unprivileged `nmcli connection up enchantee` fails.
 
+### 7.11 Surviving a reboot
+
+The mode is not something NetworkManager remembers by itself, so two mechanisms
+combine to get the right one back after a power cycle:
+
+| | |
+|---|---|
+| **Remembered mode** | `enchantee-mode` writes the mode last asked for to `/var/lib/enchantee/mode`, and `enchantee-mode-restore.service` replays it at boot. |
+| **Autoconnect fallback** | The AP profile is `autoconnect=yes` at priority `-999`, so if no known network is reachable NetworkManager starts the hotspot on its own (section 7.8). |
+
+Neither alone is enough. Remembering the mode cannot help somewhere the Pi has
+never been, and the fallback alone would rejoin wifi when you had deliberately
+chosen the hotspot in range of a known network. Together they cover both.
+
+```bash
+sudo install -m 644 etc/systemd/system/enchantee-mode-restore.service \
+                    /etc/systemd/system/enchantee-mode-restore.service
+sudo systemctl daemon-reload
+sudo systemctl enable enchantee-mode-restore.service
+```
+
+They compose more simply than they look, because `restore` only has to act on
+one of the two values:
+
+* remembered **`ap`** — bring the hotspot up explicitly, overriding whatever
+  NetworkManager autoconnected to.
+* remembered **`wifi`** — do nothing at all. Autoconnect already joins a known
+  network, and already falls back to the hotspot if there is none.
+
+`enchantee-mode status` prints the remembered value on its `at boot` line, so
+what will happen next boot is visible without reading any state files.
+
+The unit is deliberately ordered `After=NetworkManager.service` and **not**
+`NetworkManager-wait-online.service`: when the remembered mode is the hotspot
+there may be no network to wait for, and waiting would stall the boot until it
+timed out. It also sets `SuccessExitStatus=0 1`, since the remembered mode is a
+preference rather than a requirement, and a hotspot that fails to start should
+not fail the boot target.
+
+`/var/lib/enchantee/mode` is runtime state, so it is not in this repo. It is
+created on the first switch, and until then `restore` assumes `wifi`, which is
+the safe default.
+
+The mode recorded is the one **asked for**, not the one achieved. The switch is
+asynchronous, so the outcome is not known when the state is written, and after a
+reboot what you want back is the intent.
+
 ---
 
 ## 8. Node-RED dashboard on the local display
@@ -609,6 +665,7 @@ Copy each to the path its directory mirrors.
 | [`usr/local/bin/enchantee-mode`](usr/local/bin/enchantee-mode) | `/usr/local/bin/enchantee-mode` | mode 755 |
 | [`usr/local/bin/enchantee-mode-gui`](usr/local/bin/enchantee-mode-gui) | `/usr/local/bin/enchantee-mode-gui` | mode 755, needs zenity |
 | [`home/pi/Desktop/Enchantee-Wifi-Mode.desktop`](home/pi/Desktop/Enchantee-Wifi-Mode.desktop) | `/home/pi/Desktop/` and `/home/pi/.local/share/applications/` | mode 755 on the Desktop copy |
+| [`etc/systemd/system/enchantee-mode-restore.service`](etc/systemd/system/enchantee-mode-restore.service) | `/etc/systemd/system/` | `systemctl enable` it; see section 7.11 |
 | [`docker-compose.yml`](docker-compose.yml) | run from this directory | |
 | [`.env.example`](.env.example) | copy to `.env` alongside the compose file | credentials, `DOMAIN_NAME`, `GRAFANA_URL`; `.env` is gitignored |
 | [`emon_config/`](emon_config/) | mounted into the emon containers | |
@@ -618,6 +675,9 @@ Copy each to the path its directory mirrors.
 Changes that are commands rather than files: the hostname
 (`hostnamectl set-hostname enchantee`), the `127.0.1.1` line in `/etc/hosts`,
 and the `enchantee` NetworkManager profile.
+
+Not in this repo because it is runtime state, not configuration:
+`/var/lib/enchantee/mode`, written by `enchantee-mode` and read back at boot.
 
 ---
 
@@ -659,7 +719,16 @@ exercises the unicast-DNS path rather than mDNS. If it fails, check *Settings �
 Network → Private DNS* is not set to a specific hostname.
 
 ```bash
-enchantee-mode status        # confirms mode and prints the URL
+enchantee-mode status        # confirms mode, the URL, and the boot behaviour
+```
+
+Reboot persistence (section 7.11) is worth checking once in each direction,
+since it is the part that only shows up after a power cycle:
+
+```bash
+sudo enchantee-mode ap && sudo reboot     # should come back on the hotspot
+sudo enchantee-mode wifi && sudo reboot   # should come back on wifi
+sudo journalctl -u enchantee-mode-restore.service -b -o cat
 ```
 
 ---
