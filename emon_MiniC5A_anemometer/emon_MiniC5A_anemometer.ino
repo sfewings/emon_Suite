@@ -554,9 +554,12 @@ void get_gyro(float Gxyz[3])
   int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
   int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
 
-  Gxyz[0] = (float)gx + GyroOffset[0];
-  Gxyz[1] = (float)gy + GyroOffset[1];
-  Gxyz[2] = (float)gz + GyroOffset[2];
+  // GyroOffset holds the MEAN of the raw readings taken while the sensor was held
+  // still by collectDataForMahonyCalibration(), so it must be SUBTRACTED. Adding it
+  // doubled the bias instead of removing it.
+  Gxyz[0] = (float)gx - GyroOffset[0];
+  Gxyz[1] = (float)gy - GyroOffset[1];
+  Gxyz[2] = (float)gz - GyroOffset[2];
 }
 
 // subtract offsets and correction matrix to accel and mag data
