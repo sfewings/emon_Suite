@@ -41,6 +41,8 @@ typedef unsigned char byte;
 #define SEVCON_CAN_NODE 28			//Node for Sevcon Gen4 motor controller CAN bus
 #define ANEMOMETER_NODE 29			//Node for anemometer
 #define IMU_NODE 30					//Node for 9DOF IMU sensor
+#define CALIBRATION_NODE 99			//Temporary diagnostic node. Only transmits while a sensor is
+									//being calibrated, so it sits outside the normal allocation.
 
 
 #define MAX_SUBNODES	8			//Maximum number of disp and temp nodes supported
@@ -241,6 +243,20 @@ typedef struct PayloadIMU : PayloadRelay {
 	float heading;								// degrees
 } PayloadIMU;
 
+//Sensor calibration capture. Broadcast by collectDataForMahonyCalibration() in
+//emon_MiniC5A_anemometer so a masthead unit can be calibrated in situ with no serial
+//cable; emon_RaspPiSerial relays it to serial for calibrate4.py. Deliberately not a
+//PayloadRelay - it is a bench/diagnostic mode, never part of normal telemetry.
+//v[] meaning depends on phase, see EmonSerial::PrintCalibrationPayload:
+//  'G' gyro    v[0..2] = mean raw x10, v[3..5] = peak-to-peak, v[6] = sample count
+//  'A' accel   v[0..2] = mean raw acc, v[3..5] = mean raw mag, v[6..8] = acc peak-to-peak
+//  'M' mag     v[0..2] = raw mag
+typedef struct PayloadCalibration {
+	byte phase;									// 'G', 'A' or 'M'
+	byte index;									// orientation number for 'A', sample number for 'M'
+	int16_t v[9];
+} PayloadCalibration;
+
 class EmonSerial{
 public:
 #ifndef MQTT_LIB
@@ -265,7 +281,8 @@ public:
 	static void PrintSevConPayload(PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
 	static void PrintAnemometerPayload(PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast = 0);
 	static void PrintIMUPayload(PayloadIMU* pPayloadIMU, unsigned long timeSinceLast = 0);
-	
+	static void PrintCalibrationPayload(PayloadCalibration* pPayloadCalibration);
+
 	static void PrintRelay(Stream& stream, PayloadRelay* pPayloadRely);
 
 	static void PrintRainPayload(Stream& stream, PayloadRain* pPayloadRain, unsigned long timeSinceLast = 0);
@@ -287,6 +304,7 @@ public:
 	static void PrintSevConPayload(Stream& stream, PayloadSevCon* pPayloadSevCon, unsigned long timeSinceLast = 0);
 	static void PrintAnemometerPayload(Stream& stream, PayloadAnemometer* pPayloadAnemometer, unsigned long timeSinceLast = 0);
 	static void PrintIMUPayload(Stream& stream, PayloadIMU* pPayloadIMU, unsigned long timeSinceLast = 0);
+	static void PrintCalibrationPayload(Stream& stream, PayloadCalibration* pPayloadCalibration);
 
 #endif
 	static uint16_t CalcCrc(const void* ptr, byte len);

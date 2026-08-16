@@ -242,6 +242,14 @@ void loop ()
 			{
 				SERIAL_OUT(IMU, Payload);
 			}
+			if (node_id == CALIBRATION_NODE && len == sizeof(PayloadCalibration))
+			{
+				//Relay of a sensor calibration capture, so a masthead unit can be
+				//calibrated in situ without a serial cable. Redirect this serial output
+				//to a file and feed it to calibrate4.py. The "RSSI:" lines above and any
+				//other traffic interleaved with it are ignored by that script.
+				SERIAL_OUT(Calibration, Payload);
+			}
 		}
 
 		//read the time basePayload 

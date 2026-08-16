@@ -750,6 +750,69 @@ void EmonSerial::PrintIMUPayload(Stream& stream, PayloadIMU* pPayloadIMU, unsign
 	stream.println();
 }
 
+void EmonSerial::PrintCalibrationPayload(PayloadCalibration* pPayloadCalibration)
+{
+	PrintCalibrationPayload(Serial, pPayloadCalibration);
+}
+
+//Emits exactly the line format calibrate4.py parses, so a capture taken over RF is
+//interchangeable with one taken directly from the sensor's own serial port.
+void EmonSerial::PrintCalibrationPayload(Stream& stream, PayloadCalibration* pPayloadCalibration)
+{
+	if (pPayloadCalibration == NULL)
+	{
+		stream.println(F("cal,G|A|M,see calibrate4.py"));
+		return;
+	}
+
+	int16_t* v = pPayloadCalibration->v;
+	switch (pPayloadCalibration->phase)
+	{
+		case 'G':
+			//G,<mean x>,<mean y>,<mean z>,<pp x>,<pp y>,<pp z>,<n>
+			stream.print(F("G"));
+			for (byte i = 0; i < 3; i++)
+			{
+				stream.print(F(","));
+				stream.print(v[i] / 10.0, 1);		//sent scaled by 10 to keep one decimal
+			}
+			for (byte i = 3; i < 7; i++)
+			{
+				stream.print(F(","));
+				stream.print(v[i]);
+			}
+			stream.println();
+			break;
+
+		case 'A':
+			//A,<pos>,<ax>,<ay>,<az>,<mx>,<my>,<mz>,<ppx>,<ppy>,<ppz>
+			stream.print(F("A,"));
+			stream.print(pPayloadCalibration->index);
+			for (byte i = 0; i < 9; i++)
+			{
+				stream.print(F(","));
+				stream.print(v[i]);
+			}
+			stream.println();
+			break;
+
+		case 'M':
+			//M,<mx>,<my>,<mz>
+			stream.print(F("M,"));
+			stream.print(v[0]);
+			stream.print(F(","));
+			stream.print(v[1]);
+			stream.print(F(","));
+			stream.println(v[2]);
+			break;
+
+		default:
+			stream.print(F("# unknown calibration phase "));
+			stream.println((char)pPayloadCalibration->phase);
+			break;
+	}
+}
+
 #endif
 
 uint16_t EmonSerial::CalcCrc(const void* ptr, byte len)

@@ -300,123 +300,399 @@ bool initMS5611()
 }
 
 /////////////////////////////////////////////////
-//Routine taken from ICM_20948_get_cal_data.ino  
-// Collect data for Mahony AHRS calibration https://github.com/jremington/ICM_20948-AHRS
-// Paste output to acc_mag_raw.csv file for input to calibrate3.py to create updates for A_B, A_AInv, M_B, M_Ainv calibration arrays
-// Outputs pasted into this sketch
+// Calibration data collection.  Originally from ICM_20948_get_cal_data.ino
+// https://github.com/jremington/ICM_20948-AHRS
+//
+// Capture the whole serial session to a text file and feed it to calibrate4.py,
+// which emits paste-ready GyroOffset, A_B, A_Ainv, M_B and M_Ainv blocks.
+//
+// The v3 routine logged the accelerometer while the sensor was being turned, so it
+// recorded gravity plus hand movement. On the Enchantee_20260816 data set the median
+// sample was 1.11 g and 59% were outside 1 g +-10%, which made the accelerometer
+// ellipsoid fit meaningless. The accelerometer is therefore now sampled ONLY while
+// the sensor is verifiably stationary, one discrete orientation at a time.
+//
+// The magnetometer is unaffected by movement, so it still uses a continuous sweep.
+//
+// The three phases are separately selectable because they happen in different places:
+// the gyro and accelerometer phases need the unit in your hands on a bench, while the
+// magnetometer sweep must be done with the unit mounted in its final position on the
+// boat, otherwise it cannot capture the boat's own hard and soft iron.
+//
+// Every record is also broadcast on CALIBRATION_NODE as a PayloadCalibration, which
+// emon_RaspPiSerial relays to its own serial port in the identical line format. That is
+// what makes an in-situ magnetometer swing possible: the sensor can be up the mast with
+// no serial cable and the capture still lands in a file at the Pi. (The v3 routine also
+// broadcast on node 99, but nothing in the repo ever received those packets.)
+//
+// Define CAL_AUTOSTART_MAG before flashing a unit that will be swung with no serial
+// cable attached - it skips the menu and sweeps on power-up.
+//#define CAL_AUTOSTART_MAG
+
+const uint8_t  CAL_ACC_POSITIONS   = 12;   // discrete orientations for the accelerometer
+const uint16_t CAL_ACC_AVG         = 200;  // samples averaged at each orientation
+const uint16_t CAL_GYRO_SAMPLES    = 500;  // samples averaged for the gyro offsets
+const uint16_t CAL_MAG_SAMPLES     = 600;  // samples in the magnetometer sweep
+const uint16_t CAL_MAG_INTERVAL_MS = 100;  // -> 60 s sweep
+const uint8_t  CAL_STILL_WINDOW    = 25;   // samples examined when testing for stillness
+const int16_t  CAL_STILL_PP        = 400;  // max peak-to-peak per axis to count as still (~0.024 g)
+const uint16_t CAL_STILL_TIMEOUT_S = 30;   // give up waiting for stillness after this long
+
+void readRawAcc(int16_t v[3])
+{
+    v[0] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
+    v[1] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
+    v[2] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
+}
+
+void readRawGyro(int16_t v[3])
+{
+    v[0] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
+    v[1] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 10);
+    v[2] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 12);
+}
+
+// Returns false if the HMC5883L did not answer. Note the on-the-wire order is X, Z, Y.
+bool readRawMag(int16_t v[3])
+{
+    uint8_t b[6];
+    if (!readRegisters(ADDR_HMC5883L, HMC_DATA_X_MSB, b, 6))
+        return false;
+    v[0] = (int16_t)((b[0] << 8) | b[1]);   // X
+    v[2] = (int16_t)((b[2] << 8) | b[3]);   // Z
+    v[1] = (int16_t)((b[4] << 8) | b[5]);   // Y
+    return true;
+}
+
+// Broadcast one calibration record so emon_RaspPiSerial can relay it to serial.
+// The caller has already set the radio header to CALIBRATION_NODE.
+void calBroadcast(char phase, uint8_t index, const int16_t* v, uint8_t n)
+{
+    PayloadCalibration p;
+    memset(&p, 0, sizeof(p));
+    p.phase = (byte)phase;
+    p.index = index;
+    for (uint8_t i = 0; i < n && i < 9; i++)
+        p.v[i] = v[i];
+    g_rf69.send((const uint8_t*)&p, sizeof(p));
+    g_rf69.waitPacketSent();
+}
+
+// Block until the operator sends any character. Discards anything already buffered so a
+// stray newline from the previous prompt cannot skip this one.
+void calWaitForKey()
+{
+    while (Serial.available())
+        Serial.read();
+    while (!Serial.available())
+        delay(10);
+    while (Serial.available())
+        Serial.read();
+}
+
+void calPrintPositionName(uint8_t i)
+{
+    switch (i)
+    {
+        // The six axis-aligned faces pin down the bias and the per-axis scale.
+        case 0:  Serial.print(F("FLAT, component side UP      (+Z up)")); break;
+        case 1:  Serial.print(F("FLAT, UPSIDE DOWN            (-Z up)")); break;
+        case 2:  Serial.print(F("on its side, +X edge UP      (+X up)")); break;
+        case 3:  Serial.print(F("on its side, -X edge UP      (-X up)")); break;
+        case 4:  Serial.print(F("on its side, +Y edge UP      (+Y up)")); break;
+        case 5:  Serial.print(F("on its side, -Y edge UP      (-Y up)")); break;
+        // Six tilted positions constrain the off-diagonal (cross-axis) terms.
+        default: Serial.print(F("TILTED about 45 deg - any position, just different from the others"));
+                 break;
+    }
+}
+
+// Waits for the sensor to stop moving, then averages CAL_ACC_AVG accelerometer samples
+// and one magnetometer sample set. Returns false if it never settled.
+bool calCaptureStatic(int32_t accMean[3], int16_t accPP[3], int32_t magMean[3])
+{
+    int16_t a[3], lo[3], hi[3];
+    bool still = false;
+
+    for (uint16_t sec = 0; sec < CAL_STILL_TIMEOUT_S * 4 && !still; sec++)
+    {
+        readRawAcc(a);
+        for (uint8_t k = 0; k < 3; k++)
+            lo[k] = hi[k] = a[k];
+        for (uint8_t s = 1; s < CAL_STILL_WINDOW; s++)
+        {
+            delay(10);
+            readRawAcc(a);
+            for (uint8_t k = 0; k < 3; k++)
+            {
+                if (a[k] < lo[k]) lo[k] = a[k];
+                if (a[k] > hi[k]) hi[k] = a[k];
+            }
+        }
+        still = true;
+        for (uint8_t k = 0; k < 3; k++)
+            if ((int32_t)hi[k] - (int32_t)lo[k] > CAL_STILL_PP)
+                still = false;
+    }
+    if (!still)
+        return false;
+
+    int32_t sum[3] = {0, 0, 0};
+    int32_t msum[3] = {0, 0, 0};
+    uint16_t mcount = 0;
+    readRawAcc(a);
+    for (uint8_t k = 0; k < 3; k++)
+        lo[k] = hi[k] = a[k];
+
+    for (uint16_t s = 0; s < CAL_ACC_AVG; s++)
+    {
+        readRawAcc(a);
+        for (uint8_t k = 0; k < 3; k++)
+        {
+            sum[k] += a[k];
+            if (a[k] < lo[k]) lo[k] = a[k];
+            if (a[k] > hi[k]) hi[k] = a[k];
+        }
+        if ((s % 8) == 0)
+        {
+            int16_t m[3];
+            if (readRawMag(m))
+            {
+                for (uint8_t k = 0; k < 3; k++)
+                    msum[k] += m[k];
+                mcount++;
+            }
+        }
+        delay(5);
+    }
+    for (uint8_t k = 0; k < 3; k++)
+    {
+        accMean[k] = sum[k] / (int32_t)CAL_ACC_AVG;
+        // clamp: a bump mid-average can make this exceed an int16 and wrap negative,
+        // which would sneak past the "was it still" check in calibrate4.py
+        int32_t range = (int32_t)hi[k] - (int32_t)lo[k];
+        accPP[k]   = (range > 32767) ? 32767 : (int16_t)range;
+        magMean[k] = mcount ? msum[k] / (int32_t)mcount : 0;
+    }
+    return true;
+}
+
+void calGyroPhase()
+{
+    Serial.println(F("#BEGIN GYRO"));
+    Serial.println(F("# Put the unit down on a solid surface and DO NOT TOUCH IT."));
+    Serial.println(F("# Press any key when it is settled..."));
+    calWaitForKey();
+    Serial.println(F("# sampling..."));
+
+    int16_t g[3], lo[3], hi[3];
+    int32_t sum[3] = {0, 0, 0};
+    readRawGyro(g);
+    for (uint8_t k = 0; k < 3; k++)
+        lo[k] = hi[k] = g[k];
+
+    for (uint16_t i = 0; i < CAL_GYRO_SAMPLES; i++)
+    {
+        readRawGyro(g);
+        for (uint8_t k = 0; k < 3; k++)
+        {
+            sum[k] += g[k];
+            if (g[k] < lo[k]) lo[k] = g[k];
+            if (g[k] > hi[k]) hi[k] = g[k];
+        }
+        delay(4);
+    }
+    // G,<mean x>,<mean y>,<mean z>,<peak-to-peak x>,<pp y>,<pp z>,<n>
+    // The means go over RF scaled by 10 so the one decimal place survives an int16.
+    int16_t rec[7];
+    Serial.print(F("G"));
+    for (uint8_t k = 0; k < 3; k++)
+    {
+        float mean = (float)sum[k] / CAL_GYRO_SAMPLES;
+        // clamp so the x10 encoding cannot silently wrap an int16. A real MPU6050 zero
+        // rate offset is within +-20 deg/s (~2620 LSB), so hitting this means a fault.
+        float scaled = mean * 10.0;
+        if (scaled > 32767.0)  scaled = 32767.0;
+        if (scaled < -32768.0) scaled = -32768.0;
+        rec[k] = (int16_t)scaled;
+        Serial.print(F(","));
+        Serial.print(mean, 1);
+    }
+    for (uint8_t k = 0; k < 3; k++)
+    {
+        rec[3 + k] = hi[k] - lo[k];
+        Serial.print(F(","));
+        Serial.print(hi[k] - lo[k]);
+    }
+    rec[6] = CAL_GYRO_SAMPLES;
+    Serial.print(F(","));
+    Serial.println(CAL_GYRO_SAMPLES);
+    calBroadcast('G', 0, rec, 7);
+    Serial.println(F("#END GYRO"));
+}
+
+void calAccPhase()
+{
+    Serial.println(F("#BEGIN ACC"));
+    Serial.println(F("# Hold the unit STILL in each orientation. It waits until it stops"));
+    Serial.println(F("# moving before it samples, so resting it against something helps."));
+    Serial.println(F("# The magnetometer is logged here too, for the dip cross-check."));
+
+    for (uint8_t i = 0; i < CAL_ACC_POSITIONS; i++)
+    {
+        Serial.print(F("# position "));
+        Serial.print(i + 1);
+        Serial.print(F(" of "));
+        Serial.print(CAL_ACC_POSITIONS);
+        Serial.print(F(": "));
+        calPrintPositionName(i);
+        Serial.println();
+        Serial.println(F("# place it, let go, then press any key..."));
+        calWaitForKey();
+
+        int32_t acc[3], mag[3];
+        int16_t pp[3];
+        digitalWrite(MOTEINO_LED, HIGH);
+        bool ok = calCaptureStatic(acc, pp, mag);
+        digitalWrite(MOTEINO_LED, LOW);
+
+        if (!ok)
+        {
+            Serial.println(F("# NOT STILL - never settled, position skipped. Try again."));
+            i--;                     // repeat this position
+            continue;
+        }
+        // A,<pos>,<ax>,<ay>,<az>,<mx>,<my>,<mz>,<ppx>,<ppy>,<ppz>
+        int16_t rec[9];
+        for (uint8_t k = 0; k < 3; k++)
+        {
+            rec[k]     = (int16_t)acc[k];
+            rec[3 + k] = (int16_t)mag[k];
+            rec[6 + k] = pp[k];
+        }
+        Serial.print(F("A,"));
+        Serial.print(i);
+        for (uint8_t k = 0; k < 9; k++)
+        {
+            Serial.print(F(","));
+            Serial.print(rec[k]);
+        }
+        Serial.println();
+        calBroadcast('A', i, rec, 9);
+    }
+    Serial.println(F("#END ACC"));
+}
+
+void calMagPhase(bool prompt)
+{
+    Serial.println(F("#BEGIN MAG"));
+    Serial.println(F("# Mount the unit where it normally lives, then turn the BOAT slowly"));
+    Serial.println(F("# through at least two full circles, rocking it if you can."));
+    Serial.println(F("# On the bench instead, turn the unit slowly about all three axes."));
+    Serial.print(F("# This takes "));
+    Serial.print((uint16_t)((uint32_t)CAL_MAG_SAMPLES * CAL_MAG_INTERVAL_MS / 1000));
+    Serial.println(F(" seconds."));
+    if (prompt)
+    {
+        Serial.println(F("# Press any key to start..."));
+        calWaitForKey();
+    }
+    else
+    {
+        // no serial cable: give the operator time to get to the helm
+        Serial.println(F("# autostart, beginning in 30 s..."));
+        for (uint8_t s = 0; s < 30; s++)
+        {
+            digitalWrite(MOTEINO_LED, (s & 1) ? HIGH : LOW);
+            delay(1000);
+        }
+    }
+    Serial.println(F("# sweeping..."));
+
+    for (uint16_t i = 0; i < CAL_MAG_SAMPLES; i++)
+    {
+        int16_t m[3];
+        if (readRawMag(m))
+        {
+            // M,<mx>,<my>,<mz>
+            Serial.print(F("M,"));
+            Serial.print(m[0]);
+            Serial.print(F(","));
+            Serial.print(m[1]);
+            Serial.print(F(","));
+            Serial.println(m[2]);
+            calBroadcast('M', (uint8_t)(i & 0xFF), m, 3);
+        }
+        if ((i % 50) == 0)
+        {
+            Serial.print(F("# "));
+            Serial.print(i);
+            Serial.print(F("/"));
+            Serial.println(CAL_MAG_SAMPLES);
+            digitalWrite(MOTEINO_LED, HIGH);
+        }
+        else
+        {
+            digitalWrite(MOTEINO_LED, LOW);
+        }
+        delay(CAL_MAG_INTERVAL_MS);
+    }
+    Serial.println(F("#END MAG"));
+}
+
 void collectDataForMahonyCalibration()
 {
-    int16_t acc_mag_readings[6];
-    
-    g_rf69.setHeaderId(99);
-    
-    // find gyro offsets
-    Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z"));
-
-    Serial.println(F("Hold sensor still for 5 seconds for gyro offset calibration ..."));
-    delay(5000);
-
-    float goff;
-    int i;
-    long gyro[3] = {0};
-    int offset_count = 500; //average this many values for gyro
-    int acc_mag_count = 300; //collect this many values for acc/mag calibration
-
-
-    for (i = 0; i < offset_count; i++) 
-    {
-        // MPU6050 accel & gyro
-        int16_t gx = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
-        int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
-        int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
-
-        gyro[0] += gx;
-        gyro[1] += gy;
-        gyro[2] += gz;
-    } //done with gyro
-
-    Serial.print("Gyro offsets x, y, z: ");
-    for (i = 0; i < 3; i++) 
-    {
-        goff = (float)gyro[i] / offset_count;
-        Serial.print(goff, 1);
-        Serial.print(", ");
-    }
     Serial.println();
+    Serial.println(F("#EMON_CAL,4"));
+    Serial.println(F("# emon_MiniC5A_anemometer calibration capture"));
+    Serial.println(F("# Save this whole session to a file and run:  python calibrate4.py <file>"));
+    Serial.println(F("# Records are also broadcast to CALIBRATION_NODE; emon_RaspPiSerial"));
+    Serial.println(F("# relays them to serial in the same format if no cable is attached."));
 
-    Serial.println(F("Turn sensor SLOWLY and STEADILY in all directions until done"));
-    delay(5000);
-    Serial.println(F("Starting..."));
+    // everything below transmits as the calibration node, not the anemometer
+    g_rf69.setHeaderId(CALIBRATION_NODE);
 
-    //get values for calibration of acc/mag
-    for (i = 0; i < acc_mag_count; i++) 
-    {
-        int16_t ax = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
-        int16_t ay = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
-        int16_t az = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
-
-        acc_mag_readings[0] = ax;
-        acc_mag_readings[1] = ay;
-        acc_mag_readings[2] = az;
-
-        Serial.print(ax);
-        Serial.print(", ");
-        Serial.print(ay);
-        Serial.print(", ");
-        Serial.print(az);
-        Serial.print(", ");
-
-
-        uint8_t magBuf[6];
-        if (readRegisters(ADDR_HMC5883L, HMC_DATA_X_MSB, magBuf, 6)) {
-            int16_t mX = (int16_t)((magBuf[0] << 8) | magBuf[1]);
-            int16_t mZ = (int16_t)((magBuf[2] << 8) | magBuf[3]);
-            int16_t mY = (int16_t)((magBuf[4] << 8) | magBuf[5]);
-
-            acc_mag_readings[3] = mX;
-            acc_mag_readings[4] = mY;
-            acc_mag_readings[5] = mZ;
-
-            Serial.print(mX);
-            Serial.print(", ");
-            Serial.print(mY);
-            Serial.print(", ");
-            Serial.print(mZ);
-        }
-
-        digitalWrite(MOTEINO_LED,HIGH);
-        g_rf69.send((const uint8_t*) acc_mag_readings, 6*sizeof(int16_t) );
-        if( g_rf69.waitPacketSent() )
-            Serial.print(",sent");   
-        digitalWrite(MOTEINO_LED,LOW);
-
-        Serial.println();
-           delay(200);
-    }
-
-    // for (i = 0; i < acc_mag_count; i++) 
-    // {
-    //     for(int j=0; j<6;j++)
-    //     {
-    //         acc_mag_readings[j] = i;
-    //         Serial.print(i);
-    //         if(j<5)
-    //             Serial.print(", ");
-    //     }
-
-    //     digitalWrite(MOTEINO_LED,HIGH);
-    //     g_rf69.send((const uint8_t*) acc_mag_readings, 6*sizeof(int16_t) );
-    //     if( g_rf69.waitPacketSent() )
-    //         Serial.print(",sent");   
-    //     digitalWrite(MOTEINO_LED,LOW);
-
-    //     Serial.println();
-
-    //     delay(200);
-    // }
-    Serial.print(F("Done collecting"));
-    
+#ifdef CAL_AUTOSTART_MAG
+    calMagPhase(false);
+    Serial.println(F("#DONE"));
     g_rf69.setHeaderId(ANEMOMETER_NODE);
+    return;
+#endif
+
+    while (true)
+    {
+        Serial.println();
+        Serial.println(F("# ---- choose a phase ----"));
+        Serial.println(F("#  1 = gyro offsets      (bench, unit still)"));
+        Serial.println(F("#  2 = accelerometer     (bench, 12 static orientations)"));
+        Serial.println(F("#  3 = magnetometer      (in situ, slow sweep)"));
+        Serial.println(F("#  4 = all three in order"));
+        Serial.println(F("#  0 = done, restart the sketch normally"));
+        Serial.println(F("# send the digit..."));
+
+        while (Serial.available())
+            Serial.read();
+        while (!Serial.available())
+            delay(10);
+        char c = Serial.read();
+        while (Serial.available())
+            Serial.read();
+
+        switch (c)
+        {
+            case '1': calGyroPhase(); break;
+            case '2': calAccPhase();  break;
+            case '3': calMagPhase(true);  break;
+            case '4': calGyroPhase(); calAccPhase(); calMagPhase(true); break;
+            case '0':
+                Serial.println(F("#DONE"));
+                g_rf69.setHeaderId(ANEMOMETER_NODE);
+                return;
+            default:
+                Serial.println(F("# unrecognised, try again"));
+                break;
+        }
+    }
 }
 
 // Routine to call to output on serial to wireFrame.py or wireFramePitchRollYaw.py. 
