@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 async function loadSettingsFiles() {
     try {
-        const response = await fetch('/api/settings/list');
+        const response = await fetch('api/settings/list');
         const data = await response.json();
         
         if (!data.success) {
@@ -80,7 +80,7 @@ async function loadSettingsFiles() {
  */
 async function loadFile(filename) {
     try {
-        const response = await fetch(`/api/settings/read/${encodeURIComponent(filename)}`);
+        const response = await fetch(`api/settings/read/${encodeURIComponent(filename)}`);
         const data = await response.json();
         
         if (!data.success) {
@@ -209,7 +209,7 @@ async function validateYAML() {
         const editor = document.getElementById('yamlEditor');
         const content = editor.value;
         
-        const response = await fetch('/api/settings/validate', {
+        const response = await fetch('api/settings/validate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -253,7 +253,7 @@ async function saveFile() {
         const content = editor.value;
         
         // Validate YAML first
-        const validateResponse = await fetch('/api/settings/validate', {
+        const validateResponse = await fetch('api/settings/validate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -269,7 +269,7 @@ async function saveFile() {
         }
         
         // Save file
-        const response = await fetch('/api/settings/save', {
+        const response = await fetch('api/settings/save', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -310,7 +310,7 @@ async function deleteFile() {
     if (!confirmed) return;
     
     try {
-        const response = await fetch(`/api/settings/delete/${encodeURIComponent(currentFile)}`, {
+        const response = await fetch(`api/settings/delete/${encodeURIComponent(currentFile)}`, {
             method: 'POST'
         });
         
@@ -379,7 +379,7 @@ function showNewFileDialog() {
  */
 async function populateExistingFilesDropdown() {
     try {
-        const response = await fetch('/api/settings/list');
+        const response = await fetch('api/settings/list');
         const data = await response.json();
         
         if (!data.success || !data.files || data.files.length === 0) {
@@ -527,7 +527,7 @@ bat:
  */
 async function loadExistingFileAsTemplate(filename) {
     try {
-        const response = await fetch(`/api/settings/read/${encodeURIComponent(filename)}`);
+        const response = await fetch(`api/settings/read/${encodeURIComponent(filename)}`);
         const data = await response.json();
         
         if (!data.success) {
@@ -565,7 +565,7 @@ async function createNewFile() {
         }
         
         // Validate YAML
-        const validateResponse = await fetch('/api/settings/validate', {
+        const validateResponse = await fetch('api/settings/validate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -581,7 +581,7 @@ async function createNewFile() {
         }
         
         // Create file
-        const response = await fetch('/api/settings/save', {
+        const response = await fetch('api/settings/save', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
