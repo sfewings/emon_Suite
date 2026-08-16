@@ -65,7 +65,18 @@ const float SCALE_PRESSURE   = 0.1f; // hPa or other unit
 // scaling constants
 const float MPU_ACCEL_SCALE = 16384.0f; // LSB/g for ±2g
 const float MPU_GYRO_SCALE = 131.0f;    // LSB/(deg/s) for ±250deg/s
-const int INSTALATION_HEADING_OFFSET = 0;  //degrees difference between anemometer direction and sensro installation direction
+// Degrees the sensor board's X axis is rotated clockwise from the boat's centreline.
+// Subtracted from the computed heading. Measured from the Enchantee_20260816 log:
+// over 5799 steady straight-line samples spanning all 36 ten-degree heading bins the
+// compass read a constant 11.9 deg high against GPS course over ground.
+const int INSTALATION_HEADING_OFFSET = 12;
+
+// Degrees the anemometer's zero mark is rotated clockwise from the boat's centreline.
+// Subtracted from the vane angle before it is combined with the heading, so it shifts
+// apparent and true wind direction without touching the boat-relative reading (subnode 0).
+// The 20260816 log puts this within about +-10 deg of zero, so it is left at 0; this is
+// the knob to trim if a residual tack-to-tack true-wind-direction split reappears.
+const int ANEMOMETER_HEADING_OFFSET = 0;
 
 float GyroOffset[3] = {-693.9f, -62.5f, -40.3f};
 
@@ -84,7 +95,12 @@ float A_Ainv[3][3] = {
 { 0.00235, -0.00639, 0.05417 }};;
 
 //Mag scale divide by 369.4 to normalize. These are significant corrections, especially the large offsets.
-float M_B [3] = {107.82, -122.78, 5.68};
+// M_B updated from the Enchantee_20260816 afternoon log. The bench sweep that produced
+// {107.82, -122.78, 5.68} was done off the boat, so it contained none of the boat's own
+// hard iron; in service the residual bias was 7.5% of full field (about 17 raw LSB).
+// Leaving it uncorrected caused a 13.1 deg one-cycle compass error and, through it, a
+// 7.1 deg tack-to-tack split in true wind direction. See calculateTrueWind() below.
+float M_B [3] = {100.98, -105.97, 5.85};
 
 
 float M_Ainv[3][3] = {
@@ -121,6 +137,15 @@ struct TrueWind {
   float twd;   // True Wind Direction (FROM)
 };
 
+// A tack-to-tack split in true wind direction (the same breeze reading differently on
+// port and starboard) is NOT fixed in here. This function is exact given its inputs, and
+// because it uses velocity over ground from GPS, leeway cancels out of it entirely.
+// A split means one of the two inputs that flip sense with tack is wrong:
+//   - the compass  -> fix M_B / INSTALATION_HEADING_OFFSET above
+//   - the vane zero -> fix ANEMOMETER_HEADING_OFFSET above
+// On the 20260816 log the split was 7.1 deg and came from the compass; correcting M_B
+// took it to 0.05 deg. Resist adding an empirical fudge factor here - it would hide a
+// compass fault that also corrupts the heading and apparent wind outputs.
 TrueWind calculateTrueWind(float aws, float awd, float sog, float hdg) {
   // Convert degrees to radians
   auto deg2rad = [](float d) { return d * PI / 180.0; };
@@ -862,8 +887,11 @@ void loop()
             {
                 Serial.println(F("No packet sent"));
             }
-            //now send compass based wind direction as a separate packet
-            float apparentWindDirection = fmod(anemometerReadings.windDirection + g_payloadIMU.heading, 360.0);
+            //now send compass based wind direction as a separate packet.
+            //ANEMOMETER_HEADING_OFFSET trims the vane's zero relative to the centreline; the
+            //compass's own alignment is already removed inside get_heading().
+            float apparentWindDirection = anemometerReadings.windDirection - ANEMOMETER_HEADING_OFFSET + g_payloadIMU.heading;
+            apparentWindDirection = fmod(apparentWindDirection + 720.0, 360.0);
             g_payloadAnemometer.subnode = 1;    //apparent wind
             g_payloadAnemometer.windDirection = apparentWindDirection;
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
