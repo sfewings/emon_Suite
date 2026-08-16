@@ -138,7 +138,10 @@ services:
     volumes:
       - /share/emon-node-red:/data
       - /share:/share
-      - /media:/containermedia
+      # rslave so a USB drive mounted on the host after this container starts
+      # shows up inside it. With the default rprivate the backup flow only sees
+      # the bare mount point directory.
+      - /media:/containermedia:rslave
     depends_on:
       - mosquitto
     restart: always
