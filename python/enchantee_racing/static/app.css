@@ -1,0 +1,18 @@
+/*
+  Skeleton only. Ported from the existing HUD page at build order step 3.
+
+  The reader is in a boat cockpit, in sunlight, wet, moving and busy: large hit
+  targets, high contrast, no scrolling (CLAUDE.md).
+
+  Carry over from the existing HUD (DESIGN 9.1):
+    - the colour variables, unchanged, so the crew does not relearn the display
+    - env(safe-area-inset-*) padding
+    - overscroll-behavior: none, user-select: none, touch-action: manipulation
+
+  Add (DESIGN 9.7): a red-on-black night theme, switched manually, never
+  automatically. Twilight races start at 1820 and the Parmelia Night Race at 1850.
+  Keep the layout byte-for-byte identical between themes so muscle memory survives
+  the switch.
+
+  No external font and no CDN. The Pi has no internet.
+*/

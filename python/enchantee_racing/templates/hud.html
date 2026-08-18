@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  Instrument HUD. Skeleton only. Build order step 3, the first thing to ship.
+
+  Port the existing page close to verbatim rather than rewriting it: it is good and
+  the crew should not have to relearn it. The original is a standalone page served
+  by a Node-RED http-in node at /hud, polling /hud/data every 500 ms. It is in
+  docs/reference/flows.json, and docs/reference/HUD.png shows what it looks like.
+
+  Keep, per DESIGN 9.1:
+    - the {v, age} envelope and stale handling
+    - location.pathname.replace(/\/+$/, "") + "/data" for proxy-prefix safety
+    - env(safe-area-inset-*), apple-mobile-web-app-capable,
+      overscroll-behavior: none, user-select: none, touch-action: manipulation
+    - the fit() function that sizes digits to their cell
+    - the motor-mode panel swap, both row sets pre-rendered, class toggled, with
+      the 10 s hold so a lumpy idle cannot flip the panels back and forth
+    - the colour variables
+
+  Also port the demo inject nodes as a demo mode: driving the display without the
+  boat is how finish detection gets tested.
+
+  Verify side by side against /nodered/hud with the boat running before the
+  Node-RED Sailing HUD tab is disabled, and leave that tab in the flow as a
+  fallback for one season (build order step 4).
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Enchantee HUD</title>
+<link rel="stylesheet" href="static/app.css">
+<main id="hud"></main>
+<script src="static/app.js" defer></script>

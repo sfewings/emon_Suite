@@ -1,0 +1,16 @@
+# Sail racing support app - Python dependencies
+#
+# Install these on the bench. The Pi has no internet, so nothing can be fetched at
+# runtime or during a deploy on the water.
+
+Flask>=3.0,<4.0
+
+# Pinned to the same major as event_recorder, so the callback signatures match the
+# paho code already running on this Pi.
+paho-mqtt>=1.6.1,<2.0.0
+
+# === Development only ===
+# The engine and its tests use the standard library alone. pytest is the runner,
+# but tests/test_nav.py also runs standalone with `python tests/test_nav.py` for a
+# Pi that has none.
+# pytest>=8.0

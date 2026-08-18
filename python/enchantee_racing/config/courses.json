@@ -1,0 +1,6 @@
+{
+  "schema": "pfsyc-courses/1",
+  "source": "Sailing Fixtures & Courses 2026 - 2027 (PFSYC), docs/reference/",
+  "note": "Empty skeleton. Build order step 2 transcribes one series first. Series are Frostbite, Twilight, Friday, Sunday Div II, Sunday Div III and Sunday Div IV, four numbered courses each. Legs are an ordered list that allows repeats: club-32a appears up to four times in one course and course position is a leg index, never a mark identity. A gate is one leg with two mark refs. Lint every leg against the mark's registered rounding, and reconcile the summed leg distances against the sheet's printed distance_nm within 2 per cent (DESIGN 7).",
+  "courses": []
+}

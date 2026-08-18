@@ -1,0 +1,26 @@
+<!doctype html>
+<!--
+  Race screen. Skeleton only.
+
+  Four panels, pre-rendered, swapped by toggling a class: idle (course selection),
+  prestart (countdown), racing (next mark) and finished. Do not rebuild the DOM and
+  do not animate (DESIGN 9.6). Mode is server state, so every device switches
+  together.
+
+  Asset URLs below are relative, not root-relative, on purpose: the page is served
+  both at /race/ behind nginx and at / on port 5002, and a leading slash breaks the
+  prefixed case. Build fetch targets the way the existing HUD does:
+      location.pathname.replace(/\/+$/, "") + "/api/state"
+  That is also why nginx needs the /race -> /race/ redirect (DESIGN 5).
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Enchantee racing</title>
+<link rel="stylesheet" href="static/app.css">
+<main id="app">
+  <!-- TODO build order step 7 onward: prestart countdown, racing panel, finished
+       panel, course selection cards with division and numeral flags. -->
+</main>
+<script src="static/app.js" defer></script>
