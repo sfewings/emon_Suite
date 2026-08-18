@@ -189,9 +189,16 @@ marks used by the 2026-27 PFSYC course sheets resolve cleanly, including Mosman 
 - **Fixtures & Courses 2026-2027 PDF.** The courses themselves, the sailing
   instructions, and the flag definitions. Irreplaceable.
 - **Course Marks Map, July 2026 (Geng), PDF.** Human-readable visual reference and
-  a name cross-check, seven years newer than the register. Not a coordinate
-  source, and it must not be redistributed: copyright Geng Pty Ltd, marked not for
-  navigational use. Use the PDF, not the AVIF; the PDF has a text layer.
+  a name cross-check, seven years newer than the register. **Not a coordinate
+  source**: it is marked not for navigational use, and the register is the only
+  thing positions come from. Use the PDF, not the AVIF; the PDF has a text layer.
+
+  It is copyright Geng Pty Ltd and carries a notice against redistribution. It is
+  tracked in `docs/reference/` anyway, as a deliberate decision by the repository
+  owner: the same PDF is offered as a public download by several sailing clubs, and
+  the copy here is internal reference material for building this app. Keep it out
+  of anything the app serves to a browser, and do not treat its presence here as
+  permission to publish it further.
 - **The PFSYC inner start position.** The register has inner start marks for RPYC
   and SoPYC but none for PFSYC. Currently `-32.001948, 115.812006`, supplied by
   hand and flagged `user-supplied-2026`. Worth re-surveying from the jetty.
@@ -687,8 +694,12 @@ new mark data.
 
 ### Shoreline (optional, stage two)
 
-Do not use the Geng course marks chart. It is copyright Geng Pty Ltd and marked
-not for navigational use.
+Do not trace the shoreline off the Geng course marks chart, even though section 6
+now keeps a copy in `docs/reference/`. Two reasons, and the first is the one that
+matters: it is marked not for navigational use, so a coastline derived from it
+would carry that caveat into the one place on the display that looks like a chart.
+The second is that a derived shoreline shipped to the browser is redistribution of
+a copyright work, which internal reference use is not. Use OSM as below.
 
 Extent covering PFSYC plus the other Swan River clubs, matching the `bbox` in
 `marks.json`:
