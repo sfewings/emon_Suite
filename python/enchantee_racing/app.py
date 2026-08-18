@@ -28,4 +28,9 @@ Constraints that are properties of the deployment, not preferences (CLAUDE.md):
 
 This module owns all file access. It reads config/ from disk and hands plain data
 to engine/, which never touches the filesystem.
+
+On startup, and after any PUT to /api/config, run engine.course.validate() over the
+three documents. Refuse to offer a course that has errors, and log warnings without
+blocking: a printed distance that does not reconcile is a data smell, and sometimes
+the printed figure is the thing that is wrong (DESIGN 7).
 """
