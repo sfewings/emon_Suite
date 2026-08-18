@@ -15,8 +15,11 @@ What it must enforce:
   lookup keys on id (CLAUDE.md, DESIGN 6).
 - Legs are an ordered list that allows repeats. Club Buoy 32A appears up to four
   times in one course. Course position is a leg index, never a mark identity.
-- Gates (Bricklanding 33A+33B, Smith+Lucky Bay 35A+35B, Mosman 14+13) are one leg
-  with two mark refs, targeting the midpoint. Not two consecutive legs.
+- Every leg targets exactly one mark, except the last, which targets the
+  start/finish line. There are no gates and no leg has two marks: Bricklanding
+  33A+33B, Smith+Lucky Bay 35A+35B and Mosman 14+13 are pairs of ordinary marks
+  that always appear consecutively, one leg each (DESIGN 6). Validation should
+  reject a leg carrying more than one mark rather than quietly accept it.
 - Rounding lint: the register's rounding column agrees with the PFSYC course
   sheets on all twenty marks, so a leg whose rounding disagrees with its mark's
   registered rounding is almost certainly a transcription error. Flag it

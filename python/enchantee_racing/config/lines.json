@@ -1,5 +1,6 @@
 {
-  "schema": "pfsyc-lines/1",
+  "schema": "pfsyc-lines/2",
+  "note": "No gates: every course leg targets exactly one mark, except the last, which targets start_finish. no_cross_lines are for breach detection only and are never leg targets. Mosman (14, 13) is absent on purpose, see DESIGN.md section 6.",
   "start_finish": {
     "id": "pfsyc-start-finish",
     "name": "PFSYC start / finish line",
@@ -21,7 +22,7 @@
     "length_nm": 0.063,
     "bearing_inner_to_outer": 139.6
   },
-  "gates": [
+  "no_cross_lines": [
     {
       "id": "bricklanding",
       "name": "Bricklanding",
@@ -29,14 +30,8 @@
         "bricklanding-a-33a",
         "bricklanding-b-33b"
       ],
-      "rounding": "starboard",
-      "no_cross_while_racing": true,
-      "note": "Sailing instructions forbid crossing the imaginary line between Bricklanding A and B.",
-      "width_m": 206.0,
-      "midpoint": {
-        "lat": -32.011968,
-        "lon": 115.799219
-      }
+      "note": "Sailing instructions, Navigation Marks: boats that are racing are not permitted to cross an imaginary line between Bricklanding A and Bricklanding B. Both marks are rounded to starboard, one leg each.",
+      "length_m": 206.0
     },
     {
       "id": "smith-lucky-bay",
@@ -45,30 +40,8 @@
         "smith-35a",
         "lucky-bay-35b"
       ],
-      "rounding": "port",
-      "no_cross_while_racing": true,
-      "note": "Sailing instructions forbid crossing the imaginary line between Smith and Lucky Bay.",
-      "width_m": 110.4,
-      "midpoint": {
-        "lat": -32.014195,
-        "lon": 115.802191
-      }
-    },
-    {
-      "id": "mosman",
-      "name": "Mosman",
-      "marks": [
-        "mosman-a-14",
-        "mosman-b-13"
-      ],
-      "rounding": "port",
-      "no_cross_while_racing": false,
-      "note": "Always sailed as a pair (14 then 13) in the course sheets.",
-      "width_m": 153.3,
-      "midpoint": {
-        "lat": -32.008215,
-        "lon": 115.774815
-      }
+      "note": "Sailing instructions, Navigation Marks: boats that are racing are not permitted to cross an imaginary line between Smith Buoy and Lucky Bay Buoy. Both marks are rounded to port, one leg each.",
+      "length_m": 110.4
     }
   ]
 }

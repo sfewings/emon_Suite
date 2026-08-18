@@ -1,3 +1,20 @@
+"""Generate config/lines.json from config/marks.json. Run from the config directory.
+
+There are no gates. An earlier version of this script emitted a "gates" array
+holding Bricklanding, Smith / Lucky Bay and Mosman as single legs with two mark
+refs, targeted at their midpoints. That was wrong: each of those six marks is
+rounded on its own and is its own leg. The sailing instructions forbid sailing
+between the first two pairs, and the printed course distances only reconcile when
+every mark is rounded in turn. See DESIGN.md section 6.
+
+What is left is two kinds of line, neither of which is ever a leg target:
+
+  start_finish     the one line the race actually crosses, and the finish test
+  no_cross_lines   lines it is a rule breach to cross while racing
+
+Mosman is deliberately absent. Nothing prohibits crossing between 14 and 13, so
+there is no line to detect and nothing for the app to say about it.
+"""
 import json, math
 
 marks = {m["id"]: m for m in json.load(open('marks.json'))["marks"]}
@@ -11,7 +28,10 @@ def enu(a, b):
 INNER = {"lat": -32.001948, "lon": 115.812006}
 
 doc = {
-  "schema": "pfsyc-lines/1",
+  "schema": "pfsyc-lines/2",
+  "note": ("No gates: every course leg targets exactly one mark, except the last, which "
+           "targets start_finish. no_cross_lines are for breach detection only and are "
+           "never leg targets. Mosman (14, 13) is absent on purpose, see DESIGN.md section 6."),
   "start_finish": {
     "id": "pfsyc-start-finish",
     "name": "PFSYC start / finish line",
@@ -29,16 +49,15 @@ doc = {
     "warning": ("club-32a is also a mid-course mark in most courses, so boats cross this line "
                 "repeatedly while racing. Arm finish detection only after the final leg completes.")
   },
-  "gates": [
+  "no_cross_lines": [
     {"id": "bricklanding", "name": "Bricklanding", "marks": ["bricklanding-a-33a","bricklanding-b-33b"],
-     "rounding": "starboard", "no_cross_while_racing": True,
-     "note": "Sailing instructions forbid crossing the imaginary line between Bricklanding A and B."},
+     "note": ("Sailing instructions, Navigation Marks: boats that are racing are not permitted to "
+              "cross an imaginary line between Bricklanding A and Bricklanding B. Both marks are "
+              "rounded to starboard, one leg each.")},
     {"id": "smith-lucky-bay", "name": "Smith / Lucky Bay", "marks": ["smith-35a","lucky-bay-35b"],
-     "rounding": "port", "no_cross_while_racing": True,
-     "note": "Sailing instructions forbid crossing the imaginary line between Smith and Lucky Bay."},
-    {"id": "mosman", "name": "Mosman", "marks": ["mosman-a-14","mosman-b-13"],
-     "rounding": "port", "no_cross_while_racing": False,
-     "note": "Always sailed as a pair (14 then 13) in the course sheets."}
+     "note": ("Sailing instructions, Navigation Marks: boats that are racing are not permitted to "
+              "cross an imaginary line between Smith Buoy and Lucky Bay Buoy. Both marks are "
+              "rounded to port, one leg each.")}
   ]
 }
 
@@ -48,15 +67,13 @@ sf["length_m"] = round(L, 1)
 sf["length_nm"] = round(L / 1852, 3)
 sf["bearing_inner_to_outer"] = round(B, 1)
 
-for g in doc["gates"]:
-    a, b = marks[g["marks"][0]], marks[g["marks"][1]]
+for line in doc["no_cross_lines"]:
+    a, b = marks[line["marks"][0]], marks[line["marks"][1]]
     L, B = enu(a, b)
-    g["width_m"] = round(L, 1)
-    g["midpoint"] = {"lat": round((a["lat"] + b["lat"]) / 2, 6),
-                     "lon": round((a["lon"] + b["lon"]) / 2, 6)}
+    line["length_m"] = round(L, 1)
 
 json.dump(doc, open('lines.json','w'), indent=2)
 print("start/finish %.1f m  bearing %.1f / %.1f" % (sf["length_m"], sf["bearing_inner_to_outer"],
       (sf["bearing_inner_to_outer"] + 180) % 360))
-for g in doc["gates"]:
-    print("gate %-16s %6.1f m  mid %.6f %.6f" % (g["id"], g["width_m"], g["midpoint"]["lat"], g["midpoint"]["lon"]))
+for line in doc["no_cross_lines"]:
+    print("no-cross %-16s %6.1f m" % (line["id"], line["length_m"]))

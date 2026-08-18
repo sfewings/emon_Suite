@@ -23,14 +23,19 @@ Rounding a single mark (11.2)
     rounding is not counted twice when consecutive legs share a mark. The 40 m is
     config, not a constant, and gets tuned from replayed tracks.
 
-Gates (11.3)
-    One leg, two marks, target the midpoint. Completion is a line crossing
-    between the two marks with the projection parameter inside [0, 1], not
-    proximity: the gates are 110 m to 206 m wide and the boat passes through the
-    middle. Record the side the boat is on when the gate becomes the target and
-    look for a sign change away from it, which self-configures the direction.
-    Crossing a no_cross_while_racing line that is not the target is a rule
-    breach: log it, show a brief non-blocking notice, do not advance, do not nag.
+Paired marks and the no-cross lines (11.3)
+    There is no gate handling and no leg has two marks. Bricklanding A+B, Smith
+    and Lucky Bay, and Mosman A+B are six ordinary marks in three
+    consecutive-leg pairs, each rounded under 11.2. Their targets sit 110 m to
+    206 m apart, which is what the 10 s post-advance hold is for: without it the
+    second mark of a pair can arm on the boat still departing the first.
+
+    Separately, crossing between Bricklanding A and B, or between Smith and Lucky
+    Bay, is forbidden while racing, so lines.json carries those two as
+    no_cross_lines. Crossing one is a breach event to log with a brief
+    non-blocking notice: never a leg advance, and no nagging. Direction does not
+    matter, either way across is a breach, but the [0, 1] parameter test does:
+    rounding the outside of either mark is what the course asks for.
 
 Manual override (11.4)
     Manual advance is authoritative and immediate, overriding any pending

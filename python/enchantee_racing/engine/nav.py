@@ -40,7 +40,12 @@ Conventions (CLAUDE.md)
 - A signed offset from a line is in metres, positive to the left of the direction
   of travel along that line. "Left" is an internal label, never shown to the crew:
   the race engine only compares the sign against a remembered sign, which is what
-  makes gate and finish direction self-configuring (DESIGN 11.3).
+  makes the finish direction self-configuring (DESIGN 11.5).
+
+There are only two lines in this app, and neither is ever a leg target: the
+start/finish line, and the two lines it is a rule breach to cross while racing
+(Bricklanding, Smith / Lucky Bay). Course legs each target a single mark, so they
+need distance and bearing, not the line primitives (DESIGN 6, 11.3).
 """
 
 from __future__ import annotations
@@ -235,7 +240,13 @@ def destination(origin, bearing_true: float, distance: float) -> LatLon:
 
 
 def midpoint(a, b) -> LatLon:
-    """Midpoint of a and b: the target for a gate leg (DESIGN 11.3)."""
+    """Midpoint of a and b.
+
+    Used for the start/finish line: it is the point a pre-start distance-to-line
+    readout aims at, and the point course distances are measured from and back to
+    when reconciling a transcription against the sheet's printed total (DESIGN 7).
+    No course leg targets a midpoint; every leg targets a single mark (DESIGN 6).
+    """
     a = as_latlon(a)
     b = as_latlon(b)
     return LatLon((a.lat + b.lat) / 2.0, norm180(a.lon + norm180(b.lon - a.lon) / 2.0))
@@ -245,7 +256,7 @@ def project(a, b, p) -> Projection:
     """Project p onto the line through a and b.
 
     a and b are the two ends of a line: the inner and outer ends of the
-    start/finish line, or the two marks of a gate.
+    start/finish line, or the two marks of a no-cross line.
 
     Raises ValueError if the ends coincide.
     """
@@ -264,9 +275,9 @@ def project(a, b, p) -> Projection:
 def side(a, b, p, tolerance_m: float = 0.0) -> int:
     """Which side of the line a -> b p is on: +1 left, -1 right, 0 on it.
 
-    The race engine records this when a gate or the finish becomes the target and
-    then watches for a sign change away from it. That is what makes the direction
-    self-configuring and needs no per-gate constant (DESIGN 11.3, 11.5).
+    The race engine records this when the finish becomes the target and then
+    watches for a sign change away from it, which is what makes the finish
+    direction self-configuring with no per-course constant (DESIGN 11.5).
 
     A boat sitting on the line returns 0. A caller remembering which side the boat
     is on should keep waiting for a non-zero answer rather than storing the 0,
@@ -296,9 +307,10 @@ def crossing(a, b, previous, current) -> Optional[Crossing]:
 
     Returns None unless the two fixes are on opposite sides of the line *and* the
     interpolated crossing point falls within [0, 1] along a -> b. The parameter
-    test is the whole point of doing it this way: sailing past the outside of the
-    pin end must not finish the race, and passing outside a gate mark must not
-    complete the gate (DESIGN 11.3, 11.5).
+    test is the whole point of doing it this way: sailing round the outside of the
+    pin end must not finish the race (DESIGN 11.5), and rounding the outside of
+    Bricklanding A or B, which is what the course asks for, must not register as
+    crossing between them (DESIGN 11.3).
 
     A fix landing exactly on the line is resolved to the +1 side, so a crossing is
     never missed and a boat parked on the line never produces a stream of them.

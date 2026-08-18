@@ -85,9 +85,15 @@ is the main reason the engine lives here rather than in Node-RED.
   identity. Auto-advance must only test the current target mark.
 - Marks are keyed by string id (`bond-38a`), never by number. Number 37 is used by
   two different marks, and 38 vs 38A is inconsistent between the source documents.
-- Gates (Bricklanding A+B, Smith+Lucky Bay, Mosman A+B) are a single leg with two
-  marks, not two legs. The sailing instructions forbid crossing between the first
-  two pairs.
+- **There are no gates.** Bricklanding A+B, Smith+Lucky Bay and Mosman A+B are
+  three pairs of ordinary marks that always appear consecutively, one leg each,
+  each rounded on its own. No leg has two marks and nothing targets a midpoint. An
+  earlier version of DESIGN.md called them gates completed by sailing between the
+  marks, which is both against the sailing instructions for the first two pairs and
+  contradicted by the printed course distances. See DESIGN.md section 6.
+- Crossing between Bricklanding A and B, or between Smith and Lucky Bay, is
+  forbidden while racing, so those two lines live in `lines.json` as
+  `no_cross_lines`. Crossing one is a `breach` event to log, never a leg advance.
 - Two long-lived threads share state: the paho network loop and Flask request
   handlers. Every mutation goes behind the single lock in `store.py`. Engine code
   never touches the store directly.

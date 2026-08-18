@@ -209,20 +209,48 @@ An earlier version of this document gave 259.8 m on 110.1 / 290.1, derived from
 the bad 32A longitude in the club table. Anything built against those numbers is
 wrong.
 
-### Gates
+### Mark pairs, which are not gates
 
-| Gate              | Marks    | Width   | Rounding  |
-| ----------------- | -------- | ------- | --------- |
-| Bricklanding      | 33A, 33B | 206.0 m | starboard |
-| Smith / Lucky Bay | 35A, 35B | 110.4 m | port      |
-| Mosman            | 14, 13   | 153.3 m | port      |
+Three pairs of marks always appear consecutively on the course sheets, close
+together, and an earlier version of this document called them gates: one leg with
+two mark refs, targeting the midpoint, completed by crossing between them.
 
-Gates are one leg with two mark refs, target the midpoint, completion is crossing
-between them on the correct side. Not two consecutive legs.
+**That was wrong. Each of these six marks is an independent mark, rounded on its
+own, and each is its own leg.**
 
-The sailing instructions forbid crossing the imaginary line between Bricklanding A
-and B, and between Smith and Lucky Bay, while racing. Mosman has no such
-restriction but is always sailed as a pair.
+| Pair              | Marks    | Separation | Rounding  | Crossing between them |
+| ----------------- | -------- | ---------- | --------- | --------------------- |
+| Bricklanding      | 33A, 33B | 206.0 m    | starboard | forbidden while racing |
+| Smith / Lucky Bay | 35A, 35B | 110.4 m    | port      | forbidden while racing |
+| Mosman            | 14, 13   | 153.3 m    | port      | permitted, no rule     |
+
+Two independent lines of evidence, either of which is sufficient:
+
+1. **The sailing instructions forbid it.** Under Navigation Marks: "Boats that are
+   racing are not permitted to cross an imaginary line between; Bricklanding A and
+   Bricklanding B; Smith Buoy and Lucky Bay Buoy." A completion test that requires
+   the boat to sail between the two marks would require it to break a rule in order
+   to advance the leg.
+2. **The printed distances say so.** Sunday Div II Course 1 contains all three
+   pairs, Smith / Lucky Bay twice. Summing its legs with every mark rounded in turn
+   reproduces the printed 10.98 nm to within 0.00 per cent. Treating the three
+   pairs as midpoints instead gives 10.76 nm, 2.0 per cent under. Frostbite Course
+   2 is the same story on its own: 9.07 nm exactly with both Bricklanding marks
+   rounded, 8.83 nm and 2.7 per cent under through the midpoint.
+
+So there is no gate concept anywhere in this app. Every leg targets exactly one
+mark, except the last, which targets the finish line. This removes the midpoint
+targeting, the between-the-marks completion test, and the special-case leg shape.
+
+What survives from the old gate model, and is still needed:
+
+- The Bricklanding and Smith / Lucky Bay lines exist in `lines.json` as
+  `no_cross_lines`, because crossing one while racing is a rule breach worth
+  logging and showing. They are never leg targets.
+- Mosman has no line at all. Nothing prohibits crossing between 14 and 13, so
+  there is nothing to detect. That the two are always sailed as a pair is a
+  property of how the courses are written, not a rule the app enforces.
+- `engine/nav.py`'s line-crossing primitives, which the finish line needs anyway.
 
 ### Mark numbers are not unique
 
@@ -309,12 +337,27 @@ editable.
 times in one course. Course position is a leg index, never a mark identity.
 
 **The printed distance validates the whole transcription.** Every course sheet
-prints a total in nautical miles. Summing the leg distances from `marks.json`
-should reproduce it within about 2 per cent, which is roughly the slop introduced
-by gates being sailed to a midpoint and by the start being a line rather than a
-point. A course that does not reconcile has a leg in the wrong order, a missing
-leg, or the wrong mark. This single check catches most transcription errors
-without anyone reading the PDF twice, and it should run in CI over every course.
+prints a total in nautical miles. Summing the leg distances from `marks.json`,
+mark to mark in the printed order, measuring the start and the finish from the
+midpoint of the start line, reproduces it to within a few hundredths of a mile.
+Tolerance is 2 per cent, but the observed agreement is far tighter than that: of
+the six Frostbite and Sunday Div II courses checked so far, five land within 0.1
+per cent. Anything more than a few tenths off is a signal, not noise.
+
+A course that does not reconcile has a leg in the wrong order, a missing leg, or
+the wrong mark. This single check catches most transcription errors without anyone
+reading the PDF twice, and it should run in CI over every course. It is also what
+disproved the gate model in section 6, so it earns its keep twice over.
+
+Two courses transcribed so far do not reconcile, and in both the legs were checked
+against the sheet row by row and the printed total is the value in doubt:
+
+- **Frostbite Course 1**: legs sum to 7.30 nm against a printed 7.11, 2.7 per cent
+  over. No single substitution or deletion from the twenty course marks lands
+  within 1 per cent of 7.11. Through the pair midpoints it gives 7.14, which
+  suggests whoever totalled this one course did it that way.
+- **Sunday Div II Course 2**: 12.21 nm against a printed 11.92, 2.4 per cent over.
+  Not yet investigated; that series is not transcribed yet.
 
 The same arithmetic solves for `shortened_at`, as described in section 11.6.
 
@@ -508,27 +551,33 @@ Auto-advance, with these guards:
 replayed tracks. It needs to be larger than GPS scatter and smaller than the
 closest approach the boat makes to the target while not rounding it.
 
-### 11.3 Completing a gate
+### 11.3 The paired marks, and the lines it is a breach to cross
 
-A gate is one leg with two mark refs. Proximity is the wrong test, because the
-gates are 110 m to 206 m wide and the boat passes through the middle, not close
-to either mark.
+There is no gate handling, and no leg has two marks. Section 6 has the evidence.
+Bricklanding A and B, Smith and Lucky Bay, and Mosman A and B are six ordinary
+marks in three consecutive-leg pairs, each rounded on its own under the rules of
+11.2. A pair 110 m to 206 m apart means two legs whose targets are close together,
+which the 40 m arming radius and the 10 s post-advance hold already handle: that
+hold is what stops the second mark's arming from being satisfied by the boat still
+departing the first.
 
-Completion is a **line crossing between the two marks**:
+Separately, and not a leg mechanism at all, `lines.json` carries
+`no_cross_lines` for Bricklanding and for Smith / Lucky Bay, because the sailing
+instructions forbid crossing between those two pairs while racing. Mosman has no
+entry: nothing prohibits crossing between 14 and 13.
 
-- Project each fix onto the segment joining the two marks. The crossing only
-  counts when the projection parameter is within `[0, 1]`, so passing outside
-  either end does not complete the gate.
-- Record which side the boat is on at the moment the gate becomes the target.
-  Completion is a sign change away from that side. This self-configures and needs
-  no per-gate direction constant.
+Detecting a breach uses the same crossing primitive as the finish:
 
-Bricklanding and Smith / Lucky Bay carry `no_cross_while_racing: true` in
-`lines.json` because the sailing instructions forbid crossing between them while
-racing. When the boat is on the current leg and crosses one of those lines
-without it being the target, that is a rule breach, not a rounding. Log it as an
-event and show a brief non-blocking notice. Do not advance the leg, and do not
-nag: the crew knows, and the penalty is theirs to take.
+- Project each fix onto the segment joining the two marks. It only counts when the
+  projection parameter is within `[0, 1]`, so sailing round the outside of either
+  mark, which is exactly what the course requires, is not a breach.
+- The crossing direction is irrelevant here. Either way across is a breach.
+
+When the boat crosses one of those lines while racing, log a `breach` event and
+show a brief non-blocking notice. Never advance the leg on it, and do not nag: the
+crew knows, and the penalty is theirs to take. The value is in the log, which is
+how a course sailed with an inadvertent breach gets noticed after the race rather
+than argued about during it.
 
 ### 11.4 Manual override
 
@@ -612,7 +661,7 @@ Every transition is published for `event_recorder` to log, which is what makes t
 next season's replay tests possible:
 
 ```
-race/event  {type: "select"|"timer"|"start"|"rounded"|"gate"|"breach"
+race/event  {type: "select"|"timer"|"start"|"rounded"|"breach"
                    |"shorten"|"finish"|"reset",
              course, leg, leg_name, ts, lat, lon, source: "auto"|"manual"}
 ```

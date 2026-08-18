@@ -1,6 +1,117 @@
 {
   "schema": "pfsyc-courses/1",
-  "source": "Sailing Fixtures & Courses 2026 - 2027 (PFSYC), docs/reference/",
-  "note": "Empty skeleton. Build order step 2 transcribes one series first. Series are Frostbite, Twilight, Friday, Sunday Div II, Sunday Div III and Sunday Div IV, four numbered courses each. Legs are an ordered list that allows repeats: club-32a appears up to four times in one course and course position is a leg index, never a mark identity. A gate is one leg with two mark refs. Lint every leg against the mark's registered rounding, and reconcile the summed leg distances against the sheet's printed distance_nm within 2 per cent (DESIGN 7).",
-  "courses": []
+  "source": "Sailing Fixtures & Courses 2026 - 2027 (PFSYC), docs/reference/, page 15",
+  "note": "Transcribed by hand from the course sheet. Mark ids key into config/marks.json, line ids into config/lines.json. Every leg targets exactly one mark and carries \"mark\" plus \"rounding\", except the last, which carries \"finish\": true and \"line\". There are no gates and no leg has two marks: Bricklanding 33A+33B and Smith+Lucky Bay 35A+35B are consecutive legs, each mark rounded on its own, and crossing between either pair while racing is a rule breach (DESIGN 6). Rounding is per leg, never taken from the mark default, because course 2 rounds club-32a to starboard on one pass and to port on another. Legs are ordered and repeat freely: course position is a leg index, never a mark identity.",
+  "series": {
+    "frostbite": {
+      "name": "Frostbite Invitation Series",
+      "note": "These races are for all Divisions (Combined Division) and are an Open Invitation.",
+      "starts": [
+        { "divisions": ["III", "IV"], "time": "13:30", "flag": "naval-4" },
+        { "divisions": ["I", "II"], "time": "13:50", "flag": "naval-2" }
+      ],
+      "time_limit": null,
+      "time_limit_note": "The Frostbite sheet prints no time limit. Do not inherit the Sunday three-hour limit or the Friday 1730 limit; those are stated on their own sheets.",
+      "shortened_signal": "International Code Flag S from the start box signals the finish is the first crossing of the start/finish line after the start.",
+      "flag_note": "The naval numeral flag identifies the division, not the course, and the two Frostbite starts fly different ones, so it lives here rather than on each course. Each course carries only its numeral pendant."
+    }
+  },
+  "courses": [
+    {
+      "id": "frostbite-1",
+      "series": "frostbite",
+      "division": "combined",
+      "course_no": 1,
+      "distance_nm": 7.11,
+      "wind_note": "South Westerly Breeze",
+      "flags": { "division": null, "numeral": "pendant-1" },
+      "shortened_at": null,
+      "note": "Printed distance does not reconcile. These legs sum to 7.30 nm mark to mark, 2.7 per cent over the printed 7.11, where courses 2, 3 and 4 reconcile within 0.1 per cent. Every row on the sheet was read and the row spacing is uniform, so no leg is missing, and no single substitution or deletion from the twenty course marks lands within 1 per cent of 7.11. Measuring through the midpoints of the two mark pairs instead gives 7.14, which suggests whoever totalled this one course did it that way. Legs are as printed; the printed total is the suspect value.",
+      "legs": [
+        { "mark": "bricklanding-a-33a", "rounding": "starboard" },
+        { "mark": "bricklanding-b-33b", "rounding": "starboard" },
+        { "mark": "dolphin-east-42b", "rounding": "starboard" },
+        { "mark": "sanders-99", "rounding": "starboard" },
+        { "mark": "club-32a", "rounding": "port" },
+        { "mark": "smith-35a", "rounding": "port" },
+        { "mark": "lucky-bay-35b", "rounding": "port" },
+        { "mark": "bond-38a", "rounding": "port" },
+        { "mark": "armstrong-32", "rounding": "port" },
+        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+      ]
+    },
+    {
+      "id": "frostbite-2",
+      "series": "frostbite",
+      "division": "combined",
+      "course_no": 2,
+      "distance_nm": 9.07,
+      "wind_note": "Easterly Breeze",
+      "flags": { "division": null, "numeral": "pendant-2" },
+      "shortened_at": null,
+      "note": "Crosses the start/finish line three times before the finish: club-32a is a course mark on legs 4 and 6 and the outer end of the line. This is the course to replay finish detection against.",
+      "legs": [
+        { "mark": "dolphin-east-42b", "rounding": "starboard" },
+        { "mark": "bricklanding-a-33a", "rounding": "starboard" },
+        { "mark": "bricklanding-b-33b", "rounding": "starboard" },
+        { "mark": "club-32a", "rounding": "starboard" },
+        { "mark": "dolphin-east-42b", "rounding": "starboard" },
+        { "mark": "club-32a", "rounding": "port" },
+        { "mark": "bricklanding-a-33a", "rounding": "starboard" },
+        { "mark": "bricklanding-b-33b", "rounding": "starboard" },
+        { "mark": "bond-38a", "rounding": "port" },
+        { "mark": "armstrong-32", "rounding": "port" },
+        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+      ]
+    },
+    {
+      "id": "frostbite-3",
+      "series": "frostbite",
+      "division": "combined",
+      "course_no": 3,
+      "distance_nm": 6.93,
+      "wind_note": "North Easterly Breeze",
+      "flags": { "division": null, "numeral": "pendant-3" },
+      "shortened_at": null,
+      "legs": [
+        { "mark": "dolphin-east-42b", "rounding": "starboard" },
+        { "mark": "sanders-99", "rounding": "starboard" },
+        { "mark": "armstrong-32", "rounding": "port" },
+        { "mark": "club-32a", "rounding": "port" },
+        { "mark": "squadron-37", "rounding": "port" },
+        { "mark": "hallmark-41a", "rounding": "port" },
+        { "mark": "club-32a", "rounding": "port" },
+        { "mark": "bond-38a", "rounding": "port" },
+        { "mark": "armstrong-32", "rounding": "port" },
+        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+      ]
+    },
+    {
+      "id": "frostbite-4",
+      "series": "frostbite",
+      "division": "combined",
+      "course_no": 4,
+      "distance_nm": 7.63,
+      "wind_note": "North Westerly Breeze",
+      "flags": { "division": null, "numeral": "pendant-4" },
+      "shortened_at": null,
+      "legs": [
+        { "mark": "miller-28", "rounding": "port" },
+        { "mark": "squadron-37", "rounding": "port" },
+        {
+          "mark": "bond-38a",
+          "rounding": "port",
+          "note": "The sheet prints \"Bond Buoy (38)\" for this leg alone. 38 is Dee Rd in the register, 900 m away, but the name is Bond and every other Bond leg on this sheet reads 38A, so this is the typo DESIGN section 6 records. Reading it as dee-rd-38 puts the total 3.5 per cent under the printed distance instead of 0.1 per cent under."
+        },
+        { "mark": "club-32a", "rounding": "port" },
+        { "mark": "miller-28", "rounding": "port" },
+        { "mark": "squadron-37", "rounding": "port" },
+        { "mark": "armstrong-32", "rounding": "port" },
+        { "mark": "club-32a", "rounding": "port" },
+        { "mark": "bond-38a", "rounding": "port" },
+        { "mark": "armstrong-32", "rounding": "port" },
+        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+      ]
+    }
+  ]
 }

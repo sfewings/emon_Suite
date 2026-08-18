@@ -2,8 +2,8 @@
 
 The fixture is the PFSYC start/finish line from DESIGN 6: the inner start mark and
 Club Buoy 32A, with the length and orientation the design brief publishes for them.
-That one line exercises everything the race engine needs, because it is also the
-finish line and the shape of every gate test.
+That one line exercises everything the race engine needs: it is the finish line,
+and it has the same shape as the two lines it is a rule breach to cross.
 
 Bare asserts and no fixtures anywhere in this file, so it runs under pytest and
 also standalone with `python tests/test_nav.py` on a Pi that has no pytest and no
@@ -254,8 +254,8 @@ def test_destination_inverts_bearing_and_distance():
             assert abs(nav.norm180(nav.bearing(INNER, there) - brg)) < 0.001, (brg, metres)
 
 
-def test_midpoint_is_the_gate_target():
-    """A gate leg targets the midpoint, not either mark (DESIGN 11.3)."""
+def test_midpoint_of_a_line():
+    """What a pre-start distance-to-line reads against, and what courses measure from."""
     mid = nav.midpoint(INNER, CLUB_32A)
     half = nav.distance_m(INNER, CLUB_32A) / 2.0
     assert abs(nav.distance_m(INNER, mid) - half) < 0.001
@@ -383,8 +383,9 @@ def test_crossing_outside_the_pin_end_is_not_a_crossing():
 
     Sailing round the outside of Club Buoy 32A, on the way to Squadron, crosses the
     infinite line through the two ends but not the 117 m segment between them. If
-    this ever returned a crossing, the finish would fire mid-race (DESIGN 11.5) and
-    a boat passing outside a gate mark would complete the gate (DESIGN 11.3).
+    this ever returned a crossing, the finish would fire mid-race (DESIGN 11.5), and
+    on a no-cross line a boat rounding the outside of Bricklanding A, which is what
+    the course asks it to do, would be logged as breaking a rule (DESIGN 11.3).
     """
     length = nav.distance_m(INNER, CLUB_32A)
     for at in [length + 5.0, length + 60.0, length + 500.0, -5.0, -60.0]:
