@@ -1,0 +1,126 @@
+##
+# Enchantee front door.
+#
+# One catch-all server so the same URLs work however the box is reached:
+#   AP mode      -> http://enchantee.local/    (10.42.0.1; mDNS, and unicast DNS
+#                                               from NM's dnsmasq for clients
+#                                               whose mDNS is unreliable)
+#   Wifi client  -> http://enchantee.local/    (mDNS/avahi)
+#   either       -> http://<current-ip>/       (always works)
+#
+#   /           -> Node-RED dashboard  (node_red    :1880/ui/)
+#   /nodered/   -> Node-RED editor     (node_red    :1880/)
+#   /grafana/   -> Grafana             (grafana1    :3000)   serve_from_sub_path=true
+#   /portainer/ -> Portainer           (portainer   :9000)   --base-url=/portainer
+#   /events/    -> event recorder     (host net   :5000)
+#   /settings/  -> emon settings web   (:5001)
+#
+# The websocket $connection_upgrade map lives in /etc/nginx/conf.d/upgrade-map.conf
+##
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    server_name _;
+
+    # Node-RED dashboard 1.x emits purely relative asset paths, so rewriting the
+    # root onto /ui/ is safe: /css/app.min.css -> :1880/ui/css/app.min.css
+    location / {
+        proxy_pass http://127.0.0.1:1880/ui/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+    }
+
+    # Node-RED flow editor
+    location /nodered/ {
+        proxy_pass http://127.0.0.1:1880/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+    }
+    location = /nodered { return 301 /nodered/; }
+
+    # Grafana. GF_SERVER_SERVE_FROM_SUB_PATH=true means Grafana wants to see the
+    # /grafana prefix itself, so proxy_pass must NOT carry a URI (no trailing /).
+    location /grafana/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location = /grafana { return 301 /grafana/; }
+
+    # Grafana Live (dashboard streaming) is a websocket
+    location /grafana/api/live/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+    }
+
+    # Portainer. Started with --base-url=/portainer (sets cookie path + generated
+    # URLs); it still routes at its own root, so strip the prefix here. The SPA
+    # derives its <base href> from window.location.pathname, and it hash-routes,
+    # so deep links stay under /portainer/.
+    location /portainer/ {
+        proxy_pass http://127.0.0.1:9000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+        # container exec / log streaming can idle
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+    location = /portainer { return 301 /portainer/; }
+
+    # emon event recorder (Flask on the host network, port 5000).
+    #
+    # The app has no built-in subpath support, so its pages, assets and fetch
+    # calls were made root-relative instead (see the README). Relative URLs
+    # resolve against the document, so they work both here under /events/ and
+    # at the app's own root on :5000. That depends on the page being at a
+    # directory-style URL, which is what the redirect below guarantees: from
+    # /events (no slash) a relative "api/status" would resolve to /api/status.
+    location /events/ {
+        proxy_pass http://127.0.0.1:5000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # photo uploads from the phone page
+        client_max_body_size 100m;
+    }
+    location = /events { return 301 /events/; }
+
+    # emon settings web (Flask, relative asset paths)
+    location /settings/ {
+        proxy_pass http://127.0.0.1:5001/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location = /settings { return 301 /settings/; }
+}

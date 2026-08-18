@@ -1,0 +1,74 @@
+{
+  "schema": "pfsyc-lines/1",
+  "start_finish": {
+    "id": "pfsyc-start-finish",
+    "name": "PFSYC start / finish line",
+    "inner": {
+      "name": "Start box",
+      "lat": -32.001948,
+      "lon": 115.812006,
+      "source": "user-supplied-2026",
+      "note": "Not in the YWA register, which has no PFSYC inner start mark. Re-survey from the jetty to confirm."
+    },
+    "outer": {
+      "mark": "club-32a",
+      "lat": -32.00275,
+      "lon": 115.812812,
+      "source": "ywa-srrc-2019"
+    },
+    "warning": "club-32a is also a mid-course mark in most courses, so boats cross this line repeatedly while racing. Arm finish detection only after the final leg completes.",
+    "length_m": 117.3,
+    "length_nm": 0.063,
+    "bearing_inner_to_outer": 139.6
+  },
+  "gates": [
+    {
+      "id": "bricklanding",
+      "name": "Bricklanding",
+      "marks": [
+        "bricklanding-a-33a",
+        "bricklanding-b-33b"
+      ],
+      "rounding": "starboard",
+      "no_cross_while_racing": true,
+      "note": "Sailing instructions forbid crossing the imaginary line between Bricklanding A and B.",
+      "width_m": 206.0,
+      "midpoint": {
+        "lat": -32.011968,
+        "lon": 115.799219
+      }
+    },
+    {
+      "id": "smith-lucky-bay",
+      "name": "Smith / Lucky Bay",
+      "marks": [
+        "smith-35a",
+        "lucky-bay-35b"
+      ],
+      "rounding": "port",
+      "no_cross_while_racing": true,
+      "note": "Sailing instructions forbid crossing the imaginary line between Smith and Lucky Bay.",
+      "width_m": 110.4,
+      "midpoint": {
+        "lat": -32.014195,
+        "lon": 115.802191
+      }
+    },
+    {
+      "id": "mosman",
+      "name": "Mosman",
+      "marks": [
+        "mosman-a-14",
+        "mosman-b-13"
+      ],
+      "rounding": "port",
+      "no_cross_while_racing": false,
+      "note": "Always sailed as a pair (14 then 13) in the course sheets.",
+      "width_m": 153.3,
+      "midpoint": {
+        "lat": -32.008215,
+        "lon": 115.774815
+      }
+    }
+  ]
+}
