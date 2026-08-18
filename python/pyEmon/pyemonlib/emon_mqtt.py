@@ -4,6 +4,8 @@ import pyemonlib.emon_settings as emon_settings
 import paho.mqtt.client as mqtt
 import numpy    #needed for array iteration. Seems like the lists from pybindings are numpy lists! Seems to be from python 3.11 to 3.13
 import re
+import json
+import time
 
 class emon_mqtt:
     def __init__(self, mqtt_server="localhost",mqtt_port=1883, settingsPath="./emon_config.yml"):
@@ -264,6 +266,24 @@ class emon_mqtt:
                 self.mqttClient.publish(f"gps/longitude/{payload.subnode}",payload.longitude)
                 self.mqttClient.publish(f"gps/course/{payload.subnode}",payload.course)
                 self.mqttClient.publish(f"gps/speed/{payload.subnode}",payload.speed)
+                #Combined position, for consumers that need the pair to arrive together.
+                #A map marker fed the separate topics steps diagonally, because it redraws
+                #on the new latitude while the longitude is still the previous fix.
+                #Skipped when there is no fix: TinyGPS returns 1000.0 for an unknown angle
+                #and emon_GPS_GY271 transmits whether or not it has a position.
+                if( abs(payload.latitude) <= 90.0 and abs(payload.longitude) <= 180.0 ):
+                    position = {
+                        #latitude and longitude are C floats, so round away the float32
+                        #noise that would otherwise print as -32.05535125732422.
+                        #7 decimals is ~1cm, beyond both GPS and float32 precision.
+                        "lat": round(payload.latitude, 7),
+                        "lon": round(payload.longitude, 7),
+                        #PayloadGPS has no time field, so this is the receiving host's clock,
+                        #not the time of the fix. Unix seconds, UTC.
+                        "ts" : int(time.time())
+                    }
+                    self.mqttClient.publish(f"gps/position/{payload.subnode}",
+                                            json.dumps(position, separators=(',', ':')))
                 if(':' in reading):
                     self.publishRSSI( nodeSettings[payload.subnode]['name'], reading )
             except Exception as ex:
