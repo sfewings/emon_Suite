@@ -1,34 +1,308 @@
-<!doctype html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
 <!--
-  Instrument HUD. Skeleton only. Build order step 3, the first thing to ship.
+  Instrument HUD, ported from the Node-RED flow: the "HUD page" template node
+  (hud0000000000031) on the Sailing HUD tab of docs/reference/flows.json, which served
+  it at /hud from an http-in node. Ported close to verbatim, per DESIGN 9.1: the page
+  is good, and the crew should not have to relearn a display they already read at a
+  glance in the wet.
 
-  Port the existing page close to verbatim rather than rewriting it: it is good and
-  the crew should not have to relearn it. The original is a standalone page served
-  by a Node-RED http-in node at /hud, polling /hud/data every 500 ms. It is in
-  docs/reference/flows.json, and docs/reference/HUD.png shows what it looks like.
+  flows.json is the only current description of this page. docs/reference/HUD.png
+  predates changes to the colours and to the order of the readings, so it must not be
+  used as a reference for either.
 
-  Keep, per DESIGN 9.1:
-    - the {v, age} envelope and stale handling
-    - location.pathname.replace(/\/+$/, "") + "/data" for proxy-prefix safety
-    - env(safe-area-inset-*), apple-mobile-web-app-capable,
-      overscroll-behavior: none, user-select: none, touch-action: manipulation
-    - the fit() function that sizes digits to their cell
-    - the motor-mode panel swap, both row sets pre-rendered, class toggled, with
-      the 10 s hold so a lumpy idle cannot flip the panels back and forth
-    - the colour variables
+  Kept unchanged from the original: the {v, age} envelope and stale handling, the
+  15 s stale threshold, the 500 ms poll, the colour variables, the panel order, the
+  fit() that sizes digits to their cell, the motor panel swap with both row sets
+  pre-rendered and a class toggled, the connection pip, the safe-area insets,
+  overscroll-behavior, user-select and touch-action, and the data URL built from
+  location.pathname so the page works behind the /race/ prefix, on its own port, and
+  under mDNS, AP mode or a raw IP alike.
 
-  Also port the demo inject nodes as a demo mode: driving the display without the
-  boat is how finish detection gets tested.
+  Deliberately self-contained: no external stylesheet, no external script, no font and
+  no image. The Pi has no internet, so a page that fetches anything off-box is a page
+  that hangs. static/app.css and static/app.js are for the race screen.
 
-  Verify side by side against /nodered/hud with the boat running before the
-  Node-RED Sailing HUD tab is disabled, and leave that tab in the flow as a
-  fallback for one season (build order step 4).
+  Changed from the original: nothing in the display. The 10 s motor hold now lives
+  server-side in store.py, where the original had it in the "Latest values as JSON"
+  function node, so this page still just renders d.motor.
+
+  Not yet fixed, and inherited as-is: the wake lock below uses navigator.wakeLock,
+  which requires a secure context and so has never worked here, because there is no
+  TLS. DESIGN 9.8 calls for a hidden looping muted video instead, which needs a small
+  video vendored into static/. See the note at the bottom of this file.
 -->
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Enchantee HUD</title>
-<link rel="stylesheet" href="static/app.css">
-<main id="hud"></main>
-<script src="static/app.js" defer></script>
+<style>
+  /* Colours match the readings on the dashboard pages: speeds DodgerBlue,
+     wind angles Orange, heading Yellow. The apparent (and course) row of each
+     pair is tinted lighter so the two rows in a panel stay apart at a glance. */
+  :root {
+    --sog:   #1e90ff;   /* speed over ground   - as Navigation 'Speed'          */
+    --twa:   #ffa500;   /* true wind angle     - as Weather 'True Wind Dir'     */
+    --awa:   #ffcc80;   /* apparent wind angle - lighter tint of that orange    */
+    --tws:   #1e90ff;   /* true wind speed     - as Weather 'True Wind Speed'   */
+    --aws:   #8fc9ff;   /* apparent wind speed - lighter tint of that blue      */
+    --hdg:   #ffff00;   /* heading             - as Navigation 'Heading'        */
+    --cog:   #ffff99;   /* course over ground  - lighter tint of that yellow    */
+    /* motor readings, coloured as they are on the SevCon page */
+    --rpm:   #98fb98;   /* PaleGreen  - SevCon 'RPM'                            */
+    --cur:   #00ffff;   /* Cyan       - SevCon 'Current'                        */
+    --ctrl:  #ff0000;   /* Red        - SevCon 'Controller Temperature'         */
+    --mot:   #b22222;   /* FireBrick  - SevCon 'Motor Temperature'              */
+    --rule:  #262626;   /* panel divider           */
+    --label: #767676;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #000; color: #fff;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    user-select: none; -webkit-user-select: none;
+  }
+  #hud {
+    display: flex; flex-direction: column;
+    height: 100vh; height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .panel {
+    flex: 1 1 0;
+    display: flex; flex-direction: column;
+    border-bottom: 2px solid var(--rule);
+    min-height: 0;
+  }
+  .panel:last-child { border-bottom: none; }
+
+  /* label gutter | value | unit gutter */
+  .row {
+    flex: 1 1 0;
+    display: grid;
+    grid-template-columns: 4.2em 1fr 3.6em;
+    align-items: center;
+    min-height: 0;
+    font-size: clamp(9px, 1.7vh, 18px);   /* sets the gutter widths and label size */
+  }
+  .lbl, .unit {
+    color: var(--label);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 0 0.6em;
+  }
+  .lbl  { align-self: start; padding-top: 0.9em; }
+  .unit { align-self: end; padding: 0 0.5em 0.9em 0.3em; text-align: right; }
+
+  .cell { overflow: hidden; text-align: right; min-width: 0; }
+  .val {
+    display: inline-block;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    white-space: nowrap;
+    transition: opacity .2s;
+  }
+  .stale { opacity: 0.25; }
+  .row.off { display: none; }   /* the panel set that is not in use */
+
+  /* connection pip - only visible once the data stops arriving */
+  #pip {
+    position: fixed; top: calc(env(safe-area-inset-top) + 7px); left: 7px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #e8443a; opacity: 0; transition: opacity .3s;
+    pointer-events: none;
+  }
+  #pip.down { opacity: 1; }
+
+  @media (orientation: landscape) {
+    #hud { flex-direction: row; }
+    .panel { border-bottom: none; border-right: 2px solid var(--rule); }
+    .panel:last-child { border-right: none; }
+  }
+</style>
+</head>
+<body>
+<div id="pip"></div>
+<div id="hud">
+  <div class="panel">
+    <div class="row"><span class="lbl">SOG</span><span class="cell"><span class="val" id="sog" style="color:var(--sog)">--.-</span></span><span class="unit">kt</span></div>
+  </div>
+  <div class="panel">
+    <div class="row" data-mode="sail"><span class="lbl">TWA</span><span class="cell"><span class="val" id="twa" style="color:var(--twa)">---</span></span><span class="unit">deg</span></div>
+    <div class="row" data-mode="sail"><span class="lbl">AWA</span><span class="cell"><span class="val" id="awa" style="color:var(--awa)">---</span></span><span class="unit">deg</span></div>
+    <div class="row off" data-mode="motor"><span class="lbl">RPM</span><span class="cell"><span class="val" id="rpm" style="color:var(--rpm)">---</span></span><span class="unit">rpm</span></div>
+    <div class="row off" data-mode="motor"><span class="lbl">AMP</span><span class="cell"><span class="val" id="cur" style="color:var(--cur)">--.-</span></span><span class="unit">A</span></div>
+  </div>
+  <div class="panel">
+    <div class="row" data-mode="sail"><span class="lbl">TWS</span><span class="cell"><span class="val" id="tws" style="color:var(--tws)">--.-</span></span><span class="unit">kt</span></div>
+    <div class="row" data-mode="sail"><span class="lbl">AWS</span><span class="cell"><span class="val" id="aws" style="color:var(--aws)">--.-</span></span><span class="unit">kt</span></div>
+    <div class="row off" data-mode="motor"><span class="lbl">CTRL</span><span class="cell"><span class="val" id="ctrl" style="color:var(--ctrl)">---</span></span><span class="unit">&deg;C</span></div>
+    <div class="row off" data-mode="motor"><span class="lbl">MOT</span><span class="cell"><span class="val" id="mot" style="color:var(--mot)">---</span></span><span class="unit">&deg;C</span></div>
+  </div>
+  <div class="panel">
+    <div class="row"><span class="lbl">HDG</span><span class="cell"><span class="val" id="hdg" style="color:var(--hdg)">---</span></span><span class="unit">deg</span></div>
+    <div class="row"><span class="lbl">COG</span><span class="cell"><span class="val" id="cog" style="color:var(--cog)">---</span></span><span class="unit">deg</span></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLL_MS = 500;   // how often we ask the server for fresh values
+  var STALE_S = 15;    // dim a value once its last MQTT message is this old
+
+  var FIELDS = {
+    sog: fmt1,
+    twa: fmtSigned,
+    awa: fmtSigned,
+    tws: fmt1,
+    aws: fmt1,
+    hdg: fmt3,
+    cog: fmt3,
+    rpm: fmtSigned,     // shown instead of the wind panels while motoring
+    cur: fmt1,
+    ctrl: fmtSigned,
+    mot: fmtSigned
+  };
+  var BLANK = { sog: "--.-", tws: "--.-", aws: "--.-", cur: "--.-" };
+
+  function fmt1(v)      { return v.toFixed(1); }
+  function fmtSigned(v) { return String(Math.round(v)); }
+  function fmt3(v)      { return ("00" + ((((Math.round(v) % 360) + 360) % 360))).slice(-3); }
+
+  var el = {};
+  Object.keys(FIELDS).forEach(function (k) { el[k] = document.getElementById(k); });
+  var pip = document.getElementById("pip");
+
+  // Digits are sized to fill their cell: start from the row height, then shrink
+  // if the text is wider than the space between the label and unit gutters.
+  function fit(node) {
+    var cell = node.parentElement;
+    var row = cell.parentElement;
+    var h = row.clientHeight;          // the cell itself is only as tall as its text
+    var avail = cell.clientWidth;
+    if (!h || !avail) return;
+    var px = Math.floor(h * 0.82);
+    node.style.fontSize = px + "px";
+    var w = node.getBoundingClientRect().width;
+    if (w > avail) {
+      node.style.fontSize = Math.floor(px * avail / w) + "px";
+    }
+  }
+  function fitAll() { Object.keys(el).forEach(function (k) { fit(el[k]); }); }
+
+  // Panels 2 and 3 carry two sets of rows: the wind readings, and the motor
+  // readings shown in their place while the SevCon is turning. The server decides
+  // which set is live, and holds the swap for 10 s so a lumpy idle cannot flip the
+  // panels back and forth; only the rows on show are laid out.
+  var rows = document.querySelectorAll(".row[data-mode]");
+  var motorMode = false;
+  function setMode(motor) {
+    motor = !!motor;
+    if (motor === motorMode) return false;
+    motorMode = motor;
+    Array.prototype.forEach.call(rows, function (r) {
+      r.classList.toggle("off", (r.getAttribute("data-mode") === "motor") !== motor);
+    });
+    return true;
+  }
+
+  function paint(data) {
+    Object.keys(FIELDS).forEach(function (k) {
+      var f = data.fields[k];
+      var node = el[k];
+      var text = (f && f.v !== null && f.v !== undefined && isFinite(f.v))
+        ? FIELDS[k](f.v)
+        : (BLANK[k] || "---");
+      if (node.textContent !== text) {
+        node.textContent = text;
+        fit(node);
+      }
+      node.classList.toggle("stale", !f || f.age > STALE_S);
+    });
+  }
+
+  var failures = 0;
+  function tick() {
+    // the page can be served behind a proxy prefix (eg /race/hud or /nodered/hud), so
+    // build the data URL from wherever this page actually lives
+    var url = location.pathname.replace(/\/+$/, "") + "/data";
+    fetch(url, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        failures = 0;
+        pip.classList.remove("down");
+        var swapped = setMode(d.motor);
+        paint(d);
+        if (swapped) fitAll();   // rows that were hidden had no size to fit to
+      })
+      .catch(function () { if (++failures > 3) pip.classList.add("down"); });
+  }
+
+  fitAll();
+  window.addEventListener("resize", fitAll);
+  window.addEventListener("orientationchange", function () { setTimeout(fitAll, 250); });
+
+  setInterval(tick, POLL_MS);
+  tick();
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) tick(); });
+
+  // Keep the phone screen alive while the HUD is up.
+  //
+  // Inherited from the Node-RED page and still inert here: the Screen Wake Lock API
+  // requires a secure context and this app is served over plain HTTP, so the request
+  // below is refused and the screen sleeps mid-race. It is left in place because it
+  // costs nothing and starts working the day there is TLS.
+  //
+  // The fix DESIGN 9.8 calls for is a hidden looping muted video, which works on iOS
+  // and Android over plain HTTP and must be started from a user gesture. That needs a
+  // couple of kB of video vendored into static/, which is not in the repo yet. See the
+  // note at the end of this file.
+  var lock = null;
+  function keepAwake() {
+    if (!("wakeLock" in navigator) || lock) return;
+    navigator.wakeLock.request("screen").then(function (l) {
+      lock = l;
+      l.addEventListener("release", function () { lock = null; });
+    }).catch(function () {});
+  }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) keepAwake(); });
+
+  // tap anywhere for fullscreen
+  document.body.addEventListener("click", function () {
+    keepAwake();
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(function () {});
+    }
+  });
+}());
+</script>
+
+<!--
+  To finish the wake lock (DESIGN 9.8), on a machine that has ffmpeg:
+
+    ffmpeg -f lavfi -i color=c=black:s=64x64:d=2 -c:v libx264 -pix_fmt yuv420p \
+           -movflags +faststart -an static/wake.mp4
+
+  Then add, inside #hud or just after it:
+
+    <video id="wake" src="static/wake.mp4" muted loop playsinline
+           style="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+
+  and call wake.play() from the existing click handler and from visibilitychange,
+  alongside keepAwake(). It must start on a user gesture, which the tap-for-fullscreen
+  handler already is. Do not fetch the video from anywhere but static/: the Pi has no
+  internet.
+-->
+</body>
+</html>
