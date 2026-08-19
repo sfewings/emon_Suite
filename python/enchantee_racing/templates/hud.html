@@ -28,10 +28,11 @@
   server-side in store.py, where the original had it in the "Latest values as JSON"
   function node, so this page still just renders d.motor.
 
-  Not yet fixed, and inherited as-is: the wake lock below uses navigator.wakeLock,
-  which requires a secure context and so has never worked here, because there is no
-  TLS. DESIGN 9.8 calls for a hidden looping muted video instead, which needs a small
-  video vendored into static/. See the note at the bottom of this file.
+  Changed from the original, and the one behavioural fix in the port: the screen now
+  actually stays awake. The original called navigator.wakeLock, which requires a secure
+  context, so over plain HTTP it was refused and the screen slept mid-race. A hidden
+  looping muted video does work over plain HTTP on both iOS and Android (DESIGN 9.8).
+  Both are in place: the API when a secure context ever exists, the video meanwhile.
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
@@ -123,6 +124,17 @@
   }
   #pip.down { opacity: 1; }
 
+  /* The wake-lock video has to be playing and on the page, but never seen. Deliberately
+     not display:none and not visibility:hidden: a browser that considers the element
+     invisible is entitled to stop decoding it, and a video that is not being decoded is
+     not a reason to keep the backlight on. One transparent pixel behind everything. */
+  #wake {
+    position: fixed; top: 0; left: 0;
+    width: 1px; height: 1px;
+    opacity: 0; z-index: -1;
+    pointer-events: none;
+  }
+
   @media (orientation: landscape) {
     #hud { flex-direction: row; }
     .panel { border-bottom: none; border-right: 2px solid var(--rule); }
@@ -131,6 +143,10 @@
 </style>
 </head>
 <body>
+<!-- src is relative, not root-relative: this page is served at /race/hud behind nginx
+     and at /hud on its own port, and a leading slash breaks the prefixed case. -->
+<video id="wake" src="static/wake.mp4" muted loop playsinline webkit-playsinline
+       preload="auto" disableremoteplayback></video>
 <div id="pip"></div>
 <div id="hud">
   <div class="panel">
@@ -257,25 +273,43 @@
   tick();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) tick(); });
 
-  // Keep the phone screen alive while the HUD is up.
+  // Keep the phone screen alive while the HUD is up. Two mechanisms, because neither
+  // covers this deployment on its own.
   //
-  // Inherited from the Node-RED page and still inert here: the Screen Wake Lock API
-  // requires a secure context and this app is served over plain HTTP, so the request
-  // below is refused and the screen sleeps mid-race. It is left in place because it
-  // costs nothing and starts working the day there is TLS.
-  //
-  // The fix DESIGN 9.8 calls for is a hidden looping muted video, which works on iOS
-  // and Android over plain HTTP and must be started from a user gesture. That needs a
-  // couple of kB of video vendored into static/, which is not in the repo yet. See the
-  // note at the end of this file.
+  // The Screen Wake Lock API is the right one and is kept from the original page, but
+  // it requires a secure context: over plain HTTP the request is refused, so on this
+  // boat it has never done anything. It costs nothing and starts working the day there
+  // is TLS.
   var lock = null;
-  function keepAwake() {
+  function requestLock() {
     if (!("wakeLock" in navigator) || lock) return;
     navigator.wakeLock.request("screen").then(function (l) {
       lock = l;
       l.addEventListener("release", function () { lock = null; });
     }).catch(function () {});
   }
+
+  // What actually works here: a hidden looping muted video, which iOS and Android both
+  // treat as a reason to keep the backlight on, and which needs no secure context
+  // (DESIGN 9.8). It must be started from a user gesture, so the tap handler below is
+  // what gets it going; there is no way to start it unprompted and no point trying.
+  var wake = document.getElementById("wake");
+  var wakeStarted = false;
+  function playWake() {
+    if (!wake) return;
+    var playing = wake.play();
+    if (playing && playing.then) {
+      playing.then(function () { wakeStarted = true; }).catch(function () {});
+    }
+  }
+  if (wake) {
+    // iOS pauses the video when the page goes to the background and does not resume it
+    // when the page comes back. Only chase it once it has legitimately started, or a
+    // refused autoplay turns into a retry loop.
+    wake.addEventListener("pause", function () { if (wakeStarted) playWake(); });
+  }
+
+  function keepAwake() { requestLock(); playWake(); }
   document.addEventListener("visibilitychange", function () { if (!document.hidden) keepAwake(); });
 
   // tap anywhere for fullscreen
@@ -289,20 +323,16 @@
 </script>
 
 <!--
-  To finish the wake lock (DESIGN 9.8), on a machine that has ffmpeg:
+  static/wake.mp4, the wake-lock video, is 1527 bytes of black and was generated with:
 
-    ffmpeg -f lavfi -i color=c=black:s=64x64:d=2 -c:v libx264 -pix_fmt yuv420p \
+    ffmpeg -f lavfi -i color=c=black:s=64x64:r=1:d=2 \
+           -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p \
            -movflags +faststart -an static/wake.mp4
 
-  Then add, inside #hud or just after it:
-
-    <video id="wake" src="static/wake.mp4" muted loop playsinline
-           style="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none"></video>
-
-  and call wake.play() from the existing click handler and from visibilitychange,
-  alongside keepAwake(). It must start on a user gesture, which the tap-for-fullscreen
-  handler already is. Do not fetch the video from anywhere but static/: the Pi has no
-  internet.
+  If it is ever regenerated, keep those flags. Baseline profile and yuv420p are what
+  iOS will play inline, and it refuses anything else, silently: the symptom is a screen
+  that sleeps mid-race, which is not something anyone notices at the dock.
+  tests/test_hud.py checks the file's codec for exactly that reason.
 -->
 </body>
 </html>

@@ -378,6 +378,60 @@ def test_the_served_page_references_nothing_off_box():
     assert "url(" not in body  # no @font-face, no background image
 
 
+def test_the_page_carries_the_wake_lock_video():
+    """Screen Wake Lock needs a secure context and there is no TLS, so the screen is
+    kept awake by a hidden looping muted video instead (DESIGN 9.8)."""
+    body = _client()[0].get("/hud").get_data(as_text=True)
+    video = re.search(r"<video[^>]*id=\"wake\"[^>]*>", body)
+    assert video, "no wake-lock video element"
+    tag = video.group(0)
+    for attribute in ("muted", "loop", "playsinline"):
+        assert attribute in tag, attribute
+    # Relative, not root-relative: /static/... would break behind the /race/ prefix.
+    assert 'src="static/wake.mp4"' in tag, tag
+
+    # Hidden, but not display:none or visibility:hidden. A browser that considers the
+    # element invisible may stop decoding it, and a video that is not being decoded is
+    # not a reason to keep the backlight on. (.row.off legitimately uses display:none
+    # for the motor panel swap, so this looks at the #wake rule alone.)
+    rule = re.search(r"#wake\s*\{(.*?)\}", body, re.S)
+    assert rule, "no #wake style rule"
+    assert "display" not in rule.group(1) and "visibility" not in rule.group(1)
+    assert "opacity: 0" in rule.group(1)
+
+    assert "wake.play()" in body  # and it is started from the tap handler, a user gesture
+    assert "wakeLock" in body  # the real API is still there for the day there is TLS
+
+
+def test_the_wake_lock_video_is_served():
+    client, _ = _client()
+    response = client.get("/static/wake.mp4")
+    assert response.status_code == 200
+    assert response.mimetype == "video/mp4"
+    assert 500 < len(response.get_data()) < 20000  # a couple of kB of black
+
+
+def test_the_wake_lock_video_is_still_baseline_h264_with_no_audio():
+    """The one thing about this file that matters, and it fails silently if wrong.
+
+    iOS plays H.264 baseline inline and refuses other profiles without saying so, and
+    the symptom is a screen that sleeps mid-race rather than anything visible at the
+    dock. So the codec is pinned here rather than trusted to whoever regenerates it.
+    Generated with the ffmpeg command recorded at the end of templates/hud.html.
+    """
+    data = (ROOT / "static" / "wake.mp4").read_bytes()
+    assert data[4:8] == b"ftyp"
+    assert b"avc1" in data[8:32], "not an H.264 file"
+    assert data.find(b"moov") < data.find(b"mdat"), "not faststart, so it may not begin"
+    assert b"soun" not in data, "there must be no audio track"
+
+    avcc = data.find(b"avcC")
+    assert avcc > 0, "no H.264 configuration record"
+    profile, _compat, level = data[avcc + 5], data[avcc + 6], data[avcc + 7]
+    assert profile == 66, "profile %d is not Baseline (66)" % profile
+    assert level <= 30, "level %.1f is above 3.0" % (level / 10.0)
+
+
 def test_the_page_keeps_the_ios_and_safe_area_handling():
     """Ported deliberately, per DESIGN 9.1: the display lives on a phone in a cockpit."""
     body = _client()[0].get("/hud").get_data(as_text=True)
