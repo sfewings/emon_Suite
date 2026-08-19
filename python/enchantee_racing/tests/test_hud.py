@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))  # for standalone runs
 import app as app_module  # noqa: E402
 import mqtt_client  # noqa: E402
 import store as store_module  # noqa: E402
+from engine import nav  # noqa: E402
 from store import Store, derive, parse_number  # noqa: E402
 
 T0 = 1_755_500_000.0  # a fixed epoch, so no test depends on the wall clock
@@ -241,9 +242,94 @@ def test_every_topic_the_flow_subscribed_to_is_mapped():
     }
 
 
-def test_position_is_not_subscribed_yet():
-    """DESIGN build order step 5, and still the blocker for every race feature."""
-    assert not [t for t in mqtt_client.TOPICS if "position" in t]
+def test_position_is_subscribed_and_handled_apart_from_the_bare_numbers():
+    """DESIGN build order step 5, done: pyemonlib publishes it, and this reads it."""
+    assert mqtt_client.POSITION_TOPIC == "gps/position/0"
+    assert mqtt_client.POSITION_TOPIC not in mqtt_client.TOPICS  # not a bare number
+    assert mqtt_client.POSITION_TOPIC in mqtt_client.SUBSCRIPTIONS
+    assert set(mqtt_client.SUBSCRIPTIONS) == set(mqtt_client.TOPICS) | {mqtt_client.POSITION_TOPIC}
+
+
+def test_a_position_fix_is_parsed_and_stored():
+    """The payload exactly as pyemonlib.emon_mqtt.gpsMessage publishes it."""
+    s, _ = _store()
+    payload = b'{"lat":-32.0039101,"lon":115.8137589,"ts":1787132108}'
+    assert mqtt_client.handle_message(s, "gps/position/0", payload) is True
+    assert s.get(store_module.POSITION_KEY).v == {"lat": -32.0039101, "lon": 115.8137589}
+
+
+def test_a_position_fix_does_not_disturb_the_hud_payload():
+    """position is not a HUD field, and /hud/data must keep the shape it was ported at."""
+    s, _ = _store()
+    mqtt_client.handle_message(s, "gps/position/0", b'{"lat":-32.0,"lon":115.8,"ts":1}')
+    payload = derive(s.snapshot(), T0)
+    assert set(payload) == {"now", "motor", "fields"}
+    assert set(payload["fields"]) == set(store_module.FIELDS)
+    assert "position" not in payload["fields"]
+
+
+def test_a_garbled_fix_is_dropped_rather_than_believed():
+    """A wrong position is worse than none: it is what line-crossing tests run on."""
+    s, _ = _store()
+    for payload in [b"not json", b"[]", b'{"lat":-32.0}', b'{"lat":null,"lon":115.8}',
+                    b'{"lat":"south","lon":115.8}', b'{"lat":91.0,"lon":115.8}',
+                    b'{"lat":-32.0,"lon":181.0}', b'{"lat":1000.0,"lon":1000.0}', b""]:
+        assert mqtt_client.handle_message(s, "gps/position/0", payload) is False, payload
+    assert s.get(store_module.POSITION_KEY) is None
+
+
+def test_zero_zero_is_a_real_coordinate_and_is_kept():
+    """Nought degrees by nought is in the Gulf of Guinea, not a no-fix sentinel, and the
+    publisher's own comment says so. Filtering it would be inventing a rule."""
+    s, _ = _store()
+    assert mqtt_client.handle_message(s, "gps/position/0", b'{"lat":0.0,"lon":0.0}') is True
+    assert s.get(store_module.POSITION_KEY).v == {"lat": 0.0, "lon": 0.0}
+
+
+def test_position_goes_stale_at_five_seconds_not_fifteen():
+    """A bearing off a 15 s old fix at 6 knots is 46 m out (DESIGN 9.5)."""
+    s, _ = _store()
+    mqtt_client.handle_message(s, "gps/position/0", b'{"lat":-32.0,"lon":115.8}', ts=T0)
+    cutoff = store_module.POSITION_STALE_S
+    assert cutoff == 5.0 and cutoff < store_module.STALE_S
+    assert store_module.derive_position(s.snapshot(), T0 + cutoff - 0.1)["stale"] is False
+    assert store_module.derive_position(s.snapshot(), T0 + cutoff + 0.1)["stale"] is True
+    assert store_module.derive_position(s.snapshot(), T0 + 9.0)["age"] == 9.0
+
+
+def test_no_fix_yet_reports_none_rather_than_a_guess():
+    """The publisher omits the topic entirely when there is no fix, so this is the
+    no-fix path as well as the cold-start one."""
+    assert store_module.derive_position(Store().snapshot(), T0) is None
+
+
+def test_api_state_carries_the_hud_payload_and_the_position():
+    store, _ = _store()
+    store.set("sog", 5.58)
+    mqtt_client.handle_message(store, "gps/position/0",
+                               b'{"lat":-32.0039101,"lon":115.8137589,"ts":1787132108}')
+    client, _ = _client(store)
+    response = client.get("/api/state")
+    assert response.status_code == 200
+    state = json.loads(response.get_data(as_text=True))
+    assert set(state) == {"now", "motor", "fields", "position"}
+    assert state["fields"]["sog"]["v"] == 5.58
+    assert state["position"]["v"] == {"lat": -32.0039101, "lon": 115.8137589}
+    assert state["position"]["stale"] is False
+
+    # and /hud/data is unchanged by any of it
+    hud = json.loads(client.get("/hud/data").get_data(as_text=True))
+    assert set(hud) == {"now", "motor", "fields"}
+
+
+def test_a_fix_is_a_position_engine_nav_can_use_directly():
+    """as_latlon takes the stored dict, so nothing has to convert between the two."""
+    s, _ = _store()
+    mqtt_client.handle_message(s, "gps/position/0", b'{"lat":-32.0039101,"lon":115.8137589}')
+    fix = nav.as_latlon(s.get(store_module.POSITION_KEY).v)
+    assert fix == nav.LatLon(-32.0039101, 115.8137589)
+    # About 250 m from Club Buoy 32A, which is where the boat was at 13:35 that day.
+    assert nav.distance_m(fix, nav.LatLon(-32.002750, 115.812812)) < 400.0
 
 
 def test_handle_message_stores_under_the_mapped_key():

@@ -33,9 +33,14 @@ STALE_S = 15.0
 """Wind and motor readings are dimmed past this age (DESIGN 9.5). Applied by the
 page, not here: the payload reports age and lets the display decide."""
 
+POSITION_KEY = "position"
+"""Where a gps/position/0 fix lands. Its value is a {"lat": .., "lon": ..} dict, not a
+number, which is why it is not one of FIELDS and not on the HUD payload."""
+
 POSITION_STALE_S = 5.0
-"""Position blanks rather than dims past this age, and the leg engine stops
-evaluating advance (DESIGN 9.5). Here for when position is wired up."""
+"""Position blanks rather than dims past this age, and the leg engine stops evaluating
+advance (DESIGN 9.5). A bearing computed from a 15 s old fix at 6 knots is 46 m out, so
+navigation cannot share the 15 s threshold that suits wind and motor readings."""
 
 RPM_DEADBAND = 5.0
 """Rpm this close to zero counts as stopped."""
@@ -126,8 +131,21 @@ class Store:
             return Snapshot(dict(self._values), self._motor_last)
 
     def payload(self, now: Optional[float] = None) -> dict:
-        """The {now, motor, fields} document the pages poll for."""
+        """The {now, motor, fields} document the HUD polls for."""
         return derive(self.snapshot(), self._clock() if now is None else now)
+
+    def state(self, now: Optional[float] = None) -> dict:
+        """The HUD payload plus position, for /api/state.
+
+        Kept separate from payload() so /hud/data stays the exact shape the Node-RED
+        flow served, which is what makes the two comparable side by side during the port
+        (DESIGN 13 step 3). Race state joins this one, not that one (DESIGN 4).
+        """
+        now = self._clock() if now is None else now
+        snapshot = self.snapshot()
+        state = derive(snapshot, now)
+        state["position"] = derive_position(snapshot, now)
+        return state
 
 
 def derive(snapshot: Snapshot, now: float) -> dict:
@@ -182,3 +200,21 @@ def derive(snapshot: Snapshot, now: float) -> dict:
     # now is milliseconds, matching the Node-RED payload exactly so the two /data
     # responses can be diffed side by side during the port (DESIGN 13 step 3).
     return {"now": int(now * 1000), "motor": motor, "fields": fields}
+
+
+def derive_position(snapshot: Snapshot, now: float) -> Optional[dict]:
+    """The latest fix as {v: {lat, lon}, age, stale}, or None if none has arrived.
+
+    `stale` carries the 5 s cutoff rather than leaving each caller to apply it. It is
+    server state on purpose: every device must agree about whether the fix is good, and
+    the leg engine's rule that it stops evaluating advance past the cutoff has to be the
+    same rule the display uses to blank the numbers (DESIGN 9.5, 11.2).
+
+    Blanking, not dimming, is the display treatment. A dimmed number still reads as a
+    number to someone glancing at it in spray.
+    """
+    reading = snapshot.values.get(POSITION_KEY)
+    if reading is None or not isinstance(reading.v, dict):
+        return None
+    age = now - reading.t
+    return {"v": dict(reading.v), "age": age, "stale": age > POSITION_STALE_S}

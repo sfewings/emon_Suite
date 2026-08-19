@@ -4,10 +4,24 @@ Topics are confirmed from the Sailing HUD tab of docs/reference/flows.json and l
 in DESIGN 3. Payloads from existing devices are bare numbers, one value per topic:
 speeds in knots, angles in degrees. Do not change that for existing topics.
 
-gps/position/0 is deliberately absent. It is the one topic that carries a JSON object
-rather than a bare number, nothing reads position yet, and wiring it up before there is
-a leg engine to use it would be plumbing with no consumer. It is DESIGN build order
-step 5 and still the blocker for every race feature.
+gps/position/0 is the one exception, and the one topic that carries a JSON object:
+
+    {"lat":-32.0039101,"lon":115.8137589,"ts":1787132108}
+
+One topic with both values, because two separate topics can be sampled either side of a
+fix boundary and give a position that is half of one fix and half of the next. Near a
+mark that is a few metres; on a line-crossing test it can put the boat on the wrong side
+of the finish (DESIGN 3). It is published by pyemonlib.emon_mqtt.gpsMessage, verified
+arriving off a replay of the 16 August 2026 Frostbite recording at about 1 Hz.
+
+The payload's ts is the receiving host's clock, not the time of the fix, as the comment
+on the publishing side says. Staleness here counts from arrival like every other reading:
+using ts would measure the clock skew between publisher and app rather than fix age, and
+the 5 s position cutoff is about how old the fix is (DESIGN 9.5).
+
+There is no sentinel to check for. The publisher skips the topic entirely when there is
+no fix, so a lost fix simply ages out past the cutoff, which is exactly the wanted
+behaviour.
 
 The demo driver at the bottom is a port of the two disabled inject nodes on the same
 tab. Driving the display without the boat is how the motor panel swap gets checked at
@@ -22,7 +36,7 @@ import math
 import threading
 from typing import Any, Callable, Optional
 
-from store import Store, parse_number
+from store import POSITION_KEY, Store, parse_number
 
 log = logging.getLogger(__name__)
 
@@ -41,18 +55,59 @@ TOPICS = {
     "sevCon/temperature/motor/0": "mot",
 }
 
+POSITION_TOPIC = "gps/position/0"
+"""Handled apart from TOPICS because its payload is a JSON object, not a bare number."""
+
+SUBSCRIPTIONS = tuple(sorted(TOPICS)) + (POSITION_TOPIC,)
+
 DEFAULT_BROKER = "localhost"
 DEFAULT_PORT = 1883
 DEFAULT_KEEPALIVE = 60
 
 
+def parse_position(payload: Any) -> Optional[dict]:
+    """Parse a gps/position payload into {"lat": .., "lon": ..}, or None if unusable.
+
+    Rejects anything that is not a JSON object with two coordinates in range. The
+    publisher already skips the topic when there is no fix, so this is a guard against a
+    garbled message rather than the normal no-fix path, and a garbled fix is the one
+    reading that must never reach a line-crossing test.
+    """
+    if isinstance(payload, (bytes, bytearray)):
+        payload = payload.decode("utf-8", "replace")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        lat = float(payload["lat"])
+        lon = float(payload["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if lat != lat or lon != lon:  # NaN
+        return None
+    if abs(lat) > 90.0 or abs(lon) > 180.0:
+        return None
+    return {"lat": lat, "lon": lon}
+
+
 def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] = None) -> bool:
     """Route one message into the store. Returns whether it was kept.
 
-    A topic that is not ours, or a payload with no number in front of it, is dropped
-    silently: the broker carries far more than this app cares about, and a bad reading
-    must not take the network loop down with it.
+    A topic that is not ours, or a payload that does not parse, is dropped silently: the
+    broker carries far more than this app cares about, and a bad reading must not take
+    the network loop down with it.
     """
+    if topic == POSITION_TOPIC:
+        position = parse_position(payload)
+        if position is None:
+            return False
+        store.set(POSITION_KEY, position, ts)
+        return True
+
     key = TOPICS.get(topic)
     if key is None:
         return False
@@ -95,9 +150,9 @@ class MqttClient:
             return
         # Subscribed on every connect, not once at startup, so a broker restart does
         # not leave the page quietly frozen on its last values.
-        for topic in sorted(TOPICS):
+        for topic in SUBSCRIPTIONS:
             client.subscribe(topic)
-        log.info("mqtt connected to %s:%s, %d topics", self.broker, self.port, len(TOPICS))
+        log.info("mqtt connected to %s:%s, %d topics", self.broker, self.port, len(SUBSCRIPTIONS))
 
     def _on_disconnect(self, client, userdata, rc) -> None:
         log.warning("mqtt disconnected, rc=%s. paho will retry", rc)

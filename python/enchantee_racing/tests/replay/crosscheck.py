@@ -53,7 +53,8 @@ def main(argv=None):
     parser.add_argument("file")
     parser.add_argument("--at", default="13:22:00", metavar="HH:MM:SS",
                         help="the moment the replay stopped, on the log's clock")
-    parser.add_argument("--url", default="http://127.0.0.1:5002/hud/data")
+    parser.add_argument("--url", default="http://127.0.0.1:5002/api/state",
+                        help="/api/state also carries position; /hud/data does not")
     args = parser.parse_args(argv)
 
     at = args.at if args.at.count(":") == 2 else args.at + ":00"
@@ -101,9 +102,35 @@ def main(argv=None):
         print("%-6s %12.2f %14.2f %7.1fs  %s" % (name, want, got, served["age"],
                                                  "ok" if ok else "MISMATCH"))
 
+    # Position travels as one JSON object on gps/position/0 rather than as a pair of
+    # numbers, so it is checked against the same gps record the speed and course came
+    # from: all three are the same fix, which is the entire point of the combined topic.
+    checked = len(expected)
+    if "position" in payload:
+        served = payload["position"]
+        want_lat, want_lon = float(gps[3]), float(gps[4])
+        checked += 1
+        if served is None:
+            print("%-6s %12s %14s %8s  MISSING" % ("pos", "%.5f" % want_lat, "null", "-"))
+            wrong += 1
+        else:
+            got = served["v"]
+            ok = (math.isclose(got["lat"], want_lat, abs_tol=1e-6)
+                  and math.isclose(got["lon"], want_lon, abs_tol=1e-6))
+            wrong += 0 if ok else 1
+            print("%-6s %12s %14s %7.1fs  %s"
+                  % ("pos", "%.5f,%.5f" % (want_lat, want_lon),
+                     "%.5f,%.5f" % (got["lat"], got["lon"]), served["age"],
+                     "ok" if ok else "MISMATCH"))
+            print("%-6s %12s %14s %8s  %s"
+                  % ("", "", "stale=%s" % served["stale"], "",
+                     "(blanks past %g s)" % 5.0))
+    else:
+        print("pos    (not in this payload; use --url .../api/state to include it)")
+
     print()
     print("motor panels: %s" % payload["motor"])
-    print("%d of %d fields disagree" % (wrong, len(expected)))
+    print("%d of %d fields disagree" % (wrong, checked))
     return 1 if wrong else 0
 
 

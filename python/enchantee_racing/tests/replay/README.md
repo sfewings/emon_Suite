@@ -51,14 +51,17 @@ panels hold for the two hours between. That is DESIGN 11.8 happening on real dat
 
 ```
 python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT -x 120 --stop 13:22
-python tests/replay/crosscheck.py tests/data/20260816_Frostbite_3.TXT --at 13:22 \
-       --url http://127.0.0.1:5002/hud/data
+python tests/replay/crosscheck.py tests/data/20260816_Frostbite_3.TXT --at 13:22
 ```
 
-`crosscheck.py` finds the last record of each kind before the cutoff and asserts
-`/hud/data` is carrying exactly those numbers, TWA and AWA derivations included. It
-covers the log file, the C++ `EmonSerial` parse, `emon_mqtt`'s topic mapping, mosquitto,
-the subscription, `store.derive` and the served JSON in one command.
+`crosscheck.py` finds the last record of each kind before the cutoff and asserts the app
+is carrying exactly those numbers, the TWA and AWA derivations and the position fix
+included. It covers the log file, the C++ `EmonSerial` parse, `emon_mqtt`'s topic
+mapping, mosquitto, the subscription, `store.derive` and the served JSON in one command.
+
+It defaults to `/api/state`, which carries position; `--url .../hud/data` checks the HUD
+payload alone, which by design does not. Both are served, and `/hud/data` deliberately
+keeps the exact shape the Node-RED flow served so the two can be compared field by field.
 
 ## Why not emonCSVToMQTT.py
 

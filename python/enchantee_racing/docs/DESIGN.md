@@ -90,13 +90,17 @@ knots, angles in degrees.
 | `sevCon/temperature/controller/0` | controller temperature                          |
 | `sevCon/temperature/motor/0`      | motor temperature                               |
 
-### Blocking gap: there is no position topic
+### The position topic, which was the blocking gap and is now published
 
 A search of all 438 nodes across every tab of `flows.json` found no latitude or
-longitude anywhere. GPS publishes speed and course only. Every race feature
-depends on position, so this is action item zero.
+longitude anywhere: GPS published speed and course only, and every race feature
+depends on position, which made it action item zero.
 
-Add:
+**Resolved.** `pyemonlib.emon_mqtt.gpsMessage` now publishes it, alongside the
+separate `gps/latitude` and `gps/longitude` topics it already had. Verified
+arriving at about 1 Hz off a replay of the 16 August 2026 Frostbite recording,
+and read by `mqtt_client.py` into the store. The payload is exactly as specified
+below.
 
 ```
 gps/position/0    {"lat":-32.001948,"lon":115.812006,"ts":1755500000}
@@ -107,8 +111,22 @@ either side of a fix boundary, giving a position that is half of one fix and hal
 of the next. Near a mark that is a few metres and tolerable; on a line-crossing
 test it can put the boat on the wrong side.
 
-Open question: what publishes `gps/speed/0`, and is adding position a firmware
-change or a bridge change?
+Answered: it was a bridge change, not a firmware one. `gps/speed/0` comes from
+`pyemonlib.emon_mqtt`, which parses the boat's serial stream through the same
+`EmonSerial` C++ code the firmware uses, so the combined topic is assembled there
+from the latitude and longitude that were already in `PayloadGPS`.
+
+Two consequences for anything consuming it:
+
+- `ts` in the payload is the **receiving host's clock, not the time of the fix**.
+  `PayloadGPS` carries no time field, so nothing better is available at that layer.
+  Staleness must therefore count from arrival, like every other reading; using
+  `ts` would measure clock skew between publisher and app rather than fix age.
+- The topic is **skipped entirely when there is no fix**, rather than carrying a
+  sentinel. TinyGPS returns 1000.0 for an unknown angle and the transmitter sends
+  whether or not it has a position, so the publisher range-checks and stays quiet.
+  A lost fix therefore ages out past the 5 s cutoff on its own, which is exactly
+  the wanted behaviour and means no consumer needs a sentinel check.
 
 ### Derived values
 
@@ -764,7 +782,9 @@ is sailed.
    `/nodered/hud` with the boat running.
 4. Disable the Node-RED Sailing HUD tab, leaving it in the flow as a fallback for
    one season.
-5. Add position publishing to the GPS source. Still blocking.
+5. ~~Add position publishing to the GPS source.~~ Done: `pyemonlib.emon_mqtt`
+   publishes `gps/position/<subnode>`, and `mqtt_client.py` reads it. No longer
+   blocking, which unblocks 6.
 6. Race state machine, driven by replayed tracks before it is driven by the boat.
 7. Countdown and pre-start.
 8. Flags and course selection UI.

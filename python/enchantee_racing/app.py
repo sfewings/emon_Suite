@@ -95,6 +95,15 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     def hud_data():
         return jsonify(store.payload())
 
+    @app.get("/api/state")
+    def api_state():
+        """HUD fields plus position. Race state joins this payload, not /hud/data.
+
+        One GET per 500 ms is meant to carry everything a device needs, so all of them
+        converge within half a second and no page has to poll twice (DESIGN 4).
+        """
+        return jsonify(store.state())
+
     return app
 
 
