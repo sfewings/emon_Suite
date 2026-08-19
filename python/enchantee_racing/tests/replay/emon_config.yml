@@ -1,0 +1,31 @@
+# Minimal node settings for replay. Not the boat's configuration.
+#
+# emon_mqtt looks node settings up for one reason on the records a race log contains:
+# to name the rssi/<node> topic when a record carries an RSSI suffix. In the Frostbite
+# recording only the gps subnode 1 records do. Without a name for that subnode the
+# publish raises inside emon_mqtt, which catches it and prints an exception per record,
+# so this file exists purely to keep 1954 harmless tracebacks off the console.
+#
+# Nothing the racing app subscribes to depends on any of this.
+
+gps:
+  0:
+    name: Enchantee GPS
+  1:
+    name: Enchantee GPS 2
+
+imu:
+  0:
+    name: Enchantee IMU
+
+mwv:
+  0:
+    name: Enchantee anemometer apparent
+  1:
+    name: Enchantee anemometer apparent compass
+  2:
+    name: Enchantee anemometer true
+
+svc:
+  0:
+    name: Enchantee SevCon

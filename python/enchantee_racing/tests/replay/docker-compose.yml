@@ -1,0 +1,18 @@
+# A broker to replay recorded races through. Nothing else: the app runs from the
+# checkout so it can be edited between runs, which is the point of replaying.
+#
+#   docker compose -f tests/replay/docker-compose.yml up -d
+#   docker compose -f tests/replay/docker-compose.yml down
+#
+# Port 1883 on the host, so the app's default --broker localhost reaches it and the
+# recorded data arrives on exactly the topics the boat publishes.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: enchantee_replay_mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
