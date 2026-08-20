@@ -7,7 +7,9 @@ which is how you find out whether the rules add up to a race. DESIGN 11 says the
 module exists to be replayable; a state machine tested only against positions I invented
 would be testing my imagination.
 
-The replay skips if the recording is absent, since that file is not in the repository yet.
+The recording is committed, at tests/data/, so the replay always runs. It is the test
+that covers the riskiest logic in the project, and one that silently skips itself is
+worse than one that fails.
 """
 
 import json
@@ -526,6 +528,10 @@ def test_the_config_comes_from_the_file_and_ignores_its_own_notes():
 
 
 def _read_track(path, start="13:30:00"):
+    assert Path(path).exists(), (
+        "%s is missing. It is committed to the repository, so its absence is a broken "
+        "checkout rather than an optional extra: this is the test that covers finish "
+        "detection, and it must fail loudly rather than pass quietly." % path)
     fixes = []
     for line in open(path, encoding="utf-8", errors="replace"):
         f = line.rstrip().split(",")
@@ -567,10 +573,6 @@ def test_replaying_a_real_race_works_through_every_leg_in_order():
     Frostbite course 3, 16 August 2026, fed through fix by fix from the 13:30 gun. Nine
     advances, in order, no leg skipped and none repeated, and the finish armed at the end.
     """
-    if not TRACK.exists():
-        print("skipped: %s is not in the repository" % TRACK.name)
-        return
-
     context = _context()
     state, events = _replay(context)
 
@@ -594,10 +596,6 @@ def test_the_replayed_race_finishes_once_on_the_fix_the_boat_crossed():
     Worth keeping in mind next time something here looks like a detection bug. The engine
     was right, the rule was right, and the mark was wrong.
     """
-    if not TRACK.exists():
-        print("skipped: %s is not in the repository" % TRACK.name)
-        return
-
     context = _context()
     state, events = _replay(context)
 
@@ -629,10 +627,6 @@ def test_the_replay_advances_close_to_where_the_boat_actually_rounded():
     The sequence recovers on its own: the engine spends the next leg pointing at Club Buoy
     while the boat finishes with Hallmark, and everything after that lines up again.
     """
-    if not TRACK.exists():
-        print("skipped: %s is not in the repository" % TRACK.name)
-        return
-
     rounded_at = {1: "13:51:38", 2: "14:05:13", 3: "14:11:23", 4: "14:13:17", 5: "14:21:08",
                   6: "14:50:18", 7: "14:59:57", 8: "15:07:09", 9: "15:14:09"}
 
