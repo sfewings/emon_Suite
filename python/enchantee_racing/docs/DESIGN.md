@@ -485,7 +485,9 @@ node at `/hud`, polling `/hud/data` every 500 ms. It is good. Port it close to
 verbatim and keep:
 
 - The `{v, age}` envelope and stale handling.
-- `location.pathname.replace(/\/+$/, "") + "/data"` for proxy-prefix safety.
+- A data URL built from `location.pathname`, for proxy-prefix safety. The original
+  polled `+ "/data"`; the port polls `/api/state` from the same derived base, since
+  the racing panel needs race state (9.10). No absolute path either way.
 - `env(safe-area-inset-*)`, `apple-mobile-web-app-capable`,
   `overscroll-behavior: none`, `user-select: none`, `touch-action: manipulation`.
 - The `fit()` function that sizes digits to their cell.
@@ -692,6 +694,43 @@ foreground.
 Every device renders the same server state and any device can drive it. There is
 no primary and no pairing step. A device that reloads mid-race picks up the
 current state on its first poll.
+
+### 9.10 The HUD while racing
+
+While the race is in the racing mode, the HUD's fourth panel stops showing HDG and
+COG and shows the mark the boat is sailing to instead:
+
+- **Next mark name**, and **distance** to it.
+- **Bearing**, **COG**, **off the bow**.
+
+The reason is that a phone on the HUD is a phone that cannot see the race screen,
+and the two things the crew wants at once are the instruments and the mark. Trading
+the fourth panel for it costs the least: HDG is the reading least missed while
+racing, because COG stands in for it whenever the boat is moving, and a compass
+heading does not answer any question being asked on a beat. So HDG goes and COG
+stays, and it stays because bearing is only useful next to the number you compare
+it against (9.3).
+
+Only in the racing mode. Idle, pre-start and finished keep HDG and COG, because
+before the gun the heading is what you sit on while you wait for it, and after the
+finish there is no mark to show.
+
+Distance, bearing and off the bow follow the same rules as on the race screen: the
+distance switches from metres to nautical miles at 500 m (9.4), the angles are true
+and the relative one is signed with port negative (9.3), and a position older than
+5 s blanks all three rather than dimming them (9.5). COG keeps the 15 s dim it has
+always had, because it is an instrument reading rather than a derived one.
+
+Both row sets are pre-rendered and swapped by a class, which is the idiom the motor
+panels already use (9.1): no DOM rebuilding, and a transition mid-race costs no
+relayout of the screen.
+
+This is the one thing the HUD needs that `/hud/data` does not carry, so the page
+polls `/api/state` instead, which is where race state lives (section 4). The
+prefix-relative URL is unchanged in spirit, built from `location.pathname` so the
+page still works behind `/race/` and on its own port alike. `/hud/data` stays
+exactly the shape the Node-RED flow served, because that is what makes the port
+comparable side by side, and nothing needs it to change.
 
 ## 10. Pre-start behaviour
 

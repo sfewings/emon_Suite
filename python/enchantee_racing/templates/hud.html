@@ -57,6 +57,7 @@
     --aws:   #8fc9ff;   /* apparent wind speed - lighter tint of that blue      */
     --hdg:   #ffff00;   /* heading             - as Navigation 'Heading'        */
     --cog:   #ffff99;   /* course over ground  - lighter tint of that yellow    */
+    --mark:  #ffffff;   /* next mark name      - as the race screen (DESIGN 9.10) */
     /* motor readings, coloured as they are on the SevCon page */
     --rpm:   #98fb98;   /* PaleGreen  - SevCon 'RPM'                            */
     --cur:   #00ffff;   /* Cyan       - SevCon 'Current'                        */
@@ -120,6 +121,33 @@
   .stale { opacity: 0.25; }
   .row.off { display: none; }   /* the panel set that is not in use */
 
+  /* The racing rows in panel 4, which carry more than one reading each and so cannot use
+     the label | value | unit gutters the rest of the page is built on (DESIGN 9.10). Each
+     value keeps .val directly inside a .cell, because fit() sizes a value against its
+     cell's width and its row's height and there is no reason to teach it a second shape.
+
+     The label sits above the value with the unit at the other end of the same line, so
+     the unit still reads as a unit without needing a gutter of its own. */
+  .row.multi { grid-template-columns: repeat(3, 1fr); }
+  .row.multi.two { grid-template-columns: 1.7fr 1fr; }
+  .row.multi .cell {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 0.6em; min-width: 0;
+  }
+  .row.multi .sub {
+    display: flex; justify-content: space-between; gap: .4em;
+    color: var(--label); letter-spacing: .1em; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden;
+  }
+  /* The mark name is a name, not a number: it is left-aligned, it is not tabular, and it
+     ellipsises rather than shrinking away to nothing on a long one. */
+  .row.multi .cell.name { text-align: left; }
+  .row.multi .val.name {
+    font-variant-numeric: normal; font-feature-settings: normal;
+    font-size: clamp(15px, 3.6vh, 44px);
+    overflow: hidden; text-overflow: ellipsis;
+  }
+
   /* connection pip - only visible once the data stops arriving */
   #pip {
     position: fixed; top: calc(env(safe-area-inset-top) + 7px); left: 7px;
@@ -168,6 +196,10 @@
     #hud { flex-direction: row; }
     .panel { border-bottom: none; border-right: 2px solid var(--rule); }
     .panel:last-child { border-right: none; }
+    /* Four panels across means the racing cells are a quarter of the screen wide, split
+       three ways. Tighten the labels rather than let "off the bow" clip (DESIGN 9.10). */
+    .row.multi .sub { font-size: .88em; letter-spacing: .04em; padding: 0; }
+    .row.multi .cell { padding: 0 .35em; }
   }
 </style>
 </head>
@@ -198,9 +230,26 @@
     <div class="row off" data-mode="motor"><span class="lbl">CTRL</span><span class="cell"><span class="val" id="ctrl" style="color:var(--ctrl)">---</span></span><span class="unit">&deg;C</span></div>
     <div class="row off" data-mode="motor"><span class="lbl">MOT</span><span class="cell"><span class="val" id="mot" style="color:var(--mot)">---</span></span><span class="unit">&deg;C</span></div>
   </div>
+  <!-- Panel 4 carries two row sets, the way panels 2 and 3 do. HDG and COG whenever there
+       is no race running, and the mark the boat is sailing to while there is: a phone on
+       the HUD is a phone that cannot see the race screen, and the instruments and the mark
+       are the two things wanted at once. HDG is what that costs, because COG stands in for
+       it whenever the boat is moving (DESIGN 9.10). -->
   <div class="panel">
-    <div class="row"><span class="lbl">HDG</span><span class="cell"><span class="val" id="hdg" style="color:var(--hdg)">---</span></span><span class="unit">deg</span></div>
-    <div class="row"><span class="lbl">COG</span><span class="cell"><span class="val" id="cog" style="color:var(--cog)">---</span></span><span class="unit">deg</span></div>
+    <div class="row" data-race="off"><span class="lbl">HDG</span><span class="cell"><span class="val" id="hdg" style="color:var(--hdg)">---</span></span><span class="unit">deg</span></div>
+    <div class="row" data-race="off"><span class="lbl">COG</span><span class="cell"><span class="val" id="cog" style="color:var(--cog)">---</span></span><span class="unit">deg</span></div>
+    <div class="row multi two off" data-race="on">
+      <span class="cell name"><span class="sub"><span>next mark</span></span><span class="val name" id="r-mark" style="color:var(--mark)">---</span></span>
+      <span class="cell"><span class="sub"><span>distance</span><span id="r-dist-unit">m</span></span><span class="val" id="r-dist" style="color:var(--sog)">---</span></span>
+    </div>
+    <!-- No "deg" on these three. All three are degrees, the numbers say so on sight, and
+         in landscape the four panels sit side by side where "off the bow" needs every
+         pixel of its cell. The distance keeps its unit, because m and nm both occur. -->
+    <div class="row multi off" data-race="on">
+      <span class="cell"><span class="sub"><span>bearing</span></span><span class="val" id="r-brg" style="color:var(--hdg)">---</span></span>
+      <span class="cell"><span class="sub"><span>cog</span></span><span class="val" id="r-cog" style="color:var(--cog)">---</span></span>
+      <span class="cell"><span class="sub"><span>off the bow</span></span><span class="val" id="r-rel" style="color:var(--hdg)">---</span></span>
+    </div>
   </div>
 </div>
 
@@ -242,14 +291,22 @@
     var h = row.clientHeight;          // the cell itself is only as tall as its text
     var avail = cell.clientWidth;
     if (!h || !avail) return;
-    var px = Math.floor(h * 0.82);
+    // A racing row spends part of its height on the label above the value, so its numbers
+    // get a smaller share of the row than the full-width ones do (DESIGN 9.10).
+    var px = Math.floor(h * (row.classList.contains("multi") ? 0.5 : 0.82));
     node.style.fontSize = px + "px";
     var w = node.getBoundingClientRect().width;
     if (w > avail) {
       node.style.fontSize = Math.floor(px * avail / w) + "px";
     }
   }
-  function fitAll() { Object.keys(el).forEach(function (k) { fit(el[k]); }); }
+  function fitAll() {
+    Object.keys(el).forEach(function (k) { fit(el[k]); });
+    // the racing rows too, when they are the set on show (DESIGN 9.10)
+    Object.keys(race).forEach(function (k) {
+      if (fittable(race[k])) fit(race[k]);
+    });
+  }
 
   // Panels 2 and 3 carry two sets of rows: the wind readings, and the motor
   // readings shown in their place while the SevCon is turning. The server decides
@@ -265,6 +322,70 @@
       r.classList.toggle("off", (r.getAttribute("data-mode") === "motor") !== motor);
     });
     return true;
+  }
+
+  // Panel 4 swaps the same way: HDG and COG when no race is running, the mark being
+  // sailed to while one is (DESIGN 9.10). Racing only, so the heading is still there to
+  // sit on before the gun and after the finish.
+  var raceRows = document.querySelectorAll(".row[data-race]");
+  var raceMode = false;
+  function setRacing(racing) {
+    racing = !!racing;
+    if (racing === raceMode) return false;
+    raceMode = racing;
+    Array.prototype.forEach.call(raceRows, function (r) {
+      r.classList.toggle("off", (r.getAttribute("data-race") === "on") !== racing);
+    });
+    return true;
+  }
+
+  // The racing readings. Kept out of FIELDS because they are not {v, age} instrument
+  // readings: they are derived from the race and the fix, and they blank rather than dim
+  // when the fix goes stale (DESIGN 9.5).
+  var race = {};
+  ["r-mark", "r-dist", "r-dist-unit", "r-brg", "r-cog", "r-rel"].forEach(function (k) {
+    race[k] = document.getElementById(k);
+  });
+  var NM_ABOVE_M = 500, METRES_TO_NM = 1 / 1852;
+
+  // The mark name is sized by CSS and ellipsised, not fitted: fit() shrinks text until it
+  // fits its cell, which is right for a three-digit number and useless for a long name.
+  function fittable(node) {
+    return node.classList.contains("val") && !node.classList.contains("name");
+  }
+
+  function put(node, text) {
+    if (node.textContent === text) return;
+    node.textContent = text;
+    if (fittable(node)) fit(node);
+  }
+
+  function paintRace(data) {
+    var r = data.race || null;
+    // nav is null before the first fix and once it is more than 5 s old, which is exactly
+    // when none of these three can be known.
+    var nav = (r && r.nav) || null;
+    put(race["r-mark"], (r && r.leg_name) || "---");
+    if (nav && nav.distance_m !== null && nav.distance_m !== undefined) {
+      // metres under 500, nautical miles above, as the race screen (DESIGN 9.4)
+      if (nav.distance_m < NM_ABOVE_M) {
+        put(race["r-dist"], String(Math.round(nav.distance_m)));
+        put(race["r-dist-unit"], "m");
+      } else {
+        put(race["r-dist"], (nav.distance_m * METRES_TO_NM).toFixed(2));
+        put(race["r-dist-unit"], "nm");
+      }
+    } else {
+      put(race["r-dist"], "---");
+    }
+    put(race["r-brg"], nav ? fmt3(nav.bearing) : "---");
+    put(race["r-rel"], nav ? fmtSigned(nav.relative) : "---");
+
+    // COG is an instrument reading here, not a derived one, so it keeps the 15 s dim.
+    var cog = data.fields.cog;
+    var live = cog && cog.v !== null && cog.v !== undefined && isFinite(cog.v);
+    put(race["r-cog"], live ? fmt3(cog.v) : "---");
+    race["r-cog"].classList.toggle("stale", !cog || cog.age > STALE_S);
   }
 
   function paint(data) {
@@ -284,16 +405,20 @@
 
   var failures = 0;
   function tick() {
-    // the page can be served behind a proxy prefix (eg /race/hud or /nodered/hud), so
-    // build the data URL from wherever this page actually lives
-    var url = location.pathname.replace(/\/+$/, "") + "/data";
+    // The page can be served behind a proxy prefix (eg /race/hud or /nodered/hud), so
+    // build the data URL from wherever this page actually lives. /api/state rather than
+    // the original's /data, because the racing panel needs race state and that is where
+    // it lives; /hud/data still serves the shape the Node-RED flow did (DESIGN 9.10).
+    var url = location.pathname.replace(/\/+$/, "").replace(/\/hud$/, "") + "/api/state";
     fetch(url, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         failures = 0;
         pip.classList.remove("down");
         var swapped = setMode(d.motor);
+        swapped = setRacing(d.race && d.race.mode === "racing") || swapped;
         paint(d);
+        paintRace(d);
         if (swapped) fitAll();   // rows that were hidden had no size to fit to
       })
       .catch(function () { if (++failures > 3) pip.classList.add("down"); });

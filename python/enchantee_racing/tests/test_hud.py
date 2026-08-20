@@ -520,11 +520,134 @@ def test_the_data_endpoint_tracks_the_store():
 
 def test_the_page_asks_for_its_data_relative_to_where_it_is_served():
     """The one line that makes the page work behind /race/, on its own port, and under
-    mDNS, AP mode or a raw IP alike (CLAUDE.md). An absolute path breaks the prefix."""
+    mDNS, AP mode or a raw IP alike (CLAUDE.md). An absolute path breaks the prefix.
+
+    The page polls /api/state rather than the original's /data, because the racing panel
+    needs race state (DESIGN 9.10), but it is still derived from location.pathname.
+    """
     body = _client()[0].get("/hud").get_data(as_text=True)
-    assert 'location.pathname.replace(/\\/+$/, "") + "/data"' in body
-    assert '"/hud/data"' not in body
+    assert 'location.pathname.replace(/\\/+$/, "")' in body
+    assert '"/api/state"' in body
     assert "fetch(url" in body
+    for absolute in ('"/hud/data"', 'fetch("/'):
+        assert absolute not in body, absolute
+
+
+def _hud_url(pathname):
+    """Work the page's own URL arithmetic on a given pathname, as the browser would."""
+    trimmed = pathname.rstrip("/")
+    if trimmed.endswith("/hud"):
+        trimmed = trimmed[:-len("/hud")]
+    return trimmed + "/api/state"
+
+
+def test_the_hud_data_url_resolves_under_a_proxy_prefix_and_without_one():
+    """Both deployments, since the app is hit on its own port and behind /race/."""
+    body = _client()[0].get("/hud").get_data(as_text=True)
+    # the page must be doing what _hud_url models: strip trailing slashes, then the
+    # /hud segment, then append the endpoint
+    assert 'replace(/\\/hud$/, "") + "/api/state"' in body
+    assert _hud_url("/hud") == "/api/state"
+    assert _hud_url("/hud/") == "/api/state"
+    assert _hud_url("/race/hud") == "/race/api/state"
+    assert _hud_url("/nodered/hud/") == "/nodered/api/state"
+
+    # and the endpoint it lands on has to exist and carry the race block
+    client = _client()[0]
+    for url in ("/api/state", "/hud/data"):
+        assert client.get(url).status_code == 200, url
+    payload = json.loads(client.get("/api/state").get_data(as_text=True))
+    assert "race" in payload and "fields" in payload and "motor" in payload
+
+
+def test_the_racing_panel_replaces_hdg_and_cog_only_while_racing():
+    """Panel 4 trades HDG for the mark while racing, keeping COG beside the bearing.
+
+    Pre-rendered and swapped by a class, the way the motor rows are, so a transition
+    mid-race costs no relayout (DESIGN 9.10).
+    """
+    body = _client()[0].get("/hud").get_data(as_text=True)
+
+    # both sets present in the DOM at once
+    hdg_rows = re.findall(r'<div class="row" data-race="off">', body)
+    assert len(hdg_rows) == 2, "HDG and COG should be the non-racing set"
+    racing_rows = re.findall(r'<div class="row multi[^"]*" data-race="on">', body)
+    assert len(racing_rows) == 2, "next mark / distance, then bearing / cog / off the bow"
+
+    # the racing set starts hidden: the page loads with no race running
+    for row in racing_rows:
+        assert " off" in row, row
+
+    # every value the racing rows show, and nothing extra
+    for ident in ("r-mark", "r-dist", "r-dist-unit", "r-brg", "r-cog", "r-rel"):
+        assert 'id="%s"' % ident in body, ident
+
+    # the labels the crew reads, in the words the race screen uses (DESIGN 9.2)
+    for label in ("next mark", "distance", "bearing", "cog", "off the bow"):
+        assert ">%s<" % label in body, label
+
+    # racing only: idle, prestart and finished keep the heading
+    assert 'd.race && d.race.mode === "racing"' in body
+    # HDG has no place in the racing set
+    assert 'id="r-hdg"' not in body
+
+
+def test_the_racing_panel_gets_every_value_it_needs_from_one_poll():
+    """The contract behind the markup: one GET carries all five readings and the mode.
+
+    Worth asserting on the payload rather than the page, because the panel is only as
+    good as what arrives, and it is the reason the HUD polls /api/state (DESIGN 9.10).
+    """
+    from engine import course as course_module, race
+
+    store, clock = _store()
+    config = app_module.load_config()
+    chosen = [c for c in config["courses"]["courses"] if c["id"] == "frostbite-3"][0]
+    store.set_race_context(race.Context(
+        course=chosen, marks=course_module.index_marks(config["marks"]),
+        lines=config["lines"], config=race.Config.from_document(config.get("race"))))
+    store.apply_race(lambda s, c, t: race.select(s, c, "frostbite-3", t))
+    store.apply_race(lambda s, c, t: race.set_timer(s, c, 0.0, t))     # start now
+    store.set("cog", 214.0, ts=clock["t"])
+    store.on_position({"lat": -32.0125, "lon": 115.8250}, ts=clock["t"] - 2)
+    store.on_position({"lat": -32.0120, "lon": 115.8256}, ts=clock["t"])
+
+    flask_app = app_module.create_app(store, config)
+    flask_app.config["TESTING"] = True
+    payload = json.loads(flask_app.test_client().get("/api/state").get_data(as_text=True))
+
+    # the swap is driven by this exact value
+    assert payload["race"]["mode"] == "racing"
+    # and the motor swap still has what it needs from the same poll
+    assert "motor" in payload
+
+    assert payload["race"]["leg_name"] == "Dolphin East"
+    got = payload["race"]["nav"]
+    for key in ("distance_m", "bearing", "relative"):
+        assert key in got and got[key] is not None, key
+    assert payload["fields"]["cog"]["v"] == 214.0
+
+    # once the fix ages past the 5 s cutoff there is nothing to show, which is what
+    # blanks distance, bearing and off the bow rather than dimming them (DESIGN 9.5)
+    clock["t"] += 30
+    stale = json.loads(flask_app.test_client().get("/api/state").get_data(as_text=True))
+    assert stale["race"]["nav"] is None
+    assert stale["race"]["mode"] == "racing", "the race is still on, only the fix is old"
+
+
+def test_the_racing_panel_blanks_rather_than_dims_a_stale_fix():
+    """Distance, bearing and off the bow come from nav, which is null once the fix is
+    older than 5 s, and a blank is what DESIGN 9.5 requires there. COG is an instrument
+    reading and keeps its 15 s dim."""
+    body = _client()[0].get("/hud").get_data(as_text=True)
+    race_block = re.search(r'function paintRace\(data\) \{(.*?)\n  \}', body, re.S)
+    assert race_block, "paintRace not found"
+    block = race_block.group(1)
+    assert 'nav ? fmt3(nav.bearing) : "---"' in block
+    assert 'nav ? fmtSigned(nav.relative) : "---"' in block
+    # only COG may be dimmed in this panel
+    assert block.count('classList.toggle("stale"') == 1
+    assert 'race["r-cog"].classList.toggle("stale"' in block
 
 
 def test_the_served_page_references_nothing_off_box():
