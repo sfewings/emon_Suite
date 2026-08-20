@@ -33,6 +33,12 @@
   context, so over plain HTTP it was refused and the screen slept mid-race. A hidden
   looping muted video does work over plain HTTP on both iOS and Android (DESIGN 9.8).
   Both are in place: the API when a secure context ever exists, the video meanwhile.
+
+  Also added: a link to the race screen, top right. The Node-RED page had nowhere to go,
+  and without it a phone that lands here is stuck, since the race screen is at the root and
+  nothing on this page says so. href="." rather than "/" so it resolves to /race/ behind
+  the nginx prefix and to / on the app's own port, the same reason every other asset path
+  here is relative.
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
@@ -124,6 +130,20 @@
   }
   #pip.down { opacity: 1; }
 
+  /* Link to the race screen. Deliberately small and dim: it is a way out, not a control,
+     and it must not compete with the numbers. Sized for a thumb all the same. */
+  #race {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 2px);
+    right: calc(env(safe-area-inset-right) + 2px);
+    padding: .55rem .7rem;
+    color: var(--label); text-decoration: none;
+    font-size: clamp(10px, 1.7vh, 15px);
+    letter-spacing: .12em; text-transform: uppercase;
+    z-index: 2;
+  }
+  #race:active { color: #fff; }
+
   /* The wake-lock video has to be playing and on the page, but never seen. Deliberately
      not display:none and not visibility:hidden: a browser that considers the element
      invisible is entitled to stop decoding it, and a video that is not being decoded is
@@ -148,6 +168,7 @@
 <video id="wake" src="static/wake.mp4" muted loop playsinline webkit-playsinline
        preload="auto" disableremoteplayback></video>
 <div id="pip"></div>
+<a id="race" href=".">Race</a>
 <div id="hud">
   <div class="panel">
     <div class="row"><span class="lbl">SOG</span><span class="cell"><span class="val" id="sog" style="color:var(--sog)">--.-</span></span><span class="unit">kt</span></div>

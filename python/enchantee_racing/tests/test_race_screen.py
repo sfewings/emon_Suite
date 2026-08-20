@@ -203,6 +203,35 @@ def test_the_script_builds_every_url_from_the_current_path():
         assert url.startswith("base +"), url
 
 
+def test_each_page_can_reach_the_other():
+    """A phone that lands on one of the two screens must be able to get to the other.
+
+    It could not, for a while: the race screen had a HUD button and the HUD had nothing,
+    so anyone who opened /hud was stuck with no indication that a race screen existed at
+    all. Both directions are pinned here because neither is discoverable from the code.
+    """
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    race_screen = client.get("/").get_data(as_text=True)
+    assert 'id="to-hud"' in race_screen
+    # The race screen navigates from the script rather than with an anchor, so the url is
+    # in app.js, built from base like every other path it uses.
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    assert 'base + "/hud"' in script, "the race screen has no way to the HUD"
+
+    hud = client.get("/hud").get_data(as_text=True)
+    link = re.search(r'<a[^>]*id="race"[^>]*>', hud)
+    assert link, "the HUD has no way back to the race screen"
+    # href="." resolves to /race/ behind the prefix and to / on the app's own port. A
+    # leading slash would work on the port and break behind nginx, which is the whole
+    # reason every path in these pages is relative.
+    assert 'href="."' in link.group(0), link.group(0)
+    assert 'href="/"' not in hud
+
+
 def test_the_page_references_nothing_off_box():
     """The Pi has no internet: a page that fetches from a CDN hangs in the cockpit."""
     page = re.sub(r"<!--.*?-->", "", _page(), flags=re.S)
