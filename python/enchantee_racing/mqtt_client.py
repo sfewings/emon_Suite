@@ -37,7 +37,7 @@ import threading
 from typing import Any, Callable, Optional
 
 from engine import nav
-from store import POSITION_KEY, Store, parse_number
+from store import Store, parse_number
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +55,10 @@ TOPICS = {
     "sevCon/temperature/controller/0": "ctrl",
     "sevCon/temperature/motor/0": "mot",
 }
+
+RACE_EVENT_TOPIC = "race/event"
+"""Outbound. Every race transition is published here for event_recorder to log, which is
+what makes next season's replay tests possible (DESIGN 11.9)."""
 
 POSITION_TOPIC = "gps/position/0"
 """Handled apart from TOPICS because its payload is a JSON object, not a bare number."""
@@ -99,18 +103,27 @@ def parse_position(payload: Any) -> Optional[dict]:
     return {"lat": lat, "lon": lon}
 
 
-def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] = None) -> bool:
+def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] = None,
+                   on_events: Optional[Callable[[dict], None]] = None) -> bool:
     """Route one message into the store. Returns whether it was kept.
 
     A topic that is not ours, or a payload that does not parse, is dropped silently: the
     broker carries far more than this app cares about, and a bad reading must not take
     the network loop down with it.
+
+    on_events is called once per race event a fix produces. Passed in rather than reached
+    for, so this stays callable from a test with no broker anywhere: the demo driver and
+    the unit tests leave it out and the events are simply returned to nobody.
     """
     if topic == POSITION_TOPIC:
         position = parse_position(payload)
         if position is None:
             return False
-        store.set(POSITION_KEY, position, ts)
+        # on_position rather than set, because a fix is the one reading that makes the race
+        # engine run, and it has to see the course and speed that arrived alongside it.
+        for event in store.on_position(position, ts):
+            if on_events is not None:
+                on_events(event)
         return True
 
     key = TOPICS.get(topic)
@@ -164,9 +177,19 @@ class MqttClient:
 
     def _on_message(self, client, userdata, message) -> None:
         try:
-            handle_message(self.store, message.topic, message.payload)
+            handle_message(self.store, message.topic, message.payload,
+                           on_events=self.publish_event)
         except Exception:  # a malformed reading must never kill the network loop
             log.exception("dropped a message on %s", message.topic)
+
+    def publish_event(self, event: dict) -> None:
+        """Publish one race transition for event_recorder to log (DESIGN 11.9)."""
+        try:
+            self.client.publish(RACE_EVENT_TOPIC, json.dumps(event, separators=(",", ":")))
+            log.info("race event: %s leg %s %s (%s)", event.get("type"), event.get("leg"),
+                     event.get("leg_name"), event.get("source"))
+        except Exception:
+            log.exception("could not publish a race event")
 
     def start(self) -> None:
         """Connect and run the network loop on its own thread.

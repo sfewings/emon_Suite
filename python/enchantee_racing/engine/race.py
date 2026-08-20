@@ -136,7 +136,12 @@ def initial() -> State:
 
 
 def elapsed(state: State, now: float) -> Optional[float]:
-    """Seconds since the gun, frozen at the finish. None before a start time is set.
+    """Seconds since the gun, frozen at the finish. None until the gun has gone.
+
+    None rather than a negative number before the start. Elapsed race time and the
+    countdown are two different readings on the screen, and handing the front end a
+    negative elapsed invites it to render the countdown twice, once as "-0:26" in the
+    place the crew looks for how long they have been racing.
 
     Never blanked by sensor staleness: this comes off the clock, and it stays right when
     the GPS does not (DESIGN 9.5).
@@ -145,6 +150,8 @@ def elapsed(state: State, now: float) -> Optional[float]:
         return None
     if state.finished_at is not None:
         return state.finished_at - state.start_at
+    if now < state.start_at:
+        return None
     return now - state.start_at
 
 

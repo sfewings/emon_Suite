@@ -100,6 +100,23 @@ def test_elapsed_counts_from_the_gun_not_from_crossing_the_line():
     assert race.elapsed(state, T0 + 600.0) == 600.0     # no fix has been seen at all
 
 
+def test_there_is_no_elapsed_time_before_the_gun():
+    """Elapsed and the countdown are two different readings, and one of them is negative.
+
+    Found by watching the API during a prestart: elapsed came back as -26, which a front
+    end would happily render in the place the crew looks for how long they have been
+    racing.
+    """
+    context = _context()
+    state = race.initial()
+    state, _ = race.set_timer(state, context, minutes=5, now=T0)
+    assert race.countdown(state, T0) == 300.0
+    assert race.elapsed(state, T0) is None
+    assert race.elapsed(state, T0 + 299.0) is None
+    assert race.elapsed(state, T0 + 300.0) == 0.0
+    assert race.elapsed(state, T0 + 301.0) == 1.0
+
+
 def test_a_timer_can_be_cleared_and_nudged():
     context = _context()
     state = race.initial()

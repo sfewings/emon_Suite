@@ -1,19 +1,28 @@
 """Flask routes, static and template serving. Port 5002, behind nginx at /race/.
 
-Build order step 3 (DESIGN 13): the HUD, ported off the Node-RED flow and served here
-so it can be compared side by side against /nodered/hud with the boat running.
+Build order steps 3 and 6 (DESIGN 13): the ported HUD, and the race engine behind the API
+that DESIGN 4 specifies.
 
-Serving now:
+Serving:
 
-    GET /            race screen, still a skeleton
-    GET /hud         instrument HUD, ported from docs/reference/flows.json
-    GET /hud/data    the {now, motor, fields} payload the HUD polls every 500 ms
+    GET  /              race screen, still a skeleton
+    GET  /hud           instrument HUD, ported from docs/reference/flows.json
+    GET  /hud/data      the {now, motor, fields} payload the HUD polls every 500 ms
+    GET  /api/state     HUD fields, position and race state in one payload
+    GET  /api/courses   the course list for the selection screen
+    POST /api/select    {course: "frostbite-3"}
+    POST /api/timer     {hooter: 10 | 5 | 1 | null} or {nudge: seconds}
+    POST /api/advance   {dir: +1 | -1}
+    POST /api/shorten
+    POST /api/reset
 
-Still to come (DESIGN 4), once there is a race engine to serve:
+Still to come:
 
-    GET /api/state   HUD fields plus race state in one payload
-    POST /api/select /api/timer /api/advance /api/reset
     PUT /api/config/{marks|courses|lines}
+
+Every POST returns the race state it produced, so the device that pressed the button sees
+the result without waiting for its next poll, and the events it caused, so nothing has to
+be inferred from a state diff.
 
 Constraints that are properties of the deployment, not preferences (CLAUDE.md):
 
@@ -38,9 +47,9 @@ import json
 import logging
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
-from engine import course
+from engine import course, race
 from mqtt_client import DEFAULT_BROKER, DEFAULT_PORT, DemoDriver, MqttClient
 from store import Store
 
@@ -70,6 +79,10 @@ def load_config(config_dir: Path = CONFIG_DIR) -> dict:
         log.error("config: %s", problem)
     docs["problems"] = problems
     docs["unraceable"] = {p.course for p in errors if p.course}
+    # The engine's tuning travels with the rest of the config, so app.py stays the only
+    # place that reads a file and engine/ keeps taking documents (DESIGN 11.2).
+    race_path = config_dir / "race.json"
+    docs["race"] = json.loads(race_path.read_text(encoding="utf-8")) if race_path.exists() else {}
     return docs
 
 
@@ -82,6 +95,7 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config["STORE"] = store
     app.config["RACE_CONFIG"] = config or {}
+    app.config.setdefault("EVENT_PUBLISHER", None)
 
     @app.get("/")
     def index():
@@ -97,12 +111,121 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
 
     @app.get("/api/state")
     def api_state():
-        """HUD fields plus position. Race state joins this payload, not /hud/data.
+        """HUD fields, position and race state. Everything a device needs, in one GET.
 
-        One GET per 500 ms is meant to carry everything a device needs, so all of them
-        converge within half a second and no page has to poll twice (DESIGN 4).
+        One GET per 500 ms carries the lot, so every device converges within half a second
+        and no page has to poll twice (DESIGN 4).
+
+        A GET can cause a transition, because prestart becomes racing on the clock and the
+        clock is evaluated here as well as on every fix. That is why it publishes: without
+        it, a start that fell due while the boat sat still would never be logged.
         """
-        return jsonify(store.state())
+        payload = store.state()
+        _drain_and_publish()
+        return jsonify(payload)
+
+    @app.get("/api/courses")
+    def api_courses():
+        """The course list for the selection screen: series, flags, distances (DESIGN 9.6)."""
+        config = app.config["RACE_CONFIG"]
+        courses = config.get("courses", {})
+        unraceable = config.get("unraceable", set())
+        return jsonify({
+            "series": courses.get("series", {}),
+            "courses": [
+                {
+                    "id": c["id"], "series": c["series"], "course_no": c["course_no"],
+                    "distance_nm": c["distance_nm"], "wind_note": c.get("wind_note"),
+                    "flags": c.get("flags", {}), "legs": len(c["legs"]),
+                    "raceable": c["id"] not in unraceable,
+                }
+                for c in courses.get("courses", [])
+            ],
+        })
+
+    def _drain_and_publish():
+        """Publish whatever transitions have happened, from wherever they came.
+
+        The store queues events rather than handing them back to one caller, because a
+        transition can come from a command, from a fix on the paho thread, or from the
+        clock reaching T-0 while a page happens to poll. Draining here covers all three,
+        and each event is published exactly once because the drain empties the queue.
+        """
+        events = store.drain_events()
+        publisher = app.config.get("EVENT_PUBLISHER")
+        for event in events:
+            log.info("race event: %s leg %s %s (%s)", event.get("type"), event.get("leg"),
+                     event.get("leg_name"), event.get("source"))
+            if publisher is not None:
+                publisher(event)
+        return events
+
+    def _race_response(_events=None):
+        # race_payload first: it evaluates the clock, so a start that fell due during this
+        # request is in the payload and its event is in the drain below.
+        payload = store.race_payload()
+        return jsonify({"race": payload, "events": _drain_and_publish()})
+
+    @app.post("/api/select")
+    def api_select():
+        """{course: "frostbite-3"}. Builds the engine's context and selects the course."""
+        course_id = (request.get_json(silent=True) or {}).get("course")
+        config = app.config["RACE_CONFIG"]
+        chosen = [c for c in config.get("courses", {}).get("courses", [])
+                  if c["id"] == course_id]
+        if not chosen:
+            return jsonify({"error": "unknown course %r" % course_id}), 404
+        if course_id in config.get("unraceable", set()):
+            # engine/course.py found an error in this course, so it cannot be raced on
+            # (DESIGN 7). Warnings do not block; errors do.
+            return jsonify({"error": "course %r has config errors" % course_id}), 409
+
+        store.set_race_context(race.Context(
+            course=chosen[0],
+            marks=course.index_marks(config["marks"]),
+            lines=config["lines"],
+            config=race.Config.from_document(config.get("race")),
+        ))
+        return _race_response(store.apply_race(
+            lambda state, context, now: race.select(state, context, course_id, now)))
+
+    @app.post("/api/timer")
+    def api_timer():
+        """{hooter: 10 | 5 | 1 | null} to set T-0 from a hooter, or {nudge: seconds}.
+
+        The nudge is not decoration: someone always taps late, and a start won on the line
+        is won by a second (DESIGN 10).
+        """
+        body = request.get_json(silent=True) or {}
+        if "nudge" in body:
+            seconds = float(body["nudge"])
+            return _race_response(store.apply_race(
+                lambda state, context, now: race.nudge_timer(state, context, seconds, now)))
+        hooter = body.get("hooter")
+        minutes = None if hooter is None else float(hooter)
+        return _race_response(store.apply_race(
+            lambda state, context, now: race.set_timer(state, context, minutes, now)))
+
+    @app.post("/api/advance")
+    def api_advance():
+        """{dir: +1 | -1}. Authoritative and immediate: manual is the contract (11.4)."""
+        direction = int((request.get_json(silent=True) or {}).get("dir", 1))
+        return _race_response(store.apply_race(
+            lambda state, context, now: race.advance(state, context, direction, now)))
+
+    @app.post("/api/shorten")
+    def api_shorten():
+        """Code flag S: arm the finish now, wherever the boat is (DESIGN 11.6).
+
+        The confirm belongs in the browser, not here. An accidental tap ends the race, and
+        a POST that has already arrived is too late to ask about.
+        """
+        return _race_response(store.apply_race(race.shorten))
+
+    @app.post("/api/reset")
+    def api_reset():
+        """Back to idle. Only ever the crew: nothing here resets itself (DESIGN 11.5)."""
+        return _race_response(store.apply_race(race.reset))
 
     return app
 

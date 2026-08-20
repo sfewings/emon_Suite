@@ -28,7 +28,7 @@ import threading
 import time
 from typing import Any, Callable, Mapping, NamedTuple, Optional
 
-from engine import nav
+from engine import nav, race
 
 STALE_S = 15.0
 """Wind and motor readings are dimmed past this age (DESIGN 9.5). Applied by the
@@ -50,6 +50,10 @@ MOTOR_HOLD_S = 10.0
 """Stay on the motor panels this long after the SevCon stops, so a lumpy idle cannot
 flip the panels back and forth. The same hold idiom the leg engine uses after an
 advance (DESIGN 9.1, 11.2)."""
+
+PENDING_EVENTS_MAX = 200
+"""How many unpublished race events to hold. A race produces a couple of dozen, so this is
+only a bound against nothing ever draining them."""
 
 FIELDS = ("sog", "cog", "hdg", "tws", "twd", "aws", "twa", "awa", "rpm", "cur", "ctrl", "mot")
 """Every key the payload carries, in the order the Node-RED flow emitted them. twa and
@@ -98,13 +102,26 @@ def parse_number(payload: Any) -> Optional[float]:
 
 
 class Store:
-    """The latest reading for each field. One lock, held for every access."""
+    """The latest reading for each field, and the race. One lock, held for every access.
+
+    The race state lives here rather than in a runner of its own because CLAUDE.md says
+    there is one lock and it is this one. Both threads touch the race: the paho loop
+    evaluates it on every fix, and Flask handlers move it on every button. Two locks would
+    be two chances to take them in the wrong order.
+
+    What lives here is the state; the rules live in engine/race.py and stay pure. This
+    class never decides anything about a race, it only holds the current answer and swaps
+    it for the next one under the lock.
+    """
 
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self._lock = threading.Lock()
         self._values: dict = {}
         self._motor_last = 0.0
         self._clock = clock
+        self._race = race.initial()
+        self._context: Optional[race.Context] = None
+        self._pending: list = []
 
     def set(self, key: str, value: Any, ts: Optional[float] = None) -> None:
         """Record a reading. ts defaults to now, and is the arrival time, not fix time."""
@@ -136,7 +153,7 @@ class Store:
         return derive(self.snapshot(), self._clock() if now is None else now)
 
     def state(self, now: Optional[float] = None) -> dict:
-        """The HUD payload plus position, for /api/state.
+        """The HUD payload, position and race state, for /api/state.
 
         Kept separate from payload() so /hud/data stays the exact shape the Node-RED
         flow served, which is what makes the two comparable side by side during the port
@@ -146,7 +163,125 @@ class Store:
         snapshot = self.snapshot()
         state = derive(snapshot, now)
         state["position"] = derive_position(snapshot, now)
+        state["race"] = self.race_payload(now)
         return state
+
+    # --- the race ----------------------------------------------------------
+
+    def set_race_context(self, context: Optional[race.Context]) -> None:
+        """Install the course, marks, lines and tuning the engine works against."""
+        with self._lock:
+            self._context = context
+
+    def race_state(self):
+        """The current race state and its context. Both immutable, so no copy is needed."""
+        with self._lock:
+            return self._race, self._context
+
+    def apply_race(self, action: Callable) -> list:
+        """Run one race transition under the lock. Returns the events, and queues them.
+
+        action(state, context, now) -> (state, events), which is the shape every command
+        in engine/race.py already has. Passing the function in rather than naming the
+        transition keeps the rules in the engine: this method knows about locking and
+        nothing else.
+
+        Doing it under the lock is what makes a race single-writer. Two devices tapping
+        Next at the same moment produce one advance, and a fix arriving mid-tap cannot
+        interleave with it.
+        """
+        with self._lock:
+            if self._context is None:
+                return []
+            state, events = action(self._race, self._context, self._clock())
+            self._race = state
+            self._queue(events)
+            return events
+
+    def _queue(self, events) -> None:
+        """Hold events for whoever drains next. Call with the lock held.
+
+        Every transition has to be published for event_recorder to log (DESIGN 11.9), and
+        a transition can be caused by any of three things: a command, a fix, or the clock
+        reaching T-0 while a page happens to poll. Queueing rather than returning to the
+        caller is what stops the third one being dropped, which is exactly what happened
+        when race_payload evaluated on_clock and threw the result away.
+        """
+        if not events:
+            return
+        self._pending.extend(events)
+        # Bounded, so a long race with nothing polling cannot grow this without limit.
+        # Losing the oldest is the right end to lose from: they are already stale.
+        if len(self._pending) > PENDING_EVENTS_MAX:
+            del self._pending[:-PENDING_EVENTS_MAX]
+
+    def drain_events(self) -> list:
+        """Take the queued events. Called by whoever is in a position to publish them."""
+        with self._lock:
+            events, self._pending = self._pending, []
+            return events
+
+    def on_position(self, position: Any, ts: Optional[float] = None) -> list:
+        """Record a fix and evaluate the race against it, atomically.
+
+        One lock acquisition for both, because the engine needs the course and speed that
+        arrived with this fix: reading them in a separate call could pick up the next
+        fix's values and hand the engine a position from one moment with a heading from
+        another. That is the same reason gps/position/0 carries lat and lon together
+        (DESIGN 3).
+        """
+        with self._lock:
+            now = self._clock() if ts is None else ts
+            self._values[POSITION_KEY] = Reading(position, now)
+            if self._context is None:
+                return []
+
+            cog = self._values.get("cog")
+            sog = self._values.get("sog")
+            fix = race.Fix(
+                position=nav.as_latlon(position),
+                ts=now,
+                cog=cog.v if cog and isinstance(cog.v, (int, float)) else None,
+                sog=sog.v if sog and isinstance(sog.v, (int, float)) else None,
+            )
+            evaluated = self._clock()
+            state, events = race.on_clock(self._race, self._context, evaluated)
+            state, more = race.on_fix(state, self._context, fix, evaluated)
+            self._race = state
+            self._queue(events + more)
+            return events + more
+
+    def race_payload(self, now: Optional[float] = None) -> Optional[dict]:
+        """What the pages need to render the race, or None before a course is chosen.
+
+        on_clock runs here as well as on every fix, so prestart still becomes racing at
+        T-0 when the boat is sitting still and no fix has moved. It is idempotent and
+        under the lock, so several devices polling at once produce one transition between
+        them, and whichever gets there first is the one that sees the start event.
+        """
+        with self._lock:
+            now = self._clock() if now is None else now
+            if self._context is None:
+                return None
+            self._race, events = race.on_clock(self._race, self._context, now)
+            self._queue(events)
+            state, context = self._race, self._context
+
+        return {
+            "mode": state.mode,
+            "course": state.course_id,
+            "leg": state.leg,
+            "legs": len(context.legs),
+            "leg_name": race.target_name(state, context),
+            "rounding": (context.legs[state.leg].get("rounding")
+                         if state.leg < len(context.legs) else None),
+            "elapsed": race.elapsed(state, now),
+            "countdown": race.countdown(state, now),
+            "finish_armed": state.finish_armed,
+            "shortened": state.shortened,
+            "breaches": state.breaches,
+            "ignored_crossings": state.ignored_crossings,
+        }
 
 
 def derive(snapshot: Snapshot, now: float) -> dict:
