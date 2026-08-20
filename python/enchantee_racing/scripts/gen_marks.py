@@ -1,15 +1,63 @@
 # -*- coding: utf-8 -*-
-"""Generate config/marks.json and config/lines.json from the YWA SRRC register."""
-import pandas as pd, json, math, re, unicodedata
-from collections import Counter
+"""Generate config/marks.json from the redigitized QGIS mark layer.
 
-SRC = '/mnt/user-data/uploads/6kavqmsveqfnyw2m.xls'
-SOURCE_ID = "ywa-srrc-2019"
+    cd config && python ../scripts/gen_marks.py
+
+Positions come from the geometry of docs/qgis/Swan River Marks/
+Swan_marks_YWA_SRRC_Sep2019.shp, which is the September 2019 YWA SRRC register
+redigitized by hand in QGIS. That redigitization is now the truth for where a mark is.
+
+An earlier version of this script read the register's own .xls directly, and those
+positions were not all accurate: comparing the layer's geometry against the LAT and LON
+columns it still carries from the spreadsheet, 61 of 142 marks moved, by a median of 15 m
+and up to 135 m. The .xls stays in docs/reference as provenance, and is no longer read.
+
+Everything except position still comes from the register, because the layer carries the
+register's own columns:
+
+    YWA_NAME   the "Yachting WA Number/Name" string, which packs number, name and
+               rounding into one irregular field and is parsed here exactly as before
+    NAV_NAME   the Department of Transport navigation-mark name, for marks that have one
+    NAV_TYPE   structure and top mark, e.g. "Spar Buoy", "Beacon Port Lit"
+    OWNER      the owning club, or DoT
+    MARK_CLS   racing, or the lateral class of a navigation mark
+    LAT, LON   the register's original coordinates, kept for comparison. NOT read for
+               position: that is what the geometry is for.
+
+The twenty marks used by the 2026-27 PFSYC course sheets are mapped explicitly by their
+exact register string rather than by regex, and this fails loudly if any of them stops
+resolving. Do not relax that: config/courses.json keys on these ids, and a mark that
+silently changes id takes a course leg with it.
+"""
+
+import json
+import re
+import sys
+import unicodedata
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import shapefile  # noqa: E402
+
+HERE = Path(__file__).resolve().parent
+PROJECT = HERE.parent
+LAYER = PROJECT / "docs" / "qgis" / "Swan River Marks" / "Swan_marks_YWA_SRRC_Sep2019"
+
+SOURCE_ID = "ywa-srrc-2019-qgis"
+SOURCE_NOTE = ("Positions are from the September 2019 YWA SRRC register redigitized in "
+               "QGIS (docs/qgis/Swan River Marks/), in GDA94 geographic coordinates. "
+               "GDA94 differs from present-epoch WGS84 by about 1.8 m in this part of "
+               "Australia, which is below GPS scatter and applies to every mark alike, so "
+               "it is recorded rather than corrected. Names, numbers, rounding, owner and "
+               "structure are the register's own, carried in the layer's attributes. "
+               "Number is display only and is NOT unique: 37, 38, 39, 45 and 52 are each "
+               "used by more than one mark. Always key on id.")
 
 BBOX = dict(south=-32.030346, west=115.748, north=-31.959052, east=115.856573)
 
 # Marks used by PFSYC 2026-27 course sheets.
-# key = exact spreadsheet column C value ; value = (id, number, display name, aliases)
+# key = exact YWA_NAME value ; value = (id, number, display name, aliases)
 COURSE_MARKS = {
  "32 Armstrong Port":            ("armstrong-32","32","Armstrong",["Armstrong Buoy"]),
  "74 Bishop Port":               ("bishop-74","74","Bishop",["Bishop Buoy"]),
@@ -33,105 +81,140 @@ COURSE_MARKS = {
  "37 Squadron Port":             ("squadron-37","37","Squadron",["Squadron Buoy"]),
 }
 
-ROUNDING = {"port":"port","starboard":"starboard","start":None}
+# The PFSYC inner start mark, which the register itself has no row for. DESIGN 6 recorded
+# it as hand-supplied and worth re-surveying; the QGIS layer now carries a digitized one,
+# 47 m from that guess. gen_lines.py reads it from marks.json by this id.
+START_INNER = ("PFSYC Start Inner Start",
+               ("pfsyc-start-inner", None, "PFSYC start inner", ["Start box", "Inner start"]))
 
-def slug(s):
-    s = unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode()
-    s = re.sub(r"[^A-Za-z0-9]+","-", s).strip("-").lower()
-    return re.sub(r"-+","-",s)
+ROUNDING = {"port": "port", "starboard": "starboard", "start": None}
+
+
+def slug(text):
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
+    return re.sub(r"-+", "-", text)
+
 
 def parse_label(raw):
-    """Split '38 Dee Rd Port as of 1Sep19' into number, name, rounding, note."""
-    t = re.sub(r"\s+"," ", str(raw)).strip()
+    """Split '38 Dee Rd Port as of 1Sep19' into number, name, rounding, note.
+
+    The register packs four things into one column and is inconsistent about all of them:
+    mixed case in numbers (33a against 42B), doubled spaces, '#' for an unnumbered start
+    mark, and free-text status appended after the rounding word.
+    """
+    text = re.sub(r"\s+", " ", str(raw)).strip()
     note = None
-    for pat in [r"\s+as of \S+$", r"\s+Check location$", r"\s+removed$"]:
-        m = re.search(pat, t)
-        if m:
-            note = m.group(0).strip(); t = t[:m.start()].strip()
-    num = None
-    m = re.match(r"^(#|\d+[A-Za-z]?)\s+(.*)$", t)
-    if m:
-        num = None if m.group(1) == "#" else m.group(1).upper()
-        t = m.group(2)
+    for pattern in (r"\s+as of \S+$", r"\s+Check location$", r"\s+removed$"):
+        found = re.search(pattern, text)
+        if found:
+            note = found.group(0).strip()
+            text = text[:found.start()].strip()
+    number = None
+    found = re.match(r"^(#|\d+[A-Za-z]?)\s+(.*)$", text)
+    if found:
+        number = None if found.group(1) == "#" else found.group(1).upper()
+        text = found.group(2)
     rounding = None
-    m = re.search(r"\b(Port|Starboard|Start)\s*$", t, re.I)
-    if m:
-        rounding = ROUNDING[m.group(1).lower()]
-        t = t[:m.start()].strip()
-    return num, t, rounding, note
+    found = re.search(r"\b(Port|Starboard|Start)\s*$", text, re.I)
+    if found:
+        rounding = ROUNDING[found.group(1).lower()]
+        text = text[:found.start()].strip()
+    return number, text, rounding, note
+
 
 def in_bbox(lat, lon):
-    return BBOX["south"] <= lat <= BBOX["north"] and BBOX["west"] <= lon <= BBOX["east"]
+    return (BBOX["south"] <= lat <= BBOX["north"]
+            and BBOX["west"] <= lon <= BBOX["east"])
 
-df = pd.read_excel(SRC, header=0)
-marks, skipped, no_pos = [], [], []
-seen_ids = set()
 
-for _, r in df.iterrows():
-    label = r.iloc[2]
-    if pd.isna(label):
-        continue
-    label = str(label).strip()
-    lat, lon = r.iloc[4], r.iloc[5]
-    if pd.isna(lat) or pd.isna(lon):
-        no_pos.append(label); continue
-    lat, lon = float(lat), float(lon)
-    if not in_bbox(lat, lon):
-        skipped.append(label); continue
+def main():
+    layer = shapefile.read_layer(LAYER)
+    print("read %d records from %s" % (len(layer), LAYER.name))
 
-    num, name, rounding, note = parse_label(label)
-    if label in COURSE_MARKS:
-        mid, num_c, name_c, aliases = COURSE_MARKS[label]
-        num, name = num_c, name_c
-        used = True
-    else:
-        mid = slug(f"{name}-{num}" if num else name)
-        aliases, used = [], False
-    if mid in seen_ids:
-        mid = mid + "-2"
-    seen_ids.add(mid)
+    marks = {}
+    outside = duplicates = no_geometry = 0
+    for point, row in layer:
+        if point is None:
+            no_geometry += 1
+            continue
+        lon, lat = point           # shapefiles store x then y
+        if not in_bbox(lat, lon):
+            outside += 1
+            continue
 
-    m = {
-        "id": mid, "number": num, "name": name,
-        "aliases": aliases,
-        "lat": round(lat, 6), "lon": round(lon, 6),
-        "rounding": rounding,
-        "owner": None if pd.isna(r.iloc[3]) else str(r.iloc[3]).strip(),
-        "type": None if pd.isna(r.iloc[0]) else str(r.iloc[0]).strip(),
-        "used_in_courses": used,
-        "source": SOURCE_ID,
-        "source_label": label,
-    }
-    if note: m["note"] = note
-    marks.append(m)
+        label = (row.get("YWA_NAME") or "").strip()
+        nav_name = (row.get("NAV_NAME") or "").strip()
+        number, name, rounding, note = parse_label(label) if label else (None, nav_name, None, None)
+        if not name:
+            name = nav_name or label
+        if not name:
+            continue
 
-marks.sort(key=lambda m: m["id"])
+        known = COURSE_MARKS.get(label)
+        if label == START_INNER[0]:
+            known = START_INNER[1]
+        if known:
+            mark_id, number, name, aliases = known
+        else:
+            mark_id = slug("%s %s" % (name, number or ""))
+            aliases = []
 
-# ---- validation -------------------------------------------------------
-errs = []
-found = {m["source_label"] for m in marks}
-for lbl,(mid,*_ ) in COURSE_MARKS.items():
-    if lbl not in found: errs.append(f"course mark not found in register: {lbl}")
-dup = [k for k,v in Counter(m["id"] for m in marks).items() if v > 1]
-if dup: errs.append(f"duplicate ids: {dup}")
-numdup = [k for k,v in Counter(m["number"] for m in marks if m["number"]).items() if v > 1]
+        if mark_id in marks:
+            # An exact duplicate is a digitizing artifact and harmless; two different
+            # positions under one id is a data fault and must not be silently resolved.
+            existing = marks[mark_id]
+            if abs(existing["lat"] - round(lat, 7)) > 1e-7 or abs(existing["lon"] - round(lon, 7)) > 1e-7:
+                raise SystemExit("id %r appears twice at different positions: %r and %r"
+                                 % (mark_id, (existing["lat"], existing["lon"]), (lat, lon)))
+            duplicates += 1
+            continue
 
-print("marks in bbox        :", len(marks))
-print("course marks resolved:", sum(1 for m in marks if m["used_in_courses"]), "/", len(COURSE_MARKS))
-print("outside bbox skipped :", len(skipped))
-print("named but no position:", len(no_pos))
-print("shared numbers       :", sorted(numdup))
-print("errors               :", errs or "none")
+        marks[mark_id] = {
+            "id": mark_id,
+            "number": number,
+            "name": name,
+            "aliases": aliases,
+            "lat": round(lat, 7),
+            "lon": round(lon, 7),
+            "rounding": rounding,
+            "owner": (row.get("OWNER") or "").strip() or None,
+            "type": (row.get("NAV_TYPE") or "").strip() or None,
+            "mark_class": (row.get("MARK_CLS") or "").strip() or None,
+            "nav_name": nav_name or None,
+            "used_in_courses": bool(known) and label in COURSE_MARKS,
+            "source": SOURCE_ID,
+            "source_label": label or nav_name,
+        }
+        if note:
+            marks[mark_id]["source_note"] = note
 
-with open('/home/claude/build/marks.json','w') as f:
-    json.dump({
-        "schema": "pfsyc-marks/1",
-        "generated_from": "YWA SRRC VERSION Sept19 (Yachting WA / DoT navaid register)",
-        "source_note": ("Positions are WGS84 decimal degrees from the September 2019 register. "
-                        "Marks may have moved since; verify against recorded GPS tracks. "
-                        "Number is display only and is NOT unique: 37, 38, 39, 45 and 52 are each "
-                        "used by more than one mark. Always key on id."),
+    missing = [label for label in COURSE_MARKS
+               if label not in {m["source_label"] for m in marks.values()}]
+    if missing:
+        raise SystemExit("course marks missing from the layer, refusing to write:\n  "
+                         + "\n  ".join(repr(m) for m in missing))
+    if START_INNER[1][0] not in marks:
+        raise SystemExit("%r is not in the layer, so there is no PFSYC inner start mark"
+                         % START_INNER[0])
+
+    document = {
+        "schema": "pfsyc-marks/2",
+        "generated_from": "Swan_marks_YWA_SRRC_Sep2019.shp (QGIS redigitization of the "
+                          "YWA SRRC September 2019 register)",
+        "source_note": SOURCE_NOTE,
         "bbox": BBOX,
-        "marks": marks,
-    }, f, indent=2)
-print("wrote marks.json")
+        "marks": [marks[k] for k in sorted(marks)],
+    }
+    Path("marks.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+
+    used = sum(1 for m in marks.values() if m["used_in_courses"])
+    print("wrote marks.json: %d marks, %d used in current courses" % (len(marks), used))
+    print("  skipped %d outside the bbox, %d exact duplicates, %d without geometry"
+          % (outside, duplicates, no_geometry))
+    owners = Counter(m["owner"] for m in marks.values())
+    print("  owners: " + ", ".join("%s %d" % (o or "unknown", n) for o, n in owners.most_common()))
+
+
+if __name__ == "__main__":
+    main()

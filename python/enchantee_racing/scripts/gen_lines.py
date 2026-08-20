@@ -25,7 +25,14 @@ def enu(a, b):
     de = (b["lon"] - a["lon"]) * 111320.0 * math.cos(lat0)
     return math.hypot(dn, de), math.degrees(math.atan2(de, dn)) % 360
 
-INNER = {"lat": -32.001948, "lon": 115.812006}
+INNER_ID = "pfsyc-start-inner"
+"""The inner end of the start line now comes from the mark data like everything else.
+
+It used to be a hardcoded pair of coordinates supplied by hand, because the register has
+inner start marks for RPYC and SoPYC but no row for PFSYC, and DESIGN 6 flagged it
+user-supplied-2026 and worth re-surveying. The QGIS redigitization carries a digitized
+PFSYC Start Inner Start, 47 m from that guess, so the guess is gone.
+"""
 
 doc = {
   "schema": "pfsyc-lines/2",
@@ -36,10 +43,11 @@ doc = {
     "id": "pfsyc-start-finish",
     "name": "PFSYC start / finish line",
     "inner": {
-      "name": "Start box",
-      "lat": INNER["lat"], "lon": INNER["lon"],
-      "source": "user-supplied-2026",
-      "note": "Not in the YWA register, which has no PFSYC inner start mark. Re-survey from the jetty to confirm."
+      "mark": INNER_ID,
+      "name": marks[INNER_ID]["name"],
+      "lat": marks[INNER_ID]["lat"], "lon": marks[INNER_ID]["lon"],
+      "source": marks[INNER_ID]["source"],
+      "note": "The register has no row for a PFSYC inner start mark; this one is digitized in the QGIS layer."
     },
     "outer": {
       "mark": "club-32a",

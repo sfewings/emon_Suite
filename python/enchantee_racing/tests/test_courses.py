@@ -67,13 +67,25 @@ def test_rounding_lint_is_clean():
     assert found == [], "\n".join(str(p) for p in found)
 
 
-def test_the_other_three_courses_reconcile_tightly():
-    """2 per cent is the documented tolerance; the real agreement is far better."""
+def test_the_other_three_courses_reconcile():
+    """Within 1.5 per cent, where they were once within 0.1.
+
+    The tolerance loosened when mark positions were redigitized in QGIS, and that is the
+    expected direction. The club's printed distances were computed from the September 2019
+    register, so agreement with them measured "same coordinates the club used", not
+    accuracy. Now that the marks have moved by a median of 15 m the printed figures no
+    longer match to a hundredth, and the recorded GPS track says the new positions are the
+    better ones: closest approach to each rounding fell from a median of 21 m to 5 m.
+
+    So this stays a transcription check, which is what DESIGN 7 asks of it. A leg in the
+    wrong order or a missing leg still shows up here. It is no longer a precision check on
+    the coordinates, because it is no longer measured against the better source.
+    """
     for course_id in ("frostbite-2", "frostbite-3", "frostbite-4"):
         c = _course(course_id)
         summed = course.course_distance_nm(c, INDEX, LINES)
         error_pct = (summed - c["distance_nm"]) / c["distance_nm"] * 100.0
-        assert abs(error_pct) < 0.2, (course_id, summed, c["distance_nm"], error_pct)
+        assert abs(error_pct) < 1.5, (course_id, summed, c["distance_nm"], error_pct)
 
 
 def test_frostbite_has_four_courses_with_the_four_pendants():
