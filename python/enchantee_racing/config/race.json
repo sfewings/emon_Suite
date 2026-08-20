@@ -1,0 +1,21 @@
+{
+  "schema": "pfsyc-race/1",
+  "note": "Detection parameters for engine/race.py. DESIGN 11.2 says these belong in config and are tuned from replayed tracks, not fixed in code. tests/replay/tune_rounding.py is the tool; DESIGN 11.2 records what the first track said about each of them.",
+  "arming_radius_m": 40.0,
+  "arming_radius_note": "Arm auto-advance within this distance of the current target. Validated against the 16 August 2026 Frostbite course 3 race, where it arms all ten roundings: closest approach was 1 to 8 m at the nine buoys and 23 m at the finish line, which is a line rather than a point. Measured against the old register positions three roundings were 40 m or more away and this looked far too small; the mark data was wrong, not the radius.",
+
+  "astern_fixes": 3,
+  "astern_note": "Confirm a rounding once the mark has been abaft the beam for this many consecutive fixes. Replaces the three-fixes-of-increasing-distance rule in the brief, which fires while a boat mills about near a mark in light air: at Hallmark it confirmed 88 fixes early, and no radius fixes that because the radius is not the problem. Landing within three fixes of the true rounding on nine of ten legs.",
+
+  "suppress_after_advance_s": 10.0,
+  "suppress_note": "No auto-advance for this long after any advance, manual or automatic. Stops one rounding counting twice when consecutive legs share a mark, and gives the crew time to correct a wrong advance before the engine makes another.",
+
+  "position_stale_s": 5.0,
+  "position_stale_note": "Past this age the fix is not used for anything: no advance, no breach, no finish. A bearing from a 15 s old fix at 6 knots is 46 m out (DESIGN 9.5).",
+
+  "min_sog_for_cog_kt": 0.7,
+  "min_sog_note": "Below this speed COG is noise, and the astern test is made of COG. Under it the engine declines to confirm rather than guessing, which is the direction DESIGN 11.4 says to fail in. It is exactly the situation a boat drifting near a mark is in.",
+
+  "early_start_warning_s": 60.0,
+  "early_start_note": "Crossing the line within this long before the gun is flagged as a possible Rule 30.1 infringement. A warning only: the engine never changes state on it and never adjudicates a recall. The start box does that (DESIGN 11.1)."
+}
