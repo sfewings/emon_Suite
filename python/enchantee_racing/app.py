@@ -131,7 +131,10 @@ def main(argv: list | None = None) -> int:
 
     source = None
     if args.demo:
-        source = DemoDriver(store, motor=args.demo_motor)
+        # The demo boat starts on the line, which app.py can supply because it is the
+        # side that reads config. engine/ works it out; mqtt_client only needs the answer.
+        source = DemoDriver(store, motor=args.demo_motor,
+                            start=course.start_point(config["lines"]))
     else:
         source = MqttClient(store, broker=args.broker, port=args.broker_port)
     source.start()

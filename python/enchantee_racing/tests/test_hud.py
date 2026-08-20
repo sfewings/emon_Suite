@@ -402,6 +402,55 @@ def test_the_demo_motor_tick_swaps_the_panels():
         assert payload["fields"][key] is not None, key
 
 
+def test_the_demo_produces_a_position():
+    """Without one, nothing downstream of the fix can be developed off the boat."""
+    s, _ = _store()
+    mqtt_client.DemoDriver(s).step()
+    position = s.state()["position"]
+    assert position is not None
+    assert position["stale"] is False
+    assert -33.0 < position["v"]["lat"] < -31.0  # on the Swan, not in the Atlantic
+    assert 115.0 < position["v"]["lon"] < 116.0
+
+
+def test_the_demo_starts_where_it_is_told():
+    s, _ = _store()
+    driver = mqtt_client.DemoDriver(s, start={"lat": -32.002349, "lon": 115.812409})
+    assert driver.position == nav.LatLon(-32.002349, 115.812409)
+    driver.step()  # and the first fix has moved off the start, not landed on it
+    assert nav.distance_m(driver.position, nav.LatLon(-32.002349, 115.812409)) > 1.0
+
+
+def test_the_demo_position_agrees_with_the_speed_and_course_it_publishes():
+    """A demo boat whose track contradicts its own SOG and COG makes every bearing and
+    distance-to-mark look wrong for reasons that have nothing to do with the code under
+    test, which is the opposite of what a demo is for."""
+    s, _ = _store()
+    driver = mqtt_client.DemoDriver(s, interval_s=1.0)
+    start = driver.position
+    for _ in range(60):
+        driver.step()
+
+    state = s.state()
+    sailed = nav.distance_m(start, nav.as_latlon(state["position"]["v"]))
+    expected = state["fields"]["sog"]["v"] * nav.METRES_PER_NM / 3600.0 * 60.0
+    assert abs(sailed - expected) < 0.05 * expected, (sailed, expected)
+    assert abs(nav.norm180(nav.bearing(start, nav.as_latlon(state["position"]["v"]))
+                           - state["fields"]["cog"]["v"])) < 5.0
+
+
+def test_the_demo_interval_scales_the_distance_sailed():
+    """interval_s is the tick length, so it has to reach the dead reckoning."""
+    fast, _ = _store()
+    slow, _ = _store()
+    quick = mqtt_client.DemoDriver(fast, interval_s=1.0)
+    tenth = mqtt_client.DemoDriver(slow, interval_s=0.1)
+    origin = quick.position
+    quick.step()
+    tenth.step()
+    assert nav.distance_m(origin, quick.position) > 8 * nav.distance_m(origin, tenth.position)
+
+
 def test_demo_readings_only_use_real_topics():
     """The demo goes in through the same topic map a real message does."""
     for tick in (1, 7, 40):

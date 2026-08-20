@@ -36,6 +36,7 @@ import math
 import threading
 from typing import Any, Callable, Optional
 
+from engine import nav
 from store import POSITION_KEY, Store, parse_number
 
 log = logging.getLogger(__name__)
@@ -219,17 +220,25 @@ def demo_motor_readings(tick: int) -> list:
     ]
 
 
+DEMO_START = {"lat": -32.002349, "lon": 115.812409}
+"""Where the demo boat starts: the middle of the PFSYC start line. Passed in from
+lines.json by app.py when it can be; this is the fallback so the demo runs standalone."""
+
+
 class DemoDriver:
     """Feeds demo readings into the store once a second, on a daemon thread.
 
     Goes in through handle_message, the same path a real message takes, so the demo
-    exercises the topic map and the number parsing rather than side-stepping them.
+    exercises the topic map, the number parsing and the position parsing rather than
+    side-stepping them.
     """
 
-    def __init__(self, store: Store, motor: bool = False, interval_s: float = 1.0) -> None:
+    def __init__(self, store: Store, motor: bool = False, interval_s: float = 1.0,
+                 start: Any = None) -> None:
         self.store = store
         self.motor = motor
         self.interval_s = interval_s
+        self.position = nav.as_latlon(start or DEMO_START)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.tick = 0
@@ -242,6 +251,21 @@ class DemoDriver:
             readings = readings + demo_motor_readings(self.tick)
         for topic, value in readings:
             handle_message(self.store, topic, value)
+
+        # Dead reckon the position from the speed and course this same tick published,
+        # rather than inventing a track alongside them. A demo boat whose position
+        # disagrees with its own SOG and COG would make every bearing and
+        # distance-to-mark look wrong for reasons that have nothing to do with the code
+        # under test. The original inject nodes had no position to publish, so there is
+        # nothing to port here (DESIGN 9.1).
+        readings = dict(readings)
+        sog_knots = readings["gps/speed/0"]
+        cog = readings["gps/course/0"]
+        metres = sog_knots * nav.METRES_PER_NM / 3600.0 * self.interval_s
+        self.position = nav.destination(self.position, cog, metres)
+        handle_message(self.store, POSITION_TOPIC, json.dumps(
+            {"lat": round(self.position.lat, 7), "lon": round(self.position.lon, 7)},
+            separators=(",", ":")))
 
     def _run(self) -> None:
         while not self._stop.is_set():
