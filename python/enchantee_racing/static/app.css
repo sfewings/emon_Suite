@@ -86,6 +86,9 @@ body.mode-finished #panel-finished { display: flex; }
   font-size: clamp(28px, 9vh, 92px);
   font-weight: 600; line-height: 1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* takes the space on its line and ellipsises if it must, leaving the rounding arrow
+     its own; min-width so a flex item is actually allowed to shrink that far */
+  min-width: 0; flex: 0 1 auto;
 }
 
 .row {
@@ -177,14 +180,27 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 #nav .here { color: var(--ink); box-shadow: inset 0 3px 0 0 var(--sog); }
 #nav .off { opacity: .3; pointer-events: none; }
 
-/* The rounding side, small and next to the mark name rather than in the secondary row,
+/* The rounding side, on the same line as the mark name rather than in the secondary row,
    because it belongs to the mark you are looking at (DESIGN 9.2). */
-.markline { display: flex; align-items: baseline; gap: .5em; min-width: 0; }
+.markline { display: flex; align-items: center; gap: .5em; min-width: 0; }
+
+/* Drawn as the chart's turn arrow around a buoy dot rather than the word. In the mark's
+   own colour, not the label grey the word used: a glyph carries less ink than five
+   letters, and this is the difference between rounding correctly and rounding the wrong
+   way. The hierarchy under the mark name is kept by size instead.
+
+   Pushed to the right-hand edge by the auto margin, so it sits where the eye goes for it
+   and cannot be crowded by a long mark name. It stops at the panel's own .5rem padding
+   rather than the glass, so it lines up with every other edge on the screen. */
 #mark-round {
-  color: var(--label); white-space: nowrap;
-  font-size: clamp(11px, 2.4vh, 24px);
-  letter-spacing: .08em; text-transform: uppercase;
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--mark);
 }
+#mark-round[hidden] { display: none; }   /* beats the inline-flex above */
+#mark-round .rnd { display: none; height: clamp(20px, 5.2vh, 52px); width: auto; }
+#mark-round.port      .rnd-port,
+#mark-round.starboard .rnd-starboard { display: block; }
 
 /* --- the finish screen ----------------------------------------------- */
 

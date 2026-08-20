@@ -244,6 +244,129 @@ def test_the_page_has_all_four_panels_in_the_dom_at_once():
     assert "mode-racing" not in page, "the mode class is set by the script, not baked in"
 
 
+def _rounding_icon(side):
+    """The arc path of one rounding icon, as its list of (x, y) points.
+
+    The arc is the first path in the icon; the second is the arrowhead.
+    """
+    page = _page()
+    svg = re.search(r'<svg class="rnd rnd-%s".*?</svg>' % side, page, re.S)
+    assert svg, side
+    body = svg.group(0)
+    arc = re.search(r'<path d="([^"]+)"', body)
+    assert arc, side
+    numbers = [float(n) for n in re.findall(r'-?\d+\.?\d*', arc.group(1))]
+    assert len(numbers) % 2 == 0 and len(numbers) >= 8, numbers
+    return body, list(zip(numbers[0::2], numbers[1::2]))
+
+
+def _rounding_dot(side):
+    """The buoy dot of one rounding icon, as (cx, cy, r)."""
+    body, _ = _rounding_icon(side)
+    dot = re.search(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"', body)
+    assert dot, "no buoy dot in the %s icon" % side
+    return tuple(float(g) for g in dot.groups())
+
+
+def _sweep(points):
+    """Positive for a clockwise sweep on screen, since SVG y runs downwards."""
+    return sum(points[i][0] * points[(i + 1) % len(points)][1]
+               - points[(i + 1) % len(points)][0] * points[i][1]
+               for i in range(len(points))) / 2.0
+
+
+def test_the_rounding_arrow_turns_the_way_the_boat_turns():
+    """Port anticlockwise, starboard clockwise, as on the club's chart (DESIGN 9.2).
+
+    Leaving a mark to port means turning to port around it, so the arrow sweeps
+    anticlockwise. This is the one thing about these icons that can be silently wrong:
+    swap the two and the page still renders, still looks right, and sends the boat the
+    wrong way round the mark. So it is asserted from the geometry rather than trusted.
+    """
+    _, port = _rounding_icon("port")
+    _, starboard = _rounding_icon("starboard")
+    assert _sweep(port) < 0, "port must sweep anticlockwise, got %.2f" % _sweep(port)
+    assert _sweep(starboard) > 0, "starboard must sweep clockwise, got %.2f" % _sweep(starboard)
+    # Mirror images of each other, as they are on the chart, so a hand-edit to one that
+    # does not reach the other shows up here.
+    assert abs(abs(_sweep(port)) - abs(_sweep(starboard))) < 0.01
+
+
+def test_the_buoy_dot_sits_inside_the_turn_with_a_gap_around_it():
+    """The mark goes in the arrow's concave side, the way the chart draws it (DESIGN 9.2).
+
+    Put the dot on the convex side and the symbol says the boat passes the mark on the
+    other hand, which is the opposite instruction. So the side is asserted, not eyeballed.
+    """
+    for side in ("port", "starboard"):
+        _, arc = _rounding_icon(side)
+        cx, cy, r = _rounding_dot(side)
+        assert r > 0, side
+
+        # The arrow bulges away from the mark it turns around: port sweeps up the mark's
+        # right-hand side, starboard up its left.
+        bulge = max(p[0] for p in arc) if side == "port" else min(p[0] for p in arc)
+        if side == "port":
+            assert bulge > cx, "port arrow must bulge right of the mark"
+            assert cx < arc[0][0], "the mark sits left of where the port arrow starts"
+        else:
+            assert bulge < cx, "starboard arrow must bulge left of the mark"
+            assert cx > arc[0][0], "the mark sits right of where the starboard arrow starts"
+
+        # Nestled, not overlapping: the chart leaves clear white between dot and arc.
+        nearest = min(((p[0] - cx) ** 2 + (p[1] - cy) ** 2) ** 0.5 for p in arc)
+        assert nearest > r, "%s arc comes within the dot (%.2f vs r %.2f)" % (side, nearest, r)
+
+        # Level with the turn rather than above or below it.
+        assert min(p[1] for p in arc) < cy < max(p[1] for p in arc), side
+
+    # Mirrored, as on the chart: same dot, same distance in from its own edge.
+    px, _, pr = _rounding_dot("port")
+    sx, _, sr = _rounding_dot("starboard")
+    assert abs(pr - sr) < 0.001
+    page = _page()
+    widths = [float(re.search(r'viewBox="0 0 ([\d.]+)', m).group(1))
+              for m in re.findall(r'<svg class="rnd rnd-\w+"[^>]*>', page)]
+    assert len(widths) == 2 and abs(widths[0] - widths[1]) < 0.01, widths
+    assert abs(px - (widths[1] - sx)) < 0.01, "the dot is not mirrored between the two"
+
+
+def test_the_rounding_arrow_sits_at_the_right_hand_edge():
+    """Pushed to the edge so a long mark name cannot crowd it (DESIGN 9.2)."""
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    block = re.search(r'#mark-round \{(.*?)\}', css, re.S)
+    assert block, "no #mark-round block"
+    assert "margin-left: auto" in block.group(1)
+    # and the name must be allowed to shrink, or the arrow gets pushed off the screen
+    name = re.search(r'#mark-name \{(.*?)\}', css, re.S)
+    assert name and "min-width: 0" in name.group(1)
+    assert "text-overflow: ellipsis" in name.group(1)
+
+
+def test_the_rounding_arrow_is_themeable_and_self_contained():
+    """currentColor, or the night theme leaves a daylight-coloured arrow on the screen."""
+    for side in ("port", "starboard"):
+        body, _ = _rounding_icon(side)
+        assert 'stroke="currentColor"' in body, side
+        assert 'fill="currentColor"' in body, side
+        assert not re.search(r'#[0-9a-fA-F]{3,6}', body), "hardcoded colour in %s" % side
+        assert "url(" not in body and "http" not in body, side
+
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8").replace("\n", " ")
+    # Exactly one arrow shows, and hiding the container beats the display that reveals it.
+    assert "#mark-round[hidden] { display: none; }" in css
+    assert "#mark-round .rnd { display: none;" in css
+    for side in ("port", "starboard"):
+        assert "#mark-round.%s" % side in css, side
+
+    # The JS may only ever set one of the two known sides as the class.
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    assert 'classList.remove("port", "starboard")' in script
+    assert 'r.rounding === "port" || r.rounding === "starboard"' in script
+    # The words are gone from the display but must stay available to a screen reader.
+    assert 'aria-label", "round to "' in script
+
+
 def test_only_one_panel_can_be_shown_at_a_time():
     """One mode class on the body, because two means two panels stacked on each other.
 

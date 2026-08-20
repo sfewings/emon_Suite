@@ -508,7 +508,7 @@ things dominate, in this priority order:
 
 1. **Next mark name.** Largest text on the screen after the numbers. Use the
    display `name` from `marks.json`, not the id and not the number, because the
-   crew calls it "Squadron", not "37". Show the rounding side in smaller text adjacent to the Next mark name.
+   crew calls it "Squadron", not "37". Show the rounding side as a small turn arrow adjacent to the Next mark name.
 2. **Distance to it.**
 3. **Bearing to it**, with the boat's COG immediately alongside so the helm reads
    the delta without arithmetic.
@@ -516,9 +516,40 @@ things dominate, in this priority order:
 
 Secondary, smaller: leg number and total (`leg 4 of 11`), next-next leg name, transit angle to reach next-next mark (degrees to port or starboard), next-next leg type, time limit remaining, position source and staleness.
 
-Rounding side should be shown as a word or arrow next to the mark name, sourced
-from the leg rather than from the mark default, so a course that deviates from the
-registered rounding still displays correctly.
+Rounding side is shown as an arrow next to the mark name, sourced from the leg
+rather than from the mark default, so a course that deviates from the registered
+rounding still displays correctly.
+
+The arrow is the one the club's own chart uses: a semicircular arrow curling around
+a buoy dot, its sweep the boat's turn. The arrow comes from the "port / starboard
+rounding" row of the legend on page 1 of `docs/reference/Swan River course
+marks-Jul26.pdf`; the dot in its concave side, and the gap left around it, are
+measured off mark 33A, where the chart draws the pair together. Sweeping the whole
+chart finds that same pairing about eighty times, mirrored between the two sides,
+so what the screen shows is the chart's composite symbol and not an assembly of
+ours. Port sweeps anticlockwise, starboard clockwise.
+
+Copying the chart's symbol rather than drawing a fresh one is the whole point: the
+crew has already read it beside every mark on the chart, so there is nothing new to
+learn at the moment it matters, and a shape is taken in faster than a five-letter
+word on a wet screen in sunlight.
+
+Which side the dot goes on is not decoration. On the convex side the symbol says the
+boat passes the mark on the other hand, which is the opposite instruction, so the
+side is asserted in the tests rather than left to the eye.
+
+The arrow sits at the right-hand edge of the mark name's line, against the panel
+padding rather than the glass so it lines up with every other edge on the screen.
+At the edge it has a fixed place to look for and a long mark name cannot crowd it;
+the name ellipsises instead.
+
+Both icons live in the DOM and the CSS shows one, the same way the panels do. They
+are inline SVG rather than `<img>`, so they inherit `currentColor` and the night
+theme recolours them with everything else, and so they cost no extra request. They
+are drawn in the mark's colour rather than the label grey the word used, because a
+glyph carries less ink than a word and this one is the difference between rounding
+correctly and rounding the wrong way; the hierarchy under the mark name is kept by
+size instead, at roughly half its height.
 
 ### 9.3 Bearing presentation
 

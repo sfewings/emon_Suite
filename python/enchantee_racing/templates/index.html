@@ -78,7 +78,40 @@
     <div class="grow">
       <span class="lbl">next mark</span>
       <div class="markline">
-        <span id="mark-name">---</span><span id="mark-round"></span>
+        <span id="mark-name">---</span>
+        <!-- The rounding side, as the chart's own turn symbol rather than the words PORT
+             and STARBOARD. The crew reads that glyph off the course-marks chart already,
+             and a shape lands faster than a word on a wet screen in sunlight (DESIGN 9.2).
+
+             Both icons are in the DOM and the CSS shows one, the same way the panels work.
+             Inline rather than <img>, so they take currentColor and the night theme
+             recolours them along with everything else, and so they cost no extra request.
+
+             The geometry is the chart's own. The arrow comes from the "port / starboard
+             rounding" row of the legend on page 1 of docs/reference/Swan River course
+             marks-Jul26.pdf; the buoy dot in its concave side, and the gap around it, are
+             measured off mark 33A, where the chart draws the pair together. Sweeping the
+             whole chart finds the same pairing about eighty times, mirrored between the two
+             sides, so this is the chart's composite symbol rather than an assembly of ours.
+
+             Port sweeps anticlockwise and starboard clockwise, which is the boat's own
+             turn: leaving a mark to port means turning to port around it. -->
+        <span id="mark-round" role="img" hidden>
+          <svg class="rnd rnd-port" viewBox="0 0 8.911 10.454" aria-hidden="true">
+            <path d="M4.984 9.956 C5.703 9.711 6.345 9.284 6.844 8.717 C8.413 6.938 8.22 4.24 6.414 2.692"
+                  fill="none" stroke="currentColor" stroke-width="0.997"/>
+            <path d="M3.222 0.499 L4.673 2.312 L6.189 4.058 L7.21 3.14 L8.294 2.154 L5.758 1.327Z"
+                  fill="currentColor"/>
+            <circle cx="2.9" cy="5.832" r="2.9" fill="currentColor"/>
+          </svg>
+          <svg class="rnd rnd-starboard" viewBox="0 0 8.910 10.451" aria-hidden="true">
+            <path d="M3.926 9.952 C3.207 9.708 2.566 9.282 2.067 8.716 C0.498 6.936 0.69 4.238 2.498 2.691"
+                  fill="none" stroke="currentColor" stroke-width="0.997"/>
+            <path d="M5.69 0.499 L4.238 2.312 L2.721 4.058 L1.702 3.14 L0.616 2.154 L3.154 1.327Z"
+                  fill="currentColor"/>
+            <circle cx="6.01" cy="5.828" r="2.9" fill="currentColor"/>
+          </svg>
+        </span>
       </div>
     </div>
     <div class="grow">

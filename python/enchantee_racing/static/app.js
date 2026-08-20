@@ -291,10 +291,24 @@
     // 5 s cutoff. Blanked rather than dimmed, because a dimmed number still reads as a
     // number in spray (DESIGN 9.5).
     el["mark-name"].textContent = r.leg_name || BLANK;
-    // The rounding side sits next to the mark name in smaller text, because it belongs to
-    // the mark you are looking at, and comes from the leg rather than the mark's default so
-    // a course that deviates from the register still reads correctly (DESIGN 9.2).
-    el["mark-round"].textContent = r.rounding ? ("• " + r.rounding) : "";
+    // The rounding side sits next to the mark name, as the chart's turn arrow rather than
+    // the word, and comes from the leg rather than the mark's default so a course that
+    // deviates from the register still reads correctly (DESIGN 9.2). The class picks which
+    // of the two inline icons shows; the word goes on the label, so it is still there for
+    // anything reading the page out rather than looking at it.
+    //
+    // Tested against the known two rather than passed through, so a value the config should
+    // never hold cannot put an arbitrary class on the element.
+    var round = el["mark-round"];
+    var side = (r.rounding === "port" || r.rounding === "starboard") ? r.rounding : null;
+    round.classList.remove("port", "starboard");
+    round.hidden = side === null;
+    if (side) {
+      round.classList.add(side);
+      round.setAttribute("aria-label", "round to " + side);
+    } else {
+      round.removeAttribute("aria-label");
+    }
     if (r.nav) {
       distance(r.nav.distance_m, el.distance, el["distance-unit"]);
       el.bearing.textContent = degrees(r.nav.bearing);
