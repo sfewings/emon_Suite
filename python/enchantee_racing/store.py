@@ -22,6 +22,7 @@ position yet, so nothing here does either.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -91,7 +92,7 @@ def parse_number(payload: Any) -> Optional[float]:
         if not match:
             return None
         value = float(match.group(0))
-    if value != value or value in (float("inf"), float("-inf")):  # NaN or infinity
+    if not math.isfinite(value):  # NaN or infinity
         return None
     return value
 

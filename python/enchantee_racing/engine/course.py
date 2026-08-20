@@ -42,6 +42,7 @@ does not.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Iterable, Mapping, NamedTuple, Optional, Sequence
 
 from . import nav
@@ -73,8 +74,18 @@ class Problem(NamedTuple):
 
 
 def _has_position(thing: Optional[Mapping[str, Any]]) -> bool:
-    """Can this mark or line end be projected without blowing up?"""
-    return bool(thing) and thing.get("lat") is not None and thing.get("lon") is not None
+    """Can this mark or line end be projected without blowing up?
+
+    Finiteness rather than an is-not-None check. json.loads accepts a bare NaN token, and
+    `nan is None` is False, so a hand-edited marks.json could carry one and pass
+    validation, then reach engine/nav where it fails no range check and no comparison.
+    """
+    if not thing:
+        return False
+    try:
+        return math.isfinite(float(thing["lat"])) and math.isfinite(float(thing["lon"]))
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 def index_marks(marks_doc: Mapping[str, Any]) -> dict:
@@ -218,8 +229,12 @@ def _validate_marks(marks_doc: Mapping[str, Any], marks: Mapping[str, Any]) -> l
         if mark_id in seen:
             problems.append(Problem(ERROR, "duplicate-mark-id", "duplicate mark id %r" % mark_id))
         seen.add(mark_id)
-        if mark.get("lat") is None or mark.get("lon") is None:
-            problems.append(Problem(ERROR, "mark-no-position", "mark %r has no position" % mark_id))
+        if not _has_position(mark):
+            problems.append(
+                Problem(ERROR, "mark-no-position",
+                        "mark %r has no usable position: lat=%r lon=%r"
+                        % (mark_id, mark.get("lat"), mark.get("lon")))
+            )
         rounding = mark.get("rounding")
         if rounding is not None and rounding not in ROUNDINGS:
             problems.append(

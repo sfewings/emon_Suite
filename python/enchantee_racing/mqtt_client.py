@@ -87,7 +87,11 @@ def parse_position(payload: Any) -> Optional[dict]:
         lon = float(payload["lon"])
     except (KeyError, TypeError, ValueError):
         return None
-    if lat != lat or lon != lon:  # NaN
+    # NaN first, and separately from the range check, because NaN does not fail a range
+    # check: every comparison with it is False, so abs(nan) > 90.0 is False and a NaN
+    # would be stored as a valid fix. json.loads accepts a bare NaN token, and float()
+    # accepts the result without complaint, so it is reachable from a garbled payload.
+    if not math.isfinite(lat) or not math.isfinite(lon):
         return None
     if abs(lat) > 90.0 or abs(lon) > 180.0:
         return None

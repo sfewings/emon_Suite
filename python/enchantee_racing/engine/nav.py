@@ -282,9 +282,16 @@ def side(a, b, p, tolerance_m: float = 0.0) -> int:
     A boat sitting on the line returns 0. A caller remembering which side the boat
     is on should keep waiting for a non-zero answer rather than storing the 0,
     since nothing is a sign change away from 0.
+
+    A position that is not finite also returns 0, meaning no side rather than a
+    side. Without that, NaN takes the -1 branch, because `nan > 0.0` is False like
+    every other comparison with NaN, and a confident -1 about a garbage fix
+    followed by a real fix on the other side is a sign change: a false finish.
+    Answering 0 fails to advance instead, which is the direction DESIGN 11.4 says
+    to fail in.
     """
     offset = project(a, b, p).offset_m
-    if abs(offset) <= tolerance_m:
+    if not math.isfinite(offset) or abs(offset) <= tolerance_m:
         return 0
     return 1 if offset > 0.0 else -1
 

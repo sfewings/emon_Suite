@@ -349,9 +349,36 @@ def test_a_bad_shortened_at_is_an_error():
 
 
 def test_a_mark_with_no_position_is_an_error():
+    for bad in [None, "", "south", [], {}]:
+        marks_doc, courses_doc, lines_doc = _fixture()
+        marks_doc["marks"][0]["lat"] = bad
+        assert "mark-no-position" in _codes(marks_doc, courses_doc, lines_doc), bad
+
     marks_doc, courses_doc, lines_doc = _fixture()
-    marks_doc["marks"][0]["lat"] = None
+    del marks_doc["marks"][0]["lon"]
     assert "mark-no-position" in _codes(marks_doc, courses_doc, lines_doc)
+
+
+def test_a_mark_with_a_position_that_is_not_finite_is_an_error():
+    """`nan is None` is False, so an is-not-None check would pass this straight through.
+
+    json.loads accepts a bare NaN token, so a hand-edited marks.json can carry one. Left
+    unvalidated it reaches engine/nav, where it fails no range check and no comparison,
+    and turns every distance into nan (DESIGN 6).
+    """
+    for bad in [float("nan"), float("inf"), float("-inf")]:
+        marks_doc, courses_doc, lines_doc = _fixture()
+        marks_doc["marks"][1]["lon"] = bad
+        codes = _codes(marks_doc, courses_doc, lines_doc)
+        assert "mark-no-position" in codes, bad
+        # and the distance check stands down rather than reporting a nan mismatch too
+        assert "distance-mismatch" not in codes, bad
+
+
+def test_the_shipped_marks_all_have_finite_positions():
+    """102 marks from the register, none of them NaN, null or a string."""
+    for mark in MARKS["marks"]:
+        assert course._has_position(mark), mark["id"]
 
 
 def test_a_degenerate_start_line_is_an_error():

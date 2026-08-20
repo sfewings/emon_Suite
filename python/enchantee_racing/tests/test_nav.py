@@ -441,6 +441,41 @@ def test_a_fix_exactly_on_the_line_does_not_hide_the_crossing():
     assert arriving is not None and abs(arriving.u - 1.0) < 1e-12
 
 
+def test_side_gives_no_side_for_a_position_that_is_not_finite():
+    """NaN must not get a confident answer out of the finish test.
+
+    Every comparison with NaN is False, so the obvious `1 if offset > 0 else -1` hands
+    back -1 for a garbage fix. One of those followed by a real fix on the far side of the
+    line is a sign change, which is a false finish: the worst failure this app has
+    (DESIGN 11.5). 0 means no side, and DESIGN 11.4 says fail to advance rather than
+    advance early.
+    """
+    nan = float("nan")
+    for bad in [nav.LatLon(nan, 115.812), nav.LatLon(-32.002, nan), nav.LatLon(nan, nan),
+                nav.LatLon(float("inf"), 115.812)]:
+        assert nav.side(INNER, CLUB_32A, bad) == 0, bad
+        assert nav.side(INNER, CLUB_32A, bad, tolerance_m=50.0) == 0, bad
+
+
+def test_crossing_ignores_a_track_with_a_position_that_is_not_finite():
+    """Pinned rather than assumed: this is currently right for an incidental reason.
+
+    crossing() has no explicit finiteness guard. A NaN fix produces a NaN parameter t,
+    and `0.0 <= nan <= 1.0` is False, so the range test rejects it. That is the correct
+    outcome by way of a comparison that happens to fall the right way, so it is pinned
+    here: anyone rewriting that range check needs to know this depends on it.
+    """
+    nan = float("nan")
+    length = nav.distance_m(INNER, CLUB_32A)
+    good_left, good_right = _across(INNER, CLUB_32A, length / 2.0)
+    for bad in [nav.LatLon(nan, 115.812), nav.LatLon(-32.002, nan)]:
+        assert nav.crossing(INNER, CLUB_32A, bad, good_right) is None, bad
+        assert nav.crossing(INNER, CLUB_32A, good_left, bad) is None, bad
+        assert nav.crossing(INNER, CLUB_32A, bad, bad) is None, bad
+    # and the same track with real fixes still crosses, so the test is not vacuous
+    assert nav.crossing(INNER, CLUB_32A, good_left, good_right) is not None
+
+
 def test_crossing_rejects_a_zero_length_line():
     try:
         nav.crossing(INNER, INNER, INNER, CLUB_32A)

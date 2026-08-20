@@ -278,6 +278,30 @@ def test_a_garbled_fix_is_dropped_rather_than_believed():
     assert s.get(store_module.POSITION_KEY) is None
 
 
+def test_a_not_a_number_fix_is_dropped():
+    """The one bad value that does not fail a range check.
+
+    json.loads accepts a bare NaN token, float() accepts the result, and every comparison
+    with NaN is False, so abs(nan) > 90.0 does not catch it. Left in, a NaN fix makes
+    distance_m return nan, which makes both `d < 40` and `d > 40` false so a rounding
+    neither arms nor confirms, and makes nav.side() return a confident -1: one NaN fix
+    followed by a real one on the other side of the line is a false finish, which is the
+    worst failure this app has (DESIGN 11.5).
+    """
+    for payload in [b'{"lat":NaN,"lon":115.8}', b'{"lat":-32.0,"lon":NaN}',
+                    b'{"lat":NaN,"lon":NaN}', b'{"lat":Infinity,"lon":115.8}',
+                    b'{"lat":-32.0,"lon":-Infinity}']:
+        s, _ = _store()
+        assert mqtt_client.handle_message(s, "gps/position/0", payload) is False, payload
+        assert s.get(store_module.POSITION_KEY) is None, payload
+
+
+def test_a_not_a_number_reading_is_dropped():
+    """Same trap on the bare-number path: parse_number must reject what it cannot use."""
+    for payload in ["nan", "NaN", "inf", "-inf", "Infinity", float("nan"), float("inf")]:
+        assert parse_number(payload) is None, payload
+
+
 def test_zero_zero_is_a_real_coordinate_and_is_kept():
     """Nought degrees by nought is in the Gulf of Guinea, not a no-fix sentinel, and the
     publisher's own comment says so. Filtering it would be inventing a rule."""
