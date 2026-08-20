@@ -174,13 +174,24 @@
     return name === "race" ? (mode || "idle") : name;
   }
 
+  var PANELS = ["idle", "prestart", "racing", "finished"];
+
+  // The one place a panel is chosen. There were two, this and setMode, each doing its
+  // own surgery on body.className, and two writers of one string is a bug waiting to
+  // happen however carefully each is written. It happened: a mangled regex here left
+  // the previous mode class in place, so tapping Back put mode-racing and mode-idle on
+  // the body at once and the CSS displayed both panels, one under the other.
+  //
+  // classList over an explicit list, rather than a pattern over the whole string, so
+  // that failure mode cannot come back: there is no expression to get wrong.
   function showPanel() {
     var panel = panelFor(viewing || "race");
-    document.body.className = document.body.className
-      .replace(/mode-\S+/g, "").trim() + " mode-" + panel;
-    Array.prototype.forEach.call(el.nav.querySelectorAll("[data-show]"), function (b) {
-      b.classList.add("here");        // Race is the only page-internal entry, and we are on it
+    if (PANELS.indexOf(panel) < 0) panel = "idle";
+    PANELS.forEach(function (name) {
+      document.body.classList.remove("mode-" + name);
     });
+    document.body.classList.add("mode-" + panel);
+
     // The way back into a running race, shown only when there is one to go back to.
     el.resume.hidden = !(mode && mode !== "idle");
     if (panel === "idle") loadCourses();
@@ -326,9 +337,11 @@
   function setMode(next) {
     if (next === mode) return;
     mode = next;
-    document.body.className = document.body.className
-      .replace(/\bmode-\S+/g, "").trim() + " mode-" + next;
-    if (next === "idle") loadCourses();
+    // A mode change wins over whatever the crew has tapped away to look at, so every
+    // device follows the race together, which is the property that has to survive
+    // (DESIGN 9.6). Panel selection then goes through the one path.
+    viewing = null;
+    showPanel();
   }
 
   function renderHud(state) {

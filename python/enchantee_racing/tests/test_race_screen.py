@@ -244,6 +244,63 @@ def test_the_page_has_all_four_panels_in_the_dom_at_once():
     assert "mode-racing" not in page, "the mode class is set by the script, not baked in"
 
 
+def test_only_one_panel_can_be_shown_at_a_time():
+    """One mode class on the body, because two means two panels stacked on each other.
+
+    This was a real bug, and an ugly one to look at in a cockpit: `showPanel` cleared the
+    old class with a pattern that had been mangled into a literal control character, so it
+    matched nothing. The old class stayed, the new one was added next to it, and tapping
+    Back showed the course list and the race screen at once.
+
+    The fix is structural rather than a corrected pattern: remove every known mode class,
+    then add one. So this asserts the shape, not the behaviour of an expression.
+    """
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    assert 'classList.remove("mode-" + name)' in script
+    assert 'classList.add("mode-" + panel)' in script
+    # Nothing may assemble the class attribute by hand: that is the family of bugs above,
+    # and it is also how two writers of one string got there in the first place. Comments
+    # go first, because the comment recording that history says the words too.
+    code = re.sub(r'^\s*//.*$', '', script, flags=re.M)
+    assert "body.className" not in code
+
+    # Every mode the script can set must be in the list that gets cleared, or leaving that
+    # mode leaves its class behind.
+    listed = re.search(r'var PANELS = \[(.*?)\];', script)
+    assert listed, "PANELS list not found"
+    panels = set(re.findall(r'"([a-z]+)"', listed.group(1)))
+    assert panels == {"idle", "prestart", "racing", "finished"}, panels
+
+    page = _page()
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    for panel in panels:
+        assert "body.mode-%s" % panel in css.replace("\n", " "), panel
+        assert 'id="panel-%s"' % panel in page, panel
+
+
+def test_no_source_file_carries_a_stray_control_character():
+    """An escape written as the character it stands for is invisible and silently wrong.
+
+    `\\b` in a JS regex became a backspace byte in app.js during editing. It reads
+    correctly in every viewer, matches nothing at all, and cost a bug hunt. Cheap to check
+    for, so it is checked for across the project rather than in the one file it bit.
+    """
+    suffixes = {".py", ".js", ".css", ".html", ".json", ".md", ".yml", ".conf", ".svg"}
+    offenders = []
+    for path in sorted(ROOT.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in suffixes:
+            continue
+        if any(part in (".git", "venv", "__pycache__") for part in path.parts):
+            continue
+        text = path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+        for number, line in enumerate(text.split("\n"), 1):
+            stray = [c for c in line if ord(c) < 32 and c != "\t"]
+            if stray:
+                offenders.append("%s:%d %s" % (path.relative_to(ROOT), number,
+                                               [hex(ord(c)) for c in stray]))
+    assert not offenders, offenders
+
+
 def test_the_page_asks_for_its_data_relative_to_where_it_is_served():
     page = _page()
     assert 'href="static/app.css"' in page
