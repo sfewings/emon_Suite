@@ -82,7 +82,10 @@ def test_selecting_a_course_starts_a_race_and_names_the_first_mark():
     response, body = _post(client, "/api/select", {"course": "frostbite-3"})
     assert response.status_code == 200
     assert body["race"]["course"] == "frostbite-3"
-    assert body["race"]["mode"] == "idle"
+    # prestart, not idle: the hooter buttons are on the prestart panel, so a selection
+    # that left the mode at idle would strand the crew on the course list.
+    assert body["race"]["mode"] == "prestart"
+    assert body["race"]["countdown"] is None, "no hooter tapped yet"
     assert body["race"]["leg_name"] == "Dolphin East"
     assert body["race"]["legs"] == 10
     assert body["race"]["rounding"] == "starboard"

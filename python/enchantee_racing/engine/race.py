@@ -269,11 +269,21 @@ def line_approach(state: State, context: Context, fix: Optional[Fix]) -> Optiona
 
 
 def select(state: State, context: Context, course_id: str, now: float):
-    """Choose a course. Resets the leg, keeps any timer already set."""
+    """Choose a course. Resets the leg, keeps any timer already set, and goes to prestart.
+
+    Prestart even with no timer set, which is what DESIGN 9.6 describes: idle is the course
+    selection screen and prestart is the countdown screen. Once a course is chosen the crew
+    is in the pre-start, milling about waiting for a hooter, and the countdown simply reads
+    dashes until they tap one.
+
+    It also has to be this way round. The hooter buttons live on the prestart screen, so
+    leaving the mode at idle after a selection means the only way to reach the buttons that
+    start a race is to have already started one.
+    """
     new = state._replace(course_id=course_id, leg=0, armed_leg=None, astern_fixes=0,
                          finish_armed=False, finish_side=None, shortened=False,
                          ignored_crossings=0, breaches=0, finished_at=None,
-                         mode=PRESTART if state.start_at is not None else IDLE)
+                         mode=PRESTART)
     return new, [_event("select", new, context, now)]
 
 

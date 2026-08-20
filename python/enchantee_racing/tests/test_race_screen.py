@@ -203,6 +203,49 @@ def test_the_script_builds_every_url_from_the_current_path():
         assert url.startswith("base +"), url
 
 
+def _panel_controls(page, panel):
+    """The ids inside one panel, so a test can ask what is reachable in a given mode."""
+    body = re.search(r'id="panel-%s"(.*?)</section>' % panel, page, re.S)
+    assert body, panel
+    return set(re.findall(r'id="([a-z0-9-]+)"', body.group(1)))
+
+
+def test_every_mode_can_be_left_by_something_on_its_own_panel():
+    """Reachability, which a screenful of passing tests did not catch.
+
+    The first version stranded the crew: selecting a course left the mode at idle, and the
+    hooter buttons that start a race are on the prestart panel, so the only route to the
+    buttons that start a race was to have already started one. Every panel needs a control
+    that leads somewhere else, and this is the test that says so.
+    """
+    page = _page()
+    exits = {
+        "idle": {"cards"},                          # tapping a course card selects it
+        "prestart": {"hooter-10", "hooter-5", "hooter-1", "cancel"},
+        "racing": {"next", "back", "shorten"},
+        "finished": {"reset"},
+    }
+    for panel, needed in exits.items():
+        controls = _panel_controls(page, panel)
+        assert needed <= controls, (panel, needed - controls)
+
+
+def test_selecting_a_course_lands_on_the_panel_with_the_hooters():
+    """The other half of the same bug: the mode after a selection has to be the mode whose
+    panel carries the buttons that come next."""
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    body = json.loads(
+        client.post("/api/select", json={"course": "frostbite-3"}).get_data(as_text=True))
+    landed = body["race"]["mode"]
+    controls = _panel_controls(client.get("/").get_data(as_text=True), landed)
+    assert {"hooter-10", "hooter-5", "hooter-1"} <= controls, (landed, controls)
+    assert body["race"]["countdown"] is None, "the countdown reads dashes until a hooter"
+
+
 def test_each_page_can_reach_the_other():
     """A phone that lands on one of the two screens must be able to get to the other.
 
