@@ -261,30 +261,53 @@ ever compared against a survey to better than a couple of metres.
   the copy here is internal reference material for building this app. Keep it out
   of anything the app serves to a browser, and do not treat its presence here as
   permission to publish it further.
-- ~~**The PFSYC inner start position.**~~ Resolved. The register has inner start
-  marks for RPYC and SoPYC but no row for PFSYC, so this was `-32.001948,
-  115.812006`, supplied by hand and flagged `user-supplied-2026`. The QGIS layer
-  now carries a digitized `PFSYC Start Inner Start`, 71 m from that guess, and it
-  is in `marks.json` as `pfsyc-start-inner` like any other mark. `gen_lines.py`
-  reads it from there rather than holding a constant.
+- ~~**The PFSYC inner start position.**~~ Resolved, and the hand-supplied guess was
+  right. The register has inner start marks for RPYC and SoPYC but no row for
+  PFSYC, so this was `-32.001948, 115.812006`, flagged `user-supplied-2026` and
+  marked worth re-surveying. The QGIS layer now carries a digitized `PFSYC Start
+  Inner Start` 1.6 m from it, in `marks.json` as `pfsyc-start-inner` like any other
+  mark, and `gen_lines.py` reads it from there rather than holding a constant.
 
 ### Start / finish line
 
 | End                   | lat         | lon         | mark id             |
 | --------------------- | ----------- | ----------- | ------------------- |
-| Inner (start box)     | -32.0024720 | 115.8124380 | `pfsyc-start-inner` |
+| Inner (start box)     | -32.0019611 | 115.8120142 | `pfsyc-start-inner` |
 | Outer (Club Buoy 32A) | -32.0031847 | 115.8132302 | `club-32a`          |
 
-**Length 109.0 m (0.059 nm), orientation 136.7 / 316.7 degrees true.**
+**Length 178.1 m (0.096 nm), orientation 139.9 / 319.9 degrees true.**
 
-Both ends are digitized, so both moved: the inner end by 71 m from the hand-supplied
-guess, the outer by 62 m from the register. The line is 8 m shorter and swung 3
-degrees.
+The line is 61 m longer than previously thought, and that is 32A having moved 62 m
+from its register position. The inner end is within 1.6 m of the hand-supplied
+guess it replaced, so that guess was right all along.
 
-Two earlier sets of figures for this line are wrong and anything built against
-either of them is wrong with it. 259.8 m on 110.1 / 290.1 came from the bad 32A
-longitude in the club table. 117.3 m on 139.6 / 319.6 came from the register
-position for 32A and the hand-supplied inner end.
+It took a replay to establish that. The first digitizing pass put the inner mark 71 m
+along the line towards 32A, which shortened the line to 109 m, and replaying the 16
+August 2026 race through it produced no finish at all: the boat's last crossing fell
+at parameter -0.34, which is 38 m outside the inner end. The recorded track brackets
+the answer from both sides, and it is worth writing down how, because the same
+reasoning applies to any club's line:
+
+- The **15:16:05 finish crossing** is the lower bound. The line has to reach past it.
+- The boat's **transits to and from the pen**, at 13:13 and 15:27, cross the same
+  extension 146 m out. The line must *not* reach past those, or leaving the pen
+  registers as a finish.
+
+Anything between 37 m and 146 m out satisfies both, and the redigitized mark sits at
+69 m.
+
+The method is worth keeping even though the answer is now settled, because it applies
+to any line and will be wanted again after a re-survey: project every fix of a
+recorded track onto the line, find the sign changes, and sort them into crossings
+made while racing and crossings made getting to and from the pen. The racing ones are
+lower bounds on how far the line must reach and the pen ones are upper bounds. Which
+is which comes from the clock, not the geometry: a crossing before the gun or after
+the finish is not a race crossing however close to the line it looks.
+
+Three earlier sets of figures for this line are wrong, and anything built against any
+of them is wrong with it: 259.8 m on 110.1 / 290.1 from the bad 32A longitude in the
+club table; 117.3 m on 139.6 / 319.6 from the register position for 32A with the
+hand-supplied inner end; and 109.0 m on 136.7 / 316.7 from the first digitizing pass.
 
 ### Mark pairs, which are not gates
 
@@ -726,9 +749,26 @@ Rules:
 3. On finish: freeze elapsed time, switch to `finished`, publish the event.
 4. Never auto-reset. The crew resets when they are ready.
 
-Test coverage for this is non-negotiable. At minimum, replay Frostbite Course 1
-(four crossings of the line while racing) and confirm exactly one finish fires,
-on the correct fix.
+Test coverage for this is non-negotiable. At minimum, replay a course that crosses
+the line while racing and confirm exactly one finish fires, on the correct fix.
+
+**Done, for Frostbite Course 3.** `tests/test_race.py` replays the 16 August 2026
+recording fix by fix. The engine makes all nine leg advances in printed order,
+ignores three crossings of the line while racing (the 13:30 start and both roundings
+of 32A, which is the outer end of this line as well as a course mark), and finishes
+once, at 15:16:01, at parameter 0.17 along the line, for an elapsed time of 1:46:01
+counted from the gun. Course 1, with more crossings again, is still worth adding when
+it is transcribed.
+
+Two things that test earned, both of them corrections to this document rather than to
+the code:
+
+- It is what caught the misplaced inner start mark, by failing to finish a race that
+  plainly finished. A detection rule that looks wrong is worth suspecting the data
+  over: here the engine, the rule and the parameter test were all correct.
+- Only three crossings, not four. The count is a property of the course and the day,
+  not of Course 1 specifically, so do not read the number in an earlier draft of this
+  section as a requirement.
 
 ### 11.6 Shortened course
 

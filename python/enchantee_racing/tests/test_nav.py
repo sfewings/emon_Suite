@@ -25,25 +25,28 @@ from engine import nav  # noqa: E402
 # riskiest logic in the project and why these two points are the fixture.
 #
 # Both positions are from the QGIS redigitization of the September 2019 register, which
-# replaced the register's own coordinates as the truth for where a mark is. The previous
-# fixture used -32.001948, 115.812006 for the inner end, which was hand-supplied because
-# the register has no PFSYC inner start row, and -32.002750, 115.812812 for 32A from the
-# register. The digitized positions are 71 m and 62 m from those, which shortened the line
-# from 117 m to 109 m and swung it three degrees.
+# replaced the register's own coordinates as the truth for where a mark is.
+#
+# The inner end has been through three values. The register has no PFSYC inner start row at
+# all, so it began as a hand-supplied guess. The first digitizing pass put it 71 m away,
+# which turned out to be wrong: replaying a real race through it, the boat's finishing
+# crossing fell outside the line. Redigitized, it landed 1.6 m from the original guess, so
+# the guess was right and it was 32A that had moved. 32A is 62 m from its register position,
+# which is what lengthened this line from 117 m to 178 m.
 # Full precision as stored in config/marks.json: at 7 decimal places the last digit is
 # about a centimetre, and truncating to 6 shifts the geodesic length by 1 cm, which is
 # more than the tolerance the Vincenty check below is worth asserting to.
-INNER = nav.LatLon(-32.002472, 115.812438)  # pfsyc-start-inner, digitized
+INNER = nav.LatLon(-32.0019611, 115.8120142)  # pfsyc-start-inner, digitized
 CLUB_32A = nav.LatLon(-32.0031847, 115.8132302)  # club-32a, digitized
 
 # The figures config/lines.json publishes for that line, and DESIGN 6 quotes.
-DESIGN_LENGTH_M = 109.0
-DESIGN_LENGTH_NM = 0.059
-DESIGN_BEARING = 136.7
-DESIGN_RECIPROCAL = 316.7
+DESIGN_LENGTH_M = 178.1
+DESIGN_LENGTH_NM = 0.096
+DESIGN_BEARING = 139.9
+DESIGN_RECIPROCAL = 319.9
 
 # The racing-area bounding box (DESIGN 12), used to check the plane model over the
-# full extent rather than only over a 117 m line.
+# full extent rather than only over a 178 m line.
 BBOX_SOUTH, BBOX_WEST, BBOX_NORTH, BBOX_EAST = -32.030346, 115.748, -31.959052, 115.856573
 BBOX_POINTS = [
     nav.LatLon(BBOX_SOUTH, BBOX_WEST),
@@ -82,19 +85,19 @@ def test_meridian_scale_grows_toward_the_pole():
 
 
 def test_start_line_length_against_design():
-    """117.3 m, within the 0.2 m the design's spherical model costs.
+    """178.1 m, within the third of a metre the design's spherical model costs.
 
     See test_design_figures_come_from_a_spherical_model: the published figure is
-    long by 0.22 m, so this asserts agreement to the model difference and the
+    long by 0.34 m, so this asserts agreement to the model difference and the
     geodesic test below pins the exact value.
     """
     length = nav.distance_m(INNER, CLUB_32A)
-    assert abs(length - DESIGN_LENGTH_M) < 0.3, length
+    assert abs(length - DESIGN_LENGTH_M) < 0.5, length
     assert abs(nav.distance_nm(INNER, CLUB_32A) - DESIGN_LENGTH_NM) < 0.001
 
 
 def test_start_line_bearing_against_design():
-    """139.6 / 319.6 true, within the 0.14 degrees the design's model costs."""
+    """139.9 / 319.9 true, within the 0.14 degrees the design's model costs."""
     out = nav.bearing(INNER, CLUB_32A)
     back = nav.bearing(CLUB_32A, INNER)
     assert abs(nav.norm180(out - DESIGN_BEARING)) < 0.25, out
@@ -110,7 +113,7 @@ def test_start_line_against_the_geodesic():
     the Vincenty reference stands in.
     """
     truth_m, truth_deg = geodesic_reference.vincenty_inverse(INNER, CLUB_32A)
-    assert abs(truth_m - 108.8526) < 0.01, truth_m  # guards the reference itself
+    assert abs(truth_m - 177.7962) < 0.01, truth_m  # guards the reference itself
     assert abs(nav.distance_m(INNER, CLUB_32A) - truth_m) < 0.001
     assert abs(nav.norm180(nav.bearing(INNER, CLUB_32A) - truth_deg)) < 0.01
 
@@ -119,7 +122,7 @@ def test_design_figures_come_from_a_spherical_model():
     """Why the two tests above carry a tolerance instead of asserting equality.
 
     scripts/gen_lines.py uses a flat 111320 m/degree sphere, so config/lines.json
-    and DESIGN 6 both read about 0.18 m long and 0.14 degrees off on this line.
+    and DESIGN 6 both read about 0.34 m long and 0.14 degrees off on this line.
     Nothing at the helm cares, but a future reader comparing nav.py against the
     design brief should find the discrepancy explained rather than rediscover it.
     """
@@ -133,7 +136,7 @@ def test_design_figures_come_from_a_spherical_model():
     assert abs(nav.norm180(spherical_deg - DESIGN_BEARING)) < 0.05, spherical_deg
 
     truth_m, truth_deg = geodesic_reference.vincenty_inverse(INNER, CLUB_32A)
-    assert 0.10 < spherical_m - truth_m < 0.30
+    assert 0.20 < spherical_m - truth_m < 0.50
     assert 0.10 < nav.norm180(spherical_deg - truth_deg) < 0.20
 
 

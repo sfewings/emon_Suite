@@ -582,29 +582,17 @@ def test_replaying_a_real_race_works_through_every_leg_in_order():
     assert [e["type"] for _t, e in events if e["type"] == "breach"] == []
 
 
-def test_the_replayed_race_does_not_finish_and_the_reason_is_the_inner_start_mark():
-    """A real finding, pinned here rather than worked around.
+def test_the_replayed_race_finishes_once_on_the_fix_the_boat_crossed():
+    """The whole engine, end to end, against a race that happened.
 
-    The boat crossed the line for the last time at 15:16:05, and the engine does not call
-    it a finish, because on the redigitized line that crossing is at parameter t = -0.34:
-    38 m beyond the inner end, outside the segment. The [0, 1] test is doing exactly what
-    it was written to do.
+    This test spent a day asserting that the replay did NOT finish. The boat's last crossing
+    fell 38 m outside the inner end of the line, so the [0, 1] parameter test rejected it,
+    correctly: the inner start mark had been digitized 71 m along the line towards 32A. It
+    was redigitized to within 1.6 m of the hand-supplied guess that preceded it, which
+    lengthened the line from 109 m to 178 m, and the finish now lands at t = 0.17.
 
-    On the previous line, whose inner end was the hand-supplied guess, the same crossing
-    was at t = +0.28, comfortably inside. The digitized PFSYC Start Inner Start sits 71 m
-    from that guess, along the line towards 32A, and the boat finished between the two.
-
-    So one of these is true, and only somebody who sails there can say which:
-
-      - the digitized inner mark is not the inner end of the finish line, or
-      - the finish line is scored as running from 32A to the shore rather than to that
-        mark, in which case the parameter test should be strict at the pin end, which is
-        the end 32A creates a hazard at, and open at the shore end, where there is no
-        water for a boat to be on the wrong side of.
-
-    Until that is settled the engine stays strict, because a false finish ends a race and a
-    missed one does not. This test fails the day the inner mark or the rule changes, which
-    is the point: it is a question with a deadline, not a silent workaround.
+    Worth keeping in mind next time something here looks like a detection bug. The engine
+    was right, the rule was right, and the mark was wrong.
     """
     if not TRACK.exists():
         print("skipped: %s is not in the repository" % TRACK.name)
@@ -612,23 +600,24 @@ def test_the_replayed_race_does_not_finish_and_the_reason_is_the_inner_start_mar
 
     context = _context()
     state, events = _replay(context)
-    assert [e["type"] for _t, e in events if e["type"] == "finish"] == []
-    assert state.mode == race.RACING
 
-    inner, outer = course_module.start_line(LINES)
-    fixes = _read_track(TRACK, start="15:16:00")
-    crossing_t = None
-    for index in range(1, len(fixes)):
-        before = nav.project(inner, outer, fixes[index - 1][1]).offset_m
-        after = nav.project(inner, outer, fixes[index][1]).offset_m
-        if before * after < 0:
-            crossing_t = nav.project(inner, outer, fixes[index][1]).t
-            break
-    assert crossing_t is not None, "the boat did cross the line's extension"
-    assert -0.45 < crossing_t < -0.25, crossing_t
+    finishes = [(now, event) for now, event in events if event["type"] == "finish"]
+    assert len(finishes) == 1, [now for now, _e in finishes]
+    assert state.mode == race.FINISHED
 
-    # Elapsed keeps running, which is right: the clock is not the GPS's business.
-    assert race.elapsed(state, fixes[-1][0]) > 6000.0
+    when, event = finishes[0]
+    assert abs(when - (15 * 3600 + 16 * 60 + 1)) < 5, when      # the boat crossed at 15:16:01
+    assert 0.0 <= event["along"] <= 1.0, event["along"]
+    assert event["lat"] is not None and event["lon"] is not None
+
+    # An hour and three quarters, counted from the gun rather than from the line.
+    assert abs(race.elapsed(state, when) - 6361.0) < 30.0, race.elapsed(state, when)
+
+    # Three crossings while racing, every one of them ignored: the 13:30 start and the two
+    # roundings of 32A, which is the outer end of this line as well as a course mark. That
+    # is the hazard the whole finish design exists for, and it happened three times.
+    assert state.ignored_crossings == 3, state.ignored_crossings
+    assert state.breaches == 0
 
 
 def test_the_replay_advances_close_to_where_the_boat_actually_rounded():

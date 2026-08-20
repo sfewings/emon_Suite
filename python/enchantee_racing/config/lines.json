@@ -7,8 +7,8 @@
     "inner": {
       "mark": "pfsyc-start-inner",
       "name": "PFSYC start inner",
-      "lat": -32.002472,
-      "lon": 115.812438,
+      "lat": -32.0019611,
+      "lon": 115.8120142,
       "source": "ywa-srrc-2019-qgis",
       "note": "The register has no row for a PFSYC inner start mark; this one is digitized in the QGIS layer."
     },
@@ -19,9 +19,9 @@
       "source": "ywa-srrc-2019-qgis"
     },
     "warning": "club-32a is also a mid-course mark in most courses, so boats cross this line repeatedly while racing. Arm finish detection only after the final leg completes.",
-    "length_m": 109.0,
-    "length_nm": 0.059,
-    "bearing_inner_to_outer": 136.7
+    "length_m": 178.1,
+    "length_nm": 0.096,
+    "bearing_inner_to_outer": 139.9
   },
   "no_cross_lines": [
     {
