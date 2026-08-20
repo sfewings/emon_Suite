@@ -1,18 +1,191 @@
 /*
-  Skeleton only. Ported from the existing HUD page at build order step 3.
+  Race screen. One screen, no scrolling, no modal dialogs, nothing needing two hands.
+  The reader is in a boat cockpit, in sunlight, wet, moving and busy (CLAUDE.md).
 
-  The reader is in a boat cockpit, in sunlight, wet, moving and busy: large hit
-  targets, high contrast, no scrolling (CLAUDE.md).
+  Colours are the HUD's, unchanged, so the crew does not have to relearn a display they
+  already read at a glance (DESIGN 9.1). Anything new here borrows from that set rather
+  than introducing a colour.
 
-  Carry over from the existing HUD (DESIGN 9.1):
-    - the colour variables, unchanged, so the crew does not relearn the display
-    - env(safe-area-inset-*) padding
-    - overscroll-behavior: none, user-select: none, touch-action: manipulation
+  Four panels, all present in the DOM at once and switched by a class on <body>. No DOM
+  rebuilding and no animation: mode is server state, so every device switches together and
+  a transition mid-race must not cost a repaint of the whole screen (DESIGN 9.6).
 
-  Add (DESIGN 9.7): a red-on-black night theme, switched manually, never
-  automatically. Twilight races start at 1820 and the Parmelia Night Race at 1850.
-  Keep the layout byte-for-byte identical between themes so muscle memory survives
-  the switch.
-
-  No external font and no CDN. The Pi has no internet.
+  No external font. The Pi has no internet.
 */
+
+:root {
+  --sog:   #1e90ff;
+  --mark:  #ffffff;   /* the next mark name: the largest thing on the screen */
+  --dist:  #1e90ff;   /* distance, as SOG, because both are speed-and-distance */
+  --brg:   #ffff00;   /* bearing, as HDG on the HUD                           */
+  --cog:   #ffff99;   /* course over ground, the lighter tint, as on the HUD   */
+  --time:  #98fb98;   /* elapsed and countdown: PaleGreen, as RPM             */
+  --warn:  #ffa500;   /* a breach, an early crossing: TWA orange              */
+  --bad:   #e8443a;
+  --rule:  #262626;
+  --label: #767676;
+  --panel: #0d0d0d;
+  --ink:   #ffffff;
+  --bg:    #000000;
+}
+
+/* Night: red on black, switched by hand and never automatically, because an automatic
+   switch during a race is worse than a stale one. The layout is identical between themes
+   so muscle memory survives the change (DESIGN 9.7). */
+body.night {
+  --sog: #ff6b5a; --mark: #ff8f7a; --dist: #ff6b5a; --brg: #ff5a48; --cog: #d4564a;
+  --time: #ff7a68; --warn: #ff9068; --bad: #ff4a3a;
+  --rule: #2a0f0c; --label: #8a4038; --panel: #0a0403; --ink: #ff8f7a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--ink);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none; -webkit-user-select: none;
+}
+
+#app {
+  display: flex; flex-direction: column;
+  height: 100vh; height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* --- panels: exactly one visible, chosen by the mode class on body --- */
+
+.panel { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+body.mode-idle     #panel-idle,
+body.mode-prestart #panel-prestart,
+body.mode-racing   #panel-racing,
+body.mode-finished #panel-finished { display: flex; }
+
+/* --- the readings --------------------------------------------------- */
+
+.lbl {
+  color: var(--label);
+  letter-spacing: .1em; text-transform: uppercase;
+  font-size: clamp(9px, 1.6vh, 16px);
+}
+
+.big {
+  font-weight: 500; line-height: 1;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em; white-space: nowrap;
+}
+
+/* The mark name is the largest text on the screen after the numbers, and it is the
+   display name from marks.json, because the crew calls it Squadron, not 37 (DESIGN 9.2). */
+#mark-name {
+  color: var(--mark);
+  font-size: clamp(28px, 9vh, 92px);
+  font-weight: 600; line-height: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.row {
+  display: flex; align-items: baseline; gap: .5em;
+  padding: 0 .5rem;
+}
+.row + .row { border-top: 2px solid var(--rule); }
+.grow { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column;
+        justify-content: center; padding: .2rem .5rem; }
+
+#distance { color: var(--dist); font-size: clamp(40px, 15vh, 150px); }
+#bearing  { color: var(--brg);  font-size: clamp(30px, 11vh, 110px); }
+#cog      { color: var(--cog);  font-size: clamp(18px, 5vh, 48px); }
+#relative { color: var(--brg);  font-size: clamp(18px, 5vh, 48px); }
+#elapsed  { color: var(--time); font-size: clamp(26px, 8vh, 80px); }
+#countdown { color: var(--time); font-size: clamp(56px, 22vh, 220px); }
+.unit { color: var(--label); font-size: clamp(11px, 2vh, 20px);
+        letter-spacing: .08em; text-transform: uppercase; }
+
+/* Stale: dimmed for wind and motor, which still read as numbers. Position is blanked
+   instead, in the JS, by writing dashes: a dimmed number still reads as a number to
+   someone glancing at it in spray (DESIGN 9.5). */
+.stale { opacity: 0.25; }
+
+#secondary {
+  display: flex; flex-wrap: wrap; gap: .4rem 1.2rem;
+  padding: .35rem .6rem;
+  border-top: 2px solid var(--rule);
+  font-size: clamp(10px, 1.9vh, 18px);
+  color: var(--label);
+}
+#secondary b { color: var(--ink); font-weight: 500; }
+#secondary .warn { color: var(--warn); }
+
+/* --- controls: large hit targets, nothing needing two hands ---------- */
+
+.controls { display: flex; gap: .4rem; padding: .4rem; }
+button {
+  flex: 1 1 0;
+  min-height: 3.2rem;
+  font: inherit; font-size: clamp(13px, 2.6vh, 24px);
+  font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink); background: var(--panel);
+  border: 2px solid var(--rule); border-radius: .5rem;
+  touch-action: manipulation;
+}
+button:active { background: var(--rule); }
+button.primary { border-color: var(--sog); color: var(--sog); flex: 2 1 0; }
+button.small { flex: 0 0 auto; min-width: 3.4rem; }
+button.warn { border-color: var(--warn); color: var(--warn); }
+
+/* --- course selection ----------------------------------------------- */
+
+#series { display: flex; gap: .4rem; padding: .4rem; flex-wrap: wrap; }
+#cards {
+  flex: 1 1 0; min-height: 0; overflow-y: auto;
+  display: grid; gap: .5rem; padding: .4rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+.card {
+  display: flex; flex-direction: column; align-items: center; gap: .3rem;
+  padding: .6rem .4rem;
+  background: var(--panel); border: 2px solid var(--rule); border-radius: .5rem;
+}
+.card .flags { display: flex; gap: .35rem; align-items: center; height: 2.6rem; }
+.card .flags img { height: 100%; width: auto; }
+.card .no { font-size: clamp(20px, 5vh, 42px); font-weight: 600; }
+.card .nm { color: var(--label); font-size: clamp(10px, 1.8vh, 16px); }
+.card[disabled] { opacity: .35; }
+
+/* --- the pip and the notice ------------------------------------------ */
+
+#pip {
+  position: fixed; top: calc(env(safe-area-inset-top) + 7px); left: 7px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--bad); opacity: 0; transition: opacity .3s;
+  pointer-events: none;
+}
+#pip.down { opacity: 1; }
+
+/* A breach or an early crossing: brief, non-blocking, no dialog. The crew knows, and the
+   penalty is theirs to take (DESIGN 11.3). */
+#notice {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 4.4rem);
+  padding: .5rem .9rem; border-radius: .5rem;
+  background: var(--panel); border: 2px solid var(--warn); color: var(--warn);
+  font-size: clamp(12px, 2.2vh, 20px);
+  opacity: 0; transition: opacity .4s; pointer-events: none;
+}
+#notice.show { opacity: 1; }
+
+/* The wake-lock video: present and playing, never seen. Not display:none, which lets a
+   browser stop decoding it, and a video that is not being decoded keeps no backlight on. */
+#wake {
+  position: fixed; top: 0; left: 0; width: 1px; height: 1px;
+  opacity: 0; z-index: -1; pointer-events: none;
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  #secondary { font-size: clamp(9px, 3vw, 14px); }
+  button { min-height: 2.6rem; }
+}

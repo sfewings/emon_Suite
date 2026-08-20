@@ -1,26 +1,121 @@
 <!doctype html>
 <!--
-  Race screen. Skeleton only.
+  Race screen. Build order steps 7 and 8: the countdown, the pre-start, and course
+  selection with flags.
 
-  Four panels, pre-rendered, swapped by toggling a class: idle (course selection),
-  prestart (countdown), racing (next mark) and finished. Do not rebuild the DOM and
-  do not animate (DESIGN 9.6). Mode is server state, so every device switches
-  together.
+  Four panels, all of them in the DOM from the start, switched by a class on <body>. Mode
+  is server state, so every device switches together and nothing is rebuilt (DESIGN 9.6).
 
-  Asset URLs below are relative, not root-relative, on purpose: the page is served
-  both at /race/ behind nginx and at / on port 5002, and a leading slash breaks the
-  prefixed case. Build fetch targets the way the existing HUD does:
-      location.pathname.replace(/\/+$/, "") + "/api/state"
-  That is also why nginx needs the /race -> /race/ redirect (DESIGN 5).
+  Asset URLs are relative, not root-relative, on purpose: this page is served both at
+  /race/ behind nginx and at / on its own port, and a leading slash breaks the prefixed
+  case. The data URL is built from location.pathname for the same reason (CLAUDE.md).
 -->
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#000000">
 <title>Enchantee racing</title>
 <link rel="stylesheet" href="static/app.css">
-<main id="app">
-  <!-- TODO build order step 7 onward: prestart countdown, racing panel, finished
-       panel, course selection cards with division and numeral flags. -->
-</main>
+
+<video id="wake" src="static/wake.mp4" muted loop playsinline webkit-playsinline
+       preload="auto" disableremoteplayback></video>
+<div id="pip"></div>
+<div id="notice"></div>
+
+<div id="app">
+
+  <!-- idle: pick a course. Series first, then a card per course with both flags. -->
+  <section class="panel" id="panel-idle">
+    <div id="series"></div>
+    <div id="cards"></div>
+    <div class="controls">
+      <button id="to-hud">HUD</button>
+      <button id="night">Night</button>
+    </div>
+  </section>
+
+  <!-- prestart: the countdown, and time to the line against it (DESIGN 10). -->
+  <section class="panel" id="panel-prestart">
+    <div class="grow">
+      <span class="lbl">to the gun</span>
+      <span class="big" id="countdown">--:--</span>
+    </div>
+    <div class="row">
+      <div class="grow">
+        <span class="lbl">to the line</span>
+        <span class="big" id="line-distance">---</span> <span class="unit" id="line-unit">m</span>
+      </div>
+      <div class="grow">
+        <span class="lbl">time to line</span>
+        <span class="big" id="line-time">--:--</span>
+      </div>
+    </div>
+    <div class="controls">
+      <button id="hooter-10">T-10</button>
+      <button id="hooter-5">T-5</button>
+      <button id="hooter-1">T-1</button>
+    </div>
+    <div class="controls">
+      <button class="small" id="nudge-minus">-1s</button>
+      <button class="small" id="nudge-plus">+1s</button>
+      <button id="sync">Sync</button>
+      <button id="cancel">Cancel</button>
+    </div>
+  </section>
+
+  <!-- racing: next mark, distance, bearing with COG beside it, elapsed (DESIGN 9.2). -->
+  <section class="panel" id="panel-racing">
+    <div class="grow">
+      <span class="lbl">next mark</span>
+      <span id="mark-name">---</span>
+    </div>
+    <div class="grow">
+      <span class="lbl">distance</span>
+      <span class="big" id="distance">---</span> <span class="unit" id="distance-unit">m</span>
+    </div>
+    <div class="row">
+      <div class="grow">
+        <span class="lbl">bearing</span>
+        <span class="big" id="bearing">---</span>
+      </div>
+      <div class="grow">
+        <span class="lbl">cog</span>
+        <span class="big" id="cog">---</span>
+      </div>
+      <div class="grow">
+        <span class="lbl">off the bow</span>
+        <span class="big" id="relative">---</span>
+      </div>
+    </div>
+    <div class="grow">
+      <span class="lbl">elapsed</span>
+      <span class="big" id="elapsed">--:--:--</span>
+    </div>
+    <div id="secondary"></div>
+    <div class="controls">
+      <button class="small" id="back">Back</button>
+      <button class="primary" id="next">Next mark</button>
+      <button class="small warn" id="shorten">S</button>
+    </div>
+  </section>
+
+  <!-- finished: elapsed frozen, the course sailed, and nothing that resets itself. -->
+  <section class="panel" id="panel-finished">
+    <div class="grow">
+      <span class="lbl">finished</span>
+      <span class="big" id="final-elapsed">--:--:--</span>
+    </div>
+    <div class="grow">
+      <span class="lbl">course</span>
+      <span id="final-course" class="big" style="font-size:clamp(20px,5vh,44px)">---</span>
+    </div>
+    <div id="final-secondary" class="lbl" style="padding:.6rem"></div>
+    <div class="controls">
+      <button id="to-hud-2">HUD</button>
+      <button id="reset">Reset</button>
+    </div>
+  </section>
+
+</div>
 <script src="static/app.js" defer></script>

@@ -1,9 +1,0 @@
-Four naval numeral flags and four numeral pendants go here, per DESIGN 8.
-
-Hand-write them as SVG. They are simple geometry and a few kB in total. Do not crop
-them out of the fixtures PDF.
-
-Courses are signalled from the start box with a naval numeral for the division and a
-numeral pendant for the course number, so the selection cards show both flags and
-the crew matches what is flying instead of reading text. courses.json names them as
-{"division": "naval-3", "numeral": "pendant-2"}, which is the filename stem here.

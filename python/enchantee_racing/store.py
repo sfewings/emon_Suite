@@ -251,6 +251,27 @@ class Store:
             self._queue(events + more)
             return events + more
 
+    def _fix_now(self, now: float) -> Optional[race.Fix]:
+        """The current fix as the engine wants it, or None if there is not a usable one.
+
+        Call with the lock held. Returns None past the staleness cutoff, so everything
+        downstream blanks rather than showing a bearing computed from an old position
+        (DESIGN 9.5).
+        """
+        reading = self._values.get(POSITION_KEY)
+        if reading is None or not isinstance(reading.v, dict):
+            return None
+        if (now - reading.t) > POSITION_STALE_S:
+            return None
+        cog = self._values.get("cog")
+        sog = self._values.get("sog")
+        return race.Fix(
+            position=nav.as_latlon(reading.v),
+            ts=reading.t,
+            cog=cog.v if cog and isinstance(cog.v, (int, float)) else None,
+            sog=sog.v if sog and isinstance(sog.v, (int, float)) else None,
+        )
+
     def race_payload(self, now: Optional[float] = None) -> Optional[dict]:
         """What the pages need to render the race, or None before a course is chosen.
 
@@ -266,6 +287,9 @@ class Store:
             self._race, events = race.on_clock(self._race, self._context, now)
             self._queue(events)
             state, context = self._race, self._context
+            fix = self._fix_now(now)
+            twd = self._values.get("twd")
+            twd = twd.v if twd and isinstance(twd.v, (int, float)) else None
 
         return {
             "mode": state.mode,
@@ -281,6 +305,8 @@ class Store:
             "shortened": state.shortened,
             "breaches": state.breaches,
             "ignored_crossings": state.ignored_crossings,
+            "nav": race.navigation(state, context, fix, twd),
+            "line": race.line_approach(state, context, fix),
         }
 
 

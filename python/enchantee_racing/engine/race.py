@@ -32,6 +32,7 @@ What is deliberately absent:
 
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping, NamedTuple, Optional, Sequence
 
 from . import course as course_module
@@ -178,6 +179,90 @@ def target_name(state: State, context: Context) -> Optional[str]:
 def is_stale(state: State, context: Context, fix: Fix, now: float) -> bool:
     """Past the cutoff the fix is not used for anything at all (DESIGN 9.5)."""
     return (now - fix.ts) > context.config.position_stale_s
+
+
+BEAT_MAX = 40.0
+RUN_MIN = 140.0
+
+
+def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional[str]:
+    """beat, reach or run for the leg ahead, from norm180(twd - bearing) (DESIGN 3).
+
+    Free, since both numbers are already on the screen, and useful before a rounding
+    rather than after it: it is what tells the crew which sail to have ready.
+    """
+    if twd is None or bearing_to_mark is None:
+        return None
+    off_the_wind = abs(nav.norm180(twd - bearing_to_mark))
+    if off_the_wind < BEAT_MAX:
+        return "beat"
+    if off_the_wind > RUN_MIN:
+        return "run"
+    return "reach"
+
+
+def navigation(state: State, context: Context, fix: Optional[Fix],
+               twd: Optional[float] = None) -> Optional[dict]:
+    """Distance and bearing to the current target, or None if it cannot be known.
+
+    None covers every reason the numbers must blank rather than mislead: no course, no
+    fix, a fix past the 5 s cutoff, or a finished race. The page shows dashes for all of
+    them, because a stale bearing looks exactly like a live one (DESIGN 9.5).
+
+    Distance is metres and the bearing is degrees true. Switching to nautical miles above
+    500 m, and formatting, is the front end's business (DESIGN 9.4).
+    """
+    if fix is None or state.mode == FINISHED:
+        return None
+    mark = target(state, context)
+    if mark is None:
+        return None
+    bearing = nav.bearing(fix.position, mark)
+    return {
+        "distance_m": nav.distance_m(fix.position, mark),
+        "bearing": bearing,
+        # Signed, port negative, the same convention as TWA and AWA on the HUD. Shown
+        # beside the true bearing rather than instead of it, so the helm reads the delta
+        # without arithmetic (DESIGN 9.3).
+        "relative": None if fix.cog is None else nav.relative_bearing(bearing, fix.cog),
+        "leg_type": leg_type(twd, bearing),
+    }
+
+
+def line_approach(state: State, context: Context, fix: Optional[Fix]) -> Optional[dict]:
+    """Distance to the start line and time to reach it, for the pre-start (DESIGN 10).
+
+    Time to line is the number that wins starts: distance to the line divided by the speed
+    made good towards it. All the inputs are already here.
+
+    The aim point is the nearest point on the line rather than its middle, because that is
+    where a boat actually crosses, and both the distance and the bearing are measured to
+    the same point so the two numbers agree with each other.
+    """
+    if fix is None or state.mode not in (IDLE, PRESTART):
+        return None
+    inner, outer = course_module.start_line(context.lines)
+    projection = nav.project(inner, outer, fix.position)
+    along = min(1.0, max(0.0, projection.t))
+    aim = nav.destination(inner, nav.bearing(inner, outer),
+                          along * nav.distance_m(inner, outer))
+
+    distance = nav.distance_m(fix.position, aim)
+    bearing = nav.bearing(fix.position, aim)
+    seconds = None
+    if fix.cog is not None and fix.sog is not None and fix.sog > 0.0:
+        # Speed made good towards the line, not speed through the water: a boat reaching
+        # along the line at six knots is not approaching it at all.
+        made_good = fix.sog * math.cos(math.radians(nav.norm180(bearing - fix.cog)))
+        if made_good > 0.05:
+            seconds = distance / (made_good * nav.METRES_PER_NM / 3600.0)
+    return {
+        "distance_m": distance,
+        "bearing": bearing,
+        "seconds": seconds,
+        "over": nav.side(inner, outer, fix.position) == state.finish_side
+        if state.finish_side else None,
+    }
 
 
 # --- commands, all from the crew -------------------------------------------

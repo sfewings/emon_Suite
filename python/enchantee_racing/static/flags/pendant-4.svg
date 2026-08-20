@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 60" role="img"
+     aria-label="Numeral pendant 4, course 4">
+  <title>Numeral pendant 4, course 4</title>
+  <defs><clipPath id="p"><polygon points="0,0 120,18 120,42 0,60"/></clipPath></defs>
+  <g clip-path="url(#p)">
+  <rect x="0" y="0" width="120" height="60" fill="#c8102e"/>
+  <rect x="0" y="25" width="120" height="10" fill="#ffffff"/>
+  <rect x="36" y="0" width="10" height="60" fill="#ffffff"/>
+  </g>
+  <polygon points="0,0 120,18 120,42 0,60" fill="none" stroke="#111111"
+           stroke-opacity=".35" stroke-width="2"/>
+</svg>
