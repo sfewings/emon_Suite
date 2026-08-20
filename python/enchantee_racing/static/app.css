@@ -156,6 +156,47 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 .card .nm { color: var(--label); font-size: clamp(10px, 1.8vh, 16px); }
 .card[disabled] { opacity: .35; }
 
+/* --- navigation, on every screen ------------------------------------- */
+
+#nav {
+  display: flex; gap: 1px;
+  border-top: 2px solid var(--rule);
+  flex: 0 0 auto;
+}
+#nav a, #nav button {
+  flex: 1 1 0; min-height: 2.6rem; min-width: 0;
+  border: none; border-radius: 0;
+  background: var(--bg); color: var(--label);
+  font: inherit; font-size: clamp(10px, 1.9vh, 17px);
+  font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  text-decoration: none;
+  display: flex; align-items: center; justify-content: center;
+}
+#nav a:active, #nav button:active { background: var(--rule); }
+/* The screen you are on. Marked rather than hidden, so the row never changes shape. */
+#nav .here { color: var(--ink); box-shadow: inset 0 3px 0 0 var(--sog); }
+#nav .off { opacity: .3; pointer-events: none; }
+
+/* The rounding side, small and next to the mark name rather than in the secondary row,
+   because it belongs to the mark you are looking at (DESIGN 9.2). */
+.markline { display: flex; align-items: baseline; gap: .5em; min-width: 0; }
+#mark-round {
+  color: var(--label); white-space: nowrap;
+  font-size: clamp(11px, 2.4vh, 24px);
+  letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* --- the finish screen ----------------------------------------------- */
+
+/* Both numbers large: they are what anyone wants off this screen, read across a cockpit
+   by someone who has just stopped concentrating (DESIGN 9.6). */
+#final-elapsed { color: var(--time); font-size: clamp(44px, 17vh, 170px); }
+#final-course  { color: var(--mark); font-size: clamp(24px, 8vh, 76px); }
+#final-secondary {
+  padding: .35rem .6rem; color: var(--label);
+  font-size: clamp(10px, 1.9vh, 18px);
+}
+
 /* --- the pip and the notice ------------------------------------------ */
 
 #pip {

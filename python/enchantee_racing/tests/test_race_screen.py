@@ -131,6 +131,64 @@ def test_the_leg_type_comes_free_from_the_wind_direction():
     assert race.leg_type(None, 90.0) is None      # no wind reading, no answer
 
 
+def test_the_leg_after_this_one_is_named_with_its_transit_angle_and_type():
+    """The secondary row's job: what happens after the rounding (DESIGN 9.2).
+
+    Course 3's first two legs are Dolphin East then Sanders, and the turn from one to the
+    other is a real number the crew can check against the chart.
+    """
+    store, _ticker = _racing_store()
+    marks = _context().marks
+    mark = nav.as_latlon(marks["dolphin-east-42b"])
+    beyond = nav.as_latlon(marks["sanders-99"])
+    boat = nav.destination(mark, 250.0, 900.0)          # closing on bearing 070
+
+    mqtt_client.handle_message(store, "gps/course/0", b"70")
+    store.on_position({"lat": boat.lat, "lon": boat.lon})
+    block = store.state()["race"]["nav"]
+
+    assert block["next_name"] == "Sanders"
+    assert abs(nav.norm180(block["next_bearing"] - nav.bearing(mark, beyond))) < 0.5
+    # signed to port or starboard, from the direction the boat is closing on the mark
+    expected = nav.norm180(nav.bearing(mark, beyond) - nav.bearing(boat, mark))
+    assert abs(block["transit"] - expected) < 0.5
+    assert -180.0 <= block["transit"] <= 180.0
+
+
+def test_the_next_leg_type_is_the_leg_after_the_rounding_not_this_one():
+    """The point of showing it is sail selection, so it has to be the leg being prepared
+    for rather than the one being sailed (DESIGN 9.2)."""
+    store, _ticker = _racing_store()
+    marks = _context().marks
+    mark = nav.as_latlon(marks["dolphin-east-42b"])
+    beyond = nav.as_latlon(marks["sanders-99"])
+    boat = nav.destination(mark, 250.0, 900.0)
+    onward = nav.bearing(mark, beyond)
+
+    # A wind dead against the leg after the rounding: that leg is a beat, and the leg being
+    # sailed now is something else entirely.
+    mqtt_client.handle_message(store, "anemometer/windDirection/2", str(onward).encode())
+    store.on_position({"lat": boat.lat, "lon": boat.lon})
+    block = store.state()["race"]["nav"]
+    assert block["next_leg_type"] == "beat"
+    assert block["leg_type"] != "beat", "the current leg is not the one being reported"
+
+
+def test_the_last_leg_has_nothing_after_it():
+    """On the finish leg there is no next mark, so the row says nothing rather than lying."""
+    store, _ticker = _racing_store()
+    context = _context()
+    store.apply_race(lambda s, c, n: (s._replace(leg=context.last_leg), []))
+    inner, outer = course_module.start_line(CONFIG["lines"])
+    boat = nav.destination(nav.midpoint(inner, outer), 20.0, 400.0)
+    store.on_position({"lat": boat.lat, "lon": boat.lon})
+
+    block = store.state()["race"]["nav"]
+    assert block["next_name"] is None
+    assert block["transit"] is None
+    assert block["next_leg_type"] is None
+
+
 def test_time_to_line_is_distance_over_speed_made_good_towards_it():
     """The number that wins starts (DESIGN 10)."""
     store, ticker = _racing_store()
@@ -213,10 +271,11 @@ def _panel_controls(page, panel):
 def test_every_mode_can_be_left_by_something_on_its_own_panel():
     """Reachability, which a screenful of passing tests did not catch.
 
-    The first version stranded the crew: selecting a course left the mode at idle, and the
+    An early version stranded the crew: selecting a course left the mode at idle, and the
     hooter buttons that start a race are on the prestart panel, so the only route to the
-    buttons that start a race was to have already started one. Every panel needs a control
-    that leads somewhere else, and this is the test that says so.
+    buttons that start a race was to have already started one. Every panel needs the
+    controls that carry the race forward, and this is the test that says so. The navigation
+    is checked separately, because it is outside the panels and serves all of them.
     """
     page = _page()
     exits = {
@@ -228,6 +287,37 @@ def test_every_mode_can_be_left_by_something_on_its_own_panel():
     for panel, needed in exits.items():
         controls = _panel_controls(page, panel)
         assert needed <= controls, (panel, needed - controls)
+
+
+def test_both_pages_carry_the_same_five_screen_navigation():
+    """No screen is a dead end, which took two goes to get right: the HUD had no way back
+    to anything, and the racing screen had no way to the HUD, which is the one a crew
+    actually wants mid-race (DESIGN 9.6).
+    """
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    for path in ("/", "/hud"):
+        page = client.get(path).get_data(as_text=True)
+        nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>", page, re.S)
+        assert nav, path
+        labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav.group(1))]
+        assert labels == ["HUD", "Course", "Race", "Finish", "Map"], (path, labels)
+        # Map is named so its absence is visible, and disabled so it cannot be tapped.
+        assert 'class="off"' in nav.group(1), path
+
+    # Every navigation target is relative, so the whole set works behind the /race/ prefix
+    # and on the app's own port alike.
+    hud_nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>",
+                        client.get("/hud").get_data(as_text=True), re.S).group(1)
+    assert 'href="."' in hud_nav
+    assert 'href="/' not in hud_nav
+    race_nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>",
+                         client.get("/").get_data(as_text=True), re.S).group(1)
+    assert 'href="hud"' in race_nav
+    assert 'href="/' not in race_nav
 
 
 def test_selecting_a_course_lands_on_the_panel_with_the_hooters():
@@ -259,19 +349,13 @@ def test_each_page_can_reach_the_other():
     client = flask_app.test_client()
 
     race_screen = client.get("/").get_data(as_text=True)
-    assert 'id="to-hud"' in race_screen
-    # The race screen navigates from the script rather than with an anchor, so the url is
-    # in app.js, built from base like every other path it uses.
-    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
-    assert 'base + "/hud"' in script, "the race screen has no way to the HUD"
+    assert 'href="hud"' in race_screen, "the race screen has no way to the HUD"
 
     hud = client.get("/hud").get_data(as_text=True)
-    link = re.search(r'<a[^>]*id="race"[^>]*>', hud)
-    assert link, "the HUD has no way back to the race screen"
     # href="." resolves to /race/ behind the prefix and to / on the app's own port. A
     # leading slash would work on the port and break behind nginx, which is the whole
     # reason every path in these pages is relative.
-    assert 'href="."' in link.group(0), link.group(0)
+    assert 'href="."' in hud, "the HUD has no way back to the race screen"
     assert 'href="/"' not in hud
 
 

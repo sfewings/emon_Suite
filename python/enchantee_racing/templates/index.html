@@ -30,7 +30,6 @@
     <div id="series"></div>
     <div id="cards"></div>
     <div class="controls">
-      <button id="to-hud">HUD</button>
       <button id="night">Night</button>
     </div>
   </section>
@@ -72,7 +71,9 @@
   <section class="panel" id="panel-racing">
     <div class="grow">
       <span class="lbl">next mark</span>
-      <span id="mark-name">---</span>
+      <div class="markline">
+        <span id="mark-name">---</span><span id="mark-round"></span>
+      </div>
     </div>
     <div class="grow">
       <span class="lbl">distance</span>
@@ -112,14 +113,25 @@
     </div>
     <div class="grow">
       <span class="lbl">course</span>
-      <span id="final-course" class="big" style="font-size:clamp(20px,5vh,44px)">---</span>
+      <span class="big" id="final-course">---</span>
     </div>
-    <div id="final-secondary" class="lbl" style="padding:.6rem"></div>
+    <div id="final-secondary"></div>
     <div class="controls">
-      <button id="to-hud-2">HUD</button>
-      <button id="reset">Reset</button>
+      <button class="primary" id="reset">Course</button>
     </div>
   </section>
+
+  <!-- The same navigation on every screen, so no screen is a dead end. Tapping a name is
+       a view change and never a command: looking at the course list during a race must not
+       end the race (DESIGN 9.6). HUD and Map are separate pages; the other three are
+       panels of this one. -->
+  <nav id="nav">
+    <a href="hud">HUD</a>
+    <button data-show="idle">Course</button>
+    <button data-show="race">Race</button>
+    <button data-show="finished">Finish</button>
+    <a class="off" aria-disabled="true">Map</a>
+  </nav>
 
 </div>
 <script src="static/app.js" defer></script>

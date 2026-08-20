@@ -218,7 +218,7 @@ def navigation(state: State, context: Context, fix: Optional[Fix],
     if mark is None:
         return None
     bearing = nav.bearing(fix.position, mark)
-    return {
+    payload = {
         "distance_m": nav.distance_m(fix.position, mark),
         "bearing": bearing,
         # Signed, port negative, the same convention as TWA and AWA on the HUD. Shown
@@ -226,7 +226,30 @@ def navigation(state: State, context: Context, fix: Optional[Fix],
         # without arithmetic (DESIGN 9.3).
         "relative": None if fix.cog is None else nav.relative_bearing(bearing, fix.cog),
         "leg_type": leg_type(twd, bearing),
+        "next_name": None,
+        "next_bearing": None,
+        "transit": None,
+        "next_leg_type": None,
     }
+
+    # The leg after this one: what it is called, how hard the turn onto it will be, and
+    # whether it is a beat, a reach or a run. All three are wanted before the rounding
+    # rather than after it, which is the whole point: the transit angle says whether the
+    # kite comes down at the mark, the leg type says what goes up instead, and the name is
+    # what the trimmer needs to hear next (DESIGN 9.2).
+    if state.leg < context.last_leg:
+        after = context.legs[state.leg + 1]
+        beyond = course_module.leg_target(after, context.marks, context.lines)
+        onward = nav.bearing(mark, beyond)
+        payload["next_name"] = course_module.leg_name(after, context.marks)
+        payload["next_bearing"] = onward
+        # Signed to port or starboard, per DESIGN 9.2, and measured from the direction the
+        # boat is actually closing on the mark rather than from the leg as drawn. A boat
+        # two tacks out is not approaching along the rhumb line, and the turn it will make
+        # is the one from where it comes in.
+        payload["transit"] = nav.norm180(onward - bearing)
+        payload["next_leg_type"] = leg_type(twd, onward)
+    return payload
 
 
 def line_approach(state: State, context: Context, fix: Optional[Fix]) -> Optional[dict]:

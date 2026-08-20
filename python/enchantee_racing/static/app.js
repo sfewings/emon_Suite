@@ -20,7 +20,8 @@
   var el = {};
   ["pip", "notice", "countdown", "line-distance", "line-unit", "line-time", "mark-name",
    "distance", "distance-unit", "bearing", "cog", "relative", "elapsed", "secondary",
-   "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake"
+   "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake",
+   "mark-round", "nav"
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var BLANK = "---";
@@ -108,8 +109,6 @@
   on("next", function () { post("/api/advance", { dir: 1 }); });
   on("back", function () { post("/api/advance", { dir: -1 }); });
   on("reset", function () { post("/api/reset"); });
-  on("to-hud", function () { location.href = base + "/hud"; });
-  on("to-hud-2", function () { location.href = base + "/hud"; });
 
   // Sync to the next whole minute, because someone always taps late (DESIGN 10). Worked
   // out here rather than server-side: it is a statement about the countdown the crew can
@@ -129,6 +128,43 @@
   });
 
   on("night", function () { document.body.classList.toggle("night"); });
+
+  // Tapping a screen name is a view change and never a command: looking at the course list
+  // during a race must not end the race (DESIGN 9.6). `viewing` holds the override until
+  // the mode changes, at which point every device follows the mode again, which is the
+  // property that has to survive.
+  var viewing = null;
+
+  Array.prototype.forEach.call(el.nav.querySelectorAll("button[data-show]"), function (b) {
+    b.addEventListener("click", function () {
+      viewing = b.getAttribute("data-show");
+      showPanel();
+      wake();
+    });
+  });
+
+  // "race" is the countdown before the gun and the marks after it, so it maps to whichever
+  // of the two the mode is in: five screens, not six (DESIGN 9.6).
+  function panelFor(name) {
+    if (name === "race") return mode === "prestart" ? "prestart" : "racing";
+    return name;
+  }
+
+  function screenFor(panel) {
+    if (panel === "prestart" || panel === "racing") return "race";
+    return panel;
+  }
+
+  function showPanel() {
+    var panel = panelFor(viewing || mode || "idle");
+    document.body.className = document.body.className
+      .replace(/mode-\S+/g, "").trim() + " mode-" + panel;
+    var here = screenFor(panel);
+    Array.prototype.forEach.call(el.nav.querySelectorAll("[data-show]"), function (b) {
+      b.classList.toggle("here", b.getAttribute("data-show") === here);
+    });
+    if (panel === "idle") loadCourses();
+  }
 
   // --- course selection ------------------------------------------------
 
@@ -224,6 +260,10 @@
     // 5 s cutoff. Blanked rather than dimmed, because a dimmed number still reads as a
     // number in spray (DESIGN 9.5).
     el["mark-name"].textContent = r.leg_name || BLANK;
+    // The rounding side sits next to the mark name in smaller text, because it belongs to
+    // the mark you are looking at, and comes from the leg rather than the mark's default so
+    // a course that deviates from the register still reads correctly (DESIGN 9.2).
+    el["mark-round"].textContent = r.rounding ? ("• " + r.rounding) : "";
     if (r.nav) {
       distance(r.nav.distance_m, el.distance, el["distance-unit"]);
       el.bearing.textContent = degrees(r.nav.bearing);
@@ -235,10 +275,19 @@
     }
     el.elapsed.textContent = hms(r.elapsed);
 
+    // Secondary row, in the order DESIGN 9.2 lists it: leg number and total, then the leg
+    // after this one, which is the part that is about preparing rather than steering. The
+    // transit angle is signed to port or starboard and the name is the mark it turns onto.
     var bits = [];
     bits.push("leg <b>" + (r.leg + 1) + "</b> of <b>" + r.legs + "</b>");
-    if (r.rounding) bits.push("round <b>" + r.rounding + "</b>");
-    if (r.nav && r.nav.leg_type) bits.push("<b>" + r.nav.leg_type + "</b>");
+    if (r.nav && r.nav.next_name) {
+      var onward = "then <b>" + r.nav.next_name + "</b>";
+      if (r.nav.transit !== null && r.nav.transit !== undefined) {
+        onward += " <b>" + signed(r.nav.transit) + "°</b>";
+      }
+      if (r.nav.next_leg_type) onward += " <b>" + r.nav.next_leg_type + "</b>";
+      bits.push(onward);
+    }
     if (r.finish_armed) bits.push("<b>finish armed</b>");
     if (r.shortened) bits.push('<span class="warn">shortened</span>');
     if (r.breaches) bits.push('<span class="warn">' + r.breaches + " breach</span>");
@@ -247,8 +296,10 @@
     // finished
     el["final-elapsed"].textContent = hms(r.elapsed);
     el["final-course"].textContent = r.course || BLANK;
-    el["final-secondary"].textContent = r.breaches
-      ? r.breaches + " breach logged" : "";
+    var closing = ["leg " + r.legs + " of " + r.legs];
+    if (r.shortened) closing.push("shortened");
+    if (r.breaches) closing.push(r.breaches + " breach logged");
+    el["final-secondary"].textContent = closing.join(" · ");
   }
 
   function setMode(next) {

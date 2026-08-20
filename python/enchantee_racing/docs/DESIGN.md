@@ -205,10 +205,10 @@ The recorded GPS track settles which set is right, independently of any document
 Walking the 16 August 2026 Frostbite recording through course 3 and measuring the
 closest approach to each of the ten roundings:
 
-| | register positions | digitized positions |
-| --- | --- | --- |
-| median closest approach | 21 m | **5 m** |
-| worst | 65 m (Dolphin East) | 23 m (the finish line midpoint) |
+|                         | register positions  | digitized positions             |
+| ----------------------- | ------------------- | ------------------------------- |
+| median closest approach | 21 m                | **5 m**                   |
+| worst                   | 65 m (Dolphin East) | 23 m (the finish line midpoint) |
 
 A boat rounds a buoy within a few metres. The 65 m was the register's error, not the
 boat's distance. Every mark got closer, none got further, and the two marks that
@@ -264,14 +264,13 @@ ever compared against a survey to better than a couple of metres.
 - ~~**The PFSYC inner start position.**~~ Resolved, and the hand-supplied guess was
   right. The register has inner start marks for RPYC and SoPYC but no row for
   PFSYC, so this was `-32.001948, 115.812006`, flagged `user-supplied-2026` and
-  marked worth re-surveying. The QGIS layer now carries a digitized `PFSYC Start
-  Inner Start` 1.6 m from it, in `marks.json` as `pfsyc-start-inner` like any other
+  marked worth re-surveying. The QGIS layer now carries a digitized `PFSYC Start Inner Start` 1.6 m from it, in `marks.json` as `pfsyc-start-inner` like any other
   mark, and `gen_lines.py` reads it from there rather than holding a constant.
 
 ### Start / finish line
 
-| End                   | lat         | lon         | mark id             |
-| --------------------- | ----------- | ----------- | ------------------- |
+| End                   | lat         | lon         | mark id               |
+| --------------------- | ----------- | ----------- | --------------------- |
 | Inner (start box)     | -32.0019611 | 115.8120142 | `pfsyc-start-inner` |
 | Outer (Club Buoy 32A) | -32.0031847 | 115.8132302 | `club-32a`          |
 
@@ -318,8 +317,8 @@ two mark refs, targeting the midpoint, completed by crossing between them.
 **That was wrong. Each of these six marks is an independent mark, rounded on its
 own, and each is its own leg.**
 
-| Pair              | Marks    | Separation | Rounding  | Crossing between them |
-| ----------------- | -------- | ---------- | --------- | --------------------- |
+| Pair              | Marks    | Separation | Rounding  | Crossing between them  |
+| ----------------- | -------- | ---------- | --------- | ---------------------- |
 | Bricklanding      | 33A, 33B | 210.3 m    | starboard | forbidden while racing |
 | Smith / Lucky Bay | 35A, 35B | 103.7 m    | port      | forbidden while racing |
 | Mosman            | 14, 13   | 160.5 m    | port      | permitted, no rule     |
@@ -509,14 +508,13 @@ things dominate, in this priority order:
 
 1. **Next mark name.** Largest text on the screen after the numbers. Use the
    display `name` from `marks.json`, not the id and not the number, because the
-   crew calls it "Squadron", not "37".
+   crew calls it "Squadron", not "37". Show the rounding side in smaller text adjacent to the Next mark name.
 2. **Distance to it.**
 3. **Bearing to it**, with the boat's COG immediately alongside so the helm reads
    the delta without arithmetic.
 4. **Elapsed race time.**
 
-Secondary, smaller: leg number and total (`leg 4 of 11`), next leg type, rounding
-side, rounding angle to next mark (degrees to port or starboard), time limit remaining, position source and staleness.
+Secondary, smaller: leg number and total (`leg 4 of 11`), next-next leg name, transit angle to reach next-next mark (degrees to port or starboard), next-next leg type, time limit remaining, position source and staleness.
 
 Rounding side should be shown as a word or arrow next to the mark name, sourced
 from the leg rather than from the mark default, so a course that deviates from the
@@ -562,20 +560,62 @@ quietly stopped updating while every other field on the screen is still live.
 Elapsed race time and the countdown are computed from the server clock and are
 never blanked by sensor staleness. They remain correct when the GPS does not.
 
-### 9.6 Modes
+### 9.6 Modes, screens and getting between them
+
+The app has five screens, and these are their names, on the screen and in the code:
+
+| Screen   | What it is                                                        |
+| -------- | ----------------------------------------------------------------- |
+| `HUD`    | The instrument display, its own page at `/hud`                    |
+| `Course` | Course selection: series list, then a card per course with flags   |
+| `Race`   | The live race: the countdown before the gun, the marks after it    |
+| `Finish` | Elapsed at finish, course sailed, and back to Course              |
+| `Map`    | The course map. Not built yet, and shown disabled until it is      |
+
+Every screen carries the same navigation, so no screen is a dead end. This is worth
+stating because it was got wrong twice: the HUD had no way back to anything, and
+the racing screen had no way to the HUD, which is the one a crew wants mid-race.
+
+`Race` covers both the countdown and the mark display. The countdown is part of
+racing rather than a destination of its own, which is why there are five screens and
+not six.
+
+Tapping a screen name shows that screen and leaves the race alone. It is a view
+change, not a command: looking at the course list during a race must not end the
+race, and looking at the finish screen must not finish it. The only things that
+change a race are the buttons that say so.
+
+The mode still decides which screen is shown *by default*, and a mode change still
+switches every device together, which is the property that matters (DESIGN 2). A
+device whose crew has tapped away to look at something else follows the mode again
+the moment it changes.
+
+#### The modes underneath
 
 Three modes, plus the existing motor overlay:
 
 | Mode         | Screen                                                               |
 | ------------ | -------------------------------------------------------------------- |
-| `idle`     | Course selection: series list, then four cards per series with flags |
-| `prestart` | Countdown, time to line, distance to line, start line bearing        |
-| `racing`   | Next mark, distance, bearing, elapsed                                |
-| `finished` | Elapsed at finish, course sailed, reset button                       |
+| `idle`     | The Course screen: series list, then a card per course with flags    |
+| `prestart` | The Race screen before the gun: countdown, time and distance to line |
+| `racing`   | The Race screen after it: next mark, distance, bearing, elapsed      |
+| `finished` | The Finish screen: elapsed and course, both large, and a Course button |
 
 Implement the transitions with the HUD's existing panel-swap technique: pre-render
 each panel, toggle a class. Do not rebuild the DOM, and do not animate. Mode is
 server state, so every device switches together.
+
+#### The Finish screen
+
+The elapsed time at the finish and the course sailed are the two things anyone wants
+off this screen, and they are read across a cockpit by someone who has just stopped
+concentrating. Both are set large, at the same weight as the racing numbers rather
+than the secondary text.
+
+Its one button is **Course**, not Reset. It does reset the race, but what the crew
+is doing when they press it is going back to pick the next one, and the label should
+say where it goes rather than what it clears. Nothing on this screen resets itself
+and nothing times out (DESIGN 11.5).
 
 ### 9.7 Night theme
 
@@ -670,14 +710,12 @@ Frostbite course 3 race:
   positions, before they were redigitized, three of the ten closest approaches were
   40 m or more and a 40 m radius missed them. The conclusion "the radius is too
   small" was wrong, and the mark data was.
-
 - **"Three consecutive fixes of increasing distance" does not work.** At Hallmark it
   confirms 88 fixes early, and no radius changes that, because the radius is not the
   problem. The boat approached Hallmark to 36 m, turned, sailed 100 m away with the
   mark astern for fifty seconds, turned back, and rounded properly two minutes
   later. Requiring a 30 m departure from the closest approach fires 66 fixes early
   on the same manoeuvre.
-
 - **Confirm on the mark passing astern instead**, that is
   `abs(relative_bearing) > 90` for three consecutive fixes. On nine of the ten legs
   that lands within three fixes of the true rounding, against three to six for the
@@ -685,7 +723,6 @@ Frostbite course 3 race:
   behind you has been rounded. It needs COG, so it must not be evaluated when COG is
   stale, which matters because COG is unreliable at the low speeds a boat drifts at
   near a mark.
-
 - **The Hallmark case is irreducible.** That first pass is rounding-shaped: approach,
   turn, depart with the mark to port, which is exactly what the real rounding looks
   like a minute later. No proximity or departure rule distinguishes them, and a
