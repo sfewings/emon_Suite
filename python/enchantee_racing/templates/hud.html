@@ -34,11 +34,10 @@
   looping muted video does work over plain HTTP on both iOS and Android (DESIGN 9.8).
   Both are in place: the API when a secure context ever exists, the video meanwhile.
 
-  Also added: a link to the race screen, top right. The Node-RED page had nowhere to go,
-  and without it a phone that lands here is stuck, since the race screen is at the root and
-  nothing on this page says so. href="." rather than "/" so it resolves to /race/ behind
-  the nginx prefix and to / on the app's own port, the same reason every other asset path
-  here is relative.
+  Also added: the three-screen navigation along the bottom, HUD, Race and Map. The Node-RED
+  page had nowhere to go, and without it a phone that lands here is stuck. href="." rather
+  than "/" so it resolves to /race/ behind the nginx prefix and to / on the app's own port,
+  the same reason every other asset path here is relative.
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
@@ -130,7 +129,7 @@
   }
   #pip.down { opacity: 1; }
 
-  /* The same five-screen navigation the race screen carries, so no screen is a dead end
+  /* The same three-screen navigation the race screen carries, so no screen is a dead end
      (DESIGN 9.6). Fixed to the bottom rather than added to #hud's flex column, so the
      panel sizing this port depends on is left exactly as it was; #hud only has room made
      for it below. */
@@ -180,9 +179,7 @@
 <div id="pip"></div>
 <nav id="nav">
   <a class="here">HUD</a>
-  <a href=".">Course</a>
   <a href=".">Race</a>
-  <a href=".">Finish</a>
   <a class="off" aria-disabled="true">Map</a>
 </nav>
 <div id="hud">

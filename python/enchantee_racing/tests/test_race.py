@@ -425,6 +425,50 @@ def test_manual_advance_is_authoritative_and_clears_any_pending_detection():
     assert state.suppress_until > now + 2, "a correction must not be immediately overruled"
 
 
+def test_next_off_the_last_leg_finishes_the_race():
+    """The manual finish, and the one new transition in the state machine (DESIGN 9.6).
+
+    The last leg is the finish line, so there is nowhere further to advance to, and a crew
+    who has crossed and not had the engine notice needs a way to say so. Recorded with
+    source manual, which is how the log tells it apart from a detected crossing.
+    """
+    context = _context()
+    state = _racing(context, T0)
+    state = state._replace(leg=context.last_leg, finish_armed=True)
+
+    state, events = race.advance(state, context, +1, T0 + 200.0)
+    assert state.mode == race.FINISHED
+    assert [e["type"] for e in events] == ["finish"]
+    assert events[0]["source"] == race.MANUAL
+    assert race.elapsed(state, T0 + 900.0) == 200.0, "frozen at the tap, not at the poll"
+
+    # and a finished race ignores every further tap
+    state, events = race.advance(state, context, +1, T0 + 260.0)
+    assert events == [] and state.mode == race.FINISHED
+
+
+def test_next_off_the_last_leg_does_nothing_before_the_gun():
+    """Prestart on the last leg cannot happen in a real race, but a mis-tap must not finish
+    a race that has not started."""
+    context = _context()
+    state = race.initial()
+    state, _ = race.select(state, context, "frostbite-3", T0)
+    state = state._replace(leg=context.last_leg)
+    state, events = race.advance(state, context, +1, T0 + 10.0)
+    assert events == [] and state.mode == race.PRESTART
+
+
+def test_back_off_the_first_leg_leaves_the_race_alone():
+    """The screen treats it as a way to the course list, which is a view change. The engine
+    must not turn that into a state change (DESIGN 9.6)."""
+    context = _context()
+    state = _racing(context, T0)
+    before = state
+    state, events = race.advance(state, context, -1, T0 + 30.0)
+    assert events == []
+    assert state == before, "not even the suppression hold moves"
+
+
 def test_back_steps_the_leg_down_and_stops_at_the_start():
     context = _context()
     state = _racing(context)

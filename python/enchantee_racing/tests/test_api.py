@@ -180,6 +180,47 @@ def test_advance_defaults_to_forward_so_a_bare_post_is_the_next_mark_button():
     assert body["race"]["leg"] == 1
 
 
+def test_choosing_a_course_while_racing_ends_that_race_and_opens_the_new_one():
+    """The crew is on the course list with a race running, tapping a card: they mean to sail
+    that one instead (DESIGN 9.6). Logged as a reset, because abandoning is not finishing.
+    """
+    client, store, ticker, published = _client()
+    _post(client, "/api/select", {"course": "frostbite-3"})
+    _post(client, "/api/timer", {"hooter": 0})
+    client.get("/api/state")
+    ticker["t"] = T0 + 60.0
+    _post(client, "/api/advance", {"dir": 1})
+    assert store.race_state()[0].leg == 1
+
+    ticker["t"] = T0 + 120.0
+    _response, body = _post(client, "/api/select", {"course": "frostbite-1"})
+    assert body["race"]["course"] == "frostbite-1"
+    assert body["race"]["mode"] == "prestart", "the new course opens at its countdown"
+    assert body["race"]["leg"] == 0
+    assert body["race"]["elapsed"] is None, "the old race's clock is gone"
+    assert body["race"]["legs"] == 10
+    kinds = [e["type"] for e in published]
+    assert kinds[-2:] == ["reset", "select"], kinds
+    assert "finish" not in kinds, "abandoning a race is not finishing one"
+
+
+def test_choosing_a_course_from_idle_does_not_log_a_pointless_reset():
+    client, _store, _ticker, published = _client()
+    _post(client, "/api/select", {"course": "frostbite-3"})
+    assert [e["type"] for e in published] == ["select"]
+
+
+def test_a_manual_start_puts_the_boat_on_leg_one_at_once():
+    """The Start button: a missed hooter, a dockside test, every replay (DESIGN 9.6)."""
+    client, _store, _ticker, _published = _client()
+    _post(client, "/api/select", {"course": "frostbite-3"})
+    _response, body = _post(client, "/api/timer", {"hooter": 0})
+    assert body["race"]["mode"] == "racing"
+    assert body["race"]["leg"] == 0
+    assert body["race"]["elapsed"] == 0.0
+    assert body["race"]["countdown"] == 0.0
+
+
 def test_shorten_arms_the_finish_and_reset_puts_everything_back():
     client, _store, ticker, _published = _client()
     _post(client, "/api/select", {"course": "frostbite-3"})
@@ -310,9 +351,15 @@ def test_two_devices_tapping_next_at_once_advance_one_leg_between_them():
     for thread in threads:
         thread.join()
 
-    advanced = sum(1 for events in results if events)
-    assert store.race_state()[0].leg == advanced, (store.race_state()[0].leg, advanced)
-    assert store.race_state()[0].leg <= _context().last_leg
+    # Taps that produced a rounding, counted apart from the one that produced a finish:
+    # Next off the last leg finishes the race rather than advancing a leg, so twenty-four
+    # taps on a ten-leg course make nine roundings and one finish, and the rest do nothing
+    # because a finished race ignores them (DESIGN 9.6).
+    kinds = [event["type"] for events in results for event in events]
+    assert kinds.count("rounded") == store.race_state()[0].leg, kinds
+    assert kinds.count("finish") <= 1, kinds
+    assert store.race_state()[0].leg == _context().last_leg
+    assert store.race_state()[0].mode in (race.RACING, race.FINISHED)
 
 
 def test_a_fix_and_a_tap_at_the_same_moment_do_not_interleave():

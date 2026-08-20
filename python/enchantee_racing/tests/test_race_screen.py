@@ -289,10 +289,14 @@ def test_every_mode_can_be_left_by_something_on_its_own_panel():
         assert needed <= controls, (panel, needed - controls)
 
 
-def test_both_pages_carry_the_same_five_screen_navigation():
+def test_both_pages_carry_the_same_three_screen_navigation():
     """No screen is a dead end, which took two goes to get right: the HUD had no way back
     to anything, and the racing screen had no way to the HUD, which is the one a crew
     actually wants mid-race (DESIGN 9.6).
+
+    Three names, not five. Course and Finish are things that happen to a race rather than
+    places to browse to, so they are reached by the controls that mean something and have no
+    navigation entry of their own.
     """
     store = Store()
     flask_app = app_module.create_app(store, CONFIG)
@@ -304,7 +308,7 @@ def test_both_pages_carry_the_same_five_screen_navigation():
         nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>", page, re.S)
         assert nav, path
         labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav.group(1))]
-        assert labels == ["HUD", "Course", "Race", "Finish", "Map"], (path, labels)
+        assert labels == ["HUD", "Race", "Map"], (path, labels)
         # Map is named so its absence is visible, and disabled so it cannot be tapped.
         assert 'class="off"' in nav.group(1), path
 

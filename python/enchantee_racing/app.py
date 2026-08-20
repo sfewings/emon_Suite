@@ -180,6 +180,14 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
             # (DESIGN 7). Warnings do not block; errors do.
             return jsonify({"error": "course %r has config errors" % course_id}), 409
 
+        # Choosing a course while one is live ends it first. The crew is on the course list
+        # with a race running, tapping a card: they mean to sail that one instead, and the
+        # old race is over whatever its leg said (DESIGN 9.6). It is logged as a reset
+        # rather than a finish, because abandoning a race is not finishing one.
+        store.apply_race(lambda state, context, now:
+                         race.reset(state, context, now) if state.mode != race.IDLE
+                         else (state, []))
+
         store.set_race_context(race.Context(
             course=chosen[0],
             marks=course.index_marks(config["marks"]),

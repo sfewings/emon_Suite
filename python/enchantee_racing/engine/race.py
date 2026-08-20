@@ -338,9 +338,24 @@ def advance(state: State, context: Context, direction: int, now: float,
     Manual is the contract: this overrides any pending auto-advance state, and suppresses
     auto-advance afterwards for the same hold an automatic advance gets, so the engine
     cannot immediately undo a correction the crew just made.
+
+    Forward off the last leg finishes the race. The last leg is the finish line, so there
+    is nowhere further to advance to, and a crew who has crossed the line and not had the
+    engine notice needs a way to say so: this is that way, and it is the reason the button
+    reads Finish rather than Next mark on that leg (DESIGN 9.6).
+
+    Back off the first leg does nothing here. The screen treats it as a way to the course
+    list, which is a view change and not a race command, so the race carries on.
     """
     if state.mode not in (RACING, PRESTART):
         return state, []
+
+    if direction >= 0 and state.leg >= context.last_leg:
+        if state.mode != RACING:
+            return state, []
+        finished = state._replace(mode=FINISHED, finished_at=now)
+        return finished, [_event("finish", finished, context, now, fix=fix, source=MANUAL)]
+
     leg = max(0, min(context.last_leg, state.leg + (1 if direction >= 0 else -1)))
     if leg == state.leg:
         return state, []

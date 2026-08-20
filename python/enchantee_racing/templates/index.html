@@ -31,6 +31,9 @@
     <div id="cards"></div>
     <div class="controls">
       <button id="night">Night</button>
+      <!-- Only while a race is live: a way back to it, since choosing a course is not the
+           only reason to be looking at this screen (DESIGN 9.6). -->
+      <button class="primary" id="resume" hidden>Race</button>
     </div>
   </section>
 
@@ -58,6 +61,9 @@
       <button id="hooter-10">T-10</button>
       <button id="hooter-5">T-5</button>
       <button id="hooter-1">T-1</button>
+      <!-- The gun, now. For a start that was missed, a hooter that was not heard, and every
+           replay and dockside test (DESIGN 9.6). -->
+      <button class="primary" id="start-now">Start</button>
     </div>
     <div class="controls">
       <button class="small" id="nudge-minus">-1s</button>
@@ -121,15 +127,13 @@
     </div>
   </section>
 
-  <!-- The same navigation on every screen, so no screen is a dead end. Tapping a name is
-       a view change and never a command: looking at the course list during a race must not
-       end the race (DESIGN 9.6). HUD and Map are separate pages; the other three are
-       panels of this one. -->
+  <!-- Three screens: HUD, Race, Map. Race is this whole page, and which of its four panels
+       shows is the race's business, not the navigation's. Moving between those panels is
+       done by the controls that mean something: Back off leg 1 to the course list, Next off
+       the last leg to Finish, Course off Finish (DESIGN 9.6). -->
   <nav id="nav">
     <a href="hud">HUD</a>
-    <button data-show="idle">Course</button>
     <button data-show="race">Race</button>
-    <button data-show="finished">Finish</button>
     <a class="off" aria-disabled="true">Map</a>
   </nav>
 

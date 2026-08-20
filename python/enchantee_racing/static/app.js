@@ -21,7 +21,7 @@
   ["pip", "notice", "countdown", "line-distance", "line-unit", "line-time", "mark-name",
    "distance", "distance-unit", "bearing", "cog", "relative", "elapsed", "secondary",
    "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake",
-   "mark-round", "nav"
+   "mark-round", "nav", "resume", "next"
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var BLANK = "---";
@@ -106,8 +106,33 @@
   on("nudge-minus", function () { post("/api/timer", { nudge: -1 }); });
   on("nudge-plus", function () { post("/api/timer", { nudge: 1 }); });
   on("cancel", function () { post("/api/timer", { hooter: null }); });
-  on("next", function () { post("/api/advance", { dir: 1 }); });
-  on("back", function () { post("/api/advance", { dir: -1 }); });
+  // Next off the last leg finishes the race, so on that leg it asks first, for the same
+  // reason Shorten does: an accidental tap ends a race, and a POST that has arrived is too
+  // late to ask about.
+  on("next", function () {
+    var r = latest.race;
+    if (r && r.legs && r.leg >= r.legs - 1) {
+      if (!window.confirm("Finish the race now?")) return;
+    }
+    post("/api/advance", { dir: 1 });
+  });
+
+  // Back off leg 1 has no leg to go to, so it goes to the course list. A view change and
+  // not a race command: the race carries on, and the Race button there comes back to it
+  // (DESIGN 9.6).
+  on("back", function () {
+    var r = latest.race;
+    if (r && r.leg === 0) {
+      viewing = "idle";
+      showPanel();
+      wake();
+      return;
+    }
+    post("/api/advance", { dir: -1 });
+  });
+
+  on("start-now", function () { post("/api/timer", { hooter: 0 }); });
+  on("resume", function () { viewing = null; showPanel(); wake(); });
   on("reset", function () { post("/api/reset"); });
 
   // Sync to the next whole minute, because someone always taps late (DESIGN 10). Worked
@@ -143,26 +168,21 @@
     });
   });
 
-  // "race" is the countdown before the gun and the marks after it, so it maps to whichever
-  // of the two the mode is in: five screens, not six (DESIGN 9.6).
+  // Race is this whole page, so its nav entry means "show whatever panel the race is
+  // actually in" and clears any view the crew has tapped away to (DESIGN 9.6).
   function panelFor(name) {
-    if (name === "race") return mode === "prestart" ? "prestart" : "racing";
-    return name;
-  }
-
-  function screenFor(panel) {
-    if (panel === "prestart" || panel === "racing") return "race";
-    return panel;
+    return name === "race" ? (mode || "idle") : name;
   }
 
   function showPanel() {
-    var panel = panelFor(viewing || mode || "idle");
+    var panel = panelFor(viewing || "race");
     document.body.className = document.body.className
       .replace(/mode-\S+/g, "").trim() + " mode-" + panel;
-    var here = screenFor(panel);
     Array.prototype.forEach.call(el.nav.querySelectorAll("[data-show]"), function (b) {
-      b.classList.toggle("here", b.getAttribute("data-show") === here);
+      b.classList.add("here");        // Race is the only page-internal entry, and we are on it
     });
+    // The way back into a running race, shown only when there is one to go back to.
+    el.resume.hidden = !(mode && mode !== "idle");
     if (panel === "idle") loadCourses();
   }
 
@@ -274,6 +294,7 @@
       el.relative.textContent = BLANK;
     }
     el.elapsed.textContent = hms(r.elapsed);
+    el.next.textContent = (r.legs && r.leg >= r.legs - 1) ? "Finish" : "Next mark";
 
     // Secondary row, in the order DESIGN 9.2 lists it: leg number and total, then the leg
     // after this one, which is the part that is about preparing rather than steering. The

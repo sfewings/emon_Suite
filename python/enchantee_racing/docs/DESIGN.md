@@ -562,33 +562,56 @@ never blanked by sensor staleness. They remain correct when the GPS does not.
 
 ### 9.6 Modes, screens and getting between them
 
-The app has five screens, and these are their names, on the screen and in the code:
+The app has **three** screens, named along the bottom of every one of them:
 
-| Screen   | What it is                                                        |
-| -------- | ----------------------------------------------------------------- |
-| `HUD`    | The instrument display, its own page at `/hud`                    |
-| `Course` | Course selection: series list, then a card per course with flags   |
-| `Race`   | The live race: the countdown before the gun, the marks after it    |
-| `Finish` | Elapsed at finish, course sailed, and back to Course              |
-| `Map`    | The course map. Not built yet, and shown disabled until it is      |
+| Screen | What it is                                                          |
+| ------ | ------------------------------------------------------------------- |
+| `HUD`  | The instrument display, its own page at `/hud`                      |
+| `Race` | Everything about a race: course selection, countdown, marks, finish |
+| `Map`  | The course map. Not built yet, and shown disabled until it is       |
 
-Every screen carries the same navigation, so no screen is a dead end. This is worth
-stating because it was got wrong twice: the HUD had no way back to anything, and
-the racing screen had no way to the HUD, which is the one a crew wants mid-race.
+Every screen carries that navigation, so no screen is a dead end. Worth stating
+because it was got wrong twice: the HUD had no way back to anything, and the racing
+screen had no way to the HUD, which is the one a crew wants mid-race.
 
-`Race` covers both the countdown and the mark display. The countdown is part of
-racing rather than a destination of its own, which is why there are five screens and
-not six.
+**Race is one screen with four faces**, and which face shows is the race's business
+rather than the navigation's. There is no nav entry for Course or Finish, because
+choosing a course and finishing are things that happen *to* a race, not places to
+browse to. The four faces are the four modes below.
 
-Tapping a screen name shows that screen and leaves the race alone. It is a view
-change, not a command: looking at the course list during a race must not end the
-race, and looking at the finish screen must not finish it. The only things that
-change a race are the buttons that say so.
+Moving between them is done by the controls that already mean something, which is
+what stops the navigation and the state machine disagreeing:
 
-The mode still decides which screen is shown *by default*, and a mode change still
+| From                | Control       | Goes to                                       |
+| ------------------- | ------------- | --------------------------------------------- |
+| Course              | a course card | the countdown for that course                 |
+| Countdown           | T-10/5/1      | the countdown, running                        |
+| Countdown           | Start         | racing, leg 1, immediately                    |
+| Countdown           | Course        | the course list, timer cleared                 |
+| Racing, leg 1       | Back          | the course list, **race still running**       |
+| Racing, any leg     | Back          | the leg before                                |
+| Racing, last leg    | Finish        | finished, elapsed frozen                      |
+| Racing              | Next mark     | the next leg                                  |
+| Finish              | Course        | the course list, race reset                   |
+| Course, race live   | Race          | back to whatever the race is doing            |
+
+Two of those need saying out loud.
+
+**Back off leg 1 is a view change, not a race command.** There is no leg before the
+first, so the button goes to the course list instead, and the race carries on
+running behind it. That is why the course list grows a Race button whenever a race
+is live: it is the way back, and without it the crew would have to abandon a race to
+stop looking at the list.
+
+**Choosing a course while a race is live ends that race.** The crew is on the course
+list, with a race running, tapping a card: they mean to sail that one instead. It is
+logged as a `reset` rather than a `finish`, because abandoning a race is not
+finishing one, and the new course opens at its countdown.
+
+The mode still decides which face shows *by default*, and a mode change still
 switches every device together, which is the property that matters (DESIGN 2). A
-device whose crew has tapped away to look at something else follows the mode again
-the moment it changes.
+device whose crew has tapped away to the course list follows the mode again the
+moment it changes.
 
 #### The modes underneath
 
