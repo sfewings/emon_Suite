@@ -1,19 +1,164 @@
 {
   "schema": "pfsyc-courses/1",
-  "source": "Sailing Fixtures & Courses 2026 - 2027 (PFSYC), docs/reference/, page 15",
-  "note": "Transcribed by hand from the course sheet. Mark ids key into config/marks.json, line ids into config/lines.json. Every leg targets exactly one mark and carries \"mark\" plus \"rounding\", except the last, which carries \"finish\": true and \"line\". There are no gates and no leg has two marks: Bricklanding 33A+33B and Smith+Lucky Bay 35A+35B are consecutive legs, each mark rounded on its own, and crossing between either pair while racing is a rule breach (DESIGN 6). Rounding is per leg, never taken from the mark default, because course 2 rounds club-32a to starboard on one pass and to port on another. Legs are ordered and repeat freely: course position is a leg index, never a mark identity.",
+  "source": "docs/reference/Sailing Fixtures & Courses 2026 - 2027.pdf, pages 15-20 (course sheets)",
+  "note": "The Frostbite four were transcribed by hand from the course sheet; the rest were extracted from the same PDF by scripts/extract_courses.py, which parses the Frostbite page as a control and refuses to write unless it reproduces the hand transcription leg for leg. Mark ids key into config/marks.json, line ids into config/lines.json. Every leg targets exactly one mark and carries \"mark\" plus \"rounding\", except the last, which carries \"finish\": true and \"line\". There are no gates and no leg has two marks: Bricklanding 33A+33B and Smith+Lucky Bay 35A+35B are consecutive legs, each mark rounded on its own, and crossing between either pair while racing is a rule breach (DESIGN 6). Rounding is per leg, never taken from the mark default, because course 2 rounds club-32a to starboard on one pass and to port on another. Legs are ordered and repeat freely: course position is a leg index, never a mark identity. Where a sheet prints a shortened distance, shortened_at is the leg it resolves to, which can only be a leg returning to the line; where it resolves to none, shortened_at is absent and shortened_note says why (DESIGN 11.6).",
   "series": {
     "frostbite": {
       "name": "Frostbite Invitation Series",
       "note": "These races are for all Divisions (Combined Division) and are an Open Invitation.",
       "starts": [
-        { "divisions": ["III", "IV"], "time": "13:30", "flag": "naval-4" },
-        { "divisions": ["I", "II"], "time": "13:50", "flag": "naval-2" }
+        {
+          "divisions": [
+            "III",
+            "IV"
+          ],
+          "time": "13:30",
+          "flag": "naval-4"
+        },
+        {
+          "divisions": [
+            "I",
+            "II"
+          ],
+          "time": "13:50",
+          "flag": "naval-2"
+        }
       ],
       "time_limit": null,
       "time_limit_note": "The Frostbite sheet prints no time limit. Do not inherit the Sunday three-hour limit or the Friday 1730 limit; those are stated on their own sheets.",
       "shortened_signal": "International Code Flag S from the start box signals the finish is the first crossing of the start/finish line after the start.",
       "flag_note": "The naval numeral flag identifies the division, not the course, and the two Frostbite starts fly different ones, so it lives here rather than on each course. Each course carries only its numeral pendant."
+    },
+    "friday": {
+      "name": "Friday Afternoon",
+      "note": "Open Invitation Series.",
+      "starts": [
+        {
+          "divisions": [
+            "IV"
+          ],
+          "time": "15:05",
+          "flag": null,
+          "season": "summer"
+        },
+        {
+          "divisions": [
+            "III"
+          ],
+          "time": "15:15",
+          "flag": null,
+          "season": "summer"
+        },
+        {
+          "divisions": [
+            "II"
+          ],
+          "time": "15:25",
+          "flag": null,
+          "season": "summer"
+        },
+        {
+          "divisions": [
+            "I"
+          ],
+          "time": "15:35",
+          "flag": null,
+          "season": "summer"
+        },
+        {
+          "divisions": [
+            "III",
+            "IV"
+          ],
+          "time": "15:05",
+          "flag": null,
+          "season": "winter"
+        },
+        {
+          "divisions": [
+            "I",
+            "II"
+          ],
+          "time": "15:25",
+          "flag": null,
+          "season": "winter"
+        }
+      ],
+      "time_limit": "17:30",
+      "time_limit_note": "The sheet prints \"Time Limit: 1730 hrs [no extensions]\". A wall-clock limit, not a duration, and explicitly not subject to the half-hour extension the general rule allows.",
+      "shortened_signal": "International Code Flag S from the start box. Flown at the start under the numeral pendant it means the finish is the first crossing of the line after the start; flown during the race it means the next pass through the line ends it.",
+      "flag_note": "The sheet names no naval numeral flag and the start order is by division and season, so no division flag is recorded against a course. Each course carries only its numeral pendant."
+    },
+    "sunday-div-ii": {
+      "name": "Sunday Afternoon Div II",
+      "note": null,
+      "starts": [
+        {
+          "divisions": [
+            "II"
+          ],
+          "time": "14:20",
+          "flag": "naval-2"
+        }
+      ],
+      "time_limit": "3h",
+      "time_limit_note": "Not printed on the sheet. The sailing instructions give three hours unless specified elsewhere, extended by thirty minutes if the first boat finishes inside the three.",
+      "shortened_signal": "International Code Flag S from the start box. The sheet also prints a shortened distance for each course.",
+      "flag_note": "One start, one flag: Naval Numeral Flag 2, so it sits on each course."
+    },
+    "sunday-div-iii": {
+      "name": "Sunday Afternoon Div III",
+      "note": null,
+      "starts": [
+        {
+          "divisions": [
+            "III"
+          ],
+          "time": "14:00",
+          "flag": "naval-3"
+        }
+      ],
+      "time_limit": "3h",
+      "time_limit_note": "Not printed on the sheet. The sailing instructions give three hours unless specified elsewhere, extended by thirty minutes if the first boat finishes inside the three.",
+      "shortened_signal": "International Code Flag S from the start box. The sheet also prints a shortened distance for each course.",
+      "flag_note": "One start, one flag: Naval Numeral Flag 3, so it sits on each course."
+    },
+    "sunday-div-iv": {
+      "name": "Sunday Afternoon Div IV",
+      "note": null,
+      "starts": [
+        {
+          "divisions": [
+            "IV"
+          ],
+          "time": "14:00",
+          "flag": "naval-4"
+        }
+      ],
+      "time_limit": "3h",
+      "time_limit_note": "Not printed on the sheet. The sailing instructions give three hours unless specified elsewhere, extended by thirty minutes if the first boat finishes inside the three.",
+      "shortened_signal": "International Code Flag S from the start box. The sheet also prints a shortened distance for each course.",
+      "flag_note": "One start, one flag: Naval Numeral Flag 4, so it sits on each course."
+    },
+    "twilight": {
+      "name": "Twilight Cruises",
+      "note": "All divisions, combined. A flying start. The sheet says it is not a competitive event and that spinnakers shall not be used.",
+      "starts": [
+        {
+          "divisions": [
+            "I",
+            "II",
+            "III",
+            "IV"
+          ],
+          "time": "18:20",
+          "flag": null
+        }
+      ],
+      "time_limit": null,
+      "time_limit_note": "None printed, and a cruise is not a race with a limit.",
+      "shortened_signal": null,
+      "flag_note": "Combined division and a flying start, so no naval numeral flag is printed. Each course carries only its numeral pendant."
     }
   },
   "courses": [
@@ -24,20 +169,54 @@
       "course_no": 1,
       "distance_nm": 7.11,
       "wind_note": "South Westerly Breeze",
-      "flags": { "division": null, "numeral": "pendant-1" },
+      "flags": {
+        "division": null,
+        "numeral": "pendant-1"
+      },
       "shortened_at": null,
       "note": "Printed distance does not reconcile. These legs sum to 7.30 nm mark to mark, 2.7 per cent over the printed 7.11, where courses 2, 3 and 4 reconcile within 0.1 per cent. Every row on the sheet was read and the row spacing is uniform, so no leg is missing, and no single substitution or deletion from the twenty course marks lands within 1 per cent of 7.11. Measuring through the midpoints of the two mark pairs instead gives 7.14, which suggests whoever totalled this one course did it that way. Legs are as printed; the printed total is the suspect value.",
       "legs": [
-        { "mark": "bricklanding-a-33a", "rounding": "starboard" },
-        { "mark": "bricklanding-b-33b", "rounding": "starboard" },
-        { "mark": "dolphin-east-42b", "rounding": "starboard" },
-        { "mark": "sanders-99", "rounding": "starboard" },
-        { "mark": "club-32a", "rounding": "port" },
-        { "mark": "smith-35a", "rounding": "port" },
-        { "mark": "lucky-bay-35b", "rounding": "port" },
-        { "mark": "bond-38a", "rounding": "port" },
-        { "mark": "armstrong-32", "rounding": "port" },
-        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
       ]
     },
     {
@@ -47,21 +226,58 @@
       "course_no": 2,
       "distance_nm": 9.07,
       "wind_note": "Easterly Breeze",
-      "flags": { "division": null, "numeral": "pendant-2" },
+      "flags": {
+        "division": null,
+        "numeral": "pendant-2"
+      },
       "shortened_at": null,
       "note": "Crosses the start/finish line three times before the finish: club-32a is a course mark on legs 4 and 6 and the outer end of the line. This is the course to replay finish detection against.",
       "legs": [
-        { "mark": "dolphin-east-42b", "rounding": "starboard" },
-        { "mark": "bricklanding-a-33a", "rounding": "starboard" },
-        { "mark": "bricklanding-b-33b", "rounding": "starboard" },
-        { "mark": "club-32a", "rounding": "starboard" },
-        { "mark": "dolphin-east-42b", "rounding": "starboard" },
-        { "mark": "club-32a", "rounding": "port" },
-        { "mark": "bricklanding-a-33a", "rounding": "starboard" },
-        { "mark": "bricklanding-b-33b", "rounding": "starboard" },
-        { "mark": "bond-38a", "rounding": "port" },
-        { "mark": "armstrong-32", "rounding": "port" },
-        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
       ]
     },
     {
@@ -71,19 +287,53 @@
       "course_no": 3,
       "distance_nm": 6.93,
       "wind_note": "North Easterly Breeze",
-      "flags": { "division": null, "numeral": "pendant-3" },
+      "flags": {
+        "division": null,
+        "numeral": "pendant-3"
+      },
       "shortened_at": null,
       "legs": [
-        { "mark": "dolphin-east-42b", "rounding": "starboard" },
-        { "mark": "sanders-99", "rounding": "starboard" },
-        { "mark": "armstrong-32", "rounding": "port" },
-        { "mark": "club-32a", "rounding": "port" },
-        { "mark": "squadron-37", "rounding": "port" },
-        { "mark": "hallmark-41a", "rounding": "port" },
-        { "mark": "club-32a", "rounding": "port" },
-        { "mark": "bond-38a", "rounding": "port" },
-        { "mark": "armstrong-32", "rounding": "port" },
-        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "hallmark-41a",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
       ]
     },
     {
@@ -93,24 +343,1149 @@
       "course_no": 4,
       "distance_nm": 7.63,
       "wind_note": "North Westerly Breeze",
-      "flags": { "division": null, "numeral": "pendant-4" },
+      "flags": {
+        "division": null,
+        "numeral": "pendant-4"
+      },
       "shortened_at": null,
       "legs": [
-        { "mark": "miller-28", "rounding": "port" },
-        { "mark": "squadron-37", "rounding": "port" },
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
         {
           "mark": "bond-38a",
           "rounding": "port",
           "note": "The sheet prints \"Bond Buoy (38)\" for this leg alone. 38 is Dee Rd in the register, 900 m away, but the name is Bond and every other Bond leg on this sheet reads 38A, so this is the typo DESIGN section 6 records. Reading it as dee-rd-38 puts the total 3.5 per cent under the printed distance instead of 0.1 per cent under."
         },
-        { "mark": "club-32a", "rounding": "port" },
-        { "mark": "miller-28", "rounding": "port" },
-        { "mark": "squadron-37", "rounding": "port" },
-        { "mark": "armstrong-32", "rounding": "port" },
-        { "mark": "club-32a", "rounding": "port" },
-        { "mark": "bond-38a", "rounding": "port" },
-        { "mark": "armstrong-32", "rounding": "port" },
-        { "finish": true, "line": "pfsyc-start-finish", "rounding": "port" }
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "friday-1",
+      "series": "friday",
+      "division": "open",
+      "course_no": 1,
+      "distance_nm": 7.59,
+      "wind_note": "Southerly Westerly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-1"
+      },
+      "legs": [
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "mosman-a-14",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-b-13",
+          "rounding": "port"
+        },
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "friday-2",
+      "series": "friday",
+      "division": "open",
+      "course_no": 2,
+      "distance_nm": 6.57,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-2"
+      },
+      "legs": [
+        {
+          "mark": "foam-55",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "friday-3",
+      "series": "friday",
+      "division": "open",
+      "course_no": 3,
+      "distance_nm": 7.96,
+      "wind_note": "Northerly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-3"
+      },
+      "legs": [
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "hallmark-41a",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "hallmark-41a",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "friday-4",
+      "series": "friday",
+      "division": "open",
+      "course_no": 4,
+      "distance_nm": 7.48,
+      "wind_note": "Westerly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-4"
+      },
+      "legs": [
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "hallmark-41a",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "dee-rd-38",
+          "rounding": "port"
+        },
+        {
+          "mark": "hallmark-41a",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "sunday-div-ii-1",
+      "series": "sunday-div-ii",
+      "division": "II",
+      "course_no": 1,
+      "distance_nm": 10.98,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": "naval-2",
+        "numeral": "pendant-1"
+      },
+      "legs": [
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bishop-74",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-a-14",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-b-13",
+          "rounding": "port"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "shortened_distance_nm": 8.85,
+      "shortened_at": 10,
+      "shortened_note": "Printed shortened distance 8.85 nm matches the running total after leg 11 (8.87 nm, +0.2 per cent)."
+    },
+    {
+      "id": "sunday-div-ii-2",
+      "series": "sunday-div-ii",
+      "division": "II",
+      "course_no": 2,
+      "distance_nm": 11.92,
+      "wind_note": "Southerly Westerly Breeze",
+      "flags": {
+        "division": "naval-2",
+        "numeral": "pendant-2"
+      },
+      "legs": [
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "foam-55",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "shortened_distance_nm": 8.6,
+      "shortened_note": "Printed shortened distance 8.60 nm matches no leg boundary: the closest is after leg 8 at 8.90 nm, +3.5 per cent out. Recorded but not resolved to a leg, because a guess about where a race ends is worse than saying it is not known (DESIGN 11.6)."
+    },
+    {
+      "id": "sunday-div-ii-3",
+      "series": "sunday-div-ii",
+      "division": "II",
+      "course_no": 3,
+      "distance_nm": 10.28,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": "naval-2",
+        "numeral": "pendant-3"
+      },
+      "legs": [
+        {
+          "mark": "foam-55",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "robins-59",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "hallmark-41a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "foam-55",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "starboard"
+        }
+      ],
+      "shortened_distance_nm": 5.49,
+      "shortened_at": 5,
+      "shortened_note": "Printed shortened distance 5.49 nm matches the running total after leg 6 (5.51 nm, +0.4 per cent)."
+    },
+    {
+      "id": "sunday-div-ii-4",
+      "series": "sunday-div-ii",
+      "division": "II",
+      "course_no": 4,
+      "distance_nm": 8.7,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": "naval-2",
+        "numeral": "pendant-4"
+      },
+      "legs": [
+        {
+          "mark": "foam-55",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "starboard"
+        }
+      ],
+      "shortened_distance_nm": 4.79,
+      "shortened_at": 3,
+      "shortened_note": "Printed shortened distance 4.79 nm matches the running total after leg 4 (4.81 nm, +0.4 per cent)."
+    },
+    {
+      "id": "sunday-div-iii-1",
+      "series": "sunday-div-iii",
+      "division": "III",
+      "course_no": 1,
+      "distance_nm": 10.89,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": "naval-3",
+        "numeral": "pendant-1"
+      },
+      "legs": [
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bishop-74",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-a-14",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-b-13",
+          "rounding": "port"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "shortened_distance_nm": 8.85,
+      "shortened_at": 10,
+      "shortened_note": "Printed shortened distance 8.85 nm matches the running total after leg 11 (8.87 nm, +0.2 per cent)."
+    },
+    {
+      "id": "sunday-div-iii-2",
+      "series": "sunday-div-iii",
+      "division": "III",
+      "course_no": 2,
+      "distance_nm": 8.3,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": "naval-3",
+        "numeral": "pendant-2"
+      },
+      "legs": [
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "sunday-div-iii-3",
+      "series": "sunday-div-iii",
+      "division": "III",
+      "course_no": 3,
+      "distance_nm": 7.23,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": "naval-3",
+        "numeral": "pendant-3"
+      },
+      "legs": [
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "robins-59",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dome-30",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "starboard"
+        }
+      ],
+      "shortened_distance_nm": 4.47,
+      "shortened_at": 5,
+      "shortened_note": "Printed shortened distance 4.47 nm matches the running total after leg 6 (4.43 nm, -0.8 per cent)."
+    },
+    {
+      "id": "sunday-div-iii-4",
+      "series": "sunday-div-iii",
+      "division": "III",
+      "course_no": 4,
+      "distance_nm": 7.34,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": "naval-3",
+        "numeral": "pendant-4"
+      },
+      "legs": [
+        {
+          "mark": "dolphin-east-42b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "starboard"
+        }
+      ],
+      "shortened_distance_nm": 3.92,
+      "shortened_at": 3,
+      "shortened_note": "Printed shortened distance 3.92 nm matches the running total after leg 4 (3.94 nm, +0.6 per cent)."
+    },
+    {
+      "id": "sunday-div-iv-1",
+      "series": "sunday-div-iv",
+      "division": "IV",
+      "course_no": 1,
+      "distance_nm": 10.51,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": "naval-4",
+        "numeral": "pendant-1"
+      },
+      "legs": [
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bishop-74",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-a-14",
+          "rounding": "port"
+        },
+        {
+          "mark": "mosman-b-13",
+          "rounding": "port"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "shortened_distance_nm": 8.96,
+      "shortened_note": "Printed shortened distance 8.96 nm matches no leg boundary: the closest is after leg 13 at 9.47 nm, +5.7 per cent out. Recorded but not resolved to a leg, because a guess about where a race ends is worse than saying it is not known (DESIGN 11.6)."
+    },
+    {
+      "id": "sunday-div-iv-2",
+      "series": "sunday-div-iv",
+      "division": "IV",
+      "course_no": 2,
+      "distance_nm": 9.11,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": "naval-4",
+        "numeral": "pendant-2"
+      },
+      "legs": [
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sanders-99",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "shortened_distance_nm": 7.56,
+      "shortened_note": "Printed shortened distance 7.56 nm matches no leg boundary: the closest is after leg 9 at 7.92 nm, +4.8 per cent out. Recorded but not resolved to a leg, because a guess about where a race ends is worse than saying it is not known (DESIGN 11.6)."
+    },
+    {
+      "id": "sunday-div-iv-3",
+      "series": "sunday-div-iv",
+      "division": "IV",
+      "course_no": 3,
+      "distance_nm": 7.8,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": "naval-4",
+        "numeral": "pendant-3"
+      },
+      "legs": [
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "robins-59",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "dome-30",
+          "rounding": "port"
+        },
+        {
+          "mark": "bond-38a",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "shortened_distance_nm": 4.19,
+      "shortened_at": 5,
+      "shortened_note": "Printed shortened distance 4.19 nm matches the running total after leg 6 (4.22 nm, +0.8 per cent)."
+    },
+    {
+      "id": "sunday-div-iv-4",
+      "series": "sunday-div-iv",
+      "division": "IV",
+      "course_no": 4,
+      "distance_nm": 5.63,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": "naval-4",
+        "numeral": "pendant-4"
+      },
+      "legs": [
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "starboard"
+        }
+      ],
+      "shortened_distance_nm": 3.43,
+      "shortened_at": 3,
+      "shortened_note": "Printed shortened distance 3.43 nm matches the running total after leg 4 (3.47 nm, +1.1 per cent)."
+    },
+    {
+      "id": "twilight-1",
+      "series": "twilight",
+      "division": "combined",
+      "course_no": 1,
+      "distance_nm": 5.64,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-1"
+      },
+      "legs": [
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "miller-28",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "twilight-2",
+      "series": "twilight",
+      "division": "combined",
+      "course_no": 2,
+      "distance_nm": 5.09,
+      "wind_note": "South Westerly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-2"
+      },
+      "legs": [
+        {
+          "mark": "smith-35a",
+          "rounding": "port"
+        },
+        {
+          "mark": "lucky-bay-35b",
+          "rounding": "port"
+        },
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ]
+    },
+    {
+      "id": "twilight-3",
+      "series": "twilight",
+      "division": "combined",
+      "course_no": 3,
+      "distance_nm": 5.83,
+      "wind_note": "Easterly Breeze",
+      "flags": {
+        "division": null,
+        "numeral": "pendant-3"
+      },
+      "legs": [
+        {
+          "mark": "dolphin-west-42a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "armstrong-32",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "port"
+        },
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "starboard"
+        }
       ]
     }
   ]

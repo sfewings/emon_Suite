@@ -728,7 +728,9 @@ def test_load_config_reads_the_real_files_and_validates_them():
     """app.py owns every file read; engine/ is handed the parsed documents."""
     config = app_module.load_config()
     assert set(config) >= {"marks", "courses", "lines", "problems", "unraceable"}
-    assert len(config["courses"]["courses"]) == 4
+    # all six course sheets from the fixtures book: 4 + 4 + 4 + 4 + 4 + 3
+    assert len(config["courses"]["courses"]) == 23
+    assert len(config["courses"]["series"]) == 6
     assert config["unraceable"] == set()  # nothing in the shipped config blocks racing
 
 

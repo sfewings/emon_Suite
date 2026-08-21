@@ -31,13 +31,25 @@ COURSES = json.loads((ROOT / "config" / "courses.json").read_text(encoding="utf-
 PROBLEMS = course.validate(MARKS, COURSES, LINES)
 INDEX = course.index_marks(MARKS)
 
-# Frostbite course 1 prints 7.11 nm and its legs sum to 7.30. Every row was read off
-# the sheet and the row spacing is uniform, so no leg is missing, and no single
-# substitution or deletion from the twenty course marks lands within 1 per cent of
-# the printed figure. It is recorded as an open question in DESIGN 7 and in a note on
-# the course itself. Pinned here rather than silenced so that a *new* mismatch fails
-# the build while this one does not.
-KNOWN_DISTANCE_MISMATCHES = {"frostbite-1"}
+# Courses whose legs do not sum to the printed distance. Pinned rather than silenced, so
+# that a *new* mismatch fails the build while these do not. Every one has been read back
+# off the sheet and the parse checked leg by leg; what is in doubt is which side is wrong,
+# and DESIGN 7 keeps that open.
+#
+#   frostbite-1        +2.1%  no single substitution or deletion from its twenty course
+#                             marks lands within 1 per cent of the printed figure
+#   sunday-div-ii-2    +2.8%
+#   sunday-div-iv-1    -9.9%  the largest, and the parse is not the suspect: legs 1-9 are
+#                             identical to sunday-div-iii-1, which reconciles to +0.3%, and
+#                             the divergent tail is four ordinary legs with nothing degenerate
+#                             about them. Its printed shortened figure does not resolve either.
+#   sunday-div-iv-2    +4.2%
+#   twilight-1         +2.6%
+#   twilight-3         -2.6%
+KNOWN_DISTANCE_MISMATCHES = {
+    "frostbite-1", "sunday-div-ii-2", "sunday-div-iv-1", "sunday-div-iv-2",
+    "twilight-1", "twilight-3",
+}
 
 
 # --- the shipped config ----------------------------------------------------
@@ -122,18 +134,65 @@ def test_mosman_has_no_line():
         assert "mosman-b-13" not in line["marks"], line["id"]
 
 
+# The one course in the whole document that never returns to the line before finishing,
+# and so the one where a naive finish test would happen to be right. It is also the only
+# Sunday course with no printed shortened distance, which is the same fact from the other
+# side: there is no line crossing to shorten it at.
+NO_MID_RACE_LINE = {"sunday-div-iii-2"}
+
+
 def test_club_32a_is_both_a_course_mark_and_the_finish():
     """The hazard the whole finish-detection design exists for (DESIGN 11.5).
 
-    Every Frostbite course rounds club-32a while racing and finishes on the line it
-    forms the outer end of, so a naive finish test fires mid-race in all four.
+    Nearly every course rounds club-32a while racing and finishes on the line it forms
+    the outer end of, so a naive finish test fires mid-race in 22 of the 23.
     """
     outer = LINES["start_finish"]["outer"]["mark"]
     assert outer == "club-32a"
+    exposed = set()
     for c in COURSES["courses"]:
-        mid_course = sum(1 for leg in c["legs"] if leg.get("mark") == outer)
-        assert mid_course >= 1, c["id"]
         assert course.is_finish(c["legs"][-1]), c["id"]
+        if any(leg.get("mark") == outer for leg in c["legs"]):
+            exposed.add(c["id"])
+
+    everything = {c["id"] for c in COURSES["courses"]}
+    assert everything - exposed == NO_MID_RACE_LINE, everything - exposed
+    # and it is the overwhelming majority, which is why the arming rule exists at all
+    assert len(exposed) >= len(everything) - 1
+
+
+def test_a_shortened_course_ends_at_a_crossing_of_the_line():
+    """Flag S means the next pass through the line ends the race (DESIGN 11.6).
+
+    So a resolved `shortened_at` has to point at a leg that returns to the line, never
+    at a mark out in the river. Solving it by nearest running total alone does exactly
+    that when the arithmetic is a little off, which is how this was first got wrong.
+    """
+    outer = LINES["start_finish"]["outer"]["mark"]
+    resolved = 0
+    for c in COURSES["courses"]:
+        at = c.get("shortened_at")
+        if at is None:
+            continue
+        resolved += 1
+        assert 0 <= at < len(c["legs"]), (c["id"], at)
+        leg = c["legs"][at]
+        assert leg.get("mark") == outer or leg.get("finish"), (c["id"], at, leg)
+        # and it has to be a shortening, not the whole course
+        assert at < len(c["legs"]) - 1, (c["id"], at)
+    assert resolved >= 8, "the Sunday sheets print a shortened figure for most courses"
+
+
+def test_every_printed_shortened_distance_is_recorded_even_when_unresolved():
+    """A figure that could not be tied to a leg is still data, and saying so is the point."""
+    for c in COURSES["courses"]:
+        if "shortened_distance_nm" not in c:
+            continue
+        assert c["shortened_distance_nm"] < c["distance_nm"], c["id"]
+        assert "shortened_note" in c, c["id"]
+        if c.get("shortened_at") is None:
+            assert "not resolved" in c["shortened_note"] or "no leg" in c["shortened_note"], \
+                c["shortened_note"]
 
 
 def test_rounding_is_taken_from_the_leg_not_the_mark():

@@ -69,12 +69,25 @@ def test_the_course_list_is_served_for_the_selection_screen():
     client, _store, _ticker, _published = _client()
     body = json.loads(client.get("/api/courses").get_data(as_text=True))
     assert set(body) == {"series", "courses"}
-    assert "frostbite" in body["series"]
-    assert len(body["courses"]) == 4
+    # every series on a course sheet in the fixtures book, not just the first one built
+    assert set(body["series"]) == {"frostbite", "friday", "sunday-div-ii", "sunday-div-iii",
+                                   "sunday-div-iv", "twilight"}
+    # the endpoint offers the whole file rather than a subset of it
+    shipped = app_module.load_config()["courses"]["courses"]
+    assert len(body["courses"]) == len(shipped) == 23
+    assert {c["id"] for c in body["courses"]} == {c["id"] for c in shipped}
+
     first = body["courses"][0]
     assert first["flags"]["numeral"] == "pendant-1"
     assert first["raceable"] is True
     assert first["legs"] == 10
+
+    # a card needs the numeral to show and a leg count to size the race, for every course
+    for c in body["courses"]:
+        assert c["flags"]["numeral"], c["id"]
+        assert c["legs"] >= 5, c["id"]
+        assert c["distance_nm"] > 0, c["id"]
+        assert c["raceable"] is True, c["id"]
 
 
 def test_selecting_a_course_starts_a_race_and_names_the_first_mark():

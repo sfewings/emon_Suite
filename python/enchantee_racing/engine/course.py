@@ -34,10 +34,12 @@ suspect but usable, which is the right level for a printed distance that does no
 reconcile, because the printed figure is sometimes the thing that is wrong. app.py
 should refuse to serve a course with errors and surface warnings to the log only.
 
-Still to do here, from DESIGN 11.6: solving `shortened_at` from the printed
-shortened distance. It is the same cumulative arithmetic as the reconciliation
-below, and it needs a series whose sheets print a shortened figure, which Frostbite
-does not.
+`shortened_at` is now solved from the printed shortened distance, by
+scripts/extract_courses.py, using the same cumulative arithmetic as the reconciliation
+below. Only legs that return to the start/finish line are candidates: flag S means the
+next pass through the line ends the race, and solving by nearest running total across
+every leg instead lands on a mark in the middle of the river whenever a course's own
+distance is a little out (DESIGN 11.6).
 """
 
 from __future__ import annotations

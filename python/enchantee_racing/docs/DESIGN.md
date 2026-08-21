@@ -425,12 +425,24 @@ grid north in MGA zone 50 differs from true north by roughly 0.6 degrees at
 
 ```
 courses.json   series, division, course_no, distance_nm, wind_note,
-               flags: {division, numeral}, legs[], shortened_at
+               flags: {division, numeral}, legs[],
+               shortened_distance_nm, shortened_at, shortened_note
 ```
 
-Series: Frostbite, Twilight, Friday, Sunday Div II, Sunday Div III, Sunday Div IV.
-Four numbered courses in each. Courses change year to year, so this must be
-editable.
+Series: Frostbite, Friday, Sunday Div II, Sunday Div III, Sunday Div IV, Twilight.
+Four numbered courses in each except Twilight, which prints three. Twenty-three
+courses in all, and all of them are in `courses.json`. Courses change year to year,
+so this must be editable.
+
+The Frostbite four were transcribed by hand. The rest were extracted from the same
+PDF by `scripts/extract_courses.py`, which parses the Frostbite page as well and
+refuses to write anything unless what it reads there matches the hand transcription
+leg for leg. Using the hand-checked series as a control caught three parser faults
+that would each have produced plausible, wrong courses: a rounding swallowed by the
+printed dotted leaders, a finish leg with no name in front of its number, and the
+flare and torch counts in the Twilight prose read as marks 2 and 7. The Frostbite
+entries are then copied through untouched, because they carry judgements a parser
+will not reproduce, such as which of two marks a printed "(38)" meant.
 
 **Legs are an ordered list allowing repeats.** Club Buoy 32A appears up to four
 times in one course. Course position is a leg index, never a mark identity.
@@ -454,15 +466,32 @@ the wrong mark. This single check catches most transcription errors without anyo
 reading the PDF twice, and it should run in CI over every course. It is also what
 disproved the gate model in section 6, so it earns its keep twice over.
 
-Two courses transcribed so far do not reconcile, and in both the legs were checked
-against the sheet row by row and the printed total is the value in doubt:
+Six of the twenty-three do not reconcile inside the 2 per cent tolerance. In every
+one the legs have been checked against the sheet row by row, and the printed total is
+the value in doubt:
 
-- **Frostbite Course 1**: legs sum to 7.30 nm against a printed 7.11, 2.7 per cent
+- **Frostbite Course 1**: legs sum to 7.26 nm against a printed 7.11, 2.1 per cent
   over. No single substitution or deletion from the twenty course marks lands
   within 1 per cent of 7.11. Through the pair midpoints it gives 7.14, which
   suggests whoever totalled this one course did it that way.
-- **Sunday Div II Course 2**: 12.21 nm against a printed 11.92, 2.4 per cent over.
-  Not yet investigated; that series is not transcribed yet.
+- **Sunday Div II Course 2**: 12.25 nm against a printed 11.92, 2.8 per cent over.
+  This section predicted 12.21 and 2.4 per cent before the series was transcribed,
+  from a route read off the sheet by eye; the extracted legs put it slightly further
+  out. The prediction was close enough to confirm it is the same discrepancy.
+- **Sunday Div IV Course 1**: 9.47 nm against a printed 10.51, **9.9 per cent
+  under**, and much the worst of the six. The parse is not the suspect: legs 1 to 9
+  are identical to Sunday Div III Course 1, which reconciles to +0.3 per cent, and
+  the four legs where they diverge are ordinary ones with nothing degenerate in them.
+  Its printed shortened figure of 8.96 nm does not resolve to a leg either, which is
+  consistent with the full figure being the thing that is wrong.
+- **Sunday Div IV Course 2**: 9.49 nm against a printed 9.11, 4.2 per cent over.
+- **Twilight Course 1**: 5.79 nm against a printed 5.64, 2.6 per cent over.
+- **Twilight Course 3**: 5.68 nm against a printed 5.83, 2.6 per cent under.
+
+They are pinned in `tests/test_courses.py`, so a *new* mismatch fails the build while
+these do not. Both Twilight ones sit just outside a 2 per cent tolerance and would
+pass a 3 per cent one; that is not a reason to move the tolerance, because the check
+earns its keep by being tight enough to catch a wrong mark.
 
 The same arithmetic solves for `shortened_at`, as described in section 11.6.
 
@@ -977,8 +1006,30 @@ alongside the full distance (for example 10.98 nm full, 8.85 nm shortened). The
 truncation point is not stated in words, but it can be **solved for**: compute
 cumulative leg distances plus the run to the finish, and find the leg index whose
 truncation matches the printed shortened figure. Store the result as
-`shortened_at` in `courses.json`. If no leg index matches within tolerance, that
-is a signal the leg transcription is wrong, not that the arithmetic is.
+`shortened_at` in `courses.json`.
+
+**Done**, for eleven of the twelve Sunday courses, by `scripts/extract_courses.py`.
+One correction to the method as first written: the candidate legs are not all of
+them. Flag S means the next pass through the **line** ends the race, so only legs
+that target `club-32a`, the line's outer end, can be where a shortened race
+finishes. Solving by nearest running total across every leg instead put Div II
+Course 2's shortened finish at Sanders, out in the middle of Melville Water, purely
+because that course's full distance is 2.8 per cent out and the error moved the
+nearest total by one leg. Constrained to line crossings it resolves cleanly, or
+declines to.
+
+Where the printed figure matches no line crossing within 3 per cent, the figure is
+recorded in `shortened_distance_nm` and `shortened_at` is left null, with the
+residual written into `shortened_note`. Three do not resolve, and all three are
+courses whose full distance does not reconcile either, which is the expected
+correlation rather than a separate mystery. A guess about where a race ends is worse
+than an admission that it is not known, and the crew has the Shorten control either
+way.
+
+One course in the document, Sunday Div III Course 2, never returns to the line
+before finishing. It is also the only Sunday course with no printed shortened
+figure, which is the same fact from the other side: there is no crossing to shorten
+it at.
 
 ### 11.7 Time limits
 
