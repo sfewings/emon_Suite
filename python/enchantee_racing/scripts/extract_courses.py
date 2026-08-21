@@ -17,7 +17,7 @@ The Frostbite entries are then copied through untouched, notes and all, rather t
 regenerated: they carry judgements no parser is going to reproduce, such as which of two
 marks a printed "(38)" meant.
 
-Marks resolve on printed name **and** number, never number alone. Seventeen numbers in
+Marks resolve on printed name **and** number, never number alone. Fourteen numbers in
 marks.json belong to two marks each, and one of them matters here: bare 38 is Dee Rd,
 900 m from Bond, and both appear on these sheets. Failing loudly on an unresolved name is
 the whole point, so it does.
