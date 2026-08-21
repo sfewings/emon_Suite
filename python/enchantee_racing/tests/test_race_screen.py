@@ -595,6 +595,62 @@ def test_every_mode_can_be_left_by_something_on_its_own_panel():
         assert needed <= controls, (panel, needed - controls)
 
 
+def _page_hud():
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    return flask_app.test_client().get("/hud").get_data(as_text=True)
+
+
+NAV_H = "2.6rem"
+"""The height the navigation takes, and the room each page has to leave for it. One number
+in two files, which is why the test below checks they still agree."""
+
+
+def _nav_rules(css, selector):
+    block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert block, selector
+    return " ".join(block.group(1).split())
+
+
+def test_the_navigation_cannot_be_pushed_off_the_bottom_of_either_page():
+    """It was, on the race page, and only there.
+
+    Left as the last item in a fixed-height flex column, the navigation is whatever room
+    is left over, and a panel's .controls will not give any up: its buttons carry a minimum
+    height so they stay hittable on a moving boat (CLAUDE.md). The pre-start panel, two
+    rows of controls and then a row of readings, ran out first and pushed the navigation
+    half off the screen. The HUD never showed it because its navigation has always been
+    out of flow.
+
+    So both pages now fix it to the bottom and reserve the height above it, and this
+    checks the reserved height still matches what the navigation actually takes. Nothing
+    here can be seen without a phone, which is exactly why it is asserted.
+    """
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    hud = _page_hud()
+
+    # out of flow on both, anchored to the bottom edge inside the safe area
+    for source, name in ((css, "app.css"), (hud, "hud.html")):
+        rules = _nav_rules(source, "#nav")
+        assert "position: fixed" in rules, name
+        assert "bottom: env(safe-area-inset-bottom)" in rules, name
+        # it sits over the panel now, so it needs its own background
+        assert "background:" in rules, name
+        assert "flex: 0 0 auto" not in rules, "%s still treats the nav as a column item" % name
+
+    # and each page leaves exactly that much room, so the nav never covers a control
+    reserved = "padding-bottom: calc(env(safe-area-inset-bottom) + %s)" % NAV_H
+    assert reserved in " ".join(css.split()), "app.css reserves no room for the nav"
+    assert reserved in " ".join(hud.split()), "hud.html reserves no room for the nav"
+
+    # the reserved height has to be the height the nav takes, or it overlaps or floats
+    for source, name in ((css, "app.css"), (hud, "hud.html")):
+        entry = _nav_rules(source, "#nav a, #nav button") if name == "app.css" \
+            else _nav_rules(source, "#nav a")
+        assert "min-height: %s" % NAV_H in entry, (name, entry)
+
+
 def test_both_pages_carry_the_same_three_screen_navigation():
     """No screen is a dead end, which took two goes to get right: the HUD had no way back
     to anything, and the racing screen had no way to the HUD, which is the one a crew

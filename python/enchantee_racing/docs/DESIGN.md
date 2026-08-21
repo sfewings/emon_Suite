@@ -657,6 +657,16 @@ Every screen carries that navigation, so no screen is a dead end. Worth stating
 because it was got wrong twice: the HUD had no way back to anything, and the racing
 screen had no way to the HUD, which is the one a crew wants mid-race.
 
+A third time, differently: the navigation must be **fixed to the bottom, out of the
+page's flex column**. Left as the last item in that column it is only whatever room
+the panels have not taken, and a panel's controls will not give any up, because the
+buttons carry a minimum height to stay hittable on a moving boat. The pre-start panel,
+with two rows of controls and then a row of readings added above them, ran out of room
+first and pushed the navigation half off the screen. The HUD never showed it, having
+been fixed from the start. Both pages are fixed now, and each reserves the navigation's
+height as padding instead; the height appears in two files, so a test checks the two
+still agree.
+
 **Race is one screen with four faces**, and which face shows is the race's business
 rather than the navigation's. There is no nav entry for Course or Finish, because
 choosing a course and finishing are things that happen *to* a race, not places to
