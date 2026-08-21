@@ -35,8 +35,11 @@ Instructions as from https://medium.com/analytics-vidhya/how-to-create-a-python-
     > python setup.py bdist_wheel
      or if using the python/pyEmon/pyproject.toml file
     > pip install build
-    > cd /share/emon_Suite
-    > python -m build python/pyEmon
+    > cd /share/emon_Suite    (Windows) cd emon_Suite
+    > python -m build --wheel python/pyEmon
+   Note: --wheel is required. pyemonlib/emon_pybindings.cpp includes ../../../EmonShared/EmonShared.cpp,
+   which lives outside python/pyEmon, so it is not packed into an sdist. A plain "python -m build" builds
+   an sdist first and then the wheel from that sdist, and the include fails with "No such file or directory".
 4. Copy the wheel from dist and install
     > pip install ./dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl
     or
