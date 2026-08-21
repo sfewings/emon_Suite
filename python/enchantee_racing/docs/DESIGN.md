@@ -657,15 +657,33 @@ Every screen carries that navigation, so no screen is a dead end. Worth stating
 because it was got wrong twice: the HUD had no way back to anything, and the racing
 screen had no way to the HUD, which is the one a crew wants mid-race.
 
-A third time, differently: the navigation must be **fixed to the bottom, out of the
-page's flex column**. Left as the last item in that column it is only whatever room
-the panels have not taken, and a panel's controls will not give any up, because the
-buttons carry a minimum height to stay hittable on a moving boat. The pre-start panel,
-with two rows of controls and then a row of readings added above them, ran out of room
-first and pushed the navigation half off the screen. The HUD never showed it, having
-been fixed from the start. Both pages are fixed now, and each reserves the navigation's
-height as padding instead; the height appears in two files, so a test checks the two
-still agree.
+A third time, differently, and the fix for it was wrong before it was right, so both
+are worth recording.
+
+The navigation went half off the bottom of the race screen. The cause was never the
+navigation: it was the last item in `#app`'s flex column, so it got whatever room the
+panels had not taken, and the pre-start panel had run out. Buttons carry a minimum
+height so they stay hittable on a moving boat, so `.controls` cannot shrink, and when
+a column has to give something up it took the item at the bottom.
+
+The first fix took the navigation out of the flow and reserved its height as padding,
+which is what the HUD does. That stopped it being pushed off and started it covering
+the controls instead, because a hand-written height either overlaps what is above it
+or floats above the bottom, and nothing in the code can tell you which. **A magic
+number that has to match a rendered height is not a fix.**
+
+What actually fixes it is saying which things give way. The navigation is back in the
+flow, where the browser reserves exactly the height it takes and no number is written
+down twice. Inside a panel, the readings are flexible and the controls are pinned, so
+a short screen costs a reading rather than a button, and the panel clips its own
+overflow rather than drawing over what is below it. Every panel child must be declared
+as one or the other, and a test fails on any child that is neither, which is the check
+that would have caught the original.
+
+The HUD keeps the out-of-flow navigation, because its `fit()` sizes the digits against
+the row heights of that column and putting the navigation into it would resize every
+reading on the page. So one page duplicates the height and the other does not, and the
+test checks the HUD's two copies against each other.
 
 **Race is one screen with four faces**, and which face shows is the race's business
 rather than the navigation's. There is no nav entry for Course or Finish, because

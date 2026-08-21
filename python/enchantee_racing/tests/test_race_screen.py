@@ -613,42 +613,102 @@ def _nav_rules(css, selector):
     return " ".join(block.group(1).split())
 
 
-def test_the_navigation_cannot_be_pushed_off_the_bottom_of_either_page():
-    """It was, on the race page, and only there.
+def _panel_children(page):
+    """The direct children of each panel, as the selector that would match them."""
+    page = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    out = {}
+    for block in re.finditer(r'<section class="panel" id="panel-(\w+)">(.*?)</section>',
+                             page, re.S):
+        name, body, kids, depth = block.group(1), block.group(2), [], 0
+        for tag in re.finditer(r'<(/?)(div|span)\b([^>]*)>', body):
+            closing, attrs = tag.group(1), tag.group(3)
+            if closing:
+                depth -= 1
+                continue
+            if depth == 0:
+                ident = re.search(r'id="([\w-]+)"', attrs)
+                cls = re.search(r'class="([^"]+)"', attrs)
+                kids.append("#" + ident.group(1) if ident else
+                            "." + cls.group(1) if cls else "?")
+            depth += 1
+        out[name] = kids
+    return out
 
-    Left as the last item in a fixed-height flex column, the navigation is whatever room
-    is left over, and a panel's .controls will not give any up: its buttons carry a minimum
-    height so they stay hittable on a moving boat (CLAUDE.md). The pre-start panel, two
-    rows of controls and then a row of readings, ran out first and pushed the navigation
-    half off the screen. The HUD never showed it because its navigation has always been
-    out of flow.
 
-    So both pages now fix it to the bottom and reserve the height above it, and this
-    checks the reserved height still matches what the navigation actually takes. Nothing
-    here can be seen without a phone, which is exactly why it is asserted.
+# A panel's children are either the readings, which give way when the screen runs short,
+# or the things a hand reaches for, which never do. Every child must be one or the other:
+# a child that is neither shrinks by the default flex rules, which shrink everything a
+# little and overflow anyway, and then the bottom of the column is lost behind the nav.
+GIVES_WAY = {".grow", "#cards", "#detail-legs", ".row"}
+NEVER_SHRINKS = {".controls", "#series", "#secondary", "#final-secondary",
+                 "#detail-head", "#detail-notes"}
+
+
+def test_every_panel_child_either_gives_way_or_is_pinned():
+    """The rule that keeps the controls and the navigation on the screen.
+
+    This is the check that would have caught it: a row of readings was added to the
+    pre-start panel, which already had two rows of controls, and the column ran out of
+    room. Buttons carry a minimum height so they stay hittable on a moving boat
+    (CLAUDE.md), so when something has to give it must be a reading, and the panel has to
+    say which. Add a child that is in neither set and this fails.
+    """
+    for panel, kids in _panel_children(_page()).items():
+        for kid in kids:
+            assert kid in GIVES_WAY or kid in NEVER_SHRINKS, (panel, kid)
+        # and every panel keeps its controls, or there is no way off it
+        assert ".controls" in kids, panel
+
+    css = " ".join((ROOT / "static" / "app.css").read_text(encoding="utf-8").split())
+    # the pinned set is declared as one rule, so the intent is in one place
+    pinned = re.search(r'([^{}]*\.panel > \.controls[^{]*)\{([^}]*)\}', css)
+    assert pinned, "no rule pins the controls"
+    assert "flex: 0 0 auto" in pinned.group(2)
+    for name in NEVER_SHRINKS - {".controls"}:
+        assert name in pinned.group(1), "%s is not pinned with the rest" % name
+
+    # the readings give way, and are clipped inside their own panel when they do
+    panel_rule = _nav_rules(css, ".panel")
+    assert "overflow: hidden" in panel_rule
+    assert "min-height: 0" in panel_rule
+    assert "flex: 0 1 auto" in _nav_rules(css, ".panel > .row")
+
+
+def test_the_navigation_is_never_pushed_off_or_covered():
+    """Two pages, two mechanisms, and the reason they differ.
+
+    The race page keeps the nav in the flow as the last item, so the browser reserves
+    exactly the height it takes. Reserving that height by hand instead was tried and it
+    covered the controls: a hand-written height either overlaps what is above it or floats
+    above the bottom, and nothing in the code can tell which.
+
+    The HUD does reserve it by hand, because its nav has been out of flow since the port
+    and its fit() sizes digits against the row heights of that column. Putting the nav
+    into it would resize every reading on the page. So there the height is duplicated, and
+    the two copies are checked against each other.
     """
     css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
     hud = _page_hud()
+    page = _page()
 
-    # out of flow on both, anchored to the bottom edge inside the safe area
-    for source, name in ((css, "app.css"), (hud, "hud.html")):
-        rules = _nav_rules(source, "#nav")
-        assert "position: fixed" in rules, name
-        assert "bottom: env(safe-area-inset-bottom)" in rules, name
-        # it sits over the panel now, so it needs its own background
-        assert "background:" in rules, name
-        assert "flex: 0 0 auto" not in rules, "%s still treats the nav as a column item" % name
+    # --- the race page: in the flow, last, and nothing above it can overflow ---
+    nav = _nav_rules(css, "#nav")
+    assert "flex: 0 0 auto" in nav
+    assert "position: fixed" not in nav, "in the flow, so no height has to be guessed"
+    assert "padding-bottom" not in _nav_rules(css, "#app"), \
+        "an in-flow nav needs no reserved height, and a stale one would cover the controls"
+    # last in the column, so the flow puts it at the bottom
+    assert page.rindex('id="nav"') > page.rindex('id="panel-')
 
-    # and each page leaves exactly that much room, so the nav never covers a control
+    # --- the HUD: out of flow, and the reserved height must match the real one ---
+    hud_nav = _nav_rules(hud, "#nav")
+    assert "position: fixed" in hud_nav
+    assert "bottom: env(safe-area-inset-bottom)" in hud_nav
+    assert "background:" in hud_nav, "it sits over the panels, so it needs one"
     reserved = "padding-bottom: calc(env(safe-area-inset-bottom) + %s)" % NAV_H
-    assert reserved in " ".join(css.split()), "app.css reserves no room for the nav"
-    assert reserved in " ".join(hud.split()), "hud.html reserves no room for the nav"
-
-    # the reserved height has to be the height the nav takes, or it overlaps or floats
-    for source, name in ((css, "app.css"), (hud, "hud.html")):
-        entry = _nav_rules(source, "#nav a, #nav button") if name == "app.css" \
-            else _nav_rules(source, "#nav a")
-        assert "min-height: %s" % NAV_H in entry, (name, entry)
+    assert reserved in " ".join(hud.split()), "hud.html reserves no room for its nav"
+    assert "min-height: %s" % NAV_H in _nav_rules(hud, "#nav a"), \
+        "the reserved height no longer matches what the HUD nav takes"
 
 
 def test_both_pages_carry_the_same_three_screen_navigation():

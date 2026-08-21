@@ -55,14 +55,35 @@ html, body {
   height: 100vh; height: 100dvh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
-  /* Room at the bottom for the fixed navigation, which is no longer in this column.
-     NAV_H below has to match the height the nav actually takes. */
-  padding-bottom: calc(env(safe-area-inset-bottom) + 2.6rem);
 }
 
 /* --- panels: exactly one visible, chosen by the mode class on body --- */
 
-.panel { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+/* A panel never exceeds the room left above the navigation, and when it runs short it is
+   the readings that give way, never the controls.
+
+   That order is the whole point. The buttons carry a minimum height because they have to
+   be hittable on a moving boat (CLAUDE.md), so they cannot shrink; if the readings do not
+   give way instead, the column overflows and whatever is at the bottom of it is lost.
+   Declaring it here rather than leaving it to the default flex behaviour, which shrinks
+   everything a little and overflows anyway.
+
+   overflow: hidden so that a reading starved to nothing is clipped inside its own panel
+   rather than drawn over the controls below it. */
+.panel {
+  display: none; flex: 1 1 auto; min-height: 0; flex-direction: column;
+  overflow: hidden;
+}
+/* Never shrink: these are the things a hand reaches for. */
+.panel > .controls,
+#series,
+#secondary,
+#final-secondary,
+#detail-head,
+#detail-notes { flex: 0 0 auto; }
+/* Give way first, in this order: the flexible readings are already flex: 1 1 0 with
+   min-height: 0 below, and a row of them can collapse after they have. */
+.panel > .row { flex: 0 1 auto; min-height: 0; }
 body.mode-idle     #panel-idle,
 body.mode-prestart #panel-prestart,
 body.mode-racing   #panel-racing,
@@ -182,21 +203,18 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 
 /* --- navigation, on every screen ------------------------------------- */
 
-/* Fixed to the bottom rather than left as the last item in #app's flex column, which is
-   how hud.html has always done it and now how both pages do.
+/* The last item in #app's flex column, and in the flow on purpose, so the browser
+   reserves exactly the height it takes. Taking it out of flow instead means reserving
+   that height by hand as padding, and a hand-written height that does not match what the
+   nav really is either covers the controls or floats above them. It was tried and it did
+   the first of those.
 
-   In the column it could be pushed off the screen, and was: a panel's .controls will not
-   shrink, because its buttons carry a minimum height to stay hittable on a moving boat,
-   so when a column runs out of room something has to give and it was the last item in it.
-   The pre-start panel, with two rows of controls and then a row of readings added to it,
-   was the one that ran out first. Out of flow, nothing can push it, whatever a panel
-   grows into. #app reserves the height above instead. */
+   What made it look like the nav was the problem is above, in .panel: the wrong things
+   were shrinking. Fixed there, this can stay simple. */
 #nav {
-  position: fixed; z-index: 2;
-  left: env(safe-area-inset-left); right: env(safe-area-inset-right);
-  bottom: env(safe-area-inset-bottom);
   display: flex; gap: 1px;
   border-top: 2px solid var(--rule);
+  flex: 0 0 auto;
   background: var(--bg);
 }
 #nav a, #nav button {
