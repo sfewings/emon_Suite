@@ -441,18 +441,107 @@
       try { audio = new AudioContext(); } catch (e) { audio = false; }
     }
     if (audio && audio.state === "suspended") audio.resume();
+    // Start fetching the countdown clips on the gesture rather than on the next poll:
+    // setting the timer is itself a tap, so this always runs before a countdown does.
+    loadVoice();
   }
 
   if (el.wake) {
     el.wake.addEventListener("pause", function () { if (wakeStarted) wake(); });
   }
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) { tick(); wake(); }
+    if (document.hidden) return;
+    tick();
+    wake();
+    // The audio clock stops while the page is in the background, so anything scheduled
+    // against it is now late by however long the phone was away. Forget the plan and let
+    // the next poll rebuild it against the clock as it now stands (DESIGN 10.1).
+    planned = null;
   });
   document.body.addEventListener("click", wake);
 
-  // Audio at each minute and at the final ten seconds. Vibration works on Android and
-  // never on iOS, so audio is primary (DESIGN 10).
+  // --- countdown audio ---------------------------------------------------
+  //
+  // A voice at each minute, and one recording through the final ten seconds ending in the
+  // horn at T-0 (DESIGN 10). Vibration works on Android and never on iOS, so audio is
+  // the primary cue.
+  //
+  // Scheduled, not triggered. The poll runs at 2 Hz, so noticing T-0 and playing a sound
+  // then would put the gun up to half a second out, and half a second is a boat length on
+  // the line. Instead each clip is handed to the audio clock with the time it should
+  // start, which is sample-accurate, and the final recording is started at an offset into
+  // itself so its horn lands on T-0 however late we came to it.
+
+  // Seconds before T-0 that each clip starts. The final one starts at HORN_AT because
+  // that is where its horn sits: file time HORN_AT lines up with T-0, which is the
+  // contract with scripts/gen_audio.py, and tests/test_audio.py checks the two agree.
+  var HORN_AT = 10.0;
+  var CUES = [];
+  for (var minute = 10; minute >= 1; minute--) {
+    CUES.push({ key: "min-" + minute, at: minute * 60 });
+  }
+  CUES.push({ key: "final", at: HORN_AT });
+
+  // A deadline that moves by less than this is the poll jitter, not the crew: rescheduling
+  // on jitter would restart a clip that is already playing.
+  var REPLAN_S = 0.3;
+
+  var buffers = {};
+  var voiceReady = false;     // every clip decoded; until then the fallback beeps
+  var playing = [];
+  var planned = null;         // T-0 in audio-clock time, as currently scheduled
+
+  function loadVoice() {
+    if (!audio || audio === false || loadVoice.started) return;
+    loadVoice.started = true;
+    var pending = CUES.length;
+    CUES.forEach(function (cue) {
+      fetch(base + "/static/audio/" + cue.key + ".m4a", { cache: "force-cache" })
+        .then(function (r) { return r.arrayBuffer(); })
+        .then(function (encoded) {
+          // The promise form is not universal on older Safari, so accept either.
+          return new Promise(function (resolve, reject) {
+            var result = audio.decodeAudioData(encoded, resolve, reject);
+            if (result && result.then) result.then(resolve, reject);
+          });
+        })
+        .then(function (buffer) {
+          buffers[cue.key] = buffer;
+          if (--pending === 0) voiceReady = true;
+        })
+        .catch(function () { /* the beep fallback covers whatever did not arrive */ });
+    });
+  }
+
+  function silence() {
+    playing.forEach(function (source) { try { source.stop(); } catch (e) {} });
+    playing = [];
+  }
+
+  function schedule(deadline) {
+    var now = audio.currentTime;
+    CUES.forEach(function (cue) {
+      var buffer = buffers[cue.key];
+      if (!buffer) return;
+      var when = deadline - cue.at;
+      var offset = 0;
+      if (when < now) {
+        // Already due. Start it part-way in, so the rest of it still lines up: this is
+        // what keeps the horn on T-0 when the page is opened at T-4.
+        offset = now - when;
+        if (offset >= buffer.duration) return;   // finished before we got here
+        when = now;
+      }
+      var source = audio.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audio.destination);
+      source.start(when, offset);
+      playing.push(source);
+    });
+  }
+
+  // The fallback, kept from the first version of this: if the clips did not load, a bare
+  // tone at each minute and each of the last ten seconds is far better than a silent gun.
   var lastBeep = null;
 
   function beep(seconds) {
@@ -476,7 +565,36 @@
     else if (remaining > 0 && remaining % 60 === 0) { lastBeep = remaining; beep(remaining); }
   }
 
-  setInterval(function () { tick(); maybeBeep(); }, POLL_MS);
+  function updateAudio() {
+    if (!audio || audio === false) return;
+    loadVoice();
+    var r = latest.race;
+    var mode = r ? r.mode : null;
+
+    if (!voiceReady) { maybeBeep(); return; }
+
+    if (mode === "prestart" && r.countdown !== null) {
+      // The payload describes a moment already a little in the past, by whatever the
+      // request took. On a boat's own wifi that is a few milliseconds and not worth
+      // modelling; the nudge exists for anything that matters (DESIGN 10).
+      var deadline = audio.currentTime + r.countdown;
+      if (planned === null || Math.abs(deadline - planned) > REPLAN_S) {
+        silence();
+        planned = deadline;
+        schedule(deadline);
+      }
+      return;
+    }
+
+    // No longer counting down. Racing means the gun has just gone and the horn is still
+    // sounding, so leave it alone: cutting it off at T-0 would silence the one cue that
+    // matters. Anything else means the countdown was abandoned, so stop.
+    if (mode !== "racing") silence();
+    planned = null;
+    lastBeep = null;
+  }
+
+  setInterval(function () { tick(); updateAudio(); }, POLL_MS);
   tick();
   loadCourses();
 }());
