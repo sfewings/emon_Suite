@@ -272,6 +272,21 @@ class Store:
             sog=sog.v if sog and isinstance(sog.v, (int, float)) else None,
         )
 
+    def _wind_direction(self) -> Optional[float]:
+        """The true wind direction, or None. Call with the lock already held.
+
+        Not stale-checked: the leg type it feeds is a statement about the course rather
+        than a reading on a dial, and a wind that was there a minute ago is a better guide
+        to which legs are beats than nothing at all.
+        """
+        twd = self._values.get("twd")
+        return twd.v if twd and isinstance(twd.v, (int, float)) else None
+
+    def wind_direction(self) -> Optional[float]:
+        """The true wind direction for a caller that holds no lock."""
+        with self._lock:
+            return self._wind_direction()
+
     def race_payload(self, now: Optional[float] = None) -> Optional[dict]:
         """What the pages need to render the race, or None before a course is chosen.
 
@@ -288,8 +303,7 @@ class Store:
             self._queue(events)
             state, context = self._race, self._context
             fix = self._fix_now(now)
-            twd = self._values.get("twd")
-            twd = twd.v if twd and isinstance(twd.v, (int, float)) else None
+            twd = self._wind_direction()
 
         return {
             "mode": state.mode,

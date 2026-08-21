@@ -451,6 +451,106 @@ def test_the_state_payload_survives_being_read_while_fixes_arrive():
     assert failures == [], failures[:1]
 
 
+# --- the course detail endpoint (DESIGN 9.11) ------------------------------
+
+
+def test_the_course_detail_endpoint_describes_a_whole_course():
+    client, _store, _ticker, _published = _client()
+    body = json.loads(client.get("/api/course/frostbite-3").get_data(as_text=True))
+
+    assert body["id"] == "frostbite-3"
+    assert body["series"] == "frostbite"
+    assert body["series_name"] == "Frostbite Invitation Series"
+    assert body["course_no"] == 3
+    assert body["distance_nm"] == 6.93
+    assert body["raceable"] is True
+    assert body["flags"]["numeral"] == "pendant-3"
+
+    legs = body["legs"]
+    assert len(legs) == 10
+    assert [leg["leg"] for leg in legs] == list(range(1, 11))
+    assert legs[0]["name"] == "Dolphin East"
+    assert legs[0]["number"] == "42B"
+    assert legs[0]["rounding"] == "starboard"
+    assert legs[-1]["finish"] is True
+
+    # the running total ends at the summed distance the page shows beside the printed one
+    assert abs(legs[-1]["cumulative_nm"] - body["summed_nm"]) < 1e-9
+    for leg in legs:
+        assert leg["distance_nm"] >= 0.0
+        assert 0.0 <= leg["bearing"] < 360.0
+
+
+def test_the_course_detail_endpoint_works_for_a_course_nobody_is_sailing():
+    """The point of it: the crew reads courses before choosing one, and reading must not
+    require selecting, because selecting while racing ends the race (DESIGN 9.11)."""
+    client, store, _ticker, published = _client()
+    assert store.race_payload() is None            # no course chosen at all
+    response = client.get("/api/course/sunday-div-ii-1")
+    assert response.status_code == 200
+    assert json.loads(response.get_data(as_text=True))["course_no"] == 1
+    # and reading changed nothing
+    assert store.race_payload() is None
+    assert published == []
+
+
+def test_the_course_detail_endpoint_carries_the_shortened_figures():
+    client, _store, _ticker, _published = _client()
+    body = json.loads(client.get("/api/course/sunday-div-ii-1").get_data(as_text=True))
+    assert body["shortened_distance_nm"] == 8.85
+    assert body["shortened_at"] == 10                     # the eleventh leg, back at the line
+    assert body["legs"][body["shortened_at"]]["mark"] == "club-32a"
+    assert body["shortened_note"]
+
+    # and says so plainly where the figure resolved to nothing
+    unresolved = json.loads(
+        client.get("/api/course/sunday-div-iv-1").get_data(as_text=True))
+    assert unresolved["shortened_distance_nm"] == 8.96
+    assert unresolved["shortened_at"] is None
+    assert "not resolved" in unresolved["shortened_note"]
+
+
+def test_the_course_detail_endpoint_reports_a_distance_that_does_not_reconcile():
+    """So the page can say the printed total is in doubt rather than leaving the crew to
+    notice two numbers that disagree (DESIGN 7)."""
+    client, _store, _ticker, _published = _client()
+    body = json.loads(client.get("/api/course/frostbite-1").get_data(as_text=True))
+    assert body["notes"], "the known mismatch should be reported"
+    assert any("per cent" in note for note in body["notes"])
+    assert abs(body["summed_nm"] - body["distance_nm"]) > 0.1
+
+    clean = json.loads(client.get("/api/course/frostbite-3").get_data(as_text=True))
+    assert clean["notes"] == []
+
+
+def test_the_course_detail_endpoint_names_the_leg_types_when_the_wind_is_known():
+    client, store, _ticker, _published = _client()
+    without = json.loads(client.get("/api/course/frostbite-3").get_data(as_text=True))
+    assert without["twd"] is None
+    assert all(leg["leg_type"] is None for leg in without["legs"])
+
+    store.set("twd", 200.0)
+    with_wind = json.loads(client.get("/api/course/frostbite-3").get_data(as_text=True))
+    assert with_wind["twd"] == 200.0
+    assert all(leg["leg_type"] in ("beat", "reach", "run") for leg in with_wind["legs"])
+
+
+def test_the_course_detail_endpoint_404s_on_an_unknown_course():
+    client, _store, _ticker, _published = _client()
+    assert client.get("/api/course/nope").status_code == 404
+
+
+def test_every_shipped_course_can_be_shown_in_detail():
+    """Any card the crew taps has to open, including the ones whose distances are in doubt."""
+    client, _store, _ticker, _published = _client()
+    for c in CONFIG["courses"]["courses"]:
+        response = client.get("/api/course/" + c["id"])
+        assert response.status_code == 200, c["id"]
+        body = json.loads(response.get_data(as_text=True))
+        assert len(body["legs"]) == len(c["legs"]), c["id"]
+        assert body["legs"][-1]["finish"] is True, c["id"]
+
+
 if __name__ == "__main__":
     import traceback
 

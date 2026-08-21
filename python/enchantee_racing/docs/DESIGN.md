@@ -547,6 +547,12 @@ things dominate, in this priority order:
 
 Secondary, smaller: leg number and total (`leg 4 of 11`), next-next leg name, transit angle to reach next-next mark (degrees to port or starboard), next-next leg type, time limit remaining, position source and staleness.
 
+The **pre-start panel shows the first mark too**: its name, rounding side, distance
+and bearing. These are not a separate calculation. The engine steers at leg 1 from the
+moment a course is selected, so the same three readings the racing panel shows already
+exist before the gun, and before the gun is when they decide which end of the line to
+start at. They blank on a stale fix like everything else (9.5).
+
 Rounding side is shown as an arrow next to the mark name, sourced from the leg
 rather than from the mark default, so a course that deviates from the registered
 rounding still displays correctly.
@@ -656,8 +662,11 @@ what stops the navigation and the state machine disagreeing:
 | Racing              | Next mark     | the next leg                                  |
 | Finish              | Course        | the course list, race reset                   |
 | Course, race live   | Race          | back to whatever the race is doing            |
+| Course              | a card's Details | that course, leg by leg (9.11)             |
+| Racing              | Details       | the course being sailed, leg by leg           |
+| Course detail       | Back          | wherever it was opened from                   |
 
-Two of those need saying out loud.
+Three of those need saying out loud.
 
 **Back off leg 1 is a view change, not a race command.** There is no leg before the
 first, so the button goes to the course list instead, and the race carries on
@@ -669,6 +678,12 @@ stop looking at the list.
 list, with a race running, tapping a card: they mean to sail that one instead. It is
 logged as a `reset` rather than a `finish`, because abandoning a race is not
 finishing one, and the new course opens at its countdown.
+
+**The course detail page is a face, not a screen, and its Back is not a fixed
+destination.** It is reachable from two places and returns to whichever one it came
+from, so it remembers rather than assumes (9.11). It is also the reason a card is two
+targets: reading a course cannot go through selecting it, because selecting is the
+thing that ends a running race.
 
 The mode still decides which face shows *by default*, and a mode change still
 switches every device together, which is the property that matters (DESIGN 2). A
@@ -760,6 +775,50 @@ prefix-relative URL is unchanged in spirit, built from `location.pathname` so th
 page still works behind `/race/` and on its own port alike. `/hud/data` stays
 exactly the shape the Node-RED flow served, because that is what makes the port
 comparable side by side, and nothing needs it to change.
+
+### 9.11 Course detail
+
+A page showing one whole course: every leg in order, with the mark's name and number,
+which side to round it, the leg's length and bearing, the running total, and which
+legs are beats when the wind direction is known. Served by `GET /api/course/<id>`,
+which composes `engine.course.leg_table()` with the series metadata.
+
+It is **not a screen** and is not in the navigation. It is a panel like the others,
+reached from two places, and its only way out is back to whichever of them it was
+opened from:
+
+- **From a course card**, to read a course before committing to it. This is the case
+  selecting cannot serve: choosing a course while a race is running ends that race
+  (9.6), so "let me look at course 3" must not go through selection. Each card is
+  therefore two targets, the body to sail it and a strip beneath to read it.
+- **From the racing panel**, to see what comes after the mark ahead. The leg being
+  sailed is marked in the list, so the page answers "where am I up to" as well as
+  "what is this course".
+
+Because there are two ways in, Back cannot be a fixed destination: opened from the
+course list mid-race it must return to the list, not to the racing panel. So the page
+records where it came from. A mode change clears that and closes the page, on the same
+principle as everywhere else, that the race outranks whatever someone is reading, and
+because a remembered destination goes stale the moment the race leaves it.
+
+Nothing on the page changes the race. It issues no commands at all, which is what
+makes it safe to open at any moment, including mid-race with the finish armed.
+
+**It scrolls, and it is the only thing that does.** Fifteen legs will not fit a phone
+at a size worth reading. The no-scrolling rule in CLAUDE.md is about the racing
+display, where the reader is wet, busy and one-handed; this page is read at rest, and
+a scroll here is not the failure it would be there.
+
+Where the printed distance and the marks disagree the page says so in words, rather
+than showing two numbers and leaving the crew to notice. Same for a printed shortened
+distance that resolved to no crossing of the line (11.6). The data has these
+imperfections (section 7) and a briefing sheet is exactly where they should be visible.
+
+The rounding symbol is now shown in three places: the next mark while racing, the
+first mark before the start, and every leg here. So the geometry is defined once as an
+SVG `<symbol>` and used, rather than copied. That matters because the test that
+guards the sweep direction can only guard the copy it finds, and a second copy drifting
+the other way would send the boat round a mark backwards.
 
 ## 10. Pre-start behaviour
 

@@ -482,6 +482,105 @@ def test_problem_str_names_the_course_and_leg():
     assert str(course.Problem(course.WARNING, "x", "hmm")) == "warning: hmm"
 
 
+# --- the leg table, which is what the detail page renders ------------------
+
+
+def test_the_leg_table_lists_every_leg_with_its_own_numbers():
+    """One row per leg, in order, with the distances the reconciliation already uses.
+
+    The same arithmetic as leg_distances_nm, so a course that does not add up looks wrong
+    on the page as well as in the log (DESIGN 9.11).
+    """
+    frostbite3 = [c for c in COURSES["courses"] if c["id"] == "frostbite-3"][0]
+    rows = course.leg_table(frostbite3, INDEX, LINES)
+
+    assert len(rows) == len(frostbite3["legs"])
+    assert [r["leg"] for r in rows] == list(range(1, len(rows) + 1))
+
+    # the per-leg distances are the ones the reconciliation sums
+    plain = course.leg_distances_nm(frostbite3, INDEX, LINES)
+    assert [round(r["distance_nm"], 9) for r in rows] == [round(d, 9) for d in plain]
+    running = course.cumulative_distances_nm(frostbite3, INDEX, LINES)
+    assert [round(r["cumulative_nm"], 9) for r in rows] == [round(d, 9) for d in running]
+    assert abs(rows[-1]["cumulative_nm"]
+               - course.course_distance_nm(frostbite3, INDEX, LINES)) < 1e-9
+
+    # names, not ids, because the crew calls it Squadron (DESIGN 9.2)
+    assert rows[0]["name"] == "Dolphin East"
+    assert rows[0]["number"] == "42B"
+    assert rows[0]["rounding"] == "starboard"
+
+    # the last row is the finish and has no mark of its own
+    assert rows[-1]["finish"] is True
+    assert rows[-1]["mark"] is None
+    assert all(r["finish"] is False for r in rows[:-1])
+
+
+def test_the_leg_table_bearings_run_mark_to_mark_from_the_line():
+    """The first leg is measured from the middle of the start line, each one after it from
+    the mark before, which is the same walk the distances take."""
+    frostbite3 = [c for c in COURSES["courses"] if c["id"] == "frostbite-3"][0]
+    rows = course.leg_table(frostbite3, INDEX, LINES)
+
+    start = course.start_point(LINES)
+    first = course.leg_target(frostbite3["legs"][0], INDEX, LINES)
+    assert abs(nav.norm180(rows[0]["bearing"] - nav.bearing(start, first))) < 1e-6
+
+    second = course.leg_target(frostbite3["legs"][1], INDEX, LINES)
+    assert abs(nav.norm180(rows[1]["bearing"] - nav.bearing(first, second))) < 1e-6
+    for row in rows:
+        assert 0.0 <= row["bearing"] < 360.0, row
+
+
+def test_the_leg_table_says_which_legs_are_beats_when_the_wind_is_known():
+    """And says nothing rather than guessing when it is not (DESIGN 3)."""
+    frostbite3 = [c for c in COURSES["courses"] if c["id"] == "frostbite-3"][0]
+
+    without = course.leg_table(frostbite3, INDEX, LINES)
+    assert all(r["leg_type"] is None for r in without)
+
+    rows = course.leg_table(frostbite3, INDEX, LINES, twd=0.0)
+    assert all(r["leg_type"] in ("beat", "reach", "run") for r in rows)
+    # a leg straight into a northerly is a beat, one straight away from it is a run
+    for row in rows:
+        off = abs(nav.norm180(0.0 - row["bearing"]))
+        expected = "beat" if off < 40.0 else "run" if off > 140.0 else "reach"
+        assert row["leg_type"] == expected, (row["leg"], row["bearing"])
+
+
+def test_the_leg_type_thresholds_have_one_definition():
+    """race.py called it first and now delegates, so a briefing sheet and the race screen
+    cannot disagree about what a leg is."""
+    from engine import race as race_module
+
+    assert race_module.leg_type(0.0, 10.0) == course.leg_type(0.0, 10.0) == "beat"
+    assert race_module.leg_type(0.0, 90.0) == course.leg_type(0.0, 90.0) == "reach"
+    assert race_module.leg_type(0.0, 179.0) == course.leg_type(0.0, 179.0) == "run"
+    assert race_module.leg_type(None, 90.0) is course.leg_type(None, 90.0) is None
+    assert race_module.BEAT_MAX == course.BEAT_MAX
+    assert race_module.RUN_MIN == course.RUN_MIN
+
+
+def test_the_leg_table_carries_the_note_on_a_leg_that_has_one():
+    """Frostbite course 4 leg 3 records which of two marks a printed "(38)" meant, and the
+    detail page is exactly where someone would want to read that."""
+    frostbite4 = [c for c in COURSES["courses"] if c["id"] == "frostbite-4"][0]
+    rows = course.leg_table(frostbite4, INDEX, LINES)
+    assert rows[2]["mark"] == "bond-38a"
+    assert rows[2]["note"] and "38" in rows[2]["note"]
+    assert rows[0]["note"] is None
+
+
+def test_the_leg_table_works_for_every_shipped_course():
+    """It is rendered for any course the crew taps, including ones nobody is sailing."""
+    for c in COURSES["courses"]:
+        rows = course.leg_table(c, INDEX, LINES, twd=210.0)
+        assert len(rows) == len(c["legs"]), c["id"]
+        assert rows[-1]["finish"] is True, c["id"]
+        assert all(r["distance_nm"] >= 0.0 for r in rows), c["id"]
+        assert all(r["rounding"] in ("port", "starboard") for r in rows), c["id"]
+
+
 if __name__ == "__main__":
     import traceback
 

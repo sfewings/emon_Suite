@@ -21,7 +21,12 @@
   ["pip", "notice", "countdown", "line-distance", "line-unit", "line-time", "mark-name",
    "distance", "distance-unit", "bearing", "cog", "relative", "elapsed", "secondary",
    "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake",
-   "mark-round", "nav", "resume", "next"
+   "mark-round", "nav", "resume", "next",
+   // the first mark, shown before the start as well as during the race (DESIGN 9.2)
+   "pre-mark", "pre-round", "pre-distance", "pre-unit", "pre-bearing",
+   // the course detail page (DESIGN 9.11)
+   "detail-flags", "detail-series", "detail-title", "detail-distance", "detail-notes",
+   "detail-legs"
   ].forEach(function (id) { el[id] = document.getElementById(id); });
 
   var BLANK = "---";
@@ -135,6 +140,13 @@
   on("resume", function () { viewing = null; showPanel(); wake(); });
   on("reset", function () { post("/api/reset"); });
 
+  // The course being raced, laid out leg by leg. Read-only: nothing on that page changes
+  // the race, and its only exit is back to here (DESIGN 9.11).
+  on("detail", function () {
+    if (latest.race && latest.race.course) openDetail(latest.race.course);
+  });
+  on("detail-back", function () { closeDetail(); });
+
   // Sync to the next whole minute, because someone always taps late (DESIGN 10). Worked
   // out here rather than server-side: it is a statement about the countdown the crew can
   // see, and the arithmetic is the same either way.
@@ -174,7 +186,7 @@
     return name === "race" ? (mode || "idle") : name;
   }
 
-  var PANELS = ["idle", "prestart", "racing", "finished"];
+  var PANELS = ["idle", "prestart", "racing", "finished", "detail"];
 
   // The one place a panel is chosen. There were two, this and setMode, each doing its
   // own surgery on body.className, and two writers of one string is a bug waiting to
@@ -195,6 +207,130 @@
     // The way back into a running race, shown only when there is one to go back to.
     el.resume.hidden = !(mode && mode !== "idle");
     if (panel === "idle") loadCourses();
+  }
+
+  // --- course detail ----------------------------------------------------
+  //
+  // The whole course on one page: every leg, which side to round it, how far and what
+  // bearing (DESIGN 9.11). Opened from a course card and from the racing panel, and its
+  // only way out is back to whichever of the two it came from, so that is remembered
+  // rather than assumed.
+
+  var cameFrom = null;
+
+  function openDetail(courseId) {
+    if (!courseId) return;
+    cameFrom = viewing;              // null means "whatever panel the mode is showing"
+    viewing = "detail";
+    showPanel();
+    wake();
+    fetch(base + "/api/course/" + encodeURIComponent(courseId), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(drawDetail)
+      .catch(function () {});
+  }
+
+  function closeDetail() {
+    viewing = cameFrom;
+    cameFrom = null;
+    showPanel();
+    wake();
+  }
+
+  function drawDetail(d) {
+    if (!d || d.error) return;
+
+    el["detail-flags"].innerHTML = "";
+    [d.flags.division, d.flags.numeral].forEach(function (flag) {
+      if (!flag) return;
+      var img = document.createElement("img");
+      img.src = "static/flags/" + flag + ".svg";
+      img.alt = flag;
+      el["detail-flags"].appendChild(img);
+    });
+
+    el["detail-series"].textContent = d.series_name || d.series;
+    el["detail-title"].textContent = "Course " + d.course_no +
+      (d.wind_note ? " · " + d.wind_note : "");
+
+    // The printed total, and what the marks actually add up to when they disagree.
+    var head = d.distance_nm.toFixed(2) + " nm";
+    if (Math.abs(d.summed_nm - d.distance_nm) >= 0.05) {
+      head += " (marks: " + d.summed_nm.toFixed(2) + ")";
+    }
+    if (d.shortened_distance_nm) head += "\nshortened " + d.shortened_distance_nm.toFixed(2);
+    el["detail-distance"].textContent = head;
+
+    // Anything the config validation said about this course, in the crew's words rather
+    // than the log's: the printed distance is sometimes the thing that is wrong (DESIGN 7).
+    var notes = [];
+    if (Math.abs(d.summed_nm - d.distance_nm) / d.distance_nm > 0.02) {
+      notes.push("The printed distance and the marks disagree by " +
+                 Math.abs((d.summed_nm - d.distance_nm) / d.distance_nm * 100).toFixed(1) +
+                 " per cent. Which is right is an open question.");
+    }
+    if (d.shortened_distance_nm && d.shortened_at === null) {
+      notes.push("The printed shortened distance does not land on any crossing of the " +
+                 "line, so where a shortened race would end is not known.");
+    }
+    el["detail-notes"].textContent = notes.join(" ");
+
+    var current = (latest.race && latest.race.course === d.id) ? latest.race.leg : null;
+    el["detail-legs"].innerHTML = "";
+    (d.legs || []).forEach(function (leg) {
+      var row = document.createElement("div");
+      row.className = "leg";
+      if (current !== null && leg.leg - 1 === current) row.className += " here";
+      if (d.shortened_at !== null && leg.leg - 1 === d.shortened_at) {
+        row.className += " shortened";
+      }
+
+      var n = document.createElement("span");
+      n.className = "n";
+      n.textContent = leg.leg;
+      row.appendChild(n);
+
+      var who = document.createElement("span");
+      who.className = "who" + (leg.finish ? " finish" : "");
+      who.textContent = leg.name;
+      if (leg.number) {
+        var num = document.createElement("span");
+        num.className = "no";
+        num.textContent = leg.number;
+        who.appendChild(num);
+      }
+      row.appendChild(who);
+
+      // The same turn symbol the race screen uses, from the same definition.
+      var round = document.createElement("span");
+      round.className = "rounding" + (leg.rounding ? " " + leg.rounding : "");
+      round.setAttribute("role", "img");
+      if (leg.rounding) {
+        round.setAttribute("aria-label", "round to " + leg.rounding);
+        round.innerHTML =
+          '<svg class="rnd rnd-port" viewBox="0 0 8.911 10.454" aria-hidden="true">' +
+          '<use href="#rnd-port-sym"/></svg>' +
+          '<svg class="rnd rnd-starboard" viewBox="0 0 8.910 10.451" aria-hidden="true">' +
+          '<use href="#rnd-starboard-sym"/></svg>';
+      }
+      row.appendChild(round);
+
+      var brg = document.createElement("span");
+      brg.className = "brg";
+      brg.textContent = degrees(leg.bearing) + "°";
+      row.appendChild(brg);
+
+      var nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = leg.distance_nm.toFixed(2);
+      var run = document.createElement("span");
+      run.className = "run";
+      run.textContent = leg.cumulative_nm.toFixed(2) + (leg.leg_type ? " " + leg.leg_type : "");
+      nm.appendChild(run);
+      row.appendChild(nm);
+
+      el["detail-legs"].appendChild(row);
+    });
   }
 
   // --- course selection ------------------------------------------------
@@ -227,9 +363,17 @@
     el.cards.innerHTML = "";
     (data.courses || []).filter(function (c) { return c.series === chosenSeries; })
       .forEach(function (course) {
-        var card = document.createElement("button");
+        // Two targets, not one. The card body sails the course; the strip under it reads
+        // the course without committing to it, which is what the crew wants before a start
+        // and what selecting cannot offer, since selecting while racing ends the race
+        // (DESIGN 9.11). A container rather than one big button, because a button cannot
+        // hold another button.
+        var card = document.createElement("div");
         card.className = "card";
-        if (!course.raceable) card.setAttribute("disabled", "disabled");
+
+        var pick = document.createElement("button");
+        pick.className = "pick";
+        if (!course.raceable) pick.setAttribute("disabled", "disabled");
 
         var flags = document.createElement("div");
         flags.className = "flags";
@@ -243,22 +387,30 @@
           img.alt = flag;
           flags.appendChild(img);
         });
-        card.appendChild(flags);
+        pick.appendChild(flags);
 
         var no = document.createElement("div");
         no.className = "no";
         no.textContent = course.course_no;
-        card.appendChild(no);
+        pick.appendChild(no);
 
         var nm = document.createElement("div");
         nm.className = "nm";
         nm.textContent = course.distance_nm.toFixed(2) + " nm";
         if (course.wind_note) nm.textContent += " · " + course.wind_note;
-        card.appendChild(nm);
+        pick.appendChild(nm);
 
-        card.addEventListener("click", function () {
+        pick.addEventListener("click", function () {
           if (course.raceable) post("/api/select", { course: course.id });
         });
+        card.appendChild(pick);
+
+        var info = document.createElement("button");
+        info.className = "info";
+        info.textContent = "Details";
+        info.addEventListener("click", function () { openDetail(course.id); });
+        card.appendChild(info);
+
         el.cards.appendChild(card);
       });
   }
@@ -267,6 +419,21 @@
 
   var latest = { race: null };
   var mode = null;
+
+  // Show one of the two turn symbols, or neither. Used for the next mark while racing and
+  // for the first mark before the start, so the same reading looks the same in both places.
+  function setRounding(node, value) {
+    if (!node) return;
+    var side = (value === "port" || value === "starboard") ? value : null;
+    node.classList.remove("port", "starboard");
+    node.hidden = side === null;
+    if (side) {
+      node.classList.add(side);
+      node.setAttribute("aria-label", "round to " + side);
+    } else {
+      node.removeAttribute("aria-label");
+    }
+  }
 
   function render(data) {
     var r = data.race;
@@ -287,6 +454,20 @@
       el["line-time"].textContent = "--:--";
     }
 
+    // The first mark, on the pre-start panel. The engine is already steering at leg 1 from
+    // the moment a course is selected, so these are the same three readings the racing
+    // panel shows, shown before the gun, where they decide which end of the line to start
+    // at (DESIGN 9.2). Blanked, not dimmed, on a stale fix, as everywhere else.
+    el["pre-mark"].textContent = r.leg_name || BLANK;
+    setRounding(el["pre-round"], r.rounding);
+    if (r.nav) {
+      distance(r.nav.distance_m, el["pre-distance"], el["pre-unit"]);
+      el["pre-bearing"].textContent = degrees(r.nav.bearing);
+    } else {
+      el["pre-distance"].textContent = BLANK;
+      el["pre-bearing"].textContent = BLANK;
+    }
+
     // racing. nav is null whenever the numbers cannot be known: no fix, or a fix past the
     // 5 s cutoff. Blanked rather than dimmed, because a dimmed number still reads as a
     // number in spray (DESIGN 9.5).
@@ -299,16 +480,7 @@
     //
     // Tested against the known two rather than passed through, so a value the config should
     // never hold cannot put an arbitrary class on the element.
-    var round = el["mark-round"];
-    var side = (r.rounding === "port" || r.rounding === "starboard") ? r.rounding : null;
-    round.classList.remove("port", "starboard");
-    round.hidden = side === null;
-    if (side) {
-      round.classList.add(side);
-      round.setAttribute("aria-label", "round to " + side);
-    } else {
-      round.removeAttribute("aria-label");
-    }
+    setRounding(el["mark-round"], r.rounding);
     if (r.nav) {
       distance(r.nav.distance_m, el.distance, el["distance-unit"]);
       el.bearing.textContent = degrees(r.nav.bearing);
@@ -354,7 +526,12 @@
     // A mode change wins over whatever the crew has tapped away to look at, so every
     // device follows the race together, which is the property that has to survive
     // (DESIGN 9.6). Panel selection then goes through the one path.
+    //
+    // That closes the detail page too, which is right: the gun going is more important
+    // than the leg table, and a stale "where I came from" would send Back somewhere the
+    // race has since left.
     viewing = null;
+    cameFrom = null;
     showPanel();
   }
 

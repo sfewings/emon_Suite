@@ -143,6 +143,58 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
             ],
         })
 
+    @app.get("/api/course/<course_id>")
+    def api_course(course_id):
+        """Everything about one course, for the detail page (DESIGN 9.11).
+
+        A briefing sheet: every leg with its mark, the side to round it, the leg's length
+        and bearing, and the running total, plus what the sheet printed and what the
+        arithmetic makes of it. Read-only, and it works whether or not this is the course
+        being raced, because the crew looks at courses they have not chosen.
+
+        The wind direction is taken from the store when there is one, so the leg types are
+        this afternoon's rather than nothing at all. Without it the legs still list; they
+        just do not say which are beats.
+        """
+        config = app.config["RACE_CONFIG"]
+        chosen = [c for c in config.get("courses", {}).get("courses", [])
+                  if c["id"] == course_id]
+        if not chosen:
+            return jsonify({"error": "unknown course %r" % course_id}), 404
+        course_doc = chosen[0]
+
+        marks = course.index_marks(config["marks"])
+        twd = store.wind_direction()
+        legs = course.leg_table(course_doc, marks, config["lines"], twd)
+        series = config.get("courses", {}).get("series", {}).get(course_doc["series"], {})
+
+        # The reconciliation findings for this course, so the page can say the printed
+        # total is in doubt rather than leaving the crew to notice the numbers disagree
+        # (DESIGN 7).
+        notes = [str(p) for p in config.get("problems", []) if p.course == course_id]
+
+        return jsonify({
+            "id": course_doc["id"],
+            "series": course_doc["series"],
+            "series_name": series.get("name", course_doc["series"]),
+            "division": course_doc.get("division"),
+            "course_no": course_doc["course_no"],
+            "distance_nm": course_doc["distance_nm"],
+            "summed_nm": legs[-1]["cumulative_nm"] if legs else 0.0,
+            "wind_note": course_doc.get("wind_note"),
+            "flags": course_doc.get("flags", {}),
+            "shortened_distance_nm": course_doc.get("shortened_distance_nm"),
+            "shortened_at": course_doc.get("shortened_at"),
+            "shortened_note": course_doc.get("shortened_note"),
+            "time_limit": series.get("time_limit"),
+            "starts": series.get("starts", []),
+            "series_note": series.get("note"),
+            "twd": twd,
+            "raceable": course_id not in config.get("unraceable", set()),
+            "notes": notes,
+            "legs": legs,
+        })
+
     def _drain_and_publish():
         """Publish whatever transitions have happened, from wherever they came.
 

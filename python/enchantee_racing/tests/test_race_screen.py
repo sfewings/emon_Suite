@@ -245,12 +245,14 @@ def test_the_page_has_all_four_panels_in_the_dom_at_once():
 
 
 def _rounding_icon(side):
-    """The arc path of one rounding icon, as its list of (x, y) points.
+    """The arc path of one rounding symbol, as its list of (x, y) points.
 
-    The arc is the first path in the icon; the second is the arrowhead.
+    The geometry lives in a <symbol> defined once, because it is used in three places now:
+    the next mark while racing, the first mark before the start, and every leg of the
+    course detail page. The arc is the first path in it; the second is the arrowhead.
     """
     page = _page()
-    svg = re.search(r'<svg class="rnd rnd-%s".*?</svg>' % side, page, re.S)
+    svg = re.search(r'<symbol id="rnd-%s-sym".*?</symbol>' % side, page, re.S)
     assert svg, side
     body = svg.group(0)
     arc = re.search(r'<path d="([^"]+)"', body)
@@ -258,6 +260,24 @@ def _rounding_icon(side):
     numbers = [float(n) for n in re.findall(r'-?\d+\.?\d*', arc.group(1))]
     assert len(numbers) % 2 == 0 and len(numbers) >= 8, numbers
     return body, list(zip(numbers[0::2], numbers[1::2]))
+
+
+def test_the_rounding_geometry_is_defined_once_and_used():
+    """One copy of the paths, or the sweep test only guards whichever copy it happens to
+    find while another drifts (DESIGN 9.11)."""
+    page = _page()
+    # the arcs and arrowheads appear once each, inside the symbols
+    for marker in ("M4.984 9.956", "M3.926 9.952"):
+        assert page.count(marker) == 1, marker
+    for side in ("port", "starboard"):
+        assert page.count('<symbol id="rnd-%s-sym"' % side) == 1, side
+        assert page.count('href="#rnd-%s-sym"' % side) >= 2, \
+            "the %s symbol should be used in more than one place" % side
+    # and the users carry no geometry of their own
+    for use in re.findall(r'<svg class="rnd rnd-\w+"[^>]*>.*?</svg>', page, re.S):
+        assert "<path" not in use, use
+        assert "<circle" not in use, use
+        assert "<use " in use, use
 
 
 def _rounding_dot(side):
@@ -326,7 +346,7 @@ def test_the_buoy_dot_sits_inside_the_turn_with_a_gap_around_it():
     assert abs(pr - sr) < 0.001
     page = _page()
     widths = [float(re.search(r'viewBox="0 0 ([\d.]+)', m).group(1))
-              for m in re.findall(r'<svg class="rnd rnd-\w+"[^>]*>', page)]
+              for m in re.findall(r'<symbol id="rnd-\w+-sym"[^>]*>', page)]
     assert len(widths) == 2 and abs(widths[0] - widths[1]) < 0.01, widths
     assert abs(px - (widths[1] - sx)) < 0.01, "the dot is not mirrored between the two"
 
@@ -354,17 +374,120 @@ def test_the_rounding_arrow_is_themeable_and_self_contained():
 
     css = (ROOT / "static" / "app.css").read_text(encoding="utf-8").replace("\n", " ")
     # Exactly one arrow shows, and hiding the container beats the display that reveals it.
-    assert "#mark-round[hidden] { display: none; }" in css
-    assert "#mark-round .rnd { display: none;" in css
+    # The rules are on the .rounding class rather than the id, because the same symbol is
+    # shown in three places now (DESIGN 9.11).
+    assert ".rounding[hidden] { display: none; }" in css
+    assert ".rounding .rnd { display: none;" in css
     for side in ("port", "starboard"):
-        assert "#mark-round.%s" % side in css, side
+        assert ".rounding.%s" % side in css, side
 
     # The JS may only ever set one of the two known sides as the class.
     script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     assert 'classList.remove("port", "starboard")' in script
-    assert 'r.rounding === "port" || r.rounding === "starboard"' in script
+    assert 'value === "port" || value === "starboard"' in script
     # The words are gone from the display but must stay available to a screen reader.
     assert 'aria-label", "round to "' in script
+
+
+def test_the_course_detail_page_is_reachable_from_the_list_and_from_the_race():
+    """Both entry points the crew asked for, and they are different needs.
+
+    From the list, to read a course before choosing it, which selecting cannot offer
+    because selecting while racing ends the race. From the race, to see what comes after
+    the mark ahead (DESIGN 9.11).
+    """
+    page = _page()
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+
+    # from the racing panel
+    assert "detail" in _panel_controls(page, "racing")
+    assert 'if (latest.race && latest.race.course) openDetail(latest.race.course)' in script
+
+    # from a course card, as a second target on the card rather than instead of selecting
+    assert 'info.addEventListener("click", function () { openDetail(course.id); })' in script
+    assert 'pick.addEventListener("click"' in script
+    assert '"/api/select"' in script
+    # the card is a container now, since a button cannot hold a button
+    assert 'card = document.createElement("div")' in script
+    assert 'pick = document.createElement("button")' in script
+
+
+def test_the_course_detail_page_goes_back_where_it_came_from():
+    """Its only navigation, and it cannot be a fixed destination.
+
+    Opened from the course list during a race, Back has to return to the list, not to the
+    racing panel; opened from the race, the other way about. So the page remembers
+    (DESIGN 9.11).
+    """
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    assert "cameFrom = viewing" in script, "opening must record where it came from"
+    assert "viewing = cameFrom" in script, "back must restore it"
+    # and a mode change closes it, or Back could point at a panel the race has left
+    set_mode = re.search(r'function setMode\(next\) \{(.*?)\n  \}', script, re.S)
+    assert set_mode and "cameFrom = null" in set_mode.group(1)
+
+    # nothing on that page may change the race: no posts from it
+    detail = re.search(r'function drawDetail\(d\) \{(.*?)\n  \}\n', script, re.S)
+    assert detail, "drawDetail not found"
+    assert "post(" not in detail.group(1)
+    assert 'on("detail-back", function () { closeDetail(); });' in script
+
+
+def test_the_course_detail_page_shows_every_leg_and_scrolls():
+    """Fifteen legs will not fit a phone at a readable size, so this one panel scrolls.
+
+    A deliberate exception to the no-scrolling rule, which is about the racing display:
+    this page is read at rest with two hands free (CLAUDE.md).
+    """
+    page = _page()
+    assert 'id="panel-detail"' in page
+    for ident in ("detail-flags", "detail-series", "detail-title", "detail-distance",
+                  "detail-notes", "detail-legs", "detail-back"):
+        assert 'id="%s"' % ident in page, ident
+
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    legs = re.search(r'#detail-legs \{(.*?)\}', css, re.S)
+    assert legs and "overflow-y: auto" in legs.group(1)
+    # and it is the only scrolling surface besides the course cards
+    scrollers = re.findall(r'#([a-z-]+) \{[^}]*overflow-y: auto', css)
+    assert set(scrollers) <= {"detail-legs", "cards"}, scrollers
+
+
+def test_the_prestart_panel_shows_the_first_mark():
+    """The engine steers at leg 1 from the moment a course is chosen, so the reading is
+    already there before the gun, and it is what decides which end of the line to start
+    at (DESIGN 9.2)."""
+    page = _page()
+    controls = _panel_controls(page, "prestart")
+    for ident in ("pre-mark", "pre-round", "pre-distance", "pre-bearing"):
+        assert ident in controls, ident
+
+    script = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    assert 'el["pre-mark"].textContent = r.leg_name || BLANK' in script
+    assert 'setRounding(el["pre-round"], r.rounding)' in script
+    # blanked on a stale fix, like everywhere else (DESIGN 9.5)
+    assert 'el["pre-distance"].textContent = BLANK' in script
+    assert 'el["pre-bearing"].textContent = BLANK' in script
+
+
+def test_the_first_mark_before_the_start_is_the_mark_the_race_will_steer_to():
+    """Not a separate calculation: the same nav block the racing panel reads."""
+    # a real pre-start: a course chosen and the T-5 hooter tapped, gun not yet gone
+    ticker = {"t": T0}
+    store = Store(clock=lambda: ticker["t"])
+    store.set_race_context(_context())
+    store.apply_race(lambda s, c, n: race.select(s, c, "frostbite-3", n))
+    store.apply_race(lambda s, c, n: race.set_timer(s, c, 5, n))
+    marks = _context().marks
+    first = nav.as_latlon(marks["dolphin-east-42b"])
+    boat = nav.destination(first, 250.0, 1500.0)
+    store.on_position({"lat": boat.lat, "lon": boat.lon})
+
+    block = store.state()["race"]
+    assert block["mode"] == "prestart"
+    assert block["leg_name"] == "Dolphin East", block["leg_name"]
+    assert block["rounding"] == "starboard"
+    assert abs(block["nav"]["distance_m"] - 1500.0) < 2.0
 
 
 def test_only_one_panel_can_be_shown_at_a_time():
@@ -392,7 +515,9 @@ def test_only_one_panel_can_be_shown_at_a_time():
     listed = re.search(r'var PANELS = \[(.*?)\];', script)
     assert listed, "PANELS list not found"
     panels = set(re.findall(r'"([a-z]+)"', listed.group(1)))
-    assert panels == {"idle", "prestart", "racing", "finished"}, panels
+    # "detail" is the course detail page: a panel, but not a mode and not a screen, so it
+    # is reached and left by its own controls rather than by the race changing (DESIGN 9.11)
+    assert panels == {"idle", "prestart", "racing", "finished", "detail"}, panels
 
     page = _page()
     css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
@@ -463,6 +588,7 @@ def test_every_mode_can_be_left_by_something_on_its_own_panel():
         "prestart": {"hooter-10", "hooter-5", "hooter-1", "cancel"},
         "racing": {"next", "back", "shorten"},
         "finished": {"reset"},
+        "detail": {"detail-back"},                  # its only way out, by design (9.11)
     }
     for panel, needed in exits.items():
         controls = _panel_controls(page, panel)

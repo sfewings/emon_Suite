@@ -63,7 +63,8 @@ html, body {
 body.mode-idle     #panel-idle,
 body.mode-prestart #panel-prestart,
 body.mode-racing   #panel-racing,
-body.mode-finished #panel-finished { display: flex; }
+body.mode-finished #panel-finished,
+body.mode-detail   #panel-detail { display: flex; }
 
 /* --- the readings --------------------------------------------------- */
 
@@ -138,6 +139,8 @@ button {
 button:active { background: var(--rule); }
 button.primary { border-color: var(--sog); color: var(--sog); flex: 2 1 0; }
 button.small { flex: 0 0 auto; min-width: 3.4rem; }
+/* A small button with a word rather than a letter in it. */
+button.small.wide { min-width: 5.6rem; font-size: clamp(11px, 2.2vh, 20px); }
 button.warn { border-color: var(--warn); color: var(--warn); }
 
 /* --- course selection ----------------------------------------------- */
@@ -148,16 +151,31 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   display: grid; gap: .5rem; padding: .4rem;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
 }
+/* A card is two targets: the body sails the course, the strip reads it (DESIGN 9.11). */
 .card {
-  display: flex; flex-direction: column; align-items: center; gap: .3rem;
-  padding: .6rem .4rem;
+  display: flex; flex-direction: column;
   background: var(--panel); border: 2px solid var(--rule); border-radius: .5rem;
+  overflow: hidden;
 }
+.card .pick {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .3rem; padding: .6rem .4rem;
+  background: none; border: none; border-radius: 0;
+  text-transform: none; letter-spacing: normal;
+}
+.card .info {
+  flex: 0 0 auto; min-height: 2.2rem;
+  border: none; border-top: 2px solid var(--rule); border-radius: 0;
+  background: none; color: var(--label);
+  font-size: clamp(10px, 1.8vh, 16px);
+}
+.card .info:active { background: var(--rule); }
 .card .flags { display: flex; gap: .35rem; align-items: center; height: 2.6rem; }
 .card .flags img { height: 100%; width: auto; }
 .card .no { font-size: clamp(20px, 5vh, 42px); font-weight: 600; }
 .card .nm { color: var(--label); font-size: clamp(10px, 1.8vh, 16px); }
-.card[disabled] { opacity: .35; }
+.card .pick[disabled] { opacity: .35; }
 
 /* --- navigation, on every screen ------------------------------------- */
 
@@ -192,15 +210,24 @@ button.warn { border-color: var(--warn); color: var(--warn); }
    Pushed to the right-hand edge by the auto margin, so it sits where the eye goes for it
    and cannot be crowded by a long mark name. It stops at the panel's own .5rem padding
    rather than the glass, so it lines up with every other edge on the screen. */
-#mark-round {
+.rounding {
   display: inline-flex; align-items: center; flex: 0 0 auto;
-  margin-left: auto;
   color: var(--mark);
 }
-#mark-round[hidden] { display: none; }   /* beats the inline-flex above */
-#mark-round .rnd { display: none; height: clamp(20px, 5.2vh, 52px); width: auto; }
-#mark-round.port      .rnd-port,
-#mark-round.starboard .rnd-starboard { display: block; }
+.rounding[hidden] { display: none; }     /* beats the inline-flex above */
+.rounding .rnd { display: none; width: auto; }
+.rounding.port      .rnd-port,
+.rounding.starboard .rnd-starboard { display: block; }
+
+#mark-round { margin-left: auto; }
+#mark-round .rnd { height: clamp(20px, 5.2vh, 52px); }
+
+/* The same symbol before the start, sized against the smaller name it sits beside. */
+#pre-mark { color: var(--mark); font-size: clamp(16px, 4vh, 40px); font-weight: 600;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#pre-round .rnd { height: clamp(14px, 3.4vh, 34px); }
+#pre-distance { color: var(--dist); font-size: clamp(20px, 6vh, 60px); }
+#pre-bearing  { color: var(--brg);  font-size: clamp(20px, 6vh, 60px); }
 
 /* --- the finish screen ----------------------------------------------- */
 
@@ -212,6 +239,68 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   padding: .35rem .6rem; color: var(--label);
   font-size: clamp(10px, 1.9vh, 18px);
 }
+
+/* --- course detail: the whole course on one page (DESIGN 9.11) -------- */
+
+#detail-head {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .4rem .6rem;
+  border-bottom: 2px solid var(--rule);
+  flex: 0 0 auto;
+}
+#detail-head .flags { display: flex; gap: .35rem; align-items: center; height: 2.2rem; }
+#detail-head .flags img { height: 100%; width: auto; }
+#detail-titles { display: flex; flex-direction: column; min-width: 0; }
+#detail-title { color: var(--mark); font-weight: 600;
+                font-size: clamp(16px, 3.6vh, 34px); white-space: nowrap; }
+#detail-distance {
+  margin-left: auto; text-align: right;
+  /* pre-line, not nowrap: the shortened distance is written on a second line, and the
+     script sets it as text rather than markup */
+  white-space: pre-line;
+  color: var(--dist); font-size: clamp(15px, 3.2vh, 30px);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Where the printed total and the arithmetic disagree, the page says so rather than
+   leaving the crew to notice two numbers that do not match (DESIGN 7). */
+#detail-notes {
+  flex: 0 0 auto; padding: .3rem .6rem; color: var(--warn);
+  font-size: clamp(10px, 1.9vh, 17px);
+}
+#detail-notes:empty { display: none; }
+
+/* The only scrolling surface in the app, and deliberately so: fifteen legs do not fit a
+   phone at a readable size, and this page is read at rest rather than at the helm. */
+#detail-legs {
+  flex: 1 1 0; min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.leg {
+  display: grid;
+  grid-template-columns: 2.2em 1fr auto auto auto;
+  align-items: center; gap: .5em;
+  padding: .35rem .6rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: clamp(12px, 2.4vh, 22px);
+}
+.leg .n { color: var(--label); font-variant-numeric: tabular-nums; text-align: right; }
+.leg .who { color: var(--ink); min-width: 0; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; }
+.leg .who .no { color: var(--label); font-size: .8em; margin-left: .35em; }
+.leg .rounding .rnd { height: 1.5em; }
+.leg .brg { color: var(--brg); font-variant-numeric: tabular-nums; }
+.leg .nm  { color: var(--dist); font-variant-numeric: tabular-nums; text-align: right;
+            min-width: 4.2em; }
+.leg .nm .run { color: var(--label); font-size: .78em; display: block; }
+.leg .type { color: var(--label); font-size: .78em; }
+/* The leg being sailed, when this is opened from the race rather than from the list. */
+.leg.here { background: var(--panel); }
+.leg.here .n { color: var(--sog); font-weight: 700; }
+/* Where a shortened race would end, when the sheet printed a figure that resolved. */
+.leg.shortened { box-shadow: inset 0 -2px 0 0 var(--warn); }
+.leg .finish { color: var(--time); }
 
 /* --- the pip and the notice ------------------------------------------ */
 

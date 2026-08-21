@@ -181,8 +181,9 @@ def is_stale(state: State, context: Context, fix: Fix, now: float) -> bool:
     return (now - fix.ts) > context.config.position_stale_s
 
 
-BEAT_MAX = 40.0
-RUN_MIN = 140.0
+# The thresholds themselves live in course.py now, with the function that uses them.
+BEAT_MAX = course_module.BEAT_MAX
+RUN_MIN = course_module.RUN_MIN
 
 
 def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional[str]:
@@ -190,15 +191,12 @@ def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional
 
     Free, since both numbers are already on the screen, and useful before a rounding
     rather than after it: it is what tells the crew which sail to have ready.
+
+    The arithmetic moved to course.py, which the detail page needs for a course nobody is
+    sailing. Kept here as a name because it is part of what this module offers, and
+    delegating is cheaper than two copies of a threshold drifting apart.
     """
-    if twd is None or bearing_to_mark is None:
-        return None
-    off_the_wind = abs(nav.norm180(twd - bearing_to_mark))
-    if off_the_wind < BEAT_MAX:
-        return "beat"
-    if off_the_wind > RUN_MIN:
-        return "run"
-    return "reach"
+    return course_module.leg_type(twd, bearing_to_mark)
 
 
 def navigation(state: State, context: Context, fix: Optional[Fix],

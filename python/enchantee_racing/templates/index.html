@@ -23,6 +23,40 @@
 <div id="pip"></div>
 <div id="notice"></div>
 
+<!--
+  The rounding symbols, defined once here and used wherever a rounding is shown: the next
+  mark while racing, and the first mark before the start. Defined rather than repeated,
+  because the geometry is the thing that must not drift between copies, and a test asserts
+  the sweep direction of exactly one copy of it.
+
+  The geometry is the chart's own. The arrow comes from the "port / starboard rounding" row
+  of the legend on page 1 of docs/reference/Swan River course marks-Jul26.pdf; the buoy dot
+  in its concave side, and the gap around it, are measured off mark 33A, where the chart
+  draws the pair together. Sweeping the whole chart finds the same pairing about eighty
+  times, mirrored between the two sides, so this is the chart's composite symbol rather
+  than an assembly of ours.
+
+  Port sweeps anticlockwise and starboard clockwise, which is the boat's own turn: leaving
+  a mark to port means turning to port around it. currentColor throughout, so the night
+  theme recolours them with everything else.
+-->
+<svg id="rnd-defs" width="0" height="0" aria-hidden="true" focusable="false">
+  <symbol id="rnd-port-sym" viewBox="0 0 8.911 10.454">
+    <path d="M4.984 9.956 C5.703 9.711 6.345 9.284 6.844 8.717 C8.413 6.938 8.22 4.24 6.414 2.692"
+          fill="none" stroke="currentColor" stroke-width="0.997"/>
+    <path d="M3.222 0.499 L4.673 2.312 L6.189 4.058 L7.21 3.14 L8.294 2.154 L5.758 1.327Z"
+          fill="currentColor"/>
+    <circle cx="2.9" cy="5.832" r="2.9" fill="currentColor"/>
+  </symbol>
+  <symbol id="rnd-starboard-sym" viewBox="0 0 8.910 10.451">
+    <path d="M3.926 9.952 C3.207 9.708 2.566 9.282 2.067 8.716 C0.498 6.936 0.69 4.238 2.498 2.691"
+          fill="none" stroke="currentColor" stroke-width="0.997"/>
+    <path d="M5.69 0.499 L4.238 2.312 L2.721 4.058 L1.702 3.14 L0.616 2.154 L3.154 1.327Z"
+          fill="currentColor"/>
+    <circle cx="6.01" cy="5.828" r="2.9" fill="currentColor"/>
+  </symbol>
+</svg>
+
 <div id="app">
 
   <!-- idle: pick a course. Series first, then a card per course with both flags. -->
@@ -57,6 +91,31 @@
         <span class="big" id="line-time">--:--</span>
       </div>
     </div>
+    <!-- Where the boat is going once the gun goes. The engine is already steering at leg 1
+         before the start, so this is the same next-mark reading the racing panel shows,
+         shown early: it is what decides which end of the line to start at (DESIGN 9.2). -->
+    <div class="row">
+      <div class="grow">
+        <span class="lbl">first mark</span>
+        <div class="markline">
+          <span id="pre-mark">---</span>
+          <span id="pre-round" class="rounding" role="img" hidden>
+            <svg class="rnd rnd-port" viewBox="0 0 8.911 10.454" aria-hidden="true">
+              <use href="#rnd-port-sym"/></svg>
+            <svg class="rnd rnd-starboard" viewBox="0 0 8.910 10.451" aria-hidden="true">
+              <use href="#rnd-starboard-sym"/></svg>
+          </span>
+        </div>
+      </div>
+      <div class="grow">
+        <span class="lbl">distance</span>
+        <span class="big" id="pre-distance">---</span> <span class="unit" id="pre-unit">m</span>
+      </div>
+      <div class="grow">
+        <span class="lbl">bearing</span>
+        <span class="big" id="pre-bearing">---</span>
+      </div>
+    </div>
     <div class="controls">
       <button id="hooter-10">T-10</button>
       <button id="hooter-5">T-5</button>
@@ -84,33 +143,13 @@
              and a shape lands faster than a word on a wet screen in sunlight (DESIGN 9.2).
 
              Both icons are in the DOM and the CSS shows one, the same way the panels work.
-             Inline rather than <img>, so they take currentColor and the night theme
-             recolours them along with everything else, and so they cost no extra request.
-
-             The geometry is the chart's own. The arrow comes from the "port / starboard
-             rounding" row of the legend on page 1 of docs/reference/Swan River course
-             marks-Jul26.pdf; the buoy dot in its concave side, and the gap around it, are
-             measured off mark 33A, where the chart draws the pair together. Sweeping the
-             whole chart finds the same pairing about eighty times, mirrored between the two
-             sides, so this is the chart's composite symbol rather than an assembly of ours.
-
-             Port sweeps anticlockwise and starboard clockwise, which is the boat's own
-             turn: leaving a mark to port means turning to port around it. -->
-        <span id="mark-round" role="img" hidden>
+             The geometry is in the symbols at the top of this file, used rather than
+             repeated, and inline rather than <img> so it takes currentColor. -->
+        <span id="mark-round" class="rounding" role="img" hidden>
           <svg class="rnd rnd-port" viewBox="0 0 8.911 10.454" aria-hidden="true">
-            <path d="M4.984 9.956 C5.703 9.711 6.345 9.284 6.844 8.717 C8.413 6.938 8.22 4.24 6.414 2.692"
-                  fill="none" stroke="currentColor" stroke-width="0.997"/>
-            <path d="M3.222 0.499 L4.673 2.312 L6.189 4.058 L7.21 3.14 L8.294 2.154 L5.758 1.327Z"
-                  fill="currentColor"/>
-            <circle cx="2.9" cy="5.832" r="2.9" fill="currentColor"/>
-          </svg>
+            <use href="#rnd-port-sym"/></svg>
           <svg class="rnd rnd-starboard" viewBox="0 0 8.910 10.451" aria-hidden="true">
-            <path d="M3.926 9.952 C3.207 9.708 2.566 9.282 2.067 8.716 C0.498 6.936 0.69 4.238 2.498 2.691"
-                  fill="none" stroke="currentColor" stroke-width="0.997"/>
-            <path d="M5.69 0.499 L4.238 2.312 L2.721 4.058 L1.702 3.14 L0.616 2.154 L3.154 1.327Z"
-                  fill="currentColor"/>
-            <circle cx="6.01" cy="5.828" r="2.9" fill="currentColor"/>
-          </svg>
+            <use href="#rnd-starboard-sym"/></svg>
         </span>
       </div>
     </div>
@@ -139,6 +178,7 @@
     <div id="secondary"></div>
     <div class="controls">
       <button class="small" id="back">Back</button>
+      <button class="small wide" id="detail">Details</button>
       <button class="primary" id="next">Next mark</button>
       <button class="small warn" id="shorten">S</button>
     </div>
@@ -160,7 +200,33 @@
     </div>
   </section>
 
-  <!-- Three screens: HUD, Race, Map. Race is this whole page, and which of its four panels
+  <!-- Course detail: the whole course on one page, every leg of it (DESIGN 9.11).
+
+       Not a screen and not in the navigation. It is opened from a course card, to read a
+       course before choosing it, and from the racing panel, to see what is coming after the
+       mark ahead. Its only way out is back to whichever of those it was opened from, which
+       is why the page remembers where it came from rather than assuming.
+
+       This is the one panel allowed to scroll. Fifteen legs will not fit a phone at a size
+       worth reading, and unlike the racing display this is read at rest with two hands
+       free, so a scroll here is not the failure it would be there (CLAUDE.md). -->
+  <section class="panel" id="panel-detail">
+    <div id="detail-head">
+      <div class="flags" id="detail-flags"></div>
+      <div id="detail-titles">
+        <span class="lbl" id="detail-series">---</span>
+        <span id="detail-title">---</span>
+      </div>
+      <div id="detail-distance">---</div>
+    </div>
+    <div id="detail-notes"></div>
+    <div id="detail-legs"></div>
+    <div class="controls">
+      <button class="primary" id="detail-back">Back</button>
+    </div>
+  </section>
+
+  <!-- Three screens: HUD, Race, Map. Race is this whole page, and which of its five panels
        shows is the race's business, not the navigation's. Moving between those panels is
        done by the controls that mean something: Back off leg 1 to the course list, Next off
        the last leg to Finish, Course off Finish (DESIGN 9.6). -->

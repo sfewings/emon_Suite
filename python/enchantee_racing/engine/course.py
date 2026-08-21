@@ -197,6 +197,72 @@ def cumulative_distances_nm(
     return out
 
 
+def leg_table(
+    course: Mapping[str, Any], marks: Mapping[str, Any], lines_doc: Mapping[str, Any],
+    twd: Optional[float] = None,
+) -> list:
+    """Every leg of a course, as a briefing sheet rather than as state.
+
+    One row per leg with the mark's display name and number, which side to round it, the
+    leg's length and bearing, and the running total. This is what the course detail page
+    shows, and the numbers are the same ones the distance reconciliation uses, so a course
+    that does not add up looks wrong on the page as well as in the log (DESIGN 9.10).
+
+    The bearing is the straight line from the previous mark, or from the middle of the
+    start line for the first leg. It is what to steer in the absence of wind, not a
+    prediction: a beat sails nothing like its bearing, which is why `leg_type` is here to
+    say which legs those are, when the wind direction is known.
+    """
+    here = start_point(lines_doc)
+    total = 0.0
+    rows = []
+    for index, leg in enumerate(course.get("legs", [])):
+        target = leg_target(leg, marks, lines_doc)
+        distance = nav.distance_nm(here, target)
+        total += distance
+        bearing = nav.bearing(here, target)
+        mark_id = leg.get("mark")
+        mark = marks.get(mark_id) or {}
+        rows.append({
+            "leg": index + 1,
+            "mark": mark_id,
+            "name": leg_name(leg, marks),
+            "number": mark.get("number"),
+            "rounding": leg.get("rounding"),
+            "finish": is_finish(leg),
+            "distance_nm": distance,
+            "cumulative_nm": total,
+            "bearing": bearing,
+            "leg_type": leg_type(twd, bearing),
+            "note": leg.get("note"),
+        })
+        here = target
+    return rows
+
+
+# Under this off the wind it is a beat, over the other it is a run (DESIGN 3).
+BEAT_MAX = 40.0
+RUN_MIN = 140.0
+
+
+def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional[str]:
+    """beat, reach or run for a leg, from norm180(twd - bearing) (DESIGN 3).
+
+    Lives here rather than in race.py, which called it first, because the detail page
+    wants it for a course nobody is sailing and race.py already imports this module. One
+    definition, so the briefing sheet and the race screen cannot disagree about what a
+    leg is.
+    """
+    if twd is None or bearing_to_mark is None:
+        return None
+    off_the_wind = abs(nav.norm180(twd - bearing_to_mark))
+    if off_the_wind < BEAT_MAX:
+        return "beat"
+    if off_the_wind > RUN_MIN:
+        return "run"
+    return "reach"
+
+
 # --- validation ------------------------------------------------------------
 
 
