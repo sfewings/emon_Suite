@@ -505,6 +505,21 @@ Hand-write these as SVG rather than cropping from the PDF. Four naval numeral
 flags and four numeral pendants are needed, all simple geometry, a few kB total.
 Store the flag codes in `courses.json` as `{division: "naval-3", numeral: "pendant-2"}`.
 
+**Draw them from the plate, not from memory.** Page 27 of the fixtures PDF is a plate
+captioned "NAVAL NUMERAL FLAGS" and "NUMERAL PENDANTS" which shows all ten of each.
+The first eight here were drawn from the code of signals as best I knew it, and five
+of them were wrong: naval 1, 2, 3 and 4, and the numeral 3 pendant, which had its
+red, white and blue stripes horizontal instead of vertical. The crew found them by
+holding the screen up beside a halyard, which is the only test that was ever going to
+find it, and exactly the failure the whole idea of showing flags is meant to avoid.
+
+The lesson is not "check the flags", it is that a picture whose entire job is to be
+matched against a physical object has to be drawn from a picture of that object. The
+authority was on disk the whole time. `static/flags/README.md` now records the page,
+how to render it, what each flag is, and which details are still only eyeballed;
+`tests/test_race_screen.py` pins every arrangement so a later edit fails rather than
+quietly shipping.
+
 ## 9. Display
 
 ### 9.1 Port the existing HUD

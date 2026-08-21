@@ -735,13 +735,81 @@ def test_every_flag_the_courses_name_exists_and_is_self_contained():
         assert path.stat().st_size < 4096, (flag, path.stat().st_size)
 
 
-def test_the_flags_are_provisional_and_say_so():
-    """They are drawn from memory of the code flags, and the crew matches them against a
-    real halyard. The README records that they need checking rather than leaving a future
-    reader to assume they were verified."""
+def test_the_flags_record_what_was_checked_and_what_was_not():
+    """They were drawn from memory and five of the eight were wrong, which is what the
+    crew found when they looked at the screen beside a halyard.
+
+    They are now checked against the plate on page 27 of the fixtures PDF. The README
+    records which page, how to render it, and which parts are still only eyeballed, so a
+    later reader neither assumes they were verified nor re-checks what already was.
+    """
     readme = (FLAGS / "README.md").read_text(encoding="utf-8")
-    assert "provisional" in readme.lower()
+    assert "page 27" in readme, "the README must name the authority"
     assert "Fixtures & Courses" in readme
+    assert "still not verified" in readme.lower(), "the remaining doubt has to stay recorded"
+
+
+# What the plate on page 27 of the fixtures PDF shows. Pinned so that an edit which
+# changes an arrangement fails here rather than quietly shipping a flag the crew cannot
+# match against a halyard (DESIGN 8).
+FLAG_DESIGNS = {
+    # three horizontal bands, top to bottom
+    "naval-1": ["#c8102e", "#ffd200", "#c8102e"],
+    "naval-2": ["#ffd200", "#c8102e", "#ffd200"],
+    "naval-3": ["#14509b", "#c8102e", "#14509b"],
+    # three vertical bands, hoist to fly
+    "pendant-3": ["#c8102e", "#ffffff", "#14509b"],
+}
+
+
+def _bands(name, axis):
+    """The fill colours of a flag's bands, in order along the given axis."""
+    body = (FLAGS / (name + ".svg")).read_text(encoding="utf-8")
+    found = []
+    for rect in re.findall(r'<rect[^>]*>', body):
+        fill = re.search(r'fill="(#[0-9a-f]{6})"', rect)
+        at = re.search(r'\b%s="([\d.]+)"' % axis, rect)
+        if not fill or at is None:
+            continue          # the outline rect carries fill="none"
+        found.append((float(at.group(1)), fill.group(1)))
+    return [colour for _, colour in sorted(found)]
+
+
+def test_every_flag_is_drawn_the_way_the_plate_shows_it():
+    for name, expected in FLAG_DESIGNS.items():
+        axis = "x" if name.startswith("pendant") else "y"
+        assert _bands(name, axis) == expected, (name, _bands(name, axis))
+
+    # naval 4 is a saltire, not bands: two crossing lines on a red field
+    naval4 = (FLAGS / "naval-4.svg").read_text(encoding="utf-8")
+    assert naval4.count("<line") == 2, "a saltire is two lines"
+    assert 'stroke="#ffffff"' in naval4 and 'fill="#c8102e"' in naval4
+    corners = set()
+    for line in re.findall(r'<line[^>]*>', naval4):
+        pts = dict(re.findall(r'(x1|y1|x2|y2)="([\d.]+)"', line))
+        corners.add((pts["x1"], pts["y1"]))
+        corners.add((pts["x2"], pts["y2"]))
+    assert corners == {("0", "0"), ("90", "60"), ("90", "0"), ("0", "60")}, corners
+
+    # and the two that carry a disc still carry one
+    for name, fill in (("pendant-1", "#c8102e"), ("pendant-2", "#ffffff")):
+        body = (FLAGS / (name + ".svg")).read_text(encoding="utf-8")
+        assert re.search(r'<circle[^>]*fill="%s"' % fill, body), name
+
+
+def test_the_pendants_all_taper_and_the_naval_flags_do_not():
+    """The shape is half of what the eye matches, and it is the same clip in all four
+    pendants: pendant-3 was rewritten and must keep the mechanism the others use."""
+    for name in ("pendant-1", "pendant-2", "pendant-3", "pendant-4"):
+        body = (FLAGS / (name + ".svg")).read_text(encoding="utf-8")
+        assert 'viewBox="0 0 120 60"' in body, name
+        assert body.count('points="0,0 120,18 120,42 0,60"') == 2, \
+            "%s needs the taper as both a clip and an outline" % name
+        assert 'clip-path="url(#p)"' in body, name
+    for name in ("naval-1", "naval-2", "naval-3", "naval-4"):
+        body = (FLAGS / (name + ".svg")).read_text(encoding="utf-8")
+        assert 'viewBox="0 0 90 60"' in body, name
+        assert "polygon" not in body, "%s is rectangular" % name
 
 
 if __name__ == "__main__":
