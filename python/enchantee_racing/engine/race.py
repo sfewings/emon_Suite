@@ -187,7 +187,7 @@ RUN_MIN = course_module.RUN_MIN
 
 
 def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional[str]:
-    """close haul, reach or run for the leg ahead, from norm180(twd - bearing) (DESIGN 3).
+    """close hauled, reach or run for the leg ahead, from norm180(twd - bearing) (DESIGN 3).
 
     Free, since both numbers are already on the screen, and useful before a rounding
     rather than after it: it is what tells the crew which sail to have ready.
@@ -231,7 +231,7 @@ def navigation(state: State, context: Context, fix: Optional[Fix],
     }
 
     # The leg after this one: what it is called, how hard the turn onto it will be, and
-    # whether it is a close haul, a reach or a run. All three are wanted before the rounding
+    # whether it is close hauled, a reach or a run. All three are wanted before the rounding
     # rather than after it, which is the whole point: the transit angle says whether the
     # kite comes down at the mark, the leg type says what goes up instead, and the name is
     # what the trimmer needs to hear next (DESIGN 9.2).

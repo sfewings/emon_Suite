@@ -210,8 +210,8 @@ def leg_table(
 
     The bearing is the straight line from the previous mark, or from the middle of the
     start line for the first leg. It is what to steer in the absence of wind, not a
-    prediction: a close haul sails nothing like its bearing, which is why `leg_type` is
-    here to say which legs those are, when the wind direction is known.
+    prediction: a close-hauled leg sails nothing like its bearing, which is why
+    `leg_type` is here to say which legs those are, when the wind direction is known.
     """
     here = start_point(lines_doc)
     total = 0.0
@@ -240,13 +240,13 @@ def leg_table(
     return rows
 
 
-# Under this off the wind it is a close haul, over the other it is a run (DESIGN 3).
+# Under this off the wind it is close hauled, over the other it is a run (DESIGN 3).
 CLOSE_HAUL_MAX = 40.0
 RUN_MIN = 140.0
 
 
 def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional[str]:
-    """close haul, reach or run for a leg, from norm180(twd - bearing) (DESIGN 3).
+    """close hauled, reach or run for a leg, from norm180(twd - bearing) (DESIGN 3).
 
     Lives here rather than in race.py, which called it first, because the detail page
     wants it for a course nobody is sailing and race.py already imports this module. One
@@ -257,7 +257,7 @@ def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional
         return None
     off_the_wind = abs(nav.norm180(twd - bearing_to_mark))
     if off_the_wind < CLOSE_HAUL_MAX:
-        return "close haul"
+        return "close hauled"
     if off_the_wind > RUN_MIN:
         return "run"
     return "reach"

@@ -154,7 +154,7 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
 
         The wind direction is taken from the store when there is one, so the leg types are
         this afternoon's rather than nothing at all. Without it the legs still list; they
-        just do not say which are close hauls.
+        just do not say which are close hauled.
         """
         config = app.config["RACE_CONFIG"]
         chosen = [c for c in config.get("courses", {}).get("courses", [])

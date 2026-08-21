@@ -112,7 +112,7 @@ def test_navigation_is_absent_before_any_fix_and_after_the_finish():
 
 
 def test_the_leg_type_comes_free_from_the_wind_direction():
-    """Under 40 degrees off the wind is a close haul, over 140 a run, otherwise a reach.
+    """Under 40 degrees off the wind is close hauled, over 140 a run, otherwise a reach.
 
     Useful before the rounding rather than after it: it is what says which sail to have
     ready (DESIGN 3).
@@ -122,7 +122,7 @@ def test_the_leg_type_comes_free_from_the_wind_direction():
     boat = nav.destination(mark, 250.0, 900.0)
     bearing = nav.bearing(boat, mark)
 
-    for offset, expected in ((5.0, "close haul"), (90.0, "reach"), (175.0, "run")):
+    for offset, expected in ((5.0, "close hauled"), (90.0, "reach"), (175.0, "run")):
         mqtt_client.handle_message(store, "anemometer/windDirection/2",
                                    str(nav.norm360(bearing + offset)).encode())
         store.on_position({"lat": boat.lat, "lon": boat.lon})
@@ -165,13 +165,13 @@ def test_the_next_leg_type_is_the_leg_after_the_rounding_not_this_one():
     boat = nav.destination(mark, 250.0, 900.0)
     onward = nav.bearing(mark, beyond)
 
-    # A wind dead against the leg after the rounding: that leg is a close haul, and the one
+    # A wind dead against the leg after the rounding: that leg is close hauled, and the one
     # being sailed now is something else entirely.
     mqtt_client.handle_message(store, "anemometer/windDirection/2", str(onward).encode())
     store.on_position({"lat": boat.lat, "lon": boat.lon})
     block = store.state()["race"]["nav"]
-    assert block["next_leg_type"] == "close haul"
-    assert block["leg_type"] != "close haul", "the current leg is not the one being reported"
+    assert block["next_leg_type"] == "close hauled"
+    assert block["leg_type"] != "close hauled", "the current leg is not the one being reported"
 
 
 def test_the_last_leg_has_nothing_after_it():
