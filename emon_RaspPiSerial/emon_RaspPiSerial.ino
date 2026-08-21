@@ -6,7 +6,7 @@
 #include <EmonShared.h>
 #include <SPI.h>
 
-#define LORA_RF95
+//#define LORA_RF95
 
 #ifdef LORA_RF95
 	//Note: Use board config Moteino 8MHz for the Lora 8MHz boards
@@ -22,8 +22,8 @@
 	#define RFM69_RST     	4
 #endif
 
-#define HOUSE_BANNER
-//#define BOAT_BANNER
+//#define HOUSE_BANNER
+#define BOAT_BANNER
 #ifdef HOUSE_BANNER
     #define NETWORK_FREQUENCY 915.0
 #elif defined(BOAT_BANNER)
@@ -84,6 +84,7 @@ void setup ()
 	EmonSerial::PrintDalyBMSPayload(NULL);
 	EmonSerial::PrintSevConPayload(NULL);
 	EmonSerial::PrintAnemometerPayload(NULL);
+	EmonSerial::PrintCalibrationPayload(NULL);
 
 #ifndef LORA_RF95
 	// The encryption key has to be the same as the one in the client

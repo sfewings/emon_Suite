@@ -78,36 +78,21 @@ const int INSTALATION_HEADING_OFFSET = 12;
 // the knob to trim if a residual tack-to-tack true-wind-direction split reappears.
 const int ANEMOMETER_HEADING_OFFSET = 0;
 
-float GyroOffset[3] = {-693.9f, -62.5f, -40.3f};
+//Use calibrato4.py to calculate these values
+float GyroOffset[3] = {-654.9f, -85.8f, -100.5f};
 
-
-// VERY IMPORTANT!
-//These are the previously determined offsets and scale factors for accelerometer and magnetometer, using ICM_20948_cal and Magneto
-//The compass will NOT work well or at all if these are not correct
-
-//Accel scale: divide by 16604.0 to normalize. These corrections are quite small and probably can be ignored.
-float A_B [3] = {1152.16, -1208.87, 1895.63};
-
-
+float A_B [3] = {648.80, 14.56, 2393.87};
 float A_Ainv[3][3] = {
-{ 0.06165, 0.0015, 0.00235 },
-{ 0.0015, 0.05959, -0.00639 },
-{ 0.00235, -0.00639, 0.05417 }};;
+{ 0.06098, -0.00029, 0.00008 },
+{ -0.00029, 0.06140, 0.00004 },
+{ 0.00008, 0.00004, 0.06050 }};
 
-//Mag scale divide by 369.4 to normalize. These are significant corrections, especially the large offsets.
-// M_B updated from the Enchantee_20260816 afternoon log. The bench sweep that produced
-// {107.82, -122.78, 5.68} was done off the boat, so it contained none of the boat's own
-// hard iron; in service the residual bias was 7.5% of full field (about 17 raw LSB).
-// Leaving it uncorrected caused a 13.1 deg one-cycle compass error and, through it, a
-// 7.1 deg tack-to-tack split in true wind direction. See calculateTrueWind() below.
-float M_B [3] = {100.98, -105.97, 5.85};
-
+float M_B [3] = {102.05, -121.66, 10.22};
 
 float M_Ainv[3][3] = {
-{ 4.27479, 0.01328, 0.00683 },
-{ 0.01328, 4.28946, -0.05025 },
-{ 0.00683, -0.05025, 5.32997 }};
-
+{ 3.81800, 0.02270, -0.02062 },
+{ 0.02270, 3.81465, -0.04824 },
+{ -0.02062, -0.04824, 4.76717 }};
 
 // local magnetic declination in degrees
 float declination = -1.5;  // Perth, Western Australia
@@ -390,20 +375,35 @@ void calWaitForKey()
         Serial.read();
 }
 
+// The 12 orientations. ORDER DOES NOT MATTER, and neither does the accuracy of any
+// individual position - see the note above calAccPhase() for why.
+//
+// 0-5  are the six axis-aligned faces. Between them they place a full +1 g and a full
+//      -1 g on each axis in turn, which is what fixes the zero offset and the scale of
+//      that axis. All six must appear or that axis is left unconstrained; calibrate4.py
+//      reports the gap if one is missed.
+// 6-11 are tilted so that gravity lands on two or three axes at once. These are what
+//      constrain the off-diagonal (cross-axis) terms of A_Ainv. Roughly 45 degrees is
+//      plenty - the angle is not measured, so it only has to differ from the others.
+//      Four are component-side-up and two are component-side-down, which spreads them
+//      over both hemispheres.
 void calPrintPositionName(uint8_t i)
 {
     switch (i)
     {
-        // The six axis-aligned faces pin down the bias and the per-axis scale.
-        case 0:  Serial.print(F("FLAT, component side UP      (+Z up)")); break;
-        case 1:  Serial.print(F("FLAT, UPSIDE DOWN            (-Z up)")); break;
-        case 2:  Serial.print(F("on its side, +X edge UP      (+X up)")); break;
-        case 3:  Serial.print(F("on its side, -X edge UP      (-X up)")); break;
-        case 4:  Serial.print(F("on its side, +Y edge UP      (+Y up)")); break;
-        case 5:  Serial.print(F("on its side, -Y edge UP      (-Y up)")); break;
-        // Six tilted positions constrain the off-diagonal (cross-axis) terms.
-        default: Serial.print(F("TILTED about 45 deg - any position, just different from the others"));
-                 break;
+        case 0:  Serial.print(F("FLAT on the bench, component side UP        -> +Z up")); break;
+        case 1:  Serial.print(F("FLAT, turned over, component side DOWN     -> -Z up")); break;
+        case 2:  Serial.print(F("on its side, edge the X arrow points to UP  -> +X up")); break;
+        case 3:  Serial.print(F("on its side, that same X edge DOWN          -> -X up")); break;
+        case 4:  Serial.print(F("on its side, edge the Y arrow points to UP  -> +Y up")); break;
+        case 5:  Serial.print(F("on its side, that same Y edge DOWN          -> -Y up")); break;
+        case 6:  Serial.print(F("TILTED ~45 deg, component side up, corner between +X and +Y highest")); break;
+        case 7:  Serial.print(F("TILTED ~45 deg, component side up, corner between -X and +Y highest")); break;
+        case 8:  Serial.print(F("TILTED ~45 deg, component side up, corner between +X and -Y highest")); break;
+        case 9:  Serial.print(F("TILTED ~45 deg, component side up, corner between -X and -Y highest")); break;
+        case 10: Serial.print(F("TILTED ~45 deg, component side DOWN, corner between +X and +Y highest")); break;
+        case 11: Serial.print(F("TILTED ~45 deg, component side DOWN, corner between -X and -Y highest")); break;
+        default: Serial.print(F("any orientation not already used")); break;
     }
 }
 
@@ -531,12 +531,36 @@ void calGyroPhase()
     Serial.println(F("#END GYRO"));
 }
 
+// Does the ORDER of the 12 orientations matter?  No.
+//
+// The fit is a least-squares ellipsoid through an unordered cloud of points, so the
+// sequence has no effect on the result. Nor does the accuracy of any one position: the
+// claimed orientation is never used as an input. calibrate4.py reads only the measured
+// counts, and the position index in each 'A' record is a label for the operator's
+// benefit, nothing more.
+//
+// What the prompts are actually for is COVERAGE. The fit needs points spread over the
+// whole sphere, and the quickest way to get a human to produce that is to name twelve
+// specific attitudes. So:
+//   - all six faces must appear, or the missing axis is left unconstrained
+//   - no two positions should be the same, or a constraint is wasted and the
+//     least-squares weighting skews toward that direction
+//   - exact angles are irrelevant; "roughly 45 degrees" really is roughly
+// calibrate4.py measures the coverage it actually got and names the worst gap, so a
+// missed or duplicated position is caught there rather than being assumed away here.
+//
+// Worth doing in one sitting though, not because of order but because the MPU6050's
+// zero-g offset drifts with temperature, and the fit assumes one constant bias.
 void calAccPhase()
 {
     Serial.println(F("#BEGIN ACC"));
     Serial.println(F("# Hold the unit STILL in each orientation. It waits until it stops"));
     Serial.println(F("# moving before it samples, so resting it against something helps."));
     Serial.println(F("# The magnetometer is logged here too, for the dip cross-check."));
+    Serial.println(F("# Order does not matter and the angles need not be exact - what"));
+    Serial.println(F("# matters is that all 6 faces appear and no two are the same."));
+    Serial.println(F("# Try to get through all 12 without a long break: the zero-g offset"));
+    Serial.println(F("# drifts with temperature and the fit assumes it is constant."));
 
     for (uint8_t i = 0; i < CAL_ACC_POSITIONS; i++)
     {
@@ -1029,6 +1053,7 @@ void setup()
     pinMode(MOTEINO_LED, OUTPUT);     
     digitalWrite(MOTEINO_LED, HIGH );
     Serial.begin(9600);
+//    Serial.begin(115200); For DoPitchRollYaw()
 
     g_rs232Serial.begin(BAUD_RS232);
     g_rs232Serial.stopListening();  //disable as interrupt can interfer with g_rf69
