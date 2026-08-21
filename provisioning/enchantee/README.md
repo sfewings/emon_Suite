@@ -166,6 +166,7 @@ Services:
 | `portainer` | portainer/portainer-ce | 9000, 9443 | `/portainer/` |
 | `emon_settings_web` | sfewings32/emon_settings_web | 5001 | `/settings/` |
 | `event_recorder` | sfewings32/emon_event_recorder | 5000 (host net) | `/events/` |
+| `enchantee_racing` | sfewings32/emon_enchantee_racing | 5002 (host net) | `/race/`, and `/hud` |
 | `influx` | arm32v7/influxdb | 8086 | direct |
 | `mqtt` | eclipse-mosquitto | 1883 | direct |
 | `emon_serial`, `emon_gpsd`, `emon_log`, `emon_influx`, `emon_logtojson` | | | no HTTP |
@@ -270,6 +271,8 @@ Routes, from [`etc/nginx/sites-available/default`](etc/nginx/sites-available/def
 | `/portainer/` | Portainer, `:9000` |
 | `/events/` | event recorder, `:5000` on the host network |
 | `/settings/` | emon settings web, `:5001` |
+| `/race/` | race support app, `:5002` on the host network |
+| `/hud` | 302 to `/race/hud`, the race app's instrument HUD |
 
 The server block uses `server_name _` as the sole `default_server`. That is
 deliberate: it answers to `enchantee.local`, `10.42.0.1` and whatever DHCP
@@ -736,7 +739,7 @@ This replaces an older Chromium PWA autostart entry that pointed at
 
 ## 10. Printable QR sheet for phones
 
-Nobody is going to type `http://enchantee.local/nodered/hud` into a phone. This
+Nobody is going to type `http://enchantee.local/portainer/` into a phone. This
 is the one-page A4 sheet you print and stick up: scan to join the hotspot, then
 scan to open whichever service you want.
 
@@ -750,8 +753,13 @@ the join code. Without it the sheet still builds, but the wifi code carries no
 passphrase and the phone will prompt for it.
 
 The sheet carries a `WIFI:` join code for SSID `Enchantee` and one QR per
-service: `/`, `/nodered/hud`, `/grafana/`, `/events/`, `/settings/` and
-`/portainer/`.
+service: `/`, `/hud`, `/grafana/`, `/events/`, `/settings/` and `/portainer/`.
+
+The heads-up display card points at `/hud`, which nginx redirects to `/race/hud`,
+the racing app's ported HUD. Node-RED's original is still served at
+`/nodered/hud` for the side-by-side comparison, but is not on the sheet: two
+cards captioned "heads-up display" would be worse than one, and `/hud` is the URL
+that keeps working once the Node-RED tab is retired.
 
 **The generated PDF contains the hotspot passphrase in scannable form.** That is
 what makes the join code work, and it is why this directory holds the generator

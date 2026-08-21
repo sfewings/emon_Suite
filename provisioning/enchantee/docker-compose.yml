@@ -201,6 +201,38 @@ services:
       - mosquitto
     restart: unless-stopped
 
+  enchantee_racing:
+    image: sfewings32/emon_enchantee_racing:latest
+    container_name: enchantee_racing
+    # Host networking, for the same two reasons as event_recorder above. It reaches
+    # mosquitto on localhost:1883, and it puts the Flask app on the host's port 5002,
+    # which is where nginx proxies http://enchantee.local/race/ to. No published port
+    # is needed, and the app keeps its default 127.0.0.1 bind so the only way in is
+    # through nginx.
+    network_mode: "host"
+    volumes:
+      # The whole application directory, not just config/. Everything the app serves
+      # is then editable in place, which is the point: course data changes year to
+      # year (DESIGN 7) and CLAUDE.md requires the front end be editable from a laptop
+      # on a jetty. The image carries its own copy of all of this, so it still runs if
+      # the mount is absent; the mount shadows it.
+      #
+      # Read-write on purpose. The config editor in DESIGN 13 step 10 is designed as
+      # PUT /api/config/{marks|courses|lines} and writes these files, so making this
+      # read-only now would mean editing compose again to land that feature.
+      - /share/emon_Suite/python/enchantee_racing:/app
+    environment:
+      - MQTT_IP=localhost
+      - MQTT_PORT=1883
+      - BIND_HOST=127.0.0.1
+      - SERVICE_PORT=5002
+      - TZ=${TIMEZONE}
+    depends_on:
+      - mosquitto
+    # always rather than unless-stopped: this is a boat appliance that has to come
+    # back by itself after the batteries are switched off (CLAUDE.md, Stack).
+    restart: always
+
 volumes:
   influxdb-storage:
   grafana-storage:

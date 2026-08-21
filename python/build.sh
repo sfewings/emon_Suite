@@ -17,6 +17,7 @@ set -e
 ALL_CONTAINERS=(
     event_recorder
     settings_web
+    enchantee_racing
     serial_to_mqtt
     mqtt_to_influx
     mqtt_to_log
@@ -31,6 +32,10 @@ VERSION_event_recorder="0.1.0"
 DOCKERFILE_settings_web="emon_settings_web/Dockerfile"
 IMAGE_settings_web="sfewings32/emon_settings_web"
 VERSION_settings_web="0.1.0"
+
+DOCKERFILE_enchantee_racing="enchantee_racing/Dockerfile"
+IMAGE_enchantee_racing="sfewings32/emon_enchantee_racing"
+VERSION_enchantee_racing="latest"
 
 DOCKERFILE_serial_to_mqtt="serialToMQTT.Dockerfile"
 IMAGE_serial_to_mqtt="sfewings32/emon_serial_to_mqtt"
@@ -109,6 +114,8 @@ usage() {
     echo "  $(basename "$0") -m local -c settings_web,gpsd_to_mqtt"
     echo "  $(basename "$0") -m push -p arm64,arm32 -c serial_to_mqtt"
     echo "  $(basename "$0") -m test -c event_recorder"
+    echo "  $(basename "$0") -m push -p arm64 -c enchantee_racing   # the Pi on the boat"
+    echo "  $(basename "$0") -m test -c enchantee_racing            # demo mode, no broker"
     echo ""
 }
 
@@ -158,6 +165,22 @@ run_test_container() {
             docker run --rm -it \
                 -p 5002:5000 \
                 "${image}:test"
+            ;;
+        enchantee_racing)
+            # --demo drives the display with synthetic readings, so this needs no
+            # broker and no boat, which is how the race screen and finish detection
+            # get exercised on a bench (DESIGN 9.1). --host 0.0.0.0 overrides the
+            # image default of 127.0.0.1, because here the port is published out of a
+            # bridge network rather than sitting on the host's loopback.
+            #
+            # Note this reuses port 5002, which the settings_web case above maps to
+            # its own container. Only one test container runs at a time, so they do
+            # not collide in practice.
+            echo "  race screen: http://localhost:5002/   instrument HUD: http://localhost:5002/hud"
+            docker run --rm -it \
+                -p 5002:5002 \
+                "${image}:test" \
+                python app.py --demo --host 0.0.0.0
             ;;
         *)
             echo -e "${YELLOW}No specific test run configured for '$name'. Starting with default entrypoint...${NC}"
