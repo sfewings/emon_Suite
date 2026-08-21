@@ -277,7 +277,7 @@ class Store:
 
         Not stale-checked: the leg type it feeds is a statement about the course rather
         than a reading on a dial, and a wind that was there a minute ago is a better guide
-        to which legs are beats than nothing at all.
+        to which legs are close hauls than nothing at all.
         """
         twd = self._values.get("twd")
         return twd.v if twd and isinstance(twd.v, (int, float)) else None

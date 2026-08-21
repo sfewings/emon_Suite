@@ -135,7 +135,7 @@ TWA is not measured. It is `norm180(twd - hdg)`. AWA comes from
 existing implementations rather than rewriting them.
 
 Leg type comes free from `norm180(twd - bearingToMark)`: under about 40 degrees is
-a beat, over 140 is a run, otherwise a reach. Showing the next leg type before
+a close haul, over 140 is a run, otherwise a reach. Showing the next leg type before
 rounding is useful for sail selection.
 
 ## 4. API
@@ -751,7 +751,7 @@ The reason is that a phone on the HUD is a phone that cannot see the race screen
 and the two things the crew wants at once are the instruments and the mark. Trading
 the fourth panel for it costs the least: HDG is the reading least missed while
 racing, because COG stands in for it whenever the boat is moving, and a compass
-heading does not answer any question being asked on a beat. So HDG goes and COG
+heading does not answer any question being asked on a close haul. So HDG goes and COG
 stays, and it stays because bearing is only useful next to the number you compare
 it against (9.3).
 
@@ -780,7 +780,7 @@ comparable side by side, and nothing needs it to change.
 
 A page showing one whole course: every leg in order, with the mark's name and number,
 which side to round it, the leg's length and bearing, the running total, and which
-legs are beats when the wind direction is known. Served by `GET /api/course/<id>`,
+legs are close hauls when the wind direction is known. Served by `GET /api/course/<id>`,
 which composes `engine.course.leg_table()` with the series metadata.
 
 It is **not a screen** and is not in the navigation. It is a panel like the others,
