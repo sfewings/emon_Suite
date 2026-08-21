@@ -674,6 +674,53 @@ def test_every_panel_child_either_gives_way_or_is_pinned():
     assert "flex: 0 1 auto" in _nav_rules(css, ".panel > .row")
 
 
+def test_nothing_above_the_app_takes_up_any_room():
+    """#app is 100dvh, so anything in the flow above it pushes its bottom off the screen.
+
+    This is what actually sent the navigation half off the bottom of the race page, twice,
+    and it was nineteen pixels of nothing: the <svg> holding the rounding symbols is an
+    inline element, so at zero width and height it still sat on a line box of its own. The
+    symbols are never drawn, only referenced, and the element had no CSS at all while every
+    other thing in that part of the page was positioned out of the flow.
+
+    The HUD never showed it because the HUD has no symbols. Half a navigation bar is the
+    only symptom, and it needs a phone to see, so the rule is asserted here instead.
+    """
+    page = _page()
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+
+    before = page[:page.index('<div id="app">')]
+    before = re.sub(r"<!--.*?-->", "", before, flags=re.S)
+
+    # Only the top-level elements: the <symbol>s nested inside the defs svg are not in the
+    # flow of the page at all, and it is the box around them that had to be taken out of it.
+    ids, depth = [], 0
+    for tag in re.finditer(r'<(/?)(\w+)([^>]*?)(/?)>', before):
+        closing, element, attrs, selfclose = tag.groups()
+        if element in ("meta", "title", "link", "br"):
+            continue
+        if closing:
+            depth -= 1
+            continue
+        if depth == 0:
+            ident = re.search(r'\bid="([\w-]+)"', attrs)
+            assert ident, "an element above #app with no id: %s" % element
+            ids.append(ident.group(1))
+        if not selfclose and element not in ("img", "input"):
+            depth += 1
+    assert ids, "expected some elements before #app"
+
+    for ident in ids:
+        rule = re.search(r'(?m)^#%s\s*\{([^}]*)\}' % re.escape(ident), css)
+        assert rule, "#%s is in the flow above #app with no CSS to take it out" % ident
+        assert re.search(r'position:\s*(fixed|absolute)', rule.group(1)), \
+            "#%s must be out of the flow, or it makes the page taller than the screen" \
+            % ident
+
+    # and the page must not have grown something new up there unnoticed
+    assert set(ids) == {"wake", "pip", "notice", "rnd-defs"}, ids
+
+
 def test_the_navigation_is_never_pushed_off_or_covered():
     """Two pages, two mechanisms, and the reason they differ.
 

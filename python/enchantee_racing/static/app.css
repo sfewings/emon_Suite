@@ -359,6 +359,22 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 
 /* The wake-lock video: present and playing, never seen. Not display:none, which lets a
    browser stop decoding it, and a video that is not being decoded keeps no backlight on. */
+/* The symbol definitions for the rounding arrows. Nothing here is ever drawn: the symbols
+   are referenced with <use> from the panels. But an <svg> is an inline element, so even at
+   zero width and height it sits on a line box of its own, and that line box was about
+   nineteen pixels of empty space above #app.
+
+   Nineteen pixels is why the navigation went half off the bottom of this page and only
+   this page: #app is 100dvh, so anything above it pushes its bottom below the fold, and
+   html/body clip the overflow. The HUD never showed it because the HUD has no symbols.
+
+   Out of the flow, like #wake, #pip and #notice above. Absolutely positioned rather than
+   display: none, because referencing a symbol from inside a display: none subtree has not
+   always worked, and a zero-size box out of flow certainly does. */
+#rnd-defs {
+  position: absolute; width: 0; height: 0; overflow: hidden;
+}
+
 #wake {
   position: fixed; top: 0; left: 0; width: 1px; height: 1px;
   opacity: 0; z-index: -1; pointer-events: none;

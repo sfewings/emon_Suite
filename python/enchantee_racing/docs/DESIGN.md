@@ -657,33 +657,48 @@ Every screen carries that navigation, so no screen is a dead end. Worth stating
 because it was got wrong twice: the HUD had no way back to anything, and the racing
 screen had no way to the HUD, which is the one a crew wants mid-race.
 
-A third time, differently, and the fix for it was wrong before it was right, so both
-are worth recording.
+A third time, differently, and it took three attempts because the first two fixed
+things that were not broken. The record of that is the useful part.
 
-The navigation went half off the bottom of the race screen. The cause was never the
-navigation: it was the last item in `#app`'s flex column, so it got whatever room the
-panels had not taken, and the pre-start panel had run out. Buttons carry a minimum
-height so they stay hittable on a moving boat, so `.controls` cannot shrink, and when
-a column has to give something up it took the item at the bottom.
+**The symptom.** The navigation sat half off the bottom of the race screen, and only
+that screen.
 
-The first fix took the navigation out of the flow and reserved its height as padding,
-which is what the HUD does. That stopped it being pushed off and started it covering
-the controls instead, because a hand-written height either overlaps what is above it
-or floats above the bottom, and nothing in the code can tell you which. **A magic
-number that has to match a rendered height is not a fix.**
+**The cause**, eventually: the `<svg>` holding the rounding symbols. An `<svg>` is an
+inline element, so at zero width and height it still sits on a line box of its own, and
+that was about nineteen pixels of empty space above `#app`. `#app` is `100dvh`, so
+anything above it puts its bottom below the fold, where `html, body { overflow: hidden }`
+clips it. The navigation is about forty pixels tall, so half of it disappeared. The HUD
+was never affected because the HUD has no symbols. Every other thing in that part of the
+page, the wake video, the pip and the notice, is positioned out of the flow; the symbol
+block had no CSS at all.
 
-What actually fixes it is saying which things give way. The navigation is back in the
-flow, where the browser reserves exactly the height it takes and no number is written
-down twice. Inside a panel, the readings are flexible and the controls are pinned, so
-a short screen costs a reading rather than a button, and the panel clips its own
-overflow rather than drawing over what is below it. Every panel child must be declared
-as one or the other, and a test fails on any child that is neither, which is the check
-that would have caught the original.
+**The two wrong fixes**, both plausible, neither the cause:
 
-The HUD keeps the out-of-flow navigation, because its `fit()` sizes the digits against
+1. Taking the navigation out of the flow and reserving its height as padding, which is
+   what the HUD does. It stopped the navigation being pushed off and started it covering
+   the controls, because the page was still nineteen pixels too tall and now the
+   navigation was pinned to the real bottom of the screen while the controls were not.
+   A hand-written height that has to match a rendered one is not a fix in any case:
+   it either overlaps what is above it or floats above the bottom, and nothing in the
+   code can say which.
+2. Declaring which panel children give way when a column runs short. That work is kept,
+   because it is correct and the panels genuinely could overflow on a short enough
+   screen: the readings are flexible, the controls are pinned, and a panel clips its own
+   overflow rather than drawing over what is below it. But it was not why the navigation
+   moved, and the explanation first written here, that the pre-start panel had run out of
+   room, was invented rather than measured.
+
+**What the episode is worth.** Two fixes were reasoned from a plausible story about flex
+layout, and the actual cause was nineteen pixels of nothing in a place nobody was
+looking. The lesson is to find the element that is the wrong size before theorising about
+which rule resized it. A test now asserts that everything in the flow above `#app` is
+positioned out of it, which is the check that would have found this in the first minute
+rather than the third attempt.
+
+The HUD keeps its out-of-flow navigation, because its `fit()` sizes the digits against
 the row heights of that column and putting the navigation into it would resize every
-reading on the page. So one page duplicates the height and the other does not, and the
-test checks the HUD's two copies against each other.
+reading on the page. So that one page duplicates the navigation's height, and a test
+checks its two copies against each other.
 
 **Race is one screen with four faces**, and which face shows is the race's business
 rather than the navigation's. There is no nav entry for Course or Finish, because
