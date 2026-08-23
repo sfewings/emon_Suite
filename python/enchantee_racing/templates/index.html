@@ -18,6 +18,8 @@
 <link rel="manifest" href="manifest.webmanifest">  <!-- relative: resolves to /race/ behind nginx and / on the app's own port.
      Declares the scope that keeps both screens in one iOS standalone window;
      apple-mobile-web-app-capable above is what iOS 12 reads instead. -->
+<link rel="apple-touch-icon" href="static/icon-180.png">  <!-- iOS takes the Home Screen icon from here; it will not accept an SVG.
+     Relative, like every other asset URL on these pages. -->
 <title>Enchantee racing</title>
 <link rel="stylesheet" href="static/app.css">
 

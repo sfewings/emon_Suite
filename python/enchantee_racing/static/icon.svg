@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Home Screen icon. The source artwork; scripts/gen_icon.sh renders the PNGs beside it,
+  because iOS will not take an SVG for apple-touch-icon.
+
+  The glyph is the app's own rounding symbol, the chart's turn arrow curling around a
+  buoy dot, taken from templates/index.html unchanged rather than redrawn. DESIGN 9.2
+  records where that geometry comes from: the "port / starboard rounding" row of the
+  legend on page 1 of the Geng course marks chart, with the dot and its clearance
+  measured off mark 33A. Copying it here means the icon on the Home Screen is the same
+  mark the crew reads on the screen and on the paper chart, so there is nothing new to
+  learn to find the app.
+
+  It is the starboard form, and that is arbitrary. On the race screen the side the dot
+  sits on is an instruction and the tests assert it; here it is a logo and says nothing
+  about any rounding. If that ever reads as an instruction to someone, make it the port
+  form or neither, but do not leave it ambiguous by mirroring it half way.
+
+  Opaque black field, full bleed, because iOS applies its own rounded-corner mask and
+  renders transparency as black anyway. Black also matches the app, which is a black
+  screen in a cockpit. The buoy takes the app's DodgerBlue, the colour distance is drawn
+  in, so the icon carries some of the display's palette and is findable at a glance among
+  a screen of other icons.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#000000"/>
+  <svg x="103" y="76" width="306" height="360" viewBox="0 0 8.910 10.451">
+    <path d="M3.926 9.952 C3.207 9.708 2.566 9.282 2.067 8.716 C0.498 6.936 0.69 4.238 2.498 2.691"
+          fill="none" stroke="#ffffff" stroke-width="0.997"/>
+    <path d="M5.69 0.499 L4.238 2.312 L2.721 4.058 L1.702 3.14 L0.616 2.154 L3.154 1.327Z"
+          fill="#ffffff"/>
+    <circle cx="6.01" cy="5.828" r="2.9" fill="#1e90ff"/>
+  </svg>
+</svg>

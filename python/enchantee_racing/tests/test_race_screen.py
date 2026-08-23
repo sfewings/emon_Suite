@@ -768,6 +768,32 @@ def test_the_manifest_scopes_both_screens_into_one_web_app():
     assert "manifest.webmanifest" in dockerfile, \
         "the manifest is not copied into the image, so only the bind mount would have it"
 
+    # Icons: declared relatively, present on disk, and real PNGs of the size claimed.
+    # iOS reads apple-touch-icon rather than the manifest for the Home Screen, so both
+    # pages carry that too, and it cannot be the SVG because iOS will not take one.
+    assert doc["icons"], "no icons declared"
+    for icon in doc["icons"]:
+        src = icon["src"]
+        assert not src.startswith("/") and "://" not in src, \
+            "icon src %r must be relative to the manifest" % src
+        path = ROOT / src
+        assert path.exists(), "%s is declared but missing" % src
+        header = path.read_bytes()[:24]
+        assert header.startswith(b"\x89PNG\r\n\x1a\n"), "%s is not a PNG" % src
+        width = int.from_bytes(header[16:20], "big")
+        height = int.from_bytes(header[20:24], "big")
+        assert "%dx%d" % (width, height) == icon["sizes"], \
+            "%s is %dx%d but declares %s" % (src, width, height, icon["sizes"])
+
+    for what, page in (("index.html", _page()), ("hud.html", _page_hud())):
+        touch = re.search(r'<link[^>]*rel="apple-touch-icon"[^>]*>', page)
+        assert touch, "%s has no apple-touch-icon, so iOS uses a screenshot" % what
+        href = re.search(r'href="([^"]+)"', touch.group(0)).group(1)
+        assert href.endswith(".png"), "iOS will not take %r as a touch icon" % href
+        assert not href.startswith("/"), \
+            "%s icon href is root-relative and breaks behind /race/" % what
+        assert (ROOT / href).exists(), "%s points at a missing icon: %s" % (what, href)
+
 
 def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
     """Added to the Home Screen, a plain anchor to the other page leaves the web app.
