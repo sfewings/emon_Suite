@@ -114,6 +114,11 @@ def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] =
     on_events is called once per race event a fix produces. Passed in rather than reached
     for, so this stays callable from a test with no broker anywhere: the demo driver and
     the unit tests leave it out and the events are simply returned to nobody.
+
+    MqttClient deliberately does not pass it. Events are also queued in the store, and
+    publishing both the returned copy and the queued one sends each event twice; see
+    MqttClient._on_message. The parameter stays because it is how a test observes the
+    events a single fix produced, with no store drain and no broker involved.
     """
     if topic == POSITION_TOPIC:
         position = parse_position(payload)
@@ -177,8 +182,22 @@ class MqttClient:
 
     def _on_message(self, client, userdata, message) -> None:
         try:
-            handle_message(self.store, message.topic, message.payload,
-                           on_events=self.publish_event)
+            handle_message(self.store, message.topic, message.payload)
+            # Drain and publish, rather than passing on_events to handle_message.
+            #
+            # store.on_position both queues its events and returns them, so publishing
+            # the returned ones here left the same events sitting in the queue for
+            # app.py to drain as well. That was harmless only because app.py's publisher
+            # was never wired; with it wired, every rounding and finish would go to the
+            # broker twice.
+            #
+            # The queue is the single delivery path, and whoever drains publishes. Doing
+            # it here keeps the property that made on_events worth having: a fix-driven
+            # event is published on this thread, at once, and does not wait for a browser
+            # to poll (DESIGN 2). Draining after every message, not only a position,
+            # covers a transition that the clock caused between fixes.
+            for event in self.store.drain_events():
+                self.publish_event(event)
         except Exception:  # a malformed reading must never kill the network loop
             log.exception("dropped a message on %s", message.topic)
 

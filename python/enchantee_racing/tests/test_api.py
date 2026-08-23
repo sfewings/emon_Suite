@@ -306,6 +306,170 @@ def test_a_fix_arriving_over_mqtt_drives_the_race():
     assert store.race_state()[0].leg == 1
 
 
+def _racing_store(ticker):
+    """A store with frostbite-3 selected and the gun gone, ready for a rounding."""
+    store = Store(clock=lambda: ticker["t"])
+    store.set_race_context(_context())
+    store.apply_race(lambda s, c, n: race.select(s, c, "frostbite-3", n))
+    store.apply_race(lambda s, c, n: race.set_timer(s, c, 0, n))
+    store.apply_race(race.on_clock)
+    store.drain_events()          # discard select/timer/start, this is about the fix
+    return store
+
+
+def _round_dolphin_east(store, ticker, on_message):
+    """Drive the boat through a real rounding, delivering each message via on_message."""
+    mark = nav.as_latlon(_context().marks["dolphin-east-42b"])
+    ticker["t"] = T0 + 20.0
+    on_message("gps/course/0", b"200")
+    on_message("gps/speed/0", b"5.0")
+
+    approach = nav.destination(mark, 20.0, 30.0)
+    on_message("gps/course/0", str(nav.bearing(approach, mark)).encode())
+    on_message("gps/position/0", _fix_payload(approach))
+
+    away = nav.norm360(nav.bearing(approach, mark) + 180.0)
+    on_message("gps/course/0", str(away).encode())
+    for step in range(3):
+        ticker["t"] = T0 + 21.0 + step
+        on_message("gps/position/0", _fix_payload(nav.destination(mark, 20.0, 40.0 + step * 10)))
+
+
+class _StubPahoClient:
+    """Stands in for paho, so MqttClient can be exercised without one installed.
+
+    The Pi's system python has no paho and the whole suite runs there, which is why this
+    is a stub rather than a real client pointed at a broker.
+    """
+
+    def __init__(self):
+        self.published = []
+
+    def publish(self, topic, payload=None):
+        self.published.append((topic, payload))
+
+
+def _mqtt_client_without_paho(store):
+    """A MqttClient with its paho client stubbed, built without running __init__.
+
+    __init__ imports paho, so it cannot run here. Everything the message path touches is
+    set explicitly instead.
+    """
+    client = mqtt_client.MqttClient.__new__(mqtt_client.MqttClient)
+    client.store = store
+    client.client = _StubPahoClient()
+    return client
+
+
+def test_a_fix_event_is_published_exactly_once():
+    """store.on_position both queues its events and returns them.
+
+    So publishing the returned copy *and* letting app.py drain the queued one sends every
+    rounding and finish to the broker twice. The queue is the single delivery path and
+    whoever drains publishes; MqttClient drains after each message so a fix-driven event
+    still goes out at once rather than waiting for a browser to poll (DESIGN 2).
+
+    This is the test that would have caught the double publish, and it fails if anyone
+    reinstates on_events= in MqttClient._on_message.
+    """
+    ticker = {"t": T0}
+    store = _racing_store(ticker)
+    client = _mqtt_client_without_paho(store)
+
+    class _Message:
+        def __init__(self, topic, payload):
+            self.topic, self.payload = topic, payload
+
+    _round_dolphin_east(store, ticker,
+                        lambda topic, payload: client._on_message(
+                            None, None, _Message(topic, payload)))
+
+    # publish_event hands paho a json.dumps str, not bytes.
+    rounded = [p for t, p in client.client.published
+               if t == mqtt_client.RACE_EVENT_TOPIC and '"rounded"' in p]
+    assert len(rounded) == 1, "one rounding, one message: %r" % client.client.published
+    assert store.race_state()[0].leg == 1
+    # Nothing left for app.py to publish a second time.
+    assert store.drain_events() == []
+
+
+def test_main_wires_the_event_publisher():
+    """The bug this pins: create_app defaults EVENT_PUBLISHER to None and main never set it.
+
+    Every transition that does not come from a fix was therefore logged and dropped:
+    select, timer, start, manual advance, reset and shorten never reached race/event.
+    The other tests in this file set EVENT_PUBLISHER by hand, which is exactly why none
+    of them noticed, so this one goes through main() itself.
+    """
+    captured = {}
+    real_create_app = app_module.create_app
+    real_mqtt_client = app_module.MqttClient
+
+    class _StubSource:
+        started = False
+
+        def start(self):
+            _StubSource.started = True
+
+        def stop(self):
+            pass
+
+        def publish_event(self, event):
+            pass
+
+    def fake_create_app(store, config=None):
+        built = real_create_app(store, config)
+        built.run = lambda *a, **k: None       # do not actually serve
+        captured["app"] = built
+        return built
+
+    stub = _StubSource()
+    app_module.create_app = fake_create_app
+    app_module.MqttClient = lambda *a, **k: stub
+    try:
+        assert app_module.main(["--broker", "localhost"]) == 0
+    finally:
+        app_module.create_app = real_create_app
+        app_module.MqttClient = real_mqtt_client
+
+    assert _StubSource.started, "the source is started"
+    assert captured["app"].config["EVENT_PUBLISHER"] == stub.publish_event, \
+        "main must connect the publisher, or non-fix events go nowhere"
+
+
+def test_demo_mode_leaves_the_event_publisher_unset():
+    """getattr, not source.publish_event: DemoDriver has none and there is no broker.
+
+    A demo run must not raise on startup, and None is the right publisher for it.
+    """
+    captured = {}
+    real_create_app = app_module.create_app
+    real_demo = app_module.DemoDriver
+
+    class _StubDemo:
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    def fake_create_app(store, config=None):
+        built = real_create_app(store, config)
+        built.run = lambda *a, **k: None
+        captured["app"] = built
+        return built
+
+    app_module.create_app = fake_create_app
+    app_module.DemoDriver = lambda *a, **k: _StubDemo()
+    try:
+        assert app_module.main(["--demo"]) == 0
+    finally:
+        app_module.create_app = real_create_app
+        app_module.DemoDriver = real_demo
+
+    assert captured["app"].config["EVENT_PUBLISHER"] is None
+
+
 def test_a_fix_uses_the_course_and_speed_that_arrived_with_it():
     """on_position reads them under the same lock that stores the fix.
 
