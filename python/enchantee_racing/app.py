@@ -8,6 +8,7 @@ Serving:
     GET  /              race screen, still a skeleton
     GET  /hud           instrument HUD, ported from docs/reference/flows.json
     GET  /hud/data      the {now, motor, fields} payload the HUD polls every 500 ms
+    GET  /manifest.webmanifest  scope for both screens, so iOS keeps them in one web app
     GET  /api/state     HUD fields, position and race state in one payload
     GET  /api/courses   the course list for the selection screen
     POST /api/select    {course: "frostbite-3"}
@@ -47,7 +48,7 @@ import json
 import logging
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from engine import course, race
 from mqtt_client import DEFAULT_BROKER, DEFAULT_PORT, DemoDriver, MqttClient
@@ -108,6 +109,21 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     @app.get("/hud/data")
     def hud_data():
         return jsonify(store.payload())
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        """The web app manifest, served from the app root rather than out of static/.
+
+        The root matters. Its scope and start_url are relative, so they resolve against
+        this URL: behind nginx that makes them /race/, and on the app's own port /. Served
+        from static/ instead, "./" would resolve to /race/static/ and the scope would
+        exclude both screens, which is the whole point of the file (DESIGN 5, CLAUDE.md).
+
+        Read from disk on each request rather than cached, so it can be edited in place
+        like the config documents. It is a handful of bytes and nothing polls it.
+        """
+        return send_from_directory(HERE, "manifest.webmanifest",
+                                   mimetype="application/manifest+json")
 
     @app.get("/api/state")
     def api_state():

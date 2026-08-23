@@ -655,7 +655,20 @@ def test_the_served_page_references_nothing_off_box():
     body = _client()[0].get("/hud").get_data(as_text=True)
     body = re.sub(r"<!--.*?-->", "", body, flags=re.S)  # the ffmpeg note is a comment
     assert "http://" not in body and "https://" not in body
-    assert "<link" not in body.lower()
+    # <link> is allowed only for a same-origin, relative href. It used to be banned
+    # outright, which was a blunt stand-in for "nothing external" and it did its job: it
+    # caught the manifest link being added. But a relative manifest is served by this app
+    # from this Pi, and it is what stops iOS dumping the crew into an overlay browser on
+    # the way from the HUD to the race screen. So the rule is what it always meant: no
+    # host, and no leading slash either, since that breaks behind the /race/ prefix.
+    for tag in re.findall(r"<link[^>]*>", body, re.I):
+        href = re.search(r'href\s*=\s*["\']([^"\']+)["\']', tag)
+        assert href, "a <link> with no href: %s" % tag
+        target = href.group(1)
+        assert "://" not in target and not target.startswith("//"), \
+            "off-box <link>: %s" % tag
+        assert not target.startswith("/"), \
+            "root-relative <link> breaks behind the /race/ prefix: %s" % tag
     assert not re.search(r"""<script[^>]+src=""", body, re.I)
     assert not re.search(r"""\ssrc\s*=\s*["']//""", body)
     assert "url(" not in body  # no @font-face, no background image

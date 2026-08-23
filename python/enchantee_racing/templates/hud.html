@@ -44,6 +44,9 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">  <!-- relative: resolves to /race/ behind nginx and / on the app's own port.
+     Declares the scope that keeps both screens in one iOS standalone window;
+     apple-mobile-web-app-capable above is what iOS 12 reads instead. -->
 <title>Enchantee HUD</title>
 <style>
   /* Colours match the readings on the dashboard pages: speeds DodgerBlue,

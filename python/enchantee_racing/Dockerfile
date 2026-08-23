@@ -57,6 +57,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY enchantee_racing/app.py \
      enchantee_racing/mqtt_client.py \
      enchantee_racing/store.py \
+     enchantee_racing/manifest.webmanifest \
      ./
 COPY enchantee_racing/engine/    ./engine/
 COPY enchantee_racing/templates/ ./templates/

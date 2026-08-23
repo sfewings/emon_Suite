@@ -721,6 +721,54 @@ def test_nothing_above_the_app_takes_up_any_room():
     assert set(ids) == {"wake", "pip", "notice", "rnd-defs"}, ids
 
 
+def test_the_manifest_scopes_both_screens_into_one_web_app():
+    """Modern iOS decides standalone-versus-browser by the manifest's scope.
+
+    With no manifest it infers one from the single URL saved to the Home Screen, so
+    whichever page was saved stayed full screen and the other always opened in an overlay
+    browser with a Done button, with the saved one going full screen again on the way
+    back. That was reported from the phone. The iPad, on iOS 12, predates scope
+    enforcement and behaved correctly throughout, which is why the two disagreed and why
+    navigating by script was not enough on its own.
+
+    Everything here has to be relative, and it has to be served from the app root. scope
+    and start_url resolve against the manifest's own URL, so from /race/manifest.webmanifest
+    the scope is /race/, which covers /race/ and /race/hud; from static/ it would have been
+    /race/static/ and covered neither.
+    """
+    import json as _json
+
+    doc = _json.loads((ROOT / "manifest.webmanifest").read_text(encoding="utf-8"))
+    assert doc["display"] == "standalone", "iOS has no fullscreen display mode"
+    for field in ("scope", "start_url"):
+        value = doc[field]
+        assert not value.startswith("/"), \
+            "%s is root-relative and would break behind the /race/ prefix" % field
+        assert "://" not in value, "%s must not name a host (CLAUDE.md)" % field
+        assert value == "./", \
+            "%s must resolve to the app root to cover both screens, got %r" % (field, value)
+
+    # Served from the app root, not from static/, or the relative scope resolves wrong.
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert '@app.get("/manifest.webmanifest")' in source, \
+        "the manifest must be served from the app root for its relative scope to work"
+
+    # Both pages link it, relatively, and keep the meta that iOS 12 reads instead.
+    for what, page in (("index.html", _page()), ("hud.html", _page_hud())):
+        link = re.search(r'<link[^>]*rel="manifest"[^>]*>', page)
+        assert link, "%s does not link the manifest" % what
+        href = re.search(r'href="([^"]+)"', link.group(0))
+        assert href and href.group(1) == "manifest.webmanifest", \
+            "%s must link the manifest relatively, got %r" % (what, link.group(0))
+        assert 'name="apple-mobile-web-app-capable" content="yes"' in page, \
+            "%s dropped the meta iOS 12 uses, which ignores the manifest" % what
+
+    # It has to reach the image too, and that COPY list is an allow-list.
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "manifest.webmanifest" in dockerfile, \
+        "the manifest is not copied into the image, so only the bind mount would have it"
+
+
 def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
     """Added to the Home Screen, a plain anchor to the other page leaves the web app.
 
