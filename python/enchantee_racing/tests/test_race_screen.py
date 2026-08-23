@@ -905,6 +905,57 @@ def test_the_night_theme_only_changes_colours():
             assert declaration.startswith("--"), declaration
 
 
+# The boat carries an iPad mini 3, which stops at iOS 12. Safari there has no clamp()
+# (13.1) and no flexbox gap (14.1), and neither failure is visible on a modern browser,
+# which is why both shipped. On the iPad every clamped font-size was dropped and the
+# readings rendered at the default 16 px, against the 132 px the distance computes to at
+# that viewport when clamp works; and the secondary line came out as
+# "leg5of10· thenHallmark-147°close hauled".
+CSS_FILES = ("static/app.css",)
+HTML_WITH_CSS = ("templates/hud.html",)
+
+
+def _stylesheets():
+    for rel in CSS_FILES + HTML_WITH_CSS:
+        yield rel, (ROOT / rel).read_text(encoding="utf-8")
+
+
+def test_every_clamp_has_a_plain_fallback_before_it():
+    """clamp() needs Safari 13.1, so on iOS 12 the whole declaration is dropped.
+
+    A dropped font-size falls back to the inherited one, which is how a 132 px reading
+    became 16 px on the boat's iPad. The fallback is the clamp's middle term, which is
+    the value that actually applies at every real viewport size anyway: the min and max
+    only bite at extremes, so this costs nothing on a browser that does support clamp.
+    """
+    for rel, text in _stylesheets():
+        for match in re.finditer(r"([a-z-]+):\s*clamp\(", text):
+            prop = match.group(1)
+            before = text[max(0, match.start() - 120):match.start()]
+            assert re.search(re.escape(prop) + r":\s*[^;{}]+;\s*$", before), (
+                "%s: %s: clamp(...) has no plain fallback before it, so iOS 12 drops it"
+                % (rel, prop))
+
+
+def test_no_flex_container_relies_on_gap():
+    """Flexbox gap needs Safari 14.1. Grid gap is fine: Safari 12 has that.
+
+    Margins on the children instead, which have worked since flexbox shipped. Note that
+    margins reach element children only, while gap also spaces the anonymous items
+    flexbox makes out of bare text, so a line of prose must not be a flex container at
+    all: #secondary is a plain block for exactly that reason.
+    """
+    for rel, text in _stylesheets():
+        stripped = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        for body in re.finditer(r"\{([^{}]*)\}", stripped):
+            decls = body.group(1)
+            if "gap:" not in decls:
+                continue
+            assert "display: grid" in decls, (
+                "%s: gap on a non-grid container, which iOS 12 ignores: %s"
+                % (rel, " ".join(decls.split())))
+
+
 def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
     # Comments stripped first: a rule's explanation sits directly above it, and a
     # selector regex that does not strip them swallows the comment as part of the
