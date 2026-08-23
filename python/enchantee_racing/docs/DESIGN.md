@@ -174,6 +174,60 @@ dashboard, plus `/nodered/`, `/grafana/`, `/portainer/`, `/events/` and
 The trailing-slash redirect matters for the same reason it does for `/events/`:
 relative asset paths only resolve correctly from a directory-style URL.
 
+**Done**, and with one addition: `/hud` as a shortcut to the instruments.
+
+```nginx
+    location = /hud { return 302 /race/hud; }
+```
+
+Claiming `/hud` costs nothing. The catch-all `location /` rewrites the root onto
+`:1880/ui/`, so `/hud` resolved to `:1880/ui/hud`, which does not exist, and an
+exact-match location outranks a prefix one. Node-RED's own HUD is served at its
+root and stays reachable at `/nodered/hud`, which is where step 3 of section 13
+does its side-by-side comparison.
+
+It is a **302 and not a 301**, unlike the trailing-slash redirects above. Those are
+structural and permanent; this is an alias that is expected to be repointed. Until
+the Node-RED tab is retired (13.4) it is useful to be able to swing `/hud` between
+the two implementations, and a 301 cached in every phone on the boat would make
+that a nuisance to undo.
+
+The app needed no change for either layout, which is worth knowing before anyone
+reorganises the URLs: the navigation is relative links (`href="hud"` and
+`href="."`), and `hud.html` derives its API base by stripping a trailing `/hud`
+from `location.pathname`. A prefix of `/race/` and a prefix of `/hud/` both work.
+
+### Deployment
+
+A container, not the systemd unit section 13 and CLAUDE.md assumed:
+`sfewings32/emon_enchantee_racing`, on `python:3.13-slim` rather than the
+`python:3.13` base the other `python/*.Dockerfile` images share, because this app
+installs neither numpy nor the pyemonlib wheel. Host networking, so mosquitto is on
+`localhost` and Flask lands on the host's 5002 where nginx expects it, matching
+`event_recorder`. `restart: always`.
+
+Two things about that image are load-bearing rather than incidental:
+
+- **The `COPY` list is an allow-list**, naming each thing the app serves. It is not
+  `COPY enchantee_racing/ ./`. `docs/reference/` holds the Geng chart, which section
+  6 keeps as internal reference while keeping it out of anything the app publishes,
+  and this image goes to a public registry. An allow-list also cannot leak a file
+  added to `docs/` later. The cost is that a new file at the app root has to be added
+  to it, which has already been forgotten once.
+- **`STOPSIGNAL SIGINT`.** The Werkzeug development server installs no SIGTERM
+  handler, so `docker stop` waited out the full ten-second timeout and then killed
+  it. SIGINT raises `KeyboardInterrupt` out of `app.run()`, which is what the
+  `finally: source.stop()` in `app.py` is written to catch, so paho shuts down rather
+  than being killed mid-publish. Measured: 10.2 s before, 0.4 s after. An exec-form
+  CMD is needed as well, so python is PID 1 and receives the signal at all, but on its
+  own it changed nothing.
+
+The whole application directory is bind-mounted from the working tree, so course data
+and the front end are editable in place (section 7, and CLAUDE.md's jetty rule). Note
+that no rebuild is not the same as no restart: `static/` is served from disk per
+request and is live, while `templates/` are cached by Jinja and `config/` is read once
+by `load_config()`, so both need a container restart.
+
 ## 6. Mark and line data
 
 ### Authoritative source
@@ -791,6 +845,57 @@ Android, and must start on a user gesture. Start it on the first tap of any
 control, and restart it on `visibilitychange` when the page comes back to the
 foreground.
 
+### 9.8.1 Home Screen, and the browser floor the boat sets
+
+The pages are added to the iOS Home Screen and run in the standalone context, which is
+what `apple-mobile-web-app-capable` asks for and what gets the crew a display with no
+browser chrome on it. Two things had to be true for that to hold, and neither was
+obvious from a development machine.
+
+**A manifest, declaring a scope over both screens.** Modern iOS decides
+standalone-versus-browser by the manifest's scope, and with no manifest it infers one
+from the single URL that was saved. So tapping between HUD and Race threw the crew into
+an overlay browser with a Done button, whichever of the two they had saved, and going
+back went full screen again. `manifest.webmanifest` fixes it, and two details are
+load-bearing:
+
+- It is served from the **app root**, not from `static/`. `scope` and `start_url`
+  resolve against the manifest's own URL, so from `/race/manifest.webmanifest` the
+  scope is `/race/` and covers both screens; from `static/` it would have been
+  `/race/static/` and covered neither.
+- Every URL in it is **relative**, so one file is correct behind the nginx prefix and
+  on the app's own port alike, with no host written down (CLAUDE.md).
+
+**Script navigation on the nav links.** `location.assign` rather than letting the
+anchor do it, because iOS 12 predates scope enforcement and needs it. Both are kept;
+they cover different iOS generations, which is why the fault appeared on the phone and
+not on the iPad and why fixing only one of them looked correct on one device.
+
+**The browser floor is iOS 12**, because the boat carries an iPad mini 3 and that is as
+far as it goes. Two features shipped that do not exist there, and neither failure is
+visible on anything modern, which is why both got as far as the boat:
+
+- `clamp()` needs Safari 13.1. Every clamped `font-size` was dropped and every reading
+  fell back to the inherited 16 px, against the 132 px the distance computes to at that
+  viewport. Each clamp now carries a plain fallback ahead of it, which is the idiom this
+  file already used for `height: 100vh; height: 100dvh`. The fallback is the clamp's
+  middle term, because that is the value which actually applies at every real viewport
+  size; the min and max only bite at extremes.
+- Flexbox `gap` needs Safari 14.1. Margins on the children instead; grid gap is fine,
+  Safari 12 has that. The substitution is not mechanical, because margins reach element
+  children only while `gap` also spaces the anonymous items flexbox makes out of bare
+  text. So **a line of prose must not be a flex container**: the secondary row is built
+  as `leg <b>2</b> of <b>10</b> · then ...` with real spaces in it, `display: flex` was
+  collapsing them, and the gap was only ever putting them back. It is a plain block now
+  and needs no gap on any browser.
+
+Both are pinned by tests, since neither can be observed on a development machine. The
+general lesson is the one section 9.6 already records in a different form: on this
+project, a layout fault is worth measuring before it is theorised about. Rendering the
+real page at the device's viewport and reading back computed sizes distinguished "the
+caps are too small" from "the declaration is being dropped", and those wanted opposite
+fixes.
+
 ### 9.9 Multiple devices
 
 Every device renders the same server state and any device can drive it. There is
@@ -1184,6 +1289,38 @@ Recording `source` matters. A season of races where auto-advance fired correctly
 and was not overridden is the evidence needed to tighten the 40 m threshold, and a
 cluster of manual overrides at one mark points straight at a bad coordinate.
 
+**How this is wired, because getting it wrong is silent.** There is one queue, in
+`store.py`, and whoever drains it publishes. `_queue` holds every transition whatever
+caused it, which is the point: a transition can come from a command, from a fix, or from
+the clock reaching T-0 while a page happens to poll, and the third was being dropped
+before the queue existed. `MqttClient` drains after each message, so a fix-driven event
+publishes at once on the paho thread rather than waiting for a browser to poll (section
+2); `app.py` drains on every request. Because the drain empties the queue, each event is
+published exactly once no matter which gets there first.
+
+Two ways that has already been wrong, both worth stating because neither shows up as an
+error anywhere:
+
+- **`EVENT_PUBLISHER` was never connected.** `create_app` defaulted it to `None` and
+  `main` never set it, so `app.py` logged every queued transition and published none of
+  them. Only fix-driven events reached the broker, down a second path. That silently
+  emptied this section of most of its value: `select`, `timer`, `start`, manual
+  `advance`, `reset` and `shorten` went nowhere, and the manual ones are the most
+  diagnostic of the lot. Every other test in `test_api.py` set the publisher by hand,
+  which is exactly why none of them noticed; the test that pins it now goes through
+  `main` itself.
+- **Publishing from both paths sends everything twice.** `store.on_position` queues its
+  events *and* returns them, so handing the returned copy straight to `publish_event`
+  while `app.py` also drained the queued one would double every rounding and finish.
+  That is why `MqttClient` drains rather than passing `on_events` to `handle_message`.
+  The parameter stays on `handle_message` because it is how a test observes the events
+  one fix produced with no drain and no broker.
+
+One consequence for the API: a POST reports the events it caused from `apply_race`'s own
+return, not from the drain. The paho thread drains roughly once a second, so it can
+legitimately empty the queue between a command and its response, and `app.js` feeds that
+array to `announce()`, so an empty one would silently lose the crew's notice.
+
 ## 12. Map page
 
 No internet means no tile server. Draw it as SVG from the app's own data: marks,
@@ -1270,15 +1407,23 @@ is sailed.
 3. Port the HUD, serve it at `/race/hud`, compare side by side against
    `/nodered/hud` with the boat running.
 4. Disable the Node-RED Sailing HUD tab, leaving it in the flow as a fallback for
-   one season.
+   one season. **Not done**, and it needs the boat running to compare side by side.
+   The tab is still enabled and still served at `/nodered/hud`.
 5. ~~Add position publishing to the GPS source.~~ Done: `pyemonlib.emon_mqtt`
    publishes `gps/position/<subnode>`, and `mqtt_client.py` reads it. No longer
    blocking, which unblocks 6.
 6. Race state machine, driven by replayed tracks before it is driven by the boat.
 7. Countdown and pre-start.
 8. Flags and course selection UI.
-9. Map page.
-10. Config editor.
+9. Map page. Not started; the nav entry exists and is disabled.
+10. Config editor. Not started. `PUT /api/config/...` is designed, not built, which is
+    why the deployment bind-mounts `config/` read-write: landing it should not need a
+    compose change.
+
+Not in the original list, and done: the nginx block and the container in section 5, and
+the Home Screen work in 9.8.1. Both were driven by the boat rather than by this document,
+which is the pattern to expect from here: the engine was finished off replays, and
+everything still outstanding needs either the boat powered up or a device in hand.
 
 ## 14. Deferred
 
