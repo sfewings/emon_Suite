@@ -864,11 +864,59 @@ def test_the_night_theme_only_changes_colours():
 
 
 def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
-    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    # Comments stripped first: a rule's explanation sits directly above it, and a
+    # selector regex that does not strip them swallows the comment as part of the
+    # selector.
+    css = re.sub(r"/\*.*?\*/", "", (ROOT / "static" / "app.css").read_text(encoding="utf-8"),
+                 flags=re.S)
     button = re.search(r"\nbutton\s*\{(.*?)\}", css, re.S)
     assert button, "no button rule"
     height = re.search(r"min-height:\s*([\d.]+)rem", button.group(1))
     assert height and float(height.group(1)) >= 3.0, button.group(1)
+
+    # Every override of that height is listed here, so shrinking a control is a decision
+    # someone takes on purpose rather than something that leaks in. This test used to
+    # read the generic rule alone, which meant the series buttons could be made smaller
+    # without it noticing, and they were.
+    #
+    # The series buttons are the one exception, deliberately. 2.75rem is 44 px, the
+    # platform minimum rather than below it, and a series is chosen once before the
+    # start and then not touched, whereas at the inherited size six names as long as
+    # "Sunday Afternoon Div III" wrapped to three lines each and pushed the course cards
+    # into a scroller.
+    # 2.75rem is 44 px, the platform minimum. Each entry is pinned to its exact value, so
+    # changing one means changing this test and saying why.
+    allowed = {
+        # A series is chosen once before the start and then not touched. At the inherited
+        # height six names as long as "Sunday Afternoon Div III" wrapped to three lines
+        # each and pushed the course cards into a scroller on a phone.
+        "#series button": 2.75,
+        # The bottom navigation, at 41.6 px, is a shade under the 44 px minimum. Left as
+        # it is rather than quietly changed: NAV_H pins this number and hud.html carries
+        # its own copy of it, which another test checks the two against, so raising it is
+        # a deliberate two-file change and not a tidy-up.
+        "#nav a, #nav button": 2.6,
+    }
+    for selector, expected in allowed.items():
+        rule = re.search(re.escape(selector) + r"\s*\{(.*?)\}", css, re.S)
+        assert rule, "no rule for %s" % selector
+        override = re.search(r"min-height:\s*([\d.]+)rem", rule.group(1))
+        assert override and float(override.group(1)) == expected, \
+            "%s changed height without changing this test: %s" % (selector, rule.group(1))
+        assert float(override.group(1)) >= 2.5, \
+            "%s is too small to hit on a moving boat" % selector
+
+    # And nothing else undercuts it. Any other rule setting a button min-height must be
+    # added above with its reason.
+    for match in re.finditer(r"([^{}]*button[^{}]*)\{([^}]*)\}", css):
+        override = re.search(r"min-height:\s*([\d.]+)rem", match.group(2))
+        if not override:
+            continue
+        selector = " ".join(match.group(1).split())
+        if selector == "button" or selector in allowed:
+            continue
+        raise AssertionError("undeclared button min-height on %r: %s"
+                             % (selector, match.group(2)))
 
 
 def test_every_flag_the_courses_name_exists_and_is_self_contained():

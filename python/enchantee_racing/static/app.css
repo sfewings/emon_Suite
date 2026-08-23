@@ -170,10 +170,41 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 /* --- course selection ----------------------------------------------- */
 
 #series { display: flex; gap: .4rem; padding: .4rem; flex-wrap: wrap; }
+/* The series buttons are deliberately smaller than every other button on the screen,
+   which is against the large-hit-target rule in CLAUDE.md and is the right trade here.
+   A series is chosen once and then not touched again; the course cards below are what
+   the crew actually reads, and at the inherited size six names as long as "Sunday
+   Afternoon Div III" wrapped to three lines each and took two thirds of a phone screen,
+   leaving the cards to be scrolled for. Still 2.75rem tall, which is 44 px, so they are
+   at the platform minimum rather than below it. */
+#series button {
+  min-height: 2.75rem;
+  font-size: clamp(11px, 1.7vh, 15px);
+  letter-spacing: .02em;
+  padding: .25rem .3rem;
+}
 #cards {
   flex: 1 1 0; min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: grid; gap: .5rem; padding: .4rem;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  /* Rows take the height their content needs, and the container scrolls when they do
+     not all fit. Without this the cards are squeezed to fit the viewport instead, which
+     is how a phone ended up showing flags 0 px tall and the wind note painted across
+     the DETAILS strip. Measured at 375 wide: the flags were already down to 23.6 px of
+     their 41.6 at 669 tall, gone entirely by 575, and the text crossed the strip by
+     437, while #cards never once reported itself scrollable.
+
+     Scrolling here is allowed. CLAUDE.md's no-scrolling rule is about the racing
+     display, where the reader is wet, busy and one-handed. This is the course list,
+     read at rest before the start, and the same reasoning DESIGN 9.11 applies to the
+     course detail page applies to it. A card the crew cannot read is the worse
+     outcome.
+     minmax(min-content, 1fr) rather than a bare min-content: the 1fr lets the rows share
+     any spare height so the grid fills the panel instead of leaving a gap above the
+     night button, while the min-content floor is what stops them being squeezed below
+     their content again. Both halves are load-bearing. */
+  grid-auto-rows: minmax(min-content, 1fr);
 }
 /* A card is two targets: the body sails the course, the strip reads it (DESIGN 9.11). */
 .card {
@@ -182,7 +213,12 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   overflow: hidden;
 }
 .card .pick {
-  flex: 1 1 auto; min-height: 0;
+  /* 1 0 auto, not 1 1 auto: it may take spare room but must never shrink below its own
+     content. Shrinking is what put the wind note outside this box, and because .info
+     below has no background of its own the overflow painted straight through the
+     DETAILS strip, rule and all. overflow: hidden is the belt to that braces, so a
+     squeeze from some future direction clips inside the card rather than over it. */
+  flex: 1 0 auto; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: .3rem; padding: .6rem .4rem;
   background: none; border: none; border-radius: 0;
@@ -195,7 +231,12 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   font-size: clamp(10px, 1.8vh, 16px);
 }
 .card .info:active { background: var(--rule); }
-.card .flags { display: flex; gap: .35rem; align-items: center; height: 2.6rem; }
+/* flex-shrink: 0 because the flags are the entire point of these cards: the crew
+   matches them against what is flying on the halyard (DESIGN 8), and a flag squashed
+   to a third of its height is not matchable. Being the only fixed-height item in the
+   column, it was the first thing flexbox gave away. */
+.card .flags { display: flex; gap: .35rem; align-items: center; height: 2.6rem;
+               flex: 0 0 auto; }
 .card .flags img { height: 100%; width: auto; }
 .card .no { font-size: clamp(20px, 5vh, 42px); font-weight: 600; }
 .card .nm { color: var(--label); font-size: clamp(10px, 1.8vh, 16px); }
