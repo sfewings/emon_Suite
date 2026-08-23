@@ -471,6 +471,26 @@
   function keepAwake() { requestLock(); playWake(); }
   document.addEventListener("visibilitychange", function () { if (!document.hidden) keepAwake(); });
 
+  // Cross-page navigation goes through location.assign, not through the anchor.
+  //
+  // Same handler as static/app.js, and for the same reason: added to the Home Screen
+  // this page runs in iOS's standalone context, and following a real anchor to a
+  // different document is treated as leaving the web app, so iOS reopens it in an
+  // in-app browser with a Done button and a toolbar top and bottom. Assigning location
+  // from script stays inside the standalone context.
+  //
+  // The href stays on the anchor and only the default action is cancelled, so the link
+  // still resolves relatively against the document, which is what keeps it right both
+  // behind /race/ and on the app's own port. A test checks this page and app.js against
+  // each other, because fixing one direction and not the other would throw the crew out
+  // of the app going one way only.
+  Array.prototype.forEach.call(document.querySelectorAll("#nav a[href]"), function (a) {
+    a.addEventListener("click", function (event) {
+      event.preventDefault();
+      location.assign(a.href);
+    });
+  });
+
   // tap anywhere for fullscreen
   document.body.addEventListener("click", function () {
     keepAwake();

@@ -100,6 +100,16 @@
       .then(function () { inFlight = false; });
   }
 
+  // Keep same-app navigation inside the iOS standalone context. See the call site.
+  function keepInApp(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("a[href]"), function (a) {
+      a.addEventListener("click", function (event) {
+        event.preventDefault();
+        location.assign(a.href);
+      });
+    });
+  }
+
   function on(id, handler) {
     var node = document.getElementById(id);
     if (node) node.addEventListener("click", handler);
@@ -179,6 +189,27 @@
       wake();
     });
   });
+
+  // Cross-page navigation goes through location.assign, not through the anchor.
+  //
+  // Added to the Home Screen the page runs in iOS's standalone context, which is what
+  // apple-mobile-web-app-capable asks for and what gets the crew a display with no
+  // browser chrome on it. Following a real anchor to a *different document* from there
+  // is treated as leaving the web app: iOS opens it in an in-app browser instead, with
+  // a Done button and a toolbar top and bottom, on a boat, in the wet. Assigning
+  // location from script stays inside the standalone context, which is the long-standing
+  // way round it and works on every iOS version.
+  //
+  // The href is left on the anchor and only its default action is cancelled, so the link
+  // still works with JavaScript off, still shows its target in a long-press, and still
+  // resolves relatively against the document. That last part is what keeps it correct
+  // both behind the /race/ prefix and on the app's own port (CLAUDE.md).
+  //
+  // hud.html carries the same handler. The two are checked against each other by a test,
+  // because a fix that lands on one page and not the other is worse than neither: the
+  // crew would be thrown out of the app in one direction only, which reads as a random
+  // fault rather than a missing feature.
+  keepInApp(el.nav);
 
   // Race is this whole page, so its nav entry means "show whatever panel the race is
   // actually in" and clears any view the crew has tapped away to (DESIGN 9.6).

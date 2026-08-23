@@ -721,6 +721,48 @@ def test_nothing_above_the_app_takes_up_any_room():
     assert set(ids) == {"wake", "pip", "notice", "rnd-defs"}, ids
 
 
+def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
+    """Added to the Home Screen, a plain anchor to the other page leaves the web app.
+
+    The pages ask for iOS's standalone context with apple-mobile-web-app-capable, which
+    is what gets the crew a display with no browser chrome. From there, following a real
+    anchor to a different document is treated as navigating away: iOS reopens it in an
+    in-app browser with a Done button and a toolbar top and bottom. Assigning location
+    from script stays inside the standalone context.
+
+    Both pages have to do it. Fixing one direction and not the other is worse than
+    fixing neither, because the crew is thrown out of the app going one way only, which
+    reads as an intermittent fault rather than a missing feature. Hence one test over
+    both files.
+
+    The href is deliberately left on the anchor and only its default action cancelled,
+    so the target still resolves relatively against the document. That is what keeps the
+    link correct behind the /race/ prefix and on the app's own port alike (CLAUDE.md),
+    and it is why this asserts preventDefault rather than an href that was replaced by a
+    click handler.
+    """
+    race_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    hud = _page_hud()
+
+    for what, source in (("static/app.js", race_js), ("templates/hud.html", hud)):
+        code = re.sub(r"^\s*//.*$", "", source, flags=re.M)
+        assert "location.assign(" in code, "%s does not navigate by script" % what
+        assert "preventDefault()" in code, "%s does not cancel the anchor" % what
+
+    # Every cross-page nav link is a real anchor carrying a real href, in both pages, so
+    # the handler has something to intercept and the link degrades to a plain one.
+    for what, page in (("index.html", _page()), ("hud.html", hud)):
+        nav = re.search(r'<nav id="nav">(.*?)</nav>', page, re.S)
+        assert nav, "%s has no nav" % what
+        hrefs = re.findall(r'<a[^>]*\bhref="([^"]+)"', nav.group(1))
+        assert hrefs, "%s nav has no links to intercept" % what
+        for href in hrefs:
+            assert not href.startswith("/"), \
+                "%s nav link %r is root-relative and breaks behind /race/" % (what, href)
+            assert "://" not in href, \
+                "%s nav link %r is absolute and would leave the app" % (what, href)
+
+
 def test_the_navigation_is_never_pushed_off_or_covered():
     """Two pages, two mechanisms, and the reason they differ.
 
