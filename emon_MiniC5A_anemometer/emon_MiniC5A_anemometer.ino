@@ -66,16 +66,25 @@ const float SCALE_PRESSURE   = 0.1f; // hPa or other unit
 const float MPU_ACCEL_SCALE = 16384.0f; // LSB/g for ±2g
 const float MPU_GYRO_SCALE = 131.0f;    // LSB/(deg/s) for ±250deg/s
 // Degrees the sensor board's X axis is rotated clockwise from the boat's centreline.
-// Subtracted from the computed heading. Measured from the Enchantee_20260816 log:
-// over 5799 steady straight-line samples spanning all 36 ten-degree heading bins the
-// compass read a constant 11.9 deg high against GPS course over ground.
-const int INSTALATION_HEADING_OFFSET = 12;
+// Subtracted from the computed heading.
+// Re-measured on the Enchantee_20260823 sail, the first with the bench recalibration
+// aboard: over 4702 steady straight-line samples the compass read 4.85 deg LOW against
+// GPS course (95% CI 4.3 to 5.4), so the previous 12 over-corrected. Allowing for
+// leeway, which the same fit puts at 0.34 deg per degree of heel, gives 5.45 deg low.
+// 12 came from the 20260816 log and was correct for the OLD magnetometer calibration;
+// changing M_B shifts the heading by a heading-dependent amount, so this constant has
+// to be re-measured whenever the magnetometer is recalibrated.
+const int INSTALATION_HEADING_OFFSET = 7;
 
 // Degrees the anemometer's zero mark is rotated clockwise from the boat's centreline.
 // Subtracted from the vane angle before it is combined with the heading, so it shifts
 // apparent and true wind direction without touching the boat-relative reading (subnode 0).
-// The 20260816 log puts this within about +-10 deg of zero, so it is left at 0; this is
-// the knob to trim if a residual tack-to-tack true-wind-direction split reappears.
+// Confirmed at 0 on the Enchantee_20260823 sail by two independent tests: the
+// true-wind-steadiness fit is flat (2.005 kt scatter at -11 deg against 2.051 at 0, not
+// a real minimum), and the tack-to-tack true wind direction split is -0.15 +-3 deg.
+// Trim this if a genuine split reappears - but measure the split INSIDE 5-minute
+// windows. Pooling a whole sail turns any wind shift into a fake split: on 20260823 the
+// breeze veered 60 deg and the pooled figure read +5.5 deg when the real one was zero.
 const int ANEMOMETER_HEADING_OFFSET = 0;
 
 //Use calibrato4.py to calculate these values
