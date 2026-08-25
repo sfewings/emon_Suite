@@ -171,6 +171,26 @@ def test_the_clips_are_served_and_addressed_relative_to_the_page():
         "so without this the clips go out as application/octet-stream"
 
 
+def test_the_audio_context_is_taken_prefixed_as_well():
+    """iOS Safari had no unprefixed AudioContext until 14.5.
+
+    Every browser on iOS is WebKit underneath, so this is not a Safari-only concern: it
+    is every browser on an older iPhone, and on the boat's iOS 12 iPad. Without the
+    prefixed name the context is never created, and loadVoice, beep and updateAudio all
+    guard on it, so the page goes completely silent rather than falling back to the tone.
+    That is the whole of a "no audio on the phone, audio on the desktop" report.
+    """
+    script = _script()
+    assert "window.webkitAudioContext" in script, \
+        "no prefixed AudioContext fallback: every browser on an older iOS goes silent"
+    # And the constructor actually used has to be the one that was resolved, not the
+    # unprefixed global again.
+    assert re.search(r"window\.AudioContext\s*\|\|\s*window\.webkitAudioContext", script), \
+        "the two names must be resolved together"
+    assert "new AudioContext(" not in script, \
+        "constructing the unprefixed name directly defeats the fallback"
+
+
 def test_a_missing_clip_falls_back_to_a_tone_rather_than_silence():
     """Whatever goes wrong with a file or a codec, the gun still has to make a noise."""
     script = _script()

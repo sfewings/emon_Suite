@@ -645,8 +645,16 @@
     }
     // The first tap of any control is a free user gesture, which is the only moment an
     // AudioContext can be unlocked (DESIGN 10).
-    if (audio === null && window.AudioContext) {
-      try { audio = new AudioContext(); } catch (e) { audio = false; }
+    //
+    // webkitAudioContext as well as AudioContext, and that is not belt-and-braces. iOS
+    // Safari did not ship the unprefixed name until 14.5, and every browser on iOS is
+    // WebKit underneath, so on an older phone or on the boat's iOS 12 iPad this used to
+    // leave `audio` null for ever. Everything downstream guards on it, loadVoice, beep
+    // and updateAudio alike, so the result was total silence, not even the tone the
+    // fallback in DESIGN 10.1 promises when a clip will not decode.
+    var Ctor = window.AudioContext || window.webkitAudioContext;
+    if (audio === null && Ctor) {
+      try { audio = new Ctor(); } catch (e) { audio = false; }
     }
     if (audio && audio.state === "suspended") audio.resume();
     // Start fetching the countdown clips on the gesture rather than on the next poll:

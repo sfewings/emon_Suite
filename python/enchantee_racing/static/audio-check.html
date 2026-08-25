@@ -1,0 +1,194 @@
+<!doctype html>
+<!--
+  Countdown audio diagnostic. Not one of the three screens and not in the navigation:
+  open it by URL when the audio misbehaves.
+
+      http://enchantee.local/race/static/audio-check.html
+
+  It exists because there is no Apple device anywhere near the Pi, so "no audio on the
+  phone" cannot be reproduced where the code lives. Rather than guess across round trips,
+  this reports what the device itself sees: which AudioContext it has, what state it
+  reaches, whether each clip fetches and decodes, and then plays one clip two ways.
+
+  The two ways are the point. Web Audio on iOS plays in the ambient audio session, which
+  the hardware ringer switch silences; a media element plays in the playback session,
+  which ignores it. So if the media button is audible and the Web Audio button is not,
+  the answer is the switch on the side of the phone and no amount of code will fix it.
+
+  Deliberately self-contained and deliberately old-fashioned: no clamp(), no flexbox gap,
+  no arrow functions, no const. The boat's iPad is iOS 12 and this page has to work on the
+  device that is failing, which is the whole reason it exists.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio check</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; color: #fff;
+               font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  body { padding: 12px; }
+  h1 { font-size: 18px; margin: 0 0 10px; }
+  p  { font-size: 14px; color: #bbb; margin: 8px 0; }
+  button { display: block; width: 100%; min-height: 52px; margin: 8px 0;
+           font-size: 17px; font-weight: 600; color: #fff; background: #111;
+           border: 2px solid #333; border-radius: 8px; }
+  button:active { background: #333; }
+  button.go { border-color: #1e90ff; color: #1e90ff; }
+  #log { font-size: 13px; line-height: 1.45; white-space: pre-wrap;
+         border-top: 2px solid #333; margin-top: 12px; padding-top: 10px; }
+  .ok   { color: #98fb98; }
+  .bad  { color: #ff6b6b; }
+  .note { color: #ffa500; }
+</style>
+
+<h1>Countdown audio check</h1>
+<p>Tap the buttons in order. Turn the volume up first, and note which way the
+   ringer switch on the side of the phone is set.</p>
+
+<button class="go" id="step1">1 &nbsp; Start audio</button>
+<button id="step2">2 &nbsp; Load the clips</button>
+<button id="step3">3 &nbsp; Play "five minutes" through Web Audio</button>
+<button id="step4">4 &nbsp; Play the same clip through an &lt;audio&gt; element</button>
+
+<div id="log">waiting.</div>
+
+<script>
+(function () {
+  var out = document.getElementById("log");
+  var ctx = null;
+  var buffer = null;
+  // Same derivation the app uses, so this page finds the clips wherever it is served
+  // from: behind /race/ or on the app's own port.
+  var base = location.pathname.replace(/\/[^\/]*$/, "");
+  var CLIP = base + "/audio/min-5.m4a";
+
+  function say(text, cls) {
+    var line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = text;
+    out.appendChild(line);
+  }
+
+  function reset() { out.textContent = ""; }
+
+  document.getElementById("step1").addEventListener("click", function () {
+    reset();
+    say("user agent: " + navigator.userAgent);
+    var unprefixed = !!window.AudioContext;
+    var prefixed = !!window.webkitAudioContext;
+    say("window.AudioContext: " + unprefixed, unprefixed ? "ok" : "bad");
+    say("window.webkitAudioContext: " + prefixed, prefixed ? "ok" : "");
+    if (!unprefixed && !prefixed) {
+      say("no Web Audio at all on this browser. Nothing below will make a sound.", "bad");
+      return;
+    }
+    var Ctor = window.AudioContext || window.webkitAudioContext;
+    try {
+      if (!ctx) ctx = new Ctor();
+    } catch (e) {
+      say("constructing it threw: " + e, "bad");
+      return;
+    }
+    say("created with the " + (unprefixed ? "unprefixed" : "prefixed") + " name", "ok");
+    say("state: " + ctx.state + "   sampleRate: " + ctx.sampleRate);
+    if (ctx.state === "suspended" && ctx.resume) {
+      ctx.resume().then(function () {
+        say("after resume(): " + ctx.state, ctx.state === "running" ? "ok" : "bad");
+        if (ctx.state !== "running") {
+          say("a suspended context that will not resume on a tap is the fault.", "note");
+        }
+      }, function (e) { say("resume() rejected: " + e, "bad"); });
+    } else {
+      say("state is already " + ctx.state, ctx.state === "running" ? "ok" : "note");
+    }
+  });
+
+  document.getElementById("step2").addEventListener("click", function () {
+    reset();
+    if (!ctx) { say("do step 1 first.", "note"); return; }
+    say("fetching " + CLIP);
+    // Two fetches, because the app asks for cache: "force-cache" and this page asks for
+    // "no-store". WebKit has been unreliable about force-cache in the past, so if the
+    // plain fetch works and the force-cache one does not, that is the difference between
+    // this page playing and the app staying silent, and it is worth knowing before
+    // anyone goes looking at the codec again.
+    fetch(CLIP, { cache: "force-cache" }).then(function (r) {
+      say("force-cache fetch: status " + r.status, r.ok ? "ok" : "bad");
+    }, function (e) {
+      say("force-cache fetch threw: " + e, "bad");
+      say("that is what the app uses, so this alone would silence it.", "note");
+    });
+    fetch(CLIP, { cache: "no-store" })
+      .then(function (r) {
+        say("status " + r.status + "   type " + r.headers.get("content-type"),
+            r.ok ? "ok" : "bad");
+        if (!r.ok) throw new Error("http " + r.status);
+        return r.arrayBuffer();
+      })
+      .then(function (bytes) {
+        say("downloaded " + bytes.byteLength + " bytes", "ok");
+        return new Promise(function (resolve, reject) {
+          // The callback form, because older WebKit has no promise form and returns
+          // undefined here. Accept whichever the browser gives.
+          var maybe = ctx.decodeAudioData(bytes, resolve, reject);
+          if (maybe && maybe.then) maybe.then(resolve, reject);
+        });
+      })
+      .then(function (decoded) {
+        buffer = decoded;
+        say("decoded: " + Math.round(decoded.duration * 100) / 100 + " s, "
+            + decoded.numberOfChannels + " channel, " + decoded.sampleRate + " Hz", "ok");
+        say("so the file and the decoder are both fine. If nothing is audible in step 3"
+            + " but step 4 works, it is the ringer switch.", "note");
+      })
+      .catch(function (e) {
+        say("failed: " + e, "bad");
+        say("a decode failure here, with a good download, means the codec. Step 4 will"
+            + " say whether the browser can play the file at all.", "note");
+      });
+  });
+
+  document.getElementById("step3").addEventListener("click", function () {
+    reset();
+    if (!ctx) { say("do step 1 first.", "note"); return; }
+    if (!buffer) { say("do step 2 first.", "note"); return; }
+    say("state: " + ctx.state, ctx.state === "running" ? "ok" : "bad");
+    try {
+      var source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      // start() rather than start(0): the argument is optional on older WebKit and
+      // noteOn was its old name, so keep to the plain call.
+      source.start ? source.start() : source.noteOn(0);
+      say("started. You should hear “five minutes” now.", "ok");
+      say("Silence here, with sound in step 4, is the ringer switch: Web Audio plays in"
+          + " the ambient session on iOS and the switch mutes it.", "note");
+    } catch (e) {
+      say("start failed: " + e, "bad");
+    }
+  });
+
+  document.getElementById("step4").addEventListener("click", function () {
+    reset();
+    var el = document.createElement("audio");
+    el.src = CLIP;
+    el.setAttribute("playsinline", "");
+    say("playing " + CLIP + " through an <audio> element");
+    say("canPlayType(audio/mp4): " + (el.canPlayType("audio/mp4") || "(empty = no)"),
+        el.canPlayType("audio/mp4") ? "ok" : "bad");
+    el.addEventListener("error", function () {
+      var err = el.error ? el.error.code : "?";
+      say("the element errored, code " + err, "bad");
+      say("code 4 is 'source not supported', which points at the file or its"
+          + " Content-Type rather than at the ringer switch.", "note");
+    });
+    el.addEventListener("ended", function () { say("finished playing.", "ok"); });
+    var started = el.play();
+    if (started && started.then) {
+      started.then(function () {
+        say("play() resolved. If you heard this but not step 3, it is the ringer"
+            + " switch.", "note");
+      }, function (e) { say("play() rejected: " + e, "bad"); });
+    }
+  });
+}());
+</script>
