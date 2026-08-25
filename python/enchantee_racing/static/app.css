@@ -560,6 +560,16 @@ body.night #chart .band-deep    { fill: var(--band-deep); }
 }
 body.night #chart .mark-label { fill: var(--mark); }
 
+/* The scope label sits in the controls row with the two buttons, and takes what room is
+   left rather than a share of it: the buttons are what a hand reaches for. */
+#map-scope {
+  flex: 1 1 auto; min-width: 0; align-self: center; text-align: right;
+  color: var(--label); padding-right: .2rem;
+  font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#map-out[disabled] { opacity: .35; }
+
 #map-caveat {
   flex: 0 0 auto; margin: 0; padding: .35rem .6rem;
   border-top: 2px solid var(--rule); color: var(--label);

@@ -40,6 +40,19 @@ def _map_js():
     return (ROOT / "static" / "map.js").read_text(encoding="utf-8")
 
 
+def _map_code():
+    """map.js with its comments removed.
+
+    The guards below look for names that must not appear, and map.js explains at length
+    why they must not: the comment about Pointer Events names pointerdown in order to say
+    that every recipe reaches for it. A guard that reads the prose fails on the
+    explanation, which is what happened the first time.
+    """
+    source = _map_js()
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", source)
+
+
 def test_the_map_is_served_as_its_own_page():
     """DESIGN 12.1: its own page, not a fourth panel on the race screen."""
     response = _client().get("/map")
@@ -108,13 +121,13 @@ def test_the_map_asks_for_its_data_the_way_the_app_asks_for_everything():
 def test_the_map_projects_through_the_shared_transcription():
     """Not its own copy of the projection: the map and the engine have to agree, and
     geo.js is the transcription that is proved against nav.py (DESIGN 12.1 step 2)."""
-    js = _map_js()
-    assert "Geo.enu(" in js, "the map is not using geo.js"
+    code = _map_code()
+    assert "Geo.enu(" in code, "the map is not using geo.js"
     # No second implementation hiding in here. These are the tell-tales of one.
-    assert "6378137" not in js, "a WGS84 radius in map.js means a second projection"
-    assert "Math.cos" not in js, "map.js should not be doing spherical arithmetic"
+    assert "6378137" not in code, "a WGS84 radius in map.js means a second projection"
+    assert "Math.cos" not in code, "map.js should not be doing spherical arithmetic"
     # And the y flip happens exactly once, or the map is mirrored north to south.
-    assert js.count("-p.n") == 1, "the y inversion should be in project() and nowhere else"
+    assert code.count("-p.n") == 1, "the y inversion belongs in project() and nowhere else"
 
 
 def test_the_data_the_map_draws_is_the_shape_it_expects():
@@ -195,6 +208,102 @@ def test_unsurveyed_water_is_drawn_as_water():
     waters = re.findall(r"--water:\s*(#[0-9a-f]{6})", css)
     for water in waters:
         assert water not in bands, "%s is both a band colour and the no-data colour" % water
+
+
+def test_the_view_has_the_three_levels_design_settled():
+    """Fit to the course, out to the racing bbox, out again to the whole coast.
+
+    Two zoom-outs rather than one, because coast.json was generated far wider than the
+    racing area for ocean races and the island anchorages, and one level would have to
+    choose between making that unreachable and making the ordinary case illegible
+    (DESIGN 12.1).
+
+    Measured in a browser against a selected Frostbite course 3: 1967 x 2648 m fitted,
+    11080 x 8726 at the racing bbox, 61230 x 55544 at the coast, and Out disabled at the
+    last of them.
+    """
+    js = _map_js()
+    assert "levels = [fitted || racing, racing, extentOf(coast.bbox)]" in js, \
+        "the three levels are not the ones DESIGN 12.1 settled"
+    assert "function showLevel" in js
+    assert "el.out.disabled" in js, "Out gives no sign that it has run out of levels"
+    page = _page()
+    assert 'id="map-fit"' in page and 'id="map-out"' in page
+    assert 'id="map-scope"' in page, "nothing names what is on the screen"
+
+
+def test_the_default_view_is_the_course_and_falls_back_to_the_racing_area():
+    """DESIGN 12 says fit to the current course. No course selected is the ordinary idle
+    case, and then the racing bbox is the right view, so a missing course must not be
+    treated as a failure.
+    """
+    js = _map_js()
+    assert "showLevel(0)" in js, "the map does not open on the fitted level"
+    assert "fitted || racing" in js, "no fallback when no course is selected"
+    assert "function fetchCourse" in js
+    fetch_course = js[js.index("function fetchCourse"):js.index("function courseExtent")]
+    assert "return null" in fetch_course
+    assert ".catch(function () { return null; })" in fetch_course, \
+        "a failed course fetch must not reject and block the chart"
+
+    # Both ends of the start line are in the fitted extent: the race begins and ends there
+    # and a view that cut the line off would miss what the crew looks at first.
+    extent = js[js.index("function courseExtent"):js.index("Promise.all")]
+    assert "start_finish.inner" in extent and "start_finish.outer" in extent
+
+
+def test_panning_and_zooming_are_clamped():
+    """A crew that has dragged the chart into empty space with no way back is worse off
+    than one with no map. Fit is the recovery, and these are the guard rails."""
+    js = _map_js()
+    assert "function clampView" in js
+    assert "MIN_SPAN_M" in js and "MAX_SLACK" in js
+    clamp = js[js.index("function clampView"):js.index("function setView")]
+    assert "Math.min(maxW / v.w, maxH / v.h)" in clamp, \
+        "zoom-out clamp must scale both axes together"
+    assert "Math.max(MIN_SPAN_M / v.w, MIN_SPAN_M / v.h)" in clamp
+    # Measured in a browser: forty wheel zoom-ins stop at 100 m across.
+    assert "MIN_SPAN_M = 100" in js
+
+
+def test_the_gestures_use_touch_events_and_not_pointer_events():
+    """Pointer Events need Safari 13 and the boat's iPad is on 12.
+
+    Same list as clamp() and flexbox gap, and the one every pan-and-zoom recipe gets
+    wrong, because they all reach for pointerdown.
+    """
+    code = _map_code()
+    for banned in ("pointerdown", "pointermove", "pointerup", "pointercancel",
+                   "onpointer", "PointerEvent", "setPointerCapture"):
+        assert banned not in code, "%s needs Safari 13; the iPad is on 12" % banned
+    for wanted in ("touchstart", "touchmove", "touchend", "touchcancel"):
+        assert wanted in code, wanted
+    for wanted in ("mousedown", "mousemove", "mouseup", "wheel"):
+        assert wanted in code, wanted
+
+
+def test_screen_to_user_coordinates_go_through_the_svg_matrix():
+    """preserveAspectRatio is meet, so there are letterbox margins whenever the viewBox
+    aspect does not match the element's. getScreenCTM accounts for them already;
+    computing it from the element's rect is a class of off-by-a-margin bug.
+    """
+    js = _map_js()
+    assert "getScreenCTM" in js
+    assert "createSVGPoint" in js
+    assert "matrixTransform" in js
+    assert "function zoomAbout" in js
+    zoom = js[js.index("function zoomAbout"):js.index("function panBy")]
+    assert zoom.count("clientToUser") == 2, \
+        "the anchor must be measured before and after the resize"
+
+
+def test_a_finger_lifted_out_of_a_pinch_becomes_a_pan():
+    """Otherwise the map sticks until the crew lets go with both fingers, which feels like
+    a hang and is the kind of thing only a real hand finds."""
+    js = _map_js()
+    end = js[js.index("function onTouchEnd"):js.index("function bindGestures")]
+    assert "event.touches.length === 1" in end
+    assert 'kind: "pan"' in end
 
 
 if __name__ == "__main__":

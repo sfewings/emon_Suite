@@ -49,6 +49,22 @@
     </svg>
 
     <!--
+      Two controls, and only two (CLAUDE.md: minimum interaction). Out steps through the
+      three levels DESIGN 12.1 settled, and Fit comes back to the course, which is the
+      recovery when the chart has been dragged somewhere useless. Free pan and pinch sit
+      on top of both; the buttons are the path that works with wet hands.
+
+      map-scope names what is on the screen, because after a pinch the crew cannot tell a
+      fitted course from the racing area by looking, and "where am I zoomed to" is exactly
+      the question a map with no labels at that scale cannot answer.
+    -->
+    <div class="controls">
+      <button id="map-fit" class="primary">Fit</button>
+      <button id="map-out">Out</button>
+      <span id="map-scope"></span>
+    </div>
+
+    <!--
       The caveats, on the page rather than only in a loader comment. Both source sections
       insist on them and this is the one screen that looks like a chart, which is exactly
       why they have to be visible: OSM banks are crowd-sourced, the survey is from 2010,
