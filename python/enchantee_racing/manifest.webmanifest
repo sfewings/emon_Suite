@@ -1,0 +1,42 @@
+{
+  "//": [
+    "Web app manifest. It exists for one reason: to declare a scope covering both",
+    "screens, so iOS keeps the whole app in its standalone window instead of throwing",
+    "the crew into an overlay browser the moment they tap between HUD and Race.",
+
+    "Modern iOS decides standalone-versus-browser by the manifest's scope. With no",
+    "manifest it infers one from the single URL that was saved to the Home Screen, so",
+    "whichever page was saved stayed full screen and the other one always opened with",
+    "browser chrome and a Done button, and coming back went full screen again. That is",
+    "reported behaviour from the boat, on the phone. The iPad, on iOS 12, predates scope",
+    "enforcement and was unaffected, which is why the two devices disagreed.",
+
+    "Every URL here is relative, and that is load-bearing. scope and start_url resolve",
+    "against the manifest's own URL, and app.py serves this from the app root, so behind",
+    "nginx './' becomes /race/ and on the app's own port it becomes /. One file, correct",
+    "in both, with no host and no prefix written down anywhere (CLAUDE.md).",
+
+    "It must be served from the app root and not from static/, or './' would resolve to",
+    "/race/static/ and exclude the very pages it is meant to cover.",
+
+    "apple-mobile-web-app-capable stays in both pages alongside this. It is what iOS 12",
+    "on the iPad reads, and it ignores this file entirely.",
+
+    "No icons declared. iOS takes the Home Screen icon from apple-touch-icon, or a",
+    "screenshot when there is none, which is the situation today. Worth adding, but an",
+    "icon is a separate job from getting the navigation to stay inside the app."
+  ],
+
+  "name": "Enchantee racing",
+  "short_name": "Race",
+  "scope": "./",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+
+  "icons": [
+    { "src": "static/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "static/icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

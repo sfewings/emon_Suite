@@ -14,7 +14,9 @@ their absence.
 
 - The server is a Raspberry Pi named `enchantee` that lives on the boat and has
   **no internet connection**. No CDNs, no tile servers, no external fonts, no
-  package installs at runtime. Vendor every dependency.
+  package installs at runtime. Vendor every dependency. (At the dock it joins the
+  house wifi and does have internet, which is when builds, pulls and pushes happen.
+  That changes nothing about what the app may depend on at runtime.)
 - Traffic is **plain HTTP only**. There is no TLS. This rules out the Screen Wake
   Lock API, the Geolocation API and service workers, all of which require a secure
   context. Use the hidden looping muted video trick for wake lock. There is no
@@ -24,7 +26,12 @@ their absence.
   `http://<current-ip>/`. Never hardcode a host.
 - The app is served behind an nginx prefix (`/race/`) and must also work when hit
   directly on its own port. **Use relative URLs only.** Build fetch targets from
-  `location.pathname`, the way the existing HUD page does.
+  `location.pathname`, the way the existing HUD page does. `/hud` is a 302 alias for
+  `/race/hud`, for the crew.
+- **The browser floor is iOS 12**, set by the iPad mini 3 on the boat. No `clamp()`
+  (Safari 13.1) and no flexbox `gap` (14.1) without a fallback ahead of it. Neither
+  failure is visible on a development machine, both reached the boat once, and both
+  are now pinned by tests. Grid gap is fine. See DESIGN 9.8.1.
 
 ## Operating environment
 
@@ -38,7 +45,10 @@ modal dialogs, nothing that needs two hands.
 - `paho-mqtt` subscribing to the boat's broker.
 - Front end is plain HTML/CSS/JS with no build step and no framework. It must be
   editable from a laptop on a jetty.
-- systemd unit with `Restart=always`.
+- Deployed as a Docker container, `sfewings32/emon_enchantee_racing`, with
+  `restart: always` and the whole application directory bind-mounted from the working
+  tree. Not the systemd unit this section used to specify. `static/` edits are live;
+  `templates/` and `config/` need `docker restart enchantee_racing`.
 
 ## Layout
 
@@ -50,10 +60,13 @@ engine/nav.py           ENU projection, distance, bearing, line crossing
 engine/course.py        load and validate marks/courses/lines
 engine/race.py          mode and leg state machine, pure functions
 templates/              index.html, hud.html
-static/                 app.js, app.css, flags/*.svg
-config/                 marks.json, courses.json, lines.json, coast.json, depth.json
+static/                 app.js, app.css, flags/*.svg, audio/, icon*, depth.json
 scripts/                gen_*.py, which regenerate everything in config/
-tests/                  pytest, including replay of recorded GPS tracks
+config/                 marks.json, courses.json, lines.json, coast.json, race.json
+manifest.webmanifest    served from the app root, not static/ (DESIGN 9.8.1)
+Dockerfile              COPY is an allow-list; a new root file must be added to it
+scripts/                generators, outputs committed
+tests/                  pytest, and every file also runs standalone
 ```
 
 `engine/` must contain **no I/O**. It takes a position, a timestamp and a course,

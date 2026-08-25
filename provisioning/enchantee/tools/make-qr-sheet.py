@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a one-page A4 PDF of QR codes for every Enchantee service.
 
-Phones cannot easily be told to type http://enchantee.local/nodered/hud, so this
+Phones cannot easily be told to type http://enchantee.local/portainer/, so this
 is the sheet you print and stick up: scan to join the hotspot, then scan to open
 whichever service you want.
 
@@ -14,6 +14,12 @@ without the passphrase and the phone will prompt for it.
 The passphrase is read at run time and never stored here, which is why this repo
 holds the generator rather than the finished PDF. Keep the generated PDF out of
 git: it contains the hotspot password in scannable form.
+
+The heads-up display card points at /hud, which nginx redirects to /race/hud, the
+racing app's ported HUD. The Node-RED original stays reachable at /nodered/hud for
+the side-by-side comparison (DESIGN 13 steps 3 and 4) but is deliberately not on
+this sheet: two cards captioned "heads-up display" is worse than one, and /hud is
+the URL that survives the Node-RED tab being retired.
 
 Needs only reportlab, which is already installed; its built-in QR widget draws
 vector codes that stay sharp at any print size.
@@ -40,7 +46,7 @@ ACCENT = HexColor("#1f6feb")
 # (title, url path, one-line description)
 SERVICES = [
     ("Main display",     "/",              "Node-RED dashboard, the usual screen"),
-    ("Heads-up display", "/nodered/hud",   "Large-format live readout"),
+    ("Heads-up display", "/hud",           "Large-format live readout"),
     ("Charts",           "/grafana/",      "Grafana history for all activities"),
     ("Event recorder",   "/events/",       "Track logs, photos and publishing"),
     ("Sensor settings",  "/settings/",     "Sensor configuration"),

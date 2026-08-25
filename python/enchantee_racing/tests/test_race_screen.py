@@ -721,6 +721,122 @@ def test_nothing_above_the_app_takes_up_any_room():
     assert set(ids) == {"wake", "pip", "notice", "rnd-defs"}, ids
 
 
+def test_the_manifest_scopes_both_screens_into_one_web_app():
+    """Modern iOS decides standalone-versus-browser by the manifest's scope.
+
+    With no manifest it infers one from the single URL saved to the Home Screen, so
+    whichever page was saved stayed full screen and the other always opened in an overlay
+    browser with a Done button, with the saved one going full screen again on the way
+    back. That was reported from the phone. The iPad, on iOS 12, predates scope
+    enforcement and behaved correctly throughout, which is why the two disagreed and why
+    navigating by script was not enough on its own.
+
+    Everything here has to be relative, and it has to be served from the app root. scope
+    and start_url resolve against the manifest's own URL, so from /race/manifest.webmanifest
+    the scope is /race/, which covers /race/ and /race/hud; from static/ it would have been
+    /race/static/ and covered neither.
+    """
+    import json as _json
+
+    doc = _json.loads((ROOT / "manifest.webmanifest").read_text(encoding="utf-8"))
+    assert doc["display"] == "standalone", "iOS has no fullscreen display mode"
+    for field in ("scope", "start_url"):
+        value = doc[field]
+        assert not value.startswith("/"), \
+            "%s is root-relative and would break behind the /race/ prefix" % field
+        assert "://" not in value, "%s must not name a host (CLAUDE.md)" % field
+        assert value == "./", \
+            "%s must resolve to the app root to cover both screens, got %r" % (field, value)
+
+    # Served from the app root, not from static/, or the relative scope resolves wrong.
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert '@app.get("/manifest.webmanifest")' in source, \
+        "the manifest must be served from the app root for its relative scope to work"
+
+    # Both pages link it, relatively, and keep the meta that iOS 12 reads instead.
+    for what, page in (("index.html", _page()), ("hud.html", _page_hud())):
+        link = re.search(r'<link[^>]*rel="manifest"[^>]*>', page)
+        assert link, "%s does not link the manifest" % what
+        href = re.search(r'href="([^"]+)"', link.group(0))
+        assert href and href.group(1) == "manifest.webmanifest", \
+            "%s must link the manifest relatively, got %r" % (what, link.group(0))
+        assert 'name="apple-mobile-web-app-capable" content="yes"' in page, \
+            "%s dropped the meta iOS 12 uses, which ignores the manifest" % what
+
+    # It has to reach the image too, and that COPY list is an allow-list.
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "manifest.webmanifest" in dockerfile, \
+        "the manifest is not copied into the image, so only the bind mount would have it"
+
+    # Icons: declared relatively, present on disk, and real PNGs of the size claimed.
+    # iOS reads apple-touch-icon rather than the manifest for the Home Screen, so both
+    # pages carry that too, and it cannot be the SVG because iOS will not take one.
+    assert doc["icons"], "no icons declared"
+    for icon in doc["icons"]:
+        src = icon["src"]
+        assert not src.startswith("/") and "://" not in src, \
+            "icon src %r must be relative to the manifest" % src
+        path = ROOT / src
+        assert path.exists(), "%s is declared but missing" % src
+        header = path.read_bytes()[:24]
+        assert header.startswith(b"\x89PNG\r\n\x1a\n"), "%s is not a PNG" % src
+        width = int.from_bytes(header[16:20], "big")
+        height = int.from_bytes(header[20:24], "big")
+        assert "%dx%d" % (width, height) == icon["sizes"], \
+            "%s is %dx%d but declares %s" % (src, width, height, icon["sizes"])
+
+    for what, page in (("index.html", _page()), ("hud.html", _page_hud())):
+        touch = re.search(r'<link[^>]*rel="apple-touch-icon"[^>]*>', page)
+        assert touch, "%s has no apple-touch-icon, so iOS uses a screenshot" % what
+        href = re.search(r'href="([^"]+)"', touch.group(0)).group(1)
+        assert href.endswith(".png"), "iOS will not take %r as a touch icon" % href
+        assert not href.startswith("/"), \
+            "%s icon href is root-relative and breaks behind /race/" % what
+        assert (ROOT / href).exists(), "%s points at a missing icon: %s" % (what, href)
+
+
+def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
+    """Added to the Home Screen, a plain anchor to the other page leaves the web app.
+
+    The pages ask for iOS's standalone context with apple-mobile-web-app-capable, which
+    is what gets the crew a display with no browser chrome. From there, following a real
+    anchor to a different document is treated as navigating away: iOS reopens it in an
+    in-app browser with a Done button and a toolbar top and bottom. Assigning location
+    from script stays inside the standalone context.
+
+    Both pages have to do it. Fixing one direction and not the other is worse than
+    fixing neither, because the crew is thrown out of the app going one way only, which
+    reads as an intermittent fault rather than a missing feature. Hence one test over
+    both files.
+
+    The href is deliberately left on the anchor and only its default action cancelled,
+    so the target still resolves relatively against the document. That is what keeps the
+    link correct behind the /race/ prefix and on the app's own port alike (CLAUDE.md),
+    and it is why this asserts preventDefault rather than an href that was replaced by a
+    click handler.
+    """
+    race_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    hud = _page_hud()
+
+    for what, source in (("static/app.js", race_js), ("templates/hud.html", hud)):
+        code = re.sub(r"^\s*//.*$", "", source, flags=re.M)
+        assert "location.assign(" in code, "%s does not navigate by script" % what
+        assert "preventDefault()" in code, "%s does not cancel the anchor" % what
+
+    # Every cross-page nav link is a real anchor carrying a real href, in both pages, so
+    # the handler has something to intercept and the link degrades to a plain one.
+    for what, page in (("index.html", _page()), ("hud.html", hud)):
+        nav = re.search(r'<nav id="nav">(.*?)</nav>', page, re.S)
+        assert nav, "%s has no nav" % what
+        hrefs = re.findall(r'<a[^>]*\bhref="([^"]+)"', nav.group(1))
+        assert hrefs, "%s nav has no links to intercept" % what
+        for href in hrefs:
+            assert not href.startswith("/"), \
+                "%s nav link %r is root-relative and breaks behind /race/" % (what, href)
+            assert "://" not in href, \
+                "%s nav link %r is absolute and would leave the app" % (what, href)
+
+
 def test_the_navigation_is_never_pushed_off_or_covered():
     """Two pages, two mechanisms, and the reason they differ.
 
@@ -863,12 +979,111 @@ def test_the_night_theme_only_changes_colours():
             assert declaration.startswith("--"), declaration
 
 
+# The boat carries an iPad mini 3, which stops at iOS 12. Safari there has no clamp()
+# (13.1) and no flexbox gap (14.1), and neither failure is visible on a modern browser,
+# which is why both shipped. On the iPad every clamped font-size was dropped and the
+# readings rendered at the default 16 px, against the 132 px the distance computes to at
+# that viewport when clamp works; and the secondary line came out as
+# "leg5of10· thenHallmark-147°close hauled".
+CSS_FILES = ("static/app.css",)
+HTML_WITH_CSS = ("templates/hud.html",)
+
+
+def _stylesheets():
+    for rel in CSS_FILES + HTML_WITH_CSS:
+        yield rel, (ROOT / rel).read_text(encoding="utf-8")
+
+
+def test_every_clamp_has_a_plain_fallback_before_it():
+    """clamp() needs Safari 13.1, so on iOS 12 the whole declaration is dropped.
+
+    A dropped font-size falls back to the inherited one, which is how a 132 px reading
+    became 16 px on the boat's iPad. The fallback is the clamp's middle term, which is
+    the value that actually applies at every real viewport size anyway: the min and max
+    only bite at extremes, so this costs nothing on a browser that does support clamp.
+    """
+    for rel, text in _stylesheets():
+        for match in re.finditer(r"([a-z-]+):\s*clamp\(", text):
+            prop = match.group(1)
+            before = text[max(0, match.start() - 120):match.start()]
+            assert re.search(re.escape(prop) + r":\s*[^;{}]+;\s*$", before), (
+                "%s: %s: clamp(...) has no plain fallback before it, so iOS 12 drops it"
+                % (rel, prop))
+
+
+def test_no_flex_container_relies_on_gap():
+    """Flexbox gap needs Safari 14.1. Grid gap is fine: Safari 12 has that.
+
+    Margins on the children instead, which have worked since flexbox shipped. Note that
+    margins reach element children only, while gap also spaces the anonymous items
+    flexbox makes out of bare text, so a line of prose must not be a flex container at
+    all: #secondary is a plain block for exactly that reason.
+    """
+    for rel, text in _stylesheets():
+        stripped = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        for body in re.finditer(r"\{([^{}]*)\}", stripped):
+            decls = body.group(1)
+            if "gap:" not in decls:
+                continue
+            assert "display: grid" in decls, (
+                "%s: gap on a non-grid container, which iOS 12 ignores: %s"
+                % (rel, " ".join(decls.split())))
+
+
 def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
-    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    # Comments stripped first: a rule's explanation sits directly above it, and a
+    # selector regex that does not strip them swallows the comment as part of the
+    # selector.
+    css = re.sub(r"/\*.*?\*/", "", (ROOT / "static" / "app.css").read_text(encoding="utf-8"),
+                 flags=re.S)
     button = re.search(r"\nbutton\s*\{(.*?)\}", css, re.S)
     assert button, "no button rule"
     height = re.search(r"min-height:\s*([\d.]+)rem", button.group(1))
     assert height and float(height.group(1)) >= 3.0, button.group(1)
+
+    # Every override of that height is listed here, so shrinking a control is a decision
+    # someone takes on purpose rather than something that leaks in. This test used to
+    # read the generic rule alone, which meant the series buttons could be made smaller
+    # without it noticing, and they were.
+    #
+    # The series buttons are the one exception, deliberately. 2.75rem is 44 px, the
+    # platform minimum rather than below it, and a series is chosen once before the
+    # start and then not touched, whereas at the inherited size six names as long as
+    # "Sunday Afternoon Div III" wrapped to three lines each and pushed the course cards
+    # into a scroller.
+    # 2.75rem is 44 px, the platform minimum. Each entry is pinned to its exact value, so
+    # changing one means changing this test and saying why.
+    allowed = {
+        # A series is chosen once before the start and then not touched. At the inherited
+        # height six names as long as "Sunday Afternoon Div III" wrapped to three lines
+        # each and pushed the course cards into a scroller on a phone.
+        "#series button": 2.75,
+        # The bottom navigation, at 41.6 px, is a shade under the 44 px minimum. Left as
+        # it is rather than quietly changed: NAV_H pins this number and hud.html carries
+        # its own copy of it, which another test checks the two against, so raising it is
+        # a deliberate two-file change and not a tidy-up.
+        "#nav a, #nav button": 2.6,
+    }
+    for selector, expected in allowed.items():
+        rule = re.search(re.escape(selector) + r"\s*\{(.*?)\}", css, re.S)
+        assert rule, "no rule for %s" % selector
+        override = re.search(r"min-height:\s*([\d.]+)rem", rule.group(1))
+        assert override and float(override.group(1)) == expected, \
+            "%s changed height without changing this test: %s" % (selector, rule.group(1))
+        assert float(override.group(1)) >= 2.5, \
+            "%s is too small to hit on a moving boat" % selector
+
+    # And nothing else undercuts it. Any other rule setting a button min-height must be
+    # added above with its reason.
+    for match in re.finditer(r"([^{}]*button[^{}]*)\{([^}]*)\}", css):
+        override = re.search(r"min-height:\s*([\d.]+)rem", match.group(2))
+        if not override:
+            continue
+        selector = " ".join(match.group(1).split())
+        if selector == "button" or selector in allowed:
+            continue
+        raise AssertionError("undeclared button min-height on %r: %s"
+                             % (selector, match.group(2)))
 
 
 def test_every_flag_the_courses_name_exists_and_is_self_contained():

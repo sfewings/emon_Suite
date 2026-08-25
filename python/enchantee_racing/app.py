@@ -8,6 +8,7 @@ Serving:
     GET  /              race screen, still a skeleton
     GET  /hud           instrument HUD, ported from docs/reference/flows.json
     GET  /hud/data      the {now, motor, fields} payload the HUD polls every 500 ms
+    GET  /manifest.webmanifest  scope for both screens, so iOS keeps them in one web app
     GET  /api/state     HUD fields, position and race state in one payload
     GET  /api/courses   the course list for the selection screen
     POST /api/select    {course: "frostbite-3"}
@@ -47,7 +48,7 @@ import json
 import logging
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from engine import course, race
 from mqtt_client import DEFAULT_BROKER, DEFAULT_PORT, DemoDriver, MqttClient
@@ -108,6 +109,21 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     @app.get("/hud/data")
     def hud_data():
         return jsonify(store.payload())
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        """The web app manifest, served from the app root rather than out of static/.
+
+        The root matters. Its scope and start_url are relative, so they resolve against
+        this URL: behind nginx that makes them /race/, and on the app's own port /. Served
+        from static/ instead, "./" would resolve to /race/static/ and the scope would
+        exclude both screens, which is the whole point of the file (DESIGN 5, CLAUDE.md).
+
+        Read from disk on each request rather than cached, so it can be edited in place
+        like the config documents. It is a handful of bytes and nothing polls it.
+        """
+        return send_from_directory(HERE, "manifest.webmanifest",
+                                   mimetype="application/manifest+json")
 
     @app.get("/api/state")
     def api_state():
@@ -216,7 +232,16 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
         # race_payload first: it evaluates the clock, so a start that fell due during this
         # request is in the payload and its event is in the drain below.
         payload = store.race_payload()
-        return jsonify({"race": payload, "events": _drain_and_publish()})
+        drained = _drain_and_publish()
+        # The body reports what this command caused, from apply_race's own return rather
+        # than from the drain. The queue is shared with the paho thread, which drains
+        # after every fix, so by the time we get here the drain can be empty even though
+        # this POST did something. app.js feeds this array to announce(), so an empty one
+        # silently loses the crew's notice. Publishing is unaffected: whichever thread
+        # drains an event publishes it, and the drain empties the queue, so it still goes
+        # to the broker exactly once.
+        return jsonify({"race": payload,
+                        "events": drained if _events is None else _events})
 
     @app.post("/api/select")
     def api_select():
@@ -323,6 +348,17 @@ def main(argv: list | None = None) -> int:
     source.start()
 
     app = create_app(store, config)
+    # Wire the publisher that _drain_and_publish reads. Without this it stays at the
+    # None create_app defaults it to, and every transition that does not come from a
+    # position fix is logged and then dropped: select, timer, start, manual advance,
+    # reset and shorten never reach race/event at all. DESIGN 11.9 wants all of them,
+    # and the manual ones are the most diagnostic of the lot, since "a cluster of
+    # manual overrides at one mark points straight at a bad coordinate". The tests set
+    # this by hand, which is why they never caught its absence here.
+    #
+    # getattr because DemoDriver has no publish_event: in demo mode there is no broker
+    # to publish to, and None is the right answer rather than an error.
+    app.config["EVENT_PUBLISHER"] = getattr(source, "publish_event", None)
     try:
         # threaded so a slow poll from one phone cannot stall another: several devices
         # are expected, each polling twice a second (DESIGN 2).

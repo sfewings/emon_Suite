@@ -1,0 +1,30 @@
+# Context exclusions for enchantee_racing/Dockerfile.
+#
+# Named Dockerfile.dockerignore rather than .dockerignore, and that is not a typo.
+# Docker reads .dockerignore from the *context root*, which for these images is
+# python/, not this directory. A .dockerignore sitting here would be silently ignored
+# on every build that build.sh drives, which is what has happened to
+# event_recorder/.dockerignore. BuildKit does honour <dockerfile-path>.dockerignore,
+# so this file works, and it applies to this image alone rather than to every image
+# built out of python/.
+#
+# Paths are relative to the context root, so they carry the enchantee_racing/ prefix.
+#
+# This is about build speed only. Safety comes from the Dockerfile's COPY allow-list,
+# which names each thing the app serves and therefore cannot leak a file added to
+# docs/ later.
+
+# The club's paperwork: the fixtures PDF and the Geng course marks chart. The chart is
+# copyright Geng Pty Ltd and carries a notice against redistribution (DESIGN 6), and
+# this image is pushed to a public registry.
+enchantee_racing/docs/
+
+# Tests and the recorded GPS tracks they replay, 3.7 MB. The app does not run them.
+enchantee_racing/tests/
+
+# Dev-time generators. Two only run on Windows and all their outputs are committed.
+enchantee_racing/scripts/
+
+enchantee_racing/__pycache__/
+enchantee_racing/**/__pycache__/
+enchantee_racing/**/*.py[cod]

@@ -95,7 +95,7 @@ body.mode-detail   #panel-detail { display: flex; }
 .lbl {
   color: var(--label);
   letter-spacing: .1em; text-transform: uppercase;
-  font-size: clamp(9px, 1.6vh, 16px);
+  font-size: 1.6vh; font-size: clamp(9px, 1.6vh, 16px);
 }
 
 .big {
@@ -108,7 +108,7 @@ body.mode-detail   #panel-detail { display: flex; }
    display name from marks.json, because the crew calls it Squadron, not 37 (DESIGN 9.2). */
 #mark-name {
   color: var(--mark);
-  font-size: clamp(28px, 9vh, 92px);
+  font-size: 9vh; font-size: clamp(28px, 9vh, 92px);
   font-weight: 600; line-height: 1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   /* takes the space on its line and ellipsises if it must, leaving the rounding arrow
@@ -117,20 +117,20 @@ body.mode-detail   #panel-detail { display: flex; }
 }
 
 .row {
-  display: flex; align-items: baseline; gap: .5em;
+  display: flex; align-items: baseline;
   padding: 0 .5rem;
 }
 .row + .row { border-top: 2px solid var(--rule); }
 .grow { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column;
         justify-content: center; padding: .2rem .5rem; }
 
-#distance { color: var(--dist); font-size: clamp(40px, 15vh, 150px); }
-#bearing  { color: var(--brg);  font-size: clamp(30px, 11vh, 110px); }
-#cog      { color: var(--cog);  font-size: clamp(18px, 5vh, 48px); }
-#relative { color: var(--brg);  font-size: clamp(18px, 5vh, 48px); }
-#elapsed  { color: var(--time); font-size: clamp(26px, 8vh, 80px); }
-#countdown { color: var(--time); font-size: clamp(56px, 22vh, 220px); }
-.unit { color: var(--label); font-size: clamp(11px, 2vh, 20px);
+#distance { color: var(--dist); font-size: 15vh; font-size: clamp(40px, 15vh, 150px); }
+#bearing  { color: var(--brg);  font-size: 11vh; font-size: clamp(30px, 11vh, 110px); }
+#cog      { color: var(--cog);  font-size: 5vh; font-size: clamp(18px, 5vh, 48px); }
+#relative { color: var(--brg);  font-size: 5vh; font-size: clamp(18px, 5vh, 48px); }
+#elapsed  { color: var(--time); font-size: 8vh; font-size: clamp(26px, 8vh, 80px); }
+#countdown { color: var(--time); font-size: 22vh; font-size: clamp(56px, 22vh, 220px); }
+.unit { color: var(--label); font-size: 2vh; font-size: clamp(11px, 2vh, 20px);
         letter-spacing: .08em; text-transform: uppercase; }
 
 /* Stale: dimmed for wind and motor, which still read as numbers. Position is blanked
@@ -139,10 +139,20 @@ body.mode-detail   #panel-detail { display: flex; }
 .stale { opacity: 0.25; }
 
 #secondary {
-  display: flex; flex-wrap: wrap; gap: .4rem 1.2rem;
+  /* A run of text, not a row of boxes, so not a flex container.
+     app.js builds this as "leg <b>2</b> of <b>10</b> · then <b>Armstrong</b> ...", real
+     spaces and all. display: flex made every text run and every <b> a flex item and
+     collapsed the spaces between them, which is the only reason it needed a gap in the
+     first place. As a plain block the spaces work, the line wraps by itself, and there
+     is nothing for an old Safari to fail to support. #final-secondary was never flex and
+     never had the problem, which is the tell.
+
+     Found by replacing the flexbox gaps with margins for iOS 12: margins reach element
+     children only, and flexbox gap also spaces the anonymous items it makes out of bare
+     text, so the line came out as "leg2  of10  · thenArmstrong". */
   padding: .35rem .6rem;
   border-top: 2px solid var(--rule);
-  font-size: clamp(10px, 1.9vh, 18px);
+  font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 18px);
   color: var(--label);
 }
 #secondary b { color: var(--ink); font-weight: 500; }
@@ -150,11 +160,12 @@ body.mode-detail   #panel-detail { display: flex; }
 
 /* --- controls: large hit targets, nothing needing two hands ---------- */
 
-.controls { display: flex; gap: .4rem; padding: .4rem; }
+.controls { display: flex; padding: .4rem; }
+.controls > * + * { margin-left: .4rem; }
 button {
   flex: 1 1 0;
   min-height: 3.2rem;
-  font: inherit; font-size: clamp(13px, 2.6vh, 24px);
+  font: inherit; font-size: 2.6vh; font-size: clamp(13px, 2.6vh, 24px);
   font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   color: var(--ink); background: var(--panel);
   border: 2px solid var(--rule); border-radius: .5rem;
@@ -164,16 +175,48 @@ button:active { background: var(--rule); }
 button.primary { border-color: var(--sog); color: var(--sog); flex: 2 1 0; }
 button.small { flex: 0 0 auto; min-width: 3.4rem; }
 /* A small button with a word rather than a letter in it. */
-button.small.wide { min-width: 5.6rem; font-size: clamp(11px, 2.2vh, 20px); }
+button.small.wide { min-width: 5.6rem; font-size: 2.2vh; font-size: clamp(11px, 2.2vh, 20px); }
 button.warn { border-color: var(--warn); color: var(--warn); }
 
 /* --- course selection ----------------------------------------------- */
 
-#series { display: flex; gap: .4rem; padding: .4rem; flex-wrap: wrap; }
+#series { display: flex; padding: .4rem; flex-wrap: wrap; }
+#series > * { margin: 0 .4rem .4rem 0; }
+/* The series buttons are deliberately smaller than every other button on the screen,
+   which is against the large-hit-target rule in CLAUDE.md and is the right trade here.
+   A series is chosen once and then not touched again; the course cards below are what
+   the crew actually reads, and at the inherited size six names as long as "Sunday
+   Afternoon Div III" wrapped to three lines each and took two thirds of a phone screen,
+   leaving the cards to be scrolled for. Still 2.75rem tall, which is 44 px, so they are
+   at the platform minimum rather than below it. */
+#series button {
+  min-height: 2.75rem;
+  font-size: 1.7vh; font-size: clamp(11px, 1.7vh, 15px);
+  letter-spacing: .02em;
+  padding: .25rem .3rem;
+}
 #cards {
   flex: 1 1 0; min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: grid; gap: .5rem; padding: .4rem;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  /* Rows take the height their content needs, and the container scrolls when they do
+     not all fit. Without this the cards are squeezed to fit the viewport instead, which
+     is how a phone ended up showing flags 0 px tall and the wind note painted across
+     the DETAILS strip. Measured at 375 wide: the flags were already down to 23.6 px of
+     their 41.6 at 669 tall, gone entirely by 575, and the text crossed the strip by
+     437, while #cards never once reported itself scrollable.
+
+     Scrolling here is allowed. CLAUDE.md's no-scrolling rule is about the racing
+     display, where the reader is wet, busy and one-handed. This is the course list,
+     read at rest before the start, and the same reasoning DESIGN 9.11 applies to the
+     course detail page applies to it. A card the crew cannot read is the worse
+     outcome.
+     minmax(min-content, 1fr) rather than a bare min-content: the 1fr lets the rows share
+     any spare height so the grid fills the panel instead of leaving a gap above the
+     night button, while the min-content floor is what stops them being squeezed below
+     their content again. Both halves are load-bearing. */
+  grid-auto-rows: minmax(min-content, 1fr);
 }
 /* A card is two targets: the body sails the course, the strip reads it (DESIGN 9.11). */
 .card {
@@ -182,9 +225,14 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   overflow: hidden;
 }
 .card .pick {
-  flex: 1 1 auto; min-height: 0;
+  /* 1 0 auto, not 1 1 auto: it may take spare room but must never shrink below its own
+     content. Shrinking is what put the wind note outside this box, and because .info
+     below has no background of its own the overflow painted straight through the
+     DETAILS strip, rule and all. overflow: hidden is the belt to that braces, so a
+     squeeze from some future direction clips inside the card rather than over it. */
+  flex: 1 0 auto; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: .3rem; padding: .6rem .4rem;
+  padding: .6rem .4rem;
   background: none; border: none; border-radius: 0;
   text-transform: none; letter-spacing: normal;
 }
@@ -192,13 +240,18 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   flex: 0 0 auto; min-height: 2.2rem;
   border: none; border-top: 2px solid var(--rule); border-radius: 0;
   background: none; color: var(--label);
-  font-size: clamp(10px, 1.8vh, 16px);
+  font-size: 1.8vh; font-size: clamp(10px, 1.8vh, 16px);
 }
 .card .info:active { background: var(--rule); }
-.card .flags { display: flex; gap: .35rem; align-items: center; height: 2.6rem; }
+/* flex-shrink: 0 because the flags are the entire point of these cards: the crew
+   matches them against what is flying on the halyard (DESIGN 8), and a flag squashed
+   to a third of its height is not matchable. Being the only fixed-height item in the
+   column, it was the first thing flexbox gave away. */
+.card .flags { display: flex; align-items: center; height: 2.6rem;
+               flex: 0 0 auto; }
 .card .flags img { height: 100%; width: auto; }
-.card .no { font-size: clamp(20px, 5vh, 42px); font-weight: 600; }
-.card .nm { color: var(--label); font-size: clamp(10px, 1.8vh, 16px); }
+.card .no { font-size: 5vh; font-size: clamp(20px, 5vh, 42px); font-weight: 600; }
+.card .nm { color: var(--label); font-size: 1.8vh; font-size: clamp(10px, 1.8vh, 16px); }
 .card .pick[disabled] { opacity: .35; }
 
 /* --- navigation, on every screen ------------------------------------- */
@@ -212,7 +265,7 @@ button.warn { border-color: var(--warn); color: var(--warn); }
    What made it look like the nav was the problem is above, in .panel: the wrong things
    were shrinking. Fixed there, this can stay simple. */
 #nav {
-  display: flex; gap: 1px;
+  display: flex;
   border-top: 2px solid var(--rule);
   flex: 0 0 auto;
   background: var(--bg);
@@ -221,7 +274,7 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   flex: 1 1 0; min-height: 2.6rem; min-width: 0;
   border: none; border-radius: 0;
   background: var(--bg); color: var(--label);
-  font: inherit; font-size: clamp(10px, 1.9vh, 17px);
+  font: inherit; font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
   font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   text-decoration: none;
   display: flex; align-items: center; justify-content: center;
@@ -233,7 +286,8 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 
 /* The rounding side, on the same line as the mark name rather than in the secondary row,
    because it belongs to the mark you are looking at (DESIGN 9.2). */
-.markline { display: flex; align-items: center; gap: .5em; min-width: 0; }
+.markline { display: flex; align-items: center; min-width: 0; }
+.markline > * + * { margin-left: .5em; }
 
 /* Drawn as the chart's turn arrow around a buoy dot rather than the word. In the mark's
    own colour, not the label grey the word used: a glyph carries less ink than five
@@ -253,45 +307,46 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 .rounding.starboard .rnd-starboard { display: block; }
 
 #mark-round { margin-left: auto; }
-#mark-round .rnd { height: clamp(20px, 5.2vh, 52px); }
+#mark-round .rnd { height: 5.2vh; height: clamp(20px, 5.2vh, 52px); }
 
 /* The same symbol before the start, sized against the smaller name it sits beside. */
-#pre-mark { color: var(--mark); font-size: clamp(16px, 4vh, 40px); font-weight: 600;
+#pre-mark { color: var(--mark); font-size: 4vh; font-size: clamp(16px, 4vh, 40px); font-weight: 600;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-#pre-round .rnd { height: clamp(14px, 3.4vh, 34px); }
-#pre-distance { color: var(--dist); font-size: clamp(20px, 6vh, 60px); }
-#pre-bearing  { color: var(--brg);  font-size: clamp(20px, 6vh, 60px); }
+#pre-round .rnd { height: 3.4vh; height: clamp(14px, 3.4vh, 34px); }
+#pre-distance { color: var(--dist); font-size: 6vh; font-size: clamp(20px, 6vh, 60px); }
+#pre-bearing  { color: var(--brg);  font-size: 6vh; font-size: clamp(20px, 6vh, 60px); }
 
 /* --- the finish screen ----------------------------------------------- */
 
 /* Both numbers large: they are what anyone wants off this screen, read across a cockpit
    by someone who has just stopped concentrating (DESIGN 9.6). */
-#final-elapsed { color: var(--time); font-size: clamp(44px, 17vh, 170px); }
-#final-course  { color: var(--mark); font-size: clamp(24px, 8vh, 76px); }
+#final-elapsed { color: var(--time); font-size: 17vh; font-size: clamp(44px, 17vh, 170px); }
+#final-course  { color: var(--mark); font-size: 8vh; font-size: clamp(24px, 8vh, 76px); }
 #final-secondary {
   padding: .35rem .6rem; color: var(--label);
-  font-size: clamp(10px, 1.9vh, 18px);
+  font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 18px);
 }
 
 /* --- course detail: the whole course on one page (DESIGN 9.11) -------- */
 
 #detail-head {
-  display: flex; align-items: center; gap: .6rem;
+  display: flex; align-items: center;
   padding: .4rem .6rem;
   border-bottom: 2px solid var(--rule);
   flex: 0 0 auto;
 }
-#detail-head .flags { display: flex; gap: .35rem; align-items: center; height: 2.2rem; }
+#detail-head .flags { display: flex; align-items: center; height: 2.2rem; }
+#detail-head .flags > * + * { margin-left: .35rem; }
 #detail-head .flags img { height: 100%; width: auto; }
 #detail-titles { display: flex; flex-direction: column; min-width: 0; }
 #detail-title { color: var(--mark); font-weight: 600;
-                font-size: clamp(16px, 3.6vh, 34px); white-space: nowrap; }
+                font-size: 3.6vh; font-size: clamp(16px, 3.6vh, 34px); white-space: nowrap; }
 #detail-distance {
   margin-left: auto; text-align: right;
   /* pre-line, not nowrap: the shortened distance is written on a second line, and the
      script sets it as text rather than markup */
   white-space: pre-line;
-  color: var(--dist); font-size: clamp(15px, 3.2vh, 30px);
+  color: var(--dist); font-size: 3.2vh; font-size: clamp(15px, 3.2vh, 30px);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
@@ -300,7 +355,7 @@ button.warn { border-color: var(--warn); color: var(--warn); }
    leaving the crew to notice two numbers that do not match (DESIGN 7). */
 #detail-notes {
   flex: 0 0 auto; padding: .3rem .6rem; color: var(--warn);
-  font-size: clamp(10px, 1.9vh, 17px);
+  font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
 }
 #detail-notes:empty { display: none; }
 
@@ -316,7 +371,7 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   align-items: center; gap: .5em;
   padding: .35rem .6rem;
   border-bottom: 1px solid var(--rule);
-  font-size: clamp(12px, 2.4vh, 22px);
+  font-size: 2.4vh; font-size: clamp(12px, 2.4vh, 22px);
 }
 .leg .n { color: var(--label); font-variant-numeric: tabular-nums; text-align: right; }
 .leg .who { color: var(--ink); min-width: 0; overflow: hidden;
@@ -352,7 +407,7 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   bottom: calc(env(safe-area-inset-bottom) + 4.4rem);
   padding: .5rem .9rem; border-radius: .5rem;
   background: var(--panel); border: 2px solid var(--warn); color: var(--warn);
-  font-size: clamp(12px, 2.2vh, 20px);
+  font-size: 2.2vh; font-size: clamp(12px, 2.2vh, 20px);
   opacity: 0; transition: opacity .4s; pointer-events: none;
 }
 #notice.show { opacity: 1; }
@@ -381,6 +436,25 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
-  #secondary { font-size: clamp(9px, 3vw, 14px); }
+  #secondary { font-size: 3vw; font-size: clamp(9px, 3vw, 14px); }
   button { min-height: 2.6rem; }
 }
+
+
+/* --- flexbox gap, done with margins -------------------------------------
+   Every gap above on a *flex* container has been replaced by margins on its children.
+   Not a style preference: flexbox gap needs Safari 14.1, and the boat carries an iPad
+   mini 3, which tops out at iOS 12. There it is simply ignored, and the secondary line
+   rendered as "leg5of10· thenHallmark-147°close hauled" with every word run
+   together. Margins have worked since flexbox shipped.
+
+   Grid gap is left as gap: Safari 12 has that, and #cards and .leg rely on it.
+
+   One code path rather than gap plus a fallback behind a feature query, because there
+   is no feature query that reliably detects flexbox gap alone: @supports (gap: 1px) is
+   true on Safari 12 already, on the strength of grid. */
+.row > * + * { margin-left: .5em; }
+.card .pick > * + * { margin-top: .3rem; }
+.card .flags > * + * { margin-left: .35rem; }
+#nav > * + * { margin-left: 1px; }
+#detail-head > * + * { margin-left: .6rem; }

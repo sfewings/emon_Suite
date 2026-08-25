@@ -4,15 +4,28 @@
 #   docker compose -f tests/replay/docker-compose.yml up -d
 #   docker compose -f tests/replay/docker-compose.yml down
 #
-# Port 1883 on the host, so the app's default --broker localhost reaches it and the
-# recorded data arrives on exactly the topics the boat publishes.
+# Port 1883 on the host by default, so the app's default --broker localhost reaches it
+# and the recorded data arrives on exactly the topics the boat publishes.
+#
+# REPLAY_MQTT_PORT moves the host side of that, which is needed on the boat's Pi rather
+# than on a laptop: the provisioned stack there already holds 1883, so this file could
+# not be brought up at all with the port fixed. Replaying into the provisioned broker
+# instead is possible but not free, because the rest of that stack is listening:
+# emon_mqtt_to_influx writes the replayed race into InfluxDB under today's timestamps,
+# emon_mqtt_to_log and emon_logtojson write it into /share/Input, and event_recorder's
+# track_recording event triggers on 20 m of movement on gps/latitude/0, so it opens a
+# spurious vessel track. An isolated broker on a spare port avoids all four.
+#
+#   REPLAY_MQTT_PORT=1884 docker compose -f tests/replay/docker-compose.yml up -d
+#
+# Then point the app at it with --broker-port 1884, and the replay with -p 1884.
 
 services:
   mosquitto:
     image: eclipse-mosquitto
     container_name: enchantee_replay_mqtt
     ports:
-      - "1883:1883"
+      - "${REPLAY_MQTT_PORT:-1883}:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     restart: unless-stopped

@@ -14,6 +14,8 @@
 #   /portainer/ -> Portainer           (portainer   :9000)   --base-url=/portainer
 #   /events/    -> event recorder     (host net   :5000)
 #   /settings/  -> emon settings web   (:5001)
+#   /race/      -> race support app    (host net   :5002)
+#   /hud        -> the race app's instrument HUD, a shortcut for the crew
 #
 # The websocket $connection_upgrade map lives in /etc/nginx/conf.d/upgrade-map.conf
 ##
@@ -123,4 +125,40 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
     location = /settings { return 301 /settings/; }
+
+    # Race support app (Flask on the host network, port 5002).
+    #
+    # DESIGN.md section 5. Same shape as /events/ above and for the same reason: the
+    # app addresses all of its own assets and API calls relative to
+    # location.pathname, so it works here under /race/ and on its own port alike,
+    # provided the page is at a directory-style URL. Hence the redirect below.
+    #
+    # Screens: /race/ is the race screen, /race/hud the instrument HUD, and the
+    # navigation between them is relative links, so nothing here needs to know about
+    # them individually.
+    location /race/ {
+        proxy_pass http://127.0.0.1:5002/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location = /race { return 301 /race/; }
+
+    # Shortcut, so the crew can type enchantee.local/hud and get the instruments.
+    #
+    # This is an exact match, so it takes precedence over the catch-all `location /`
+    # that sends everything else to the Node-RED dashboard. It costs nothing to claim:
+    # `location /` rewrites the root onto :1880/ui/, so /hud currently resolves to
+    # :1880/ui/hud, which does not exist. Node-RED's own HUD is served at its root and
+    # stays reachable at /nodered/hud, which is where DESIGN 13 step 3 does the
+    # side-by-side comparison against this one.
+    #
+    # 302 rather than the 301 used for the trailing-slash redirects above. Those are
+    # structural and permanent; this one is a convenience alias that is expected to be
+    # repointed. Until the Node-RED HUD is retired (DESIGN 13 step 4) it is useful to
+    # be able to swing /hud between the two implementations, and a 301 cached in every
+    # phone on the boat would make that a nuisance to undo.
+    location = /hud { return 302 /race/hud; }
 }

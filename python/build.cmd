@@ -16,7 +16,7 @@ REM ============================================================
 REM Container Definitions
 REM Edit image names and versions here
 REM ============================================================
-set ALL_CONTAINERS=event_recorder settings_web serial_to_mqtt mqtt_to_influx mqtt_to_log gpsd_to_mqtt query_bom
+set ALL_CONTAINERS=event_recorder settings_web enchantee_racing serial_to_mqtt mqtt_to_influx mqtt_to_log gpsd_to_mqtt query_bom
 
 set DOCKERFILE_event_recorder=event_recorder\Dockerfile
 set IMAGE_event_recorder=sfewings32/emon_event_recorder
@@ -25,6 +25,10 @@ set VERSION_event_recorder=0.1.0
 set DOCKERFILE_settings_web=emon_settings_web\Dockerfile
 set IMAGE_settings_web=sfewings32/emon_settings_web
 set VERSION_settings_web=0.1.0
+
+set DOCKERFILE_enchantee_racing=enchantee_racing\Dockerfile
+set IMAGE_enchantee_racing=sfewings32/emon_enchantee_racing
+set VERSION_enchantee_racing=latest
 
 set DOCKERFILE_serial_to_mqtt=serialToMQTT.Dockerfile
 set IMAGE_serial_to_mqtt=sfewings32/emon_serial_to_mqtt
@@ -310,6 +314,17 @@ if /i "%RUN_NAME%"=="settings_web" (
         "!IMAGE_settings_web!:test"
     goto :eof
 )
+REM --demo drives the display with synthetic readings, so this needs no broker and no
+REM boat. --host 0.0.0.0 overrides the image default of 127.0.0.1, because here the
+REM port is published out of a bridge network rather than sitting on host loopback.
+if /i "%RUN_NAME%"=="enchantee_racing" (
+    echo   race screen: http://localhost:5002/   instrument HUD: http://localhost:5002/hud
+    docker run --rm -it ^
+        -p 5002:5002 ^
+        "!IMAGE_enchantee_racing!:test" ^
+        python app.py --demo --host 0.0.0.0
+    goto :eof
+)
 echo No specific test run configured for %RUN_NAME%. Starting with default entrypoint...
 docker run --rm "!IMAGE_%RUN_NAME%!:test" || echo (no default entrypoint)
 goto :eof
@@ -344,8 +359,8 @@ echo                             local, amd64, arm64, arm32, all
 echo   -h, --help              Show this help
 echo.
 echo Available containers:
-echo   event_recorder  settings_web     serial_to_mqtt  mqtt_to_influx
-echo   mqtt_to_log     gpsd_to_mqtt     query_bom
+echo   event_recorder  settings_web     enchantee_racing  serial_to_mqtt
+echo   mqtt_to_influx  mqtt_to_log      gpsd_to_mqtt      query_bom
 echo.
 echo Examples:
 echo   build.cmd                                    # Build all containers locally
@@ -354,6 +369,8 @@ echo   build.cmd -m push -c event_recorder          # Push event_recorder only
 echo   build.cmd -m local -c settings_web,gpsd_to_mqtt
 echo   build.cmd -m push -p arm64 -c serial_to_mqtt
 echo   build.cmd -m test -c event_recorder
+echo   build.cmd -m push -p arm64 -c enchantee_racing   # the Pi on the boat
+echo   build.cmd -m test -c enchantee_racing            # demo mode, no broker
 echo.
 echo Note: For combined platforms (e.g. -p arm64,arm32) use build.sh via WSL.
 goto :eof

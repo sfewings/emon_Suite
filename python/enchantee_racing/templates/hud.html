@@ -44,6 +44,11 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">  <!-- relative: resolves to /race/ behind nginx and / on the app's own port.
+     Declares the scope that keeps both screens in one iOS standalone window;
+     apple-mobile-web-app-capable above is what iOS 12 reads instead. -->
+<link rel="apple-touch-icon" href="static/icon-180.png">  <!-- iOS takes the Home Screen icon from here; it will not accept an SVG.
+     Relative, like every other asset URL on these pages. -->
 <title>Enchantee HUD</title>
 <style>
   /* Colours match the readings on the dashboard pages: speeds DodgerBlue,
@@ -96,7 +101,7 @@
     grid-template-columns: 4.2em 1fr 3.6em;
     align-items: center;
     min-height: 0;
-    font-size: clamp(9px, 1.7vh, 18px);   /* sets the gutter widths and label size */
+    font-size: 1.7vh; font-size: clamp(9px, 1.7vh, 18px);   /* sets the gutter widths and label size */
   }
   .lbl, .unit {
     color: var(--label);
@@ -135,7 +140,7 @@
     padding: 0 0.6em; min-width: 0;
   }
   .row.multi .sub {
-    display: flex; justify-content: space-between; gap: .4em;
+    display: flex; justify-content: space-between;
     color: var(--label); letter-spacing: .1em; text-transform: uppercase;
     white-space: nowrap; overflow: hidden;
   }
@@ -144,7 +149,7 @@
   .row.multi .cell.name { text-align: left; }
   .row.multi .val.name {
     font-variant-numeric: normal; font-feature-settings: normal;
-    font-size: clamp(15px, 3.6vh, 44px);
+    font-size: 3.6vh; font-size: clamp(15px, 3.6vh, 44px);
     overflow: hidden; text-overflow: ellipsis;
   }
 
@@ -165,15 +170,19 @@
     position: fixed; z-index: 2;
     left: env(safe-area-inset-left); right: env(safe-area-inset-right);
     bottom: env(safe-area-inset-bottom);
-    display: flex; gap: 1px;
+    display: flex;
     border-top: 2px solid var(--rule);
     background: #000;
   }
+  /* Margins rather than flexbox gap, which needs Safari 14.1 and is ignored on the
+     iPad mini 3's iOS 12. static/app.css does the same for the race page. */
+  #nav > * + * { margin-left: 1px; }
+  .row.multi .sub > * + * { margin-left: .4em; }
   #nav a {
     flex: 1 1 0; min-height: 2.6rem; min-width: 0;
     display: flex; align-items: center; justify-content: center;
     color: var(--label); text-decoration: none;
-    font-size: clamp(10px, 1.9vh, 17px);
+    font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
     font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   }
   #nav a:active { background: var(--rule); }
@@ -470,6 +479,26 @@
 
   function keepAwake() { requestLock(); playWake(); }
   document.addEventListener("visibilitychange", function () { if (!document.hidden) keepAwake(); });
+
+  // Cross-page navigation goes through location.assign, not through the anchor.
+  //
+  // Same handler as static/app.js, and for the same reason: added to the Home Screen
+  // this page runs in iOS's standalone context, and following a real anchor to a
+  // different document is treated as leaving the web app, so iOS reopens it in an
+  // in-app browser with a Done button and a toolbar top and bottom. Assigning location
+  // from script stays inside the standalone context.
+  //
+  // The href stays on the anchor and only the default action is cancelled, so the link
+  // still resolves relatively against the document, which is what keeps it right both
+  // behind /race/ and on the app's own port. A test checks this page and app.js against
+  // each other, because fixing one direction and not the other would throw the crew out
+  // of the app going one way only.
+  Array.prototype.forEach.call(document.querySelectorAll("#nav a[href]"), function (a) {
+    a.addEventListener("click", function (event) {
+      event.preventDefault();
+      location.assign(a.href);
+    });
+  });
 
   // tap anywhere for fullscreen
   document.body.addEventListener("click", function () {
