@@ -191,6 +191,67 @@ def test_the_audio_context_is_taken_prefixed_as_well():
         "constructing the unprefixed name directly defeats the fallback"
 
 
+def test_the_audio_session_is_held_only_while_a_countdown_is_armed():
+    """iOS mutes Web Audio with the ringer switch, and getting out of that interrupts music.
+
+    Measured on the boat's phone: with the ringer on, both Web Audio and a media element
+    are audible; with it on silent, only the media element is. So the countdown has to
+    leave the ambient session, and leaving it stops whatever else the phone is playing.
+    The bargain is to hold it only from arming until the horn has finished: ten minutes
+    of no music before a start rather than an afternoon of it.
+    """
+    script = _script()
+    assert "function promoteAudio()" in script and "function releaseAudio()" in script
+
+    # Taken when the countdown is armed, which is inside the prestart branch.
+    prestart = script[script.index('if (mode === "prestart"'):]
+    prestart = prestart[:prestart.index("// No longer counting down")]
+    assert "promoteAudio()" in prestart, "the session is not taken while counting down"
+    assert "releaseAudio()" not in prestart, "it must not be given back mid-countdown"
+
+    # Given back afterwards, but not merely because the mode changed: T-0 is both the
+    # horn and the moment the mode becomes racing, so releasing on the transition would
+    # cut the gun off. It waits out the tail of the final clip.
+    after = script[script.index("// No longer counting down"):]
+    assert "releaseAudio()" in after
+    assert "holdUntil" in after, "release is not held off until the horn has finished"
+    assert "hornTail" in script, "the tail must come from the file, not a guess"
+
+    # Both mechanisms, because which one works depends on the iOS version: the official
+    # property from Safari 16.4, and a media element below that.
+    assert "navigator.audioSession" in script, "no audioSession path for iOS 16.4+"
+    assert 'type = "playback"' in script
+    assert 'type = "auto"' in script, "the session is never given back"
+
+
+def test_the_near_silence_element_is_playable_and_not_muted():
+    """A muted element promotes nothing, which is the whole trick, and why wake.mp4 cannot
+    do this job: it is muted on purpose, for the screen lock.
+
+    The file is near-silence rather than silence because some iOS versions decline to
+    promote the session for a stream of digital zeros.
+    """
+    page = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    tag = re.search(r"<audio[^>]*id=\"quiet\"[^>]*>", page, re.S)
+    assert tag, "no quiet element on the race page"
+    markup = tag.group(0)
+    assert "muted" not in markup, "a muted element cannot promote the audio session"
+    assert "loop" in markup, "the session is only held while something is playing"
+    assert 'src="static/silence.wav"' in markup, "relative, like every other asset"
+
+    wav = ROOT / "static" / "silence.wav"
+    assert wav.exists(), "static/silence.wav is missing"
+    import wave
+    with wave.open(str(wav)) as handle:
+        frames = handle.getnframes()
+        assert handle.getnchannels() == 1
+        assert frames > 0
+        peak = max(abs(int.from_bytes(handle.readframes(frames)[i:i + 2], "little",
+                                     signed=True)) for i in range(0, frames * 2, 2))
+    assert peak > 0, "digital silence: some iOS versions will not promote the session"
+    assert peak <= 4, "loud enough to hear, at %d; this has to be inaudible" % peak
+
+
 def test_a_missing_clip_falls_back_to_a_tone_rather_than_silence():
     """Whatever goes wrong with a file or a codec, the gun still has to make a noise."""
     script = _script()

@@ -20,7 +20,7 @@
   var el = {};
   ["pip", "notice", "countdown", "line-distance", "line-unit", "line-time", "mark-name",
    "distance", "distance-unit", "bearing", "cog", "relative", "elapsed", "secondary",
-   "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake",
+   "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake", "quiet",
    "mark-round", "nav", "resume", "next",
    // the first mark, shown before the start as well as during the race (DESIGN 9.2)
    "pre-mark", "pre-round", "pre-distance", "pre-unit", "pre-bearing",
@@ -734,6 +734,59 @@
     playing = [];
   }
 
+  // --- the audio session, held only while a countdown is armed (DESIGN 10.2) ---------
+  //
+  // iOS plays Web Audio in the ambient session, which the ringer switch mutes. A phone
+  // on silent in a pocket is the normal case on a boat, so as built the gun could be
+  // lost with nothing to show it. Measured on the boat's phone: with the switch on both
+  // Web Audio and a media element are audible; with it on silent only the media element
+  // is.
+  //
+  // Getting out of the ambient session interrupts whatever else the phone is playing,
+  // so it is held only from the moment a countdown is armed until the horn has finished,
+  // rather than for the whole time the app is open. Ten minutes of no music before a
+  // start, not an afternoon of it.
+  //
+  // Scheduling stays on the audio clock throughout. The horn has to land on T-0 to the
+  // sample and a media element cannot be scheduled that finely (DESIGN 10.1), so this
+  // changes which session the clips play into and nothing else.
+  var promoted = false;
+  var holdUntil = 0;          // audio-clock time the horn stops, so the hold can end
+
+  function promoteAudio() {
+    if (promoted) return;
+    promoted = true;
+    // The official way, Safari 16.4 and later. One property, and nothing to play.
+    if (navigator.audioSession) {
+      try { navigator.audioSession.type = "playback"; return; } catch (e) { /* fall through */ }
+    }
+    // Below that, a media element playing real audio promotes the session. No user
+    // gesture is needed here because the wake video has already played on the first tap,
+    // which gives the document its media activation; if it somehow has not, this is
+    // retried on the next poll while the countdown is still armed.
+    if (el.quiet) {
+      var started = el.quiet.play();
+      if (started && started.catch) started.catch(function () { promoted = false; });
+    }
+  }
+
+  function releaseAudio() {
+    if (!promoted) return;
+    promoted = false;
+    if (navigator.audioSession) {
+      try { navigator.audioSession.type = "auto"; } catch (e) { /* nothing to undo */ }
+    }
+    if (el.quiet) { try { el.quiet.pause(); el.quiet.currentTime = 0; } catch (e) {} }
+  }
+
+  // How long after T-0 the horn is still sounding, taken from the file rather than
+  // guessed: the final clip runs HORN_AT seconds of countdown and then the horn, so
+  // whatever is left after HORN_AT is the tail. A second of margin on top.
+  function hornTail() {
+    var final = buffers["final"];
+    return (final ? Math.max(0, final.duration - HORN_AT) : 2.0) + 1.0;
+  }
+
   function schedule(deadline) {
     var now = audio.currentTime;
     CUES.forEach(function (cue) {
@@ -794,11 +847,15 @@
       // request took. On a boat's own wifi that is a few milliseconds and not worth
       // modelling; the nudge exists for anything that matters (DESIGN 10).
       var deadline = audio.currentTime + r.countdown;
+      // Armed. Take the session now rather than at T-0: the minute calls have to be
+      // heard too, and the crew is setting the timer from the hooter, which is a tap.
+      promoteAudio();
       if (planned === null || Math.abs(deadline - planned) > REPLAN_S) {
         silence();
         planned = deadline;
         schedule(deadline);
       }
+      holdUntil = deadline + hornTail();
       return;
     }
 
@@ -806,6 +863,11 @@
     // sounding, so leave it alone: cutting it off at T-0 would silence the one cue that
     // matters. Anything else means the countdown was abandoned, so stop.
     if (mode !== "racing") silence();
+    // And give the session back, once the horn has finished. Not at the mode change:
+    // T-0 is both the horn and the moment the mode becomes racing (DESIGN 10.1), so
+    // releasing on the transition would cut off the one cue nobody can miss. An
+    // abandoned countdown has nothing left to play, so it releases at once.
+    if (mode !== "racing" || audio.currentTime >= holdUntil) releaseAudio();
     planned = null;
     lastBeep = null;
   }

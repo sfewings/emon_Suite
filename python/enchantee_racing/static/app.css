@@ -430,7 +430,15 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   position: absolute; width: 0; height: 0; overflow: hidden;
 }
 
-#wake {
+#wake,
+/* #quiet is the near-silence element that holds the audio session while a countdown is
+   armed (DESIGN 10.2). Out of the flow for the same reason as everything else up there:
+   an <audio> element is inline, so in the flow it sits on a line box of its own and makes
+   the page taller than the screen, which puts the bottom of #app below the fold and the
+   navigation half off it. That is the fault DESIGN 9.6 records taking three attempts,
+   caused by an <svg> doing exactly this, and the test that came out of it caught this one
+   in the first minute. */
+#quiet {
   position: fixed; top: 0; left: 0; width: 1px; height: 1px;
   opacity: 0; z-index: -1; pointer-events: none;
 }

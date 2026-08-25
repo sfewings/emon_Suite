@@ -25,6 +25,15 @@
 
 <video id="wake" src="static/wake.mp4" muted loop playsinline webkit-playsinline
        preload="auto" disableremoteplayback></video>
+<!--
+  Near-silence, played on a loop only while a countdown is armed, to get the countdown
+  out of the audio session iOS mutes with the ringer switch (DESIGN 10.2). Muted would
+  defeat the point, which is why this one carries no muted attribute and wake.mp4 above
+  does: a media element only promotes the session if it is actually playing audio. The
+  file is at one least-significant bit, so it is inaudible rather than silent.
+-->
+<audio id="quiet" src="static/silence.wav" loop preload="auto" playsinline
+       webkit-playsinline disableremoteplayback></audio>
 <div id="pip"></div>
 <div id="notice"></div>
 

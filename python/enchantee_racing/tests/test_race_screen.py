@@ -710,15 +710,24 @@ def test_nothing_above_the_app_takes_up_any_room():
             depth += 1
     assert ids, "expected some elements before #app"
 
+    # Comments stripped first, then every rule read as selector-list plus body, because
+    # the selector may be grouped: #wake and #quiet share one rule, being out of the flow
+    # for the same reason and in the same way.
+    bare = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    rules = []
+    for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", bare):
+        selectors = [part.strip() for part in match.group(1).split(",")]
+        rules.append((selectors, match.group(2)))
+
     for ident in ids:
-        rule = re.search(r'(?m)^#%s\s*\{([^}]*)\}' % re.escape(ident), css)
-        assert rule, "#%s is in the flow above #app with no CSS to take it out" % ident
-        assert re.search(r'position:\s*(fixed|absolute)', rule.group(1)), \
+        bodies = [body for selectors, body in rules if ("#" + ident) in selectors]
+        assert bodies, "#%s is in the flow above #app with no CSS to take it out" % ident
+        assert any(re.search(r'position:\s*(fixed|absolute)', body) for body in bodies), \
             "#%s must be out of the flow, or it makes the page taller than the screen" \
             % ident
 
     # and the page must not have grown something new up there unnoticed
-    assert set(ids) == {"wake", "pip", "notice", "rnd-defs"}, ids
+    assert set(ids) == {"wake", "quiet", "pip", "notice", "rnd-defs"}, ids
 
 
 def test_the_manifest_scopes_both_screens_into_one_web_app():
