@@ -32,6 +32,8 @@
     land: document.getElementById("layer-land"),
     lines: document.getElementById("layer-lines"),
     marks: document.getElementById("layer-marks"),
+    course: document.getElementById("layer-course"),
+    boat: document.getElementById("layer-boat"),
     fit: document.getElementById("map-fit"),
     out: document.getElementById("map-out"),
     scope: document.getElementById("map-scope")
@@ -194,11 +196,35 @@
   }
 
   function setView(v) {
+    var previous = view;
     view = clampView(v);
     el.chart.setAttribute("viewBox",
       view.x.toFixed(1) + " " + view.y.toFixed(1) + " " +
       view.w.toFixed(1) + " " + view.h.toFixed(1));
-    applyScale();
+    // Only when the scale actually changed. applyScale writes an attribute to all 131
+    // circles and 20 labels, and a pan does not change the scale at all, so doing it on
+    // every touchmove was 151 pointless attribute writes per event. Reported from the
+    // boat as pan and pinch being slower on the iPad than the iPhone, which is the
+    // machine that would notice.
+    if (!previous || previous.w !== view.w) applyScale();
+  }
+
+  // Gesture updates are coalesced to one per frame. iOS delivers touchmove faster than it
+  // paints, so without this a pinch could run clampView and a viewBox write several times
+  // for one frame on screen, and on the iPad that is the difference between workable and
+  // smooth. The buttons call setView directly: they happen once and should feel instant.
+  var pendingView = null;
+  var frame = null;
+
+  function scheduleView(v) {
+    pendingView = v;
+    if (frame !== null) return;
+    frame = requestAnimationFrame(function () {
+      frame = null;
+      var next = pendingView;
+      pendingView = null;
+      if (next) setView(next);
+    });
   }
 
   function showLevel(i) {
@@ -260,8 +286,8 @@
     // another CTM round trip. Dragging right moves the chart right, which means the
     // window over it moves left.
     var mpp = metresPerPixel();
-    setView({ x: from.x - dxPixels * mpp, y: from.y - dyPixels * mpp,
-              w: from.w, h: from.h });
+    scheduleView({ x: from.x - dxPixels * mpp, y: from.y - dyPixels * mpp,
+                   w: from.w, h: from.h });
   }
 
   function onTouchStart(event) {
@@ -353,6 +379,10 @@
         sym.label.setAttribute("y", (sym.y - gap).toFixed(1));
       }
     }
+    // The overlay is sized in pixels too, so a change of scale has to redraw it. Cheap:
+    // a dozen nodes against the chart's sixteen thousand coordinate pairs, which is the
+    // whole reason the chart is built once and this is not.
+    if (lastState) { drawCourse(lastState); drawBoat(lastState); }
   }
 
   // --- the layers, drawn bottom first (DESIGN 12) --------------------------------------
@@ -449,6 +479,176 @@
     });
   }
 
+  // --- the live overlay: the course being sailed, and the boat -------------------------
+  //
+  // The only two things on this page that move, and the only ones the crew is looking for
+  // once the gun has gone. Both come off /api/state, which the race screen already polls
+  // at 2 Hz and which carries the position and the race state in one payload (DESIGN 4).
+  //
+  // Everything here is redrawn from scratch on each poll, unlike the chart, which is built
+  // once. That is affordable because it is a handful of nodes rather than sixteen thousand
+  // coordinate pairs, and it means there is no state to get out of step with the race.
+
+  var POLL_MS = 500;
+  var BOAT_PX = { hull: 9, vector: 34, ring: 9 };
+  var courseNow = null;        // the course document, refetched when the id changes
+  var markIndexNow = {};
+  var linesNow = null;
+  var boatShape = null;        // {hull, vector}
+  var lastState = null;        // the last /api/state, so a zoom can redraw the overlay
+
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  // The legs, mark to mark in the order the sheet prints them, starting and finishing at
+  // the line. Drawn as separate segments rather than one polyline so the leg being sailed
+  // can be picked out: DESIGN 9.2 puts the next mark first in the crew's attention, and
+  // this is that on a chart.
+  function drawCourse(state) {
+    clear(el.course);
+    if (!courseNow || !courseNow.legs || !linesNow) return;
+
+    var startMid = midOfLine(linesNow);
+    var previous = startMid;
+    var legIndex = state && state.race ? state.race.leg : null;
+
+    courseNow.legs.forEach(function (leg, i) {
+      var to = leg.mark && markIndexNow[leg.mark];
+      var point = to ? project([to.lon, to.lat]) : startMid;   // the finish is the line
+      var current = (legIndex !== null && legIndex === i);
+      add(el.course, "line", {
+        x1: previous[0].toFixed(1), y1: previous[1].toFixed(1),
+        x2: point[0].toFixed(1), y2: point[1].toFixed(1),
+        class: "leg-line" + (current ? " leg-now" : "")
+      });
+      if (current && to) {
+        // A ring round the mark being sailed to. Sized in pixels like every other symbol
+        // on this page, so it stays an annotation rather than becoming a circle on the
+        // ground.
+        add(el.course, "circle", {
+          cx: point[0].toFixed(1), cy: point[1].toFixed(1),
+          r: (BOAT_PX.ring * metresPerPixel()).toFixed(1),
+          class: "target-ring"
+        });
+      }
+      previous = point;
+    });
+  }
+
+  function midOfLine(lines) {
+    var a = project([lines.start_finish.inner.lon, lines.start_finish.inner.lat]);
+    var b = project([lines.start_finish.outer.lon, lines.start_finish.outer.lat]);
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  }
+
+  function drawBoat(state) {
+    var fix = state && state.position;
+    // Hidden outright past the 5 s cutoff, not dimmed. A dimmed boat still reads as a
+    // boat, and it would be a boat somewhere it is not (DESIGN 9.5). The server has
+    // already applied the cutoff, so this is one flag rather than a second opinion.
+    if (!fix || !fix.v || fix.stale) {
+      el.boat.setAttribute("hidden", "hidden");
+      return;
+    }
+    el.boat.removeAttribute("hidden");
+
+    var at = project([fix.v.lon, fix.v.lat]);
+    var mpp = metresPerPixel();
+    // Course over ground, because that is where the boat is going, and it is what the HUD
+    // shows beside a bearing for the same reason (DESIGN 9.10). Heading is the fallback
+    // for a boat that is stopped, where COG is noise.
+    var fields = state.fields || {};
+    var course = fields.cog && typeof fields.cog.v === "number" ? fields.cog.v
+               : (fields.hdg && typeof fields.hdg.v === "number" ? fields.hdg.v : null);
+
+    if (!boatShape) {
+      boatShape = {
+        vector: add(el.boat, "line", { class: "boat-vector" }),
+        hull: add(el.boat, "path", { class: "boat" })
+      };
+    }
+
+    // A triangle pointing along the course, sized in pixels. Drawn from the heading rather
+    // than rotated by a transform, so there is no second coordinate system to reason about
+    // and no dependence on transform-box or vector-effect behaviour on an old Safari.
+    var heading = course === null ? 0 : course;
+    var rad = heading * Math.PI / 180.0;
+    var size = BOAT_PX.hull * mpp;
+    // Screen space: x is east, y is south, and a bearing is clockwise from north.
+    var ahead = [Math.sin(rad), -Math.cos(rad)];
+    var side = [-ahead[1], ahead[0]];
+    var nose = [at[0] + ahead[0] * size, at[1] + ahead[1] * size];
+    var portQ = [at[0] - ahead[0] * size * 0.7 + side[0] * size * 0.6,
+                 at[1] - ahead[1] * size * 0.7 + side[1] * size * 0.6];
+    var stbdQ = [at[0] - ahead[0] * size * 0.7 - side[0] * size * 0.6,
+                 at[1] - ahead[1] * size * 0.7 - side[1] * size * 0.6];
+    boatShape.hull.setAttribute("d",
+      "M" + nose[0].toFixed(1) + " " + nose[1].toFixed(1) +
+      "L" + portQ[0].toFixed(1) + " " + portQ[1].toFixed(1) +
+      "L" + stbdQ[0].toFixed(1) + " " + stbdQ[1].toFixed(1) + "Z");
+
+    if (course === null) {
+      boatShape.vector.setAttribute("x1", at[0]);
+      boatShape.vector.setAttribute("y1", at[1]);
+      boatShape.vector.setAttribute("x2", at[0]);
+      boatShape.vector.setAttribute("y2", at[1]);
+    } else {
+      var reach = BOAT_PX.vector * mpp;
+      boatShape.vector.setAttribute("x1", at[0].toFixed(1));
+      boatShape.vector.setAttribute("y1", at[1].toFixed(1));
+      boatShape.vector.setAttribute("x2", (at[0] + ahead[0] * reach).toFixed(1));
+      boatShape.vector.setAttribute("y2", (at[1] + ahead[1] * reach).toFixed(1));
+    }
+  }
+
+  var scopeNames = ["racing area", "racing area", "Swan and the coast"];
+
+  function onState(state) {
+    var id = state && state.race ? state.race.course : null;
+    var have = courseNow ? courseNow.id : null;
+    if (id !== have) {
+      // The crew has chosen a different course, or abandoned one. Refetch it, refit the
+      // view to it, and rename the scope: a course change is a deliberate act that just
+      // happened, so following it is what the crew expects, the same principle DESIGN 9.6
+      // applies to a mode change on the race screen.
+      if (!id) {
+        courseNow = null;
+        levels[0] = levels[1];
+        scopeNames[0] = "racing area";
+        drawCourse(state);
+        return;
+      }
+      fetch(base + "/api/course/" + encodeURIComponent(id), { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (course) {
+          courseNow = course;
+          var fitted = courseExtent(course, markIndexNow, linesNow);
+          levels[0] = fitted || levels[1];
+          scopeNames[0] = course ? (course.series_name || "course") + " " + course.course_no
+                                 : "racing area";
+          if (level === 0) showLevel(0);
+          if (el.scope) el.scope.textContent = scopeNames[level];
+          drawCourse(state);
+        })
+        .catch(function () { /* the chart is still a chart without a course on it */ });
+      return;
+    }
+    drawCourse(state);
+  }
+
+  function poll() {
+    fetch(base + "/api/state", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (state) {
+        if (!state) return;
+        lastState = state;
+        onState(state);
+        drawBoat(state);
+      })
+      .catch(function () { /* a dropout self-heals on the next poll (DESIGN 2) */ });
+  }
+
   // --- load ---------------------------------------------------------------------------
 
   function fetchJson(name) {
@@ -540,24 +740,37 @@
       var fitted = courseExtent(course, markIndex, lines);
       levels = [fitted || racing, racing, extentOf(coast.bbox)];
 
-      var names = [course && fitted ? (course.series_name || "course") + " " +
-                                      course.course_no : "racing area",
-                   "racing area", "Swan and the coast"];
-      if (el.scope) {
-        var label = function () { el.scope.textContent = names[level]; };
-        el.chart.addEventListener("touchend", label);
-        window.addEventListener("mouseup", label);
-      }
+      // What the poll needs, kept where it can reach it. The chart is built once and the
+      // overlay redrawn on every poll, so these are the only pieces of the load that
+      // outlive it.
+      courseNow = course;
+      markIndexNow = markIndex;
+      linesNow = lines;
+      scopeNames[0] = course && fitted
+        ? (course.series_name || "course") + " " + course.course_no
+        : "racing area";
+
+      var label = function () {
+        if (el.scope) el.scope.textContent = scopeNames[level];
+      };
 
       bindGestures();
+      el.chart.addEventListener("touchend", label);
+      window.addEventListener("mouseup", label);
       if (el.fit) {
-        el.fit.addEventListener("click", function () { showLevel(0); if (el.scope) el.scope.textContent = names[0]; });
+        el.fit.addEventListener("click", function () { showLevel(0); label(); });
       }
       if (el.out) {
-        el.out.addEventListener("click", function () { showLevel(level + 1); if (el.scope) el.scope.textContent = names[level]; });
+        el.out.addEventListener("click", function () { showLevel(level + 1); label(); });
       }
       showLevel(0);
-      if (el.scope) el.scope.textContent = names[0];
+      label();
+
+      // The overlay, and then the poll that keeps it current. Drawn once immediately so
+      // the course is on the chart before the first poll returns.
+      drawCourse(null);
+      poll();
+      setInterval(poll, POLL_MS);
 
       // The symbols are sized against the element's pixel size, so a rotation or a split
       // view changes them. orientationchange as well as resize, because iOS fires the

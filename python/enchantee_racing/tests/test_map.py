@@ -40,6 +40,28 @@ def _map_js():
     return (ROOT / "static" / "map.js").read_text(encoding="utf-8")
 
 
+def _function(code, name):
+    """The body of one function out of map.js, by brace matching.
+
+    Slicing between two function names was the first approach and it was brittle: it
+    depends on which function happens to come next in the file, and the applyScale test
+    broke the moment padded() sat before it rather than after.
+    """
+    start = code.index("function " + name)
+    depth, i = 0, code.index("{", start)
+    opened = False
+    while i < len(code):
+        if code[i] == "{":
+            depth += 1
+            opened = True
+        elif code[i] == "}":
+            depth -= 1
+            if opened and depth == 0:
+                return code[start:i + 1]
+        i += 1
+    raise AssertionError("unbalanced braces reading %s" % name)
+
+
 def _map_code():
     """map.js with its comments removed.
 
@@ -70,9 +92,13 @@ def test_the_layers_are_in_the_order_design_12_states():
     spill over the bank.
     """
     page = _page()
-    wanted = ["layer-bands", "layer-contours", "layer-land", "layer-lines", "layer-marks"]
+    wanted = ["layer-bands", "layer-contours", "layer-land", "layer-lines", "layer-marks",
+              "layer-course", "layer-boat"]
     found = re.findall(r'<g id="(layer-[\w-]+)"', page)
     assert found == wanted, found
+    # The course and the boat are last because they are the only things that move and the
+    # only ones the crew is looking for once the gun has gone. The boat is above the
+    # course: own ship is never hidden by a leg line.
 
 
 def test_the_page_references_nothing_off_box_and_nothing_absolutely():
@@ -123,9 +149,16 @@ def test_the_map_projects_through_the_shared_transcription():
     geo.js is the transcription that is proved against nav.py (DESIGN 12.1 step 2)."""
     code = _map_code()
     assert "Geo.enu(" in code, "the map is not using geo.js"
-    # No second implementation hiding in here. These are the tell-tales of one.
-    assert "6378137" not in code, "a WGS84 radius in map.js means a second projection"
-    assert "Math.cos" not in code, "map.js should not be doing spherical arithmetic"
+
+    # No second projection hiding in here. Trig on its own is not the tell-tale, and
+    # banning it was wrong: drawBoat legitimately uses sin and cos to point a triangle
+    # along a bearing, which is rotating a symbol and not projecting a coordinate. What
+    # would be a second projection is the geodesy.
+    for tell in ("6378137", "WGS84", "metresPerDegree", "Math.pow(w", "298.257"):
+        assert tell not in code, "%s in map.js means a second projection" % tell
+    # Only project() turns a coordinate into a point, and only geo.js is asked.
+    assert code.count("Geo.") == code.count("Geo.enu("), \
+        "map.js reaches into geo.js for more than the projection"
     # And the y flip happens exactly once, or the map is mirrored north to south.
     assert code.count("-p.n") == 1, "the y inversion belongs in project() and nowhere else"
 
@@ -241,14 +274,14 @@ def test_the_default_view_is_the_course_and_falls_back_to_the_racing_area():
     assert "showLevel(0)" in js, "the map does not open on the fitted level"
     assert "fitted || racing" in js, "no fallback when no course is selected"
     assert "function fetchCourse" in js
-    fetch_course = js[js.index("function fetchCourse"):js.index("function courseExtent")]
+    fetch_course = _function(_map_code(), "fetchCourse")
     assert "return null" in fetch_course
     assert ".catch(function () { return null; })" in fetch_course, \
         "a failed course fetch must not reject and block the chart"
 
     # Both ends of the start line are in the fitted extent: the race begins and ends there
     # and a view that cut the line off would miss what the crew looks at first.
-    extent = js[js.index("function courseExtent"):js.index("Promise.all")]
+    extent = _function(_map_code(), "courseExtent")
     assert "start_finish.inner" in extent and "start_finish.outer" in extent
 
 
@@ -258,7 +291,7 @@ def test_panning_and_zooming_are_clamped():
     js = _map_js()
     assert "function clampView" in js
     assert "MIN_SPAN_M" in js and "MAX_SLACK" in js
-    clamp = js[js.index("function clampView"):js.index("function setView")]
+    clamp = _function(_map_code(), "clampView")
     assert "Math.min(maxW / v.w, maxH / v.h)" in clamp, \
         "zoom-out clamp must scale both axes together"
     assert "Math.max(MIN_SPAN_M / v.w, MIN_SPAN_M / v.h)" in clamp
@@ -292,7 +325,7 @@ def test_screen_to_user_coordinates_go_through_the_svg_matrix():
     assert "createSVGPoint" in js
     assert "matrixTransform" in js
     assert "function zoomAbout" in js
-    zoom = js[js.index("function zoomAbout"):js.index("function panBy")]
+    zoom = _function(_map_code(), "zoomAbout")
     assert zoom.count("clientToUser") == 2, \
         "the anchor must be measured before and after the resize"
 
@@ -301,9 +334,116 @@ def test_a_finger_lifted_out_of_a_pinch_becomes_a_pan():
     """Otherwise the map sticks until the crew lets go with both fingers, which feels like
     a hang and is the kind of thing only a real hand finds."""
     js = _map_js()
-    end = js[js.index("function onTouchEnd"):js.index("function bindGestures")]
+    end = _function(_map_code(), "onTouchEnd")
     assert "event.touches.length === 1" in end
     assert 'kind: "pan"' in end
+
+
+def test_the_boat_is_hidden_on_a_stale_or_missing_fix():
+    """DESIGN 9.5: blank, never dim. A dimmed boat still reads as a boat, and it would be
+    a boat somewhere it is not.
+
+    The server has already applied the 5 s cutoff, so this reads one flag rather than
+    forming a second opinion about the age of a fix. Verified in a browser against the
+    deployed instance, which has no GPS at all: layer-boat carried hidden.
+    """
+    code = _map_code()
+    guard = _function(code, "drawBoat")
+    assert "fix.stale" in guard, "the boat does not check the staleness flag"
+    assert "!fix.v" in guard, "a payload with no position at all is not handled"
+    assert 'setAttribute("hidden"' in guard, "the boat is not hidden, only styled"
+    # Nothing dims it instead.
+    assert "opacity" not in guard, "a stale boat must be hidden, not faded"
+
+
+def test_the_boat_points_along_its_course_over_ground():
+    """COG, because that is where the boat is going, and heading only as the fallback for a
+    boat that is stopped, where COG is noise. The HUD shows the pair for the same reason
+    (DESIGN 9.10, 9.3)."""
+    code = _map_code()
+    boat = _function(code, "drawBoat")
+    assert "fields.cog" in boat, "the boat is not oriented by course over ground"
+    assert "fields.hdg" in boat, "no fallback when COG is missing"
+    assert boat.index("fields.cog") < boat.index("fields.hdg"), \
+        "heading must be the fallback, not the first choice"
+    # A bearing is clockwise from north and the screen's y axis points down, so the
+    # forward vector is (sin, -cos). Getting this wrong mirrors the boat.
+    assert "Math.sin(rad), -Math.cos(rad)" in boat
+
+
+def test_the_leg_being_sailed_is_the_one_with_weight():
+    """DESIGN 9.2 puts the next mark first in the crew's attention; this is that on a
+    chart. The leg index comes from the race, so the map and the race screen cannot
+    disagree about which leg is being sailed."""
+    code = _map_code()
+    draw = _function(code, "drawCourse")
+    assert "state.race.leg" in draw, "the current leg is not taken from the race state"
+    assert "leg-now" in draw, "no emphasis on the leg being sailed"
+    assert "target-ring" in draw, "the mark being sailed to is not marked"
+    # The finish is the line, not a mark, so the last leg has to end at the line's midpoint
+    # rather than nowhere.
+    assert "startMid" in draw
+    assert "function midOfLine" in code
+
+
+def test_the_overlay_follows_a_change_of_course():
+    """A course change is a deliberate act that just happened, so the map follows it, the
+    same principle DESIGN 9.6 applies to a mode change on the race screen.
+
+    Abandoning a course must not leave its legs drawn on the chart.
+    """
+    code = _map_code()
+    on_state = _function(code, "onState")
+    assert "id !== have" in on_state, "a change of course is not noticed"
+    assert "levels[0]" in on_state, "the fitted level is not updated for the new course"
+    assert "drawCourse(state)" in on_state
+    # and no course means no legs and the racing bbox back
+    assert "if (!id)" in on_state, "abandoning a course is not handled"
+
+
+def test_the_overlay_is_redrawn_when_the_scale_changes():
+    """The boat, its vector and the target ring are sized in pixels like every other
+    symbol on this page, so a zoom has to redraw them or they stay the size they were.
+
+    Affordable because it is a dozen nodes, against the chart's sixteen thousand
+    coordinate pairs, which is the whole reason the chart is built once and this is not.
+    """
+    code = _map_code()
+    scale = _function(code, "applyScale")
+    assert "drawCourse(lastState)" in scale and "drawBoat(lastState)" in scale
+
+
+def test_panning_does_not_resize_every_symbol():
+    """Reported from the boat: pan and pinch slower on the iPad than the iPhone.
+
+    applyScale writes an attribute to all 131 circles and 20 labels, and a pan does not
+    change the scale at all, so doing it per touchmove was 151 pointless writes an event
+    plus a redraw of the overlay. Gesture updates are also coalesced to one a frame, since
+    iOS delivers touchmove faster than it paints.
+    """
+    code = _map_code()
+    set_view = _function(code, "setView")
+    assert "previous.w !== view.w" in set_view, \
+        "applyScale runs on every pan, which is what made the iPad slow"
+    assert "function scheduleView" in code
+    assert "requestAnimationFrame" in code
+    # the pan path goes through the scheduler, not straight to setView
+    pan = _function(code, "panBy")
+    assert "scheduleView(" in pan and "setView(" not in pan
+
+
+def test_the_boat_has_its_own_colour():
+    """It is the thing the crew looks for first, and it must not be mistaken for a leg, a
+    mark or the start line. The first draft borrowed --time, a pale green, which vanished
+    against the >4 m band: that band is most of the water on this page.
+    """
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    boat = re.search(r"#chart \.boat \{([^}]*)\}", css)
+    assert boat, "no boat rule"
+    assert "var(--boat)" in boat.group(1), "the boat borrows another colour"
+    for theme in (r"^body \{([^}]*)\}", r"^body\.night \{([^}]*)\}"):
+        block = re.search(theme, css, re.M | re.S)
+        assert block and "--boat:" in block.group(1), "no boat colour for %s" % theme
 
 
 if __name__ == "__main__":

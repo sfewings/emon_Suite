@@ -50,6 +50,7 @@ body.night {
   --land:         #140806;
   --land-edge:    #7a2a20;
   --water:        #0d0503;
+  --boat:         #ff7a68;
   /* Bright enough to see. Land and water are both nearly black at night, so without a
      visible coastline the two are indistinguishable exactly where there is no depth band
      to imply the shore: Perth Water, Matilda Bay, the Canning entrance. The bank is the
@@ -78,6 +79,10 @@ body {
   --water: #b9c9d4;
   --mark-context: #4a5560;
   --mark-halo: #ffffff;
+  /* Own ship. Its own colour rather than borrowing one, because it is the thing the crew
+     looks for first and it must not be confused with a leg, a mark or the start line. A
+     strong green: pale green vanished against the >4 m band, which is most of the water. */
+  --boat: #0b7a34;
 }
 
 * { box-sizing: border-box; }
@@ -549,6 +554,21 @@ body.night #chart .band-deep    { fill: var(--band-deep); }
    rather than trusting the background. The radius and the label size are set by map.js in
    user units and recomputed per view: the frame is metres, and a symbol has to stay the
    same size on the screen at every zoom, which is what a chart does. */
+/* The course being sailed, over the chart. The leg ahead is the one the crew is steering,
+   so it is the one with weight; the rest is context for where the race goes next. */
+#chart .leg-line { stroke: var(--sog); stroke-width: 1.5; fill: none; opacity: .55; }
+#chart .leg-line.leg-now { stroke: var(--dist); stroke-width: 3; opacity: 1; }
+/* A ring round the mark being sailed to, rather than a different colour: the mark keeps
+   the colour it has everywhere else on this page and gains an annotation. */
+#chart .target-ring { fill: none; stroke: var(--dist); stroke-width: 2; }
+
+/* The boat. Filled, so it reads as an object rather than as another line, and pointing
+   the way it is going. Hidden outright when the fix is stale, never dimmed: a dimmed boat
+   still reads as a boat and would be a boat in the wrong place (DESIGN 9.5). */
+#chart .boat { fill: var(--boat); stroke: var(--mark-halo); stroke-width: 1.5; }
+#chart .boat-vector { stroke: var(--boat); stroke-width: 2.5; fill: none; }
+#layer-boat[hidden] { display: none; }
+
 #chart .mark circle {
   fill: var(--mark-context);
   stroke: var(--mark-halo); stroke-width: 1;
