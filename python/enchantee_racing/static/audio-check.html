@@ -49,6 +49,14 @@
 <button id="step3">3 &nbsp; Play "five minutes" through Web Audio</button>
 <button id="step4">4 &nbsp; Play the same clip through an &lt;audio&gt; element</button>
 
+<p>The ringer switch mutes Web Audio but not a media element, which is why 4 is
+   audible on silent and 3 is not. These two are the candidate fixes. Set the
+   ringer to <b>silent</b>, tap one, then tap 3 again and see whether it is
+   audible.</p>
+
+<button id="step5">5 &nbsp; Ask for the playback audio session, then retry 3</button>
+<button id="step6">6 &nbsp; Play looping near-silence, then retry 3</button>
+
 <div id="log">waiting.</div>
 
 <script>
@@ -77,6 +85,10 @@
     var prefixed = !!window.webkitAudioContext;
     say("window.AudioContext: " + unprefixed, unprefixed ? "ok" : "bad");
     say("window.webkitAudioContext: " + prefixed, prefixed ? "ok" : "");
+    var hasSession = !!(navigator.audioSession);
+    say("navigator.audioSession: " + hasSession + (hasSession
+          ? " (type " + navigator.audioSession.type + ")"
+          : " (needs iOS 16.4)"), hasSession ? "ok" : "note");
     if (!unprefixed && !prefixed) {
       say("no Web Audio at all on this browser. Nothing below will make a sound.", "bad");
       return;
@@ -188,6 +200,71 @@
         say("play() resolved. If you heard this but not step 3, it is the ringer"
             + " switch.", "note");
       }, function (e) { say("play() rejected: " + e, "bad"); });
+    }
+  });
+  // --- the two candidate fixes ------------------------------------------
+  //
+  // Both aim at the same thing: getting Web Audio out of the ambient audio session,
+  // which the ringer switch mutes, and into the playback session, which it does not.
+  // Scheduling has to stay on the audio clock either way, because the gun has to land
+  // on T-0 to the sample and a media element cannot be scheduled that finely
+  // (DESIGN 10.1). So neither of these replaces Web Audio; they change the session it
+  // plays into.
+
+  function replay(why) {
+    if (!buffer) { say("do step 2 first.", "note"); return; }
+    var source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start ? source.start() : source.noteOn(0);
+    say(why + " Web Audio started. Audible?", "note");
+  }
+
+  document.getElementById("step5").addEventListener("click", function () {
+    reset();
+    if (!ctx) { say("do step 1 first.", "note"); return; }
+    // The official way, and one line: Safari 16.4 added navigator.audioSession, and
+    // "playback" is the category that ignores the switch.
+    if (!navigator.audioSession) {
+      say("navigator.audioSession is not here, so this browser is older than iOS 16.4"
+          + " and cannot be asked. Try step 6.", "bad");
+      return;
+    }
+    try {
+      navigator.audioSession.type = "playback";
+      say("set navigator.audioSession.type = playback", "ok");
+      say("now reads: " + navigator.audioSession.type);
+    } catch (e) {
+      say("setting it threw: " + e, "bad");
+      return;
+    }
+    replay("With the playback session asked for,");
+  });
+
+  document.getElementById("step6").addEventListener("click", function () {
+    reset();
+    if (!ctx) { say("do step 1 first.", "note"); return; }
+    // The old trick, for anything below iOS 16.4: a media element that is playing real
+    // audio promotes the session, and near-silence is inaudible while still being real.
+    // Looping, because the promotion lasts only while something is actually playing.
+    var quiet = document.createElement("audio");
+    quiet.src = base + "/silence.wav";
+    quiet.loop = true;
+    quiet.setAttribute("playsinline", "");
+    quiet.volume = 1;                       // the file is quiet, not the element
+    var started = quiet.play();
+    say("started " + quiet.src + " on loop");
+    say("this may interrupt whatever else the phone is playing, which is the cost of"
+        + " the playback session.", "note");
+    if (started && started.then) {
+      started.then(function () {
+        say("play() resolved", "ok");
+        replay("With near-silence looping,");
+      }, function (e) {
+        say("play() rejected: " + e, "bad");
+      });
+    } else {
+      setTimeout(function () { replay("With near-silence looping,"); }, 400);
     }
   });
 }());
