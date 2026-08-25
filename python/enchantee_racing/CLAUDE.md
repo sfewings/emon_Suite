@@ -51,7 +51,8 @@ engine/course.py        load and validate marks/courses/lines
 engine/race.py          mode and leg state machine, pure functions
 templates/              index.html, hud.html
 static/                 app.js, app.css, flags/*.svg
-config/                 marks.json, courses.json, lines.json, coast.json
+config/                 marks.json, courses.json, lines.json, coast.json, depth.json
+scripts/                gen_*.py, which regenerate everything in config/
 tests/                  pytest, including replay of recorded GPS tracks
 ```
 

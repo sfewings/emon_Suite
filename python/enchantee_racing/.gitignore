@@ -1,0 +1,10 @@
+# Bathymetry and OSM source caches. Large, re-downloadable, and reproducible by
+# scripts/gen_coast.py and scripts/gen_depth.py. The generated config/*.json and
+# docs/qgis/*.gpkg ARE tracked; these inputs are not.
+scripts/_bathy_cache/
+scripts/_coast_osm_cache.osm
+scripts/_perth_5m.tif
+scripts/_depth_work.tif
+scripts/_depth_vec.gpkg
+scripts/_depth_work.gpkg
+scripts/_land_burn.gpkg
