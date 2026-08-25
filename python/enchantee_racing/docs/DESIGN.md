@@ -1420,6 +1420,84 @@ are used by current PFSYC courses. The rest carry `used_in_courses: false` and a
 map context, and also mean a course-sheet change next season is unlikely to need
 new mark data.
 
+### 12.1 The page, and the three decisions behind it
+
+The data was finished before the page was started, so these were settled first rather
+than discovered.
+
+**Its own page at `/map`, not a fourth panel on the race screen.** The panel would have
+come free: the race page already polls `/api/state` at 2 Hz, which is where the boat's
+position is, and it already carries the navigation, the theme, the wake lock and the
+mode-follows-server behaviour. Against that, a map is 90 kB of chart data and a body of
+projection and gesture code that a crew watching the countdown never needs, and the race
+page's own weight is the thing that keeps that screen honest. A separate page it is.
+
+That has a cost, and it should be paid deliberately rather than discovered: **it is the
+third document that has to agree with the other two.** The pair already do, and there are
+tests holding them to it: `test_both_pages_carry_the_same_three_screen_navigation`,
+`test_each_page_can_reach_the_other`,
+`test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app`, and the two halves
+of `test_the_navigation_is_never_pushed_off_or_covered`. Each of those becomes a
+three-way check. So do the things a page needs to be part of the app at all: the
+`apple-mobile-web-app-capable` meta, the manifest link, the apple-touch-icon, the
+`location.assign` navigation, and a `clamp()` fallback on every sized thing.
+
+`map.html` should therefore **not** copy `hud.html`'s self-containment. That page inlines
+its CSS and JS for one reason, recorded in 9.1: it was ported from Node-RED close to
+verbatim so the two could be compared side by side. The map has no original to be
+compared against, so it takes `static/app.css` and a new `static/map.js`, and only the
+head block and the navigation are duplicated markup.
+
+**Zoom out has two steps: the racing bbox first, the coast extent second.** The default
+is fit-to-current-course. One gesture out gives the `marks.json` bbox, 10.3 by 7.9 km,
+which is PFSYC and the other Swan clubs and the scale every course is sailed at. A second
+gives the whole `coast.json` extent, about 56 by 51 km, Guildford to past Rottnest and
+south over Garden Island. Two levels rather than one because the coast data was
+deliberately generated wider than the racing area for ocean races and the island
+anchorages, and a single zoom-out would have to pick between making that data unreachable
+and making the ordinary case illegible: at full coast extent the river is a thin line and
+no mark can be labelled.
+
+**At night the depth bands go to dark red, keeping shallowest-darkest.** The chart blues
+cannot stay: a pale `>4 m` at `#d8e9f5` covering most of the screen is the opposite of
+what a night theme is for, and this page is mostly water. Hiding the bands and keeping
+only the contours was the alternative and loses the at-a-glance sense of where the deep
+water is, which is most of the value. So three dark reds in the same order, which keeps
+the one property that carries meaning. It does diverge from the chart convention exactly
+where a crew might compare against paper, and that is the accepted cost, mitigated by the
+ordering being preserved and by the theme being a deliberate manual switch (9.7) rather
+than something that happens to them.
+
+### Build order for the page
+
+1. **Plumbing.** Nothing serves `config/*.json` to a browser today; `/race/config/...`,
+   `/race/api/map` and `/race/static/coast.json` are all 404. A route serving the four
+   documents by whitelisted name, and `gzip_types` turned on in nginx, which is off:
+   `gzip on` is set but the types list is commented out, so nginx's default of `text/html`
+   alone applies and JSON goes out uncompressed. The 88 kB in the table above is real
+   only once that line is uncommented. Until then it is 431 kB.
+2. **The projection, and it has to be exact.** A JS mirror of `nav.py`'s `enu()`: WGS84
+   meridian and prime-vertical radii, scale fixed at the origin's latitude so the map
+   stays linear. Project differently from the engine and the boat sits off the marks and
+   the start line stops agreeing with the geometry finish detection uses. Test it against
+   a fixture generated from `nav.py` itself, the same way section 6 uses the register's
+   MGA94 columns as free fixtures for the same function.
+3. **The static chart.** One `<svg>`, viewBox in projected metres, path data built once so
+   zoom never re-projects, `vector-effect: non-scaling-stroke` for the strokes. Draw order
+   as above: bands, contours, land, then marks and course. Fetch the three documents on
+   first show rather than on load.
+4. **View control.** Fit-to-course by default, the two zoom-outs above, pan and zoom by
+   moving the viewBox alone. **Touch events, not Pointer Events**: those need Safari 13
+   and the boat's iPad is on 12, which is the same list `clamp()` and flexbox `gap` are
+   already on, and the one every pan-and-zoom recipe will get wrong.
+5. **The live overlay.** Boat and heading vector off `/api/state`, course legs with the
+   next mark emphasised, the rounding symbols reused rather than redrawn. A fix older
+   than 5 s hides the boat rather than drawing it where it is not (9.5).
+6. **Legibility.** Labels by zoom threshold, course marks before context marks, and the
+   caveats from the two sections above visible on the page rather than only in a loader
+   comment: crowd-sourced banks, nothing about sandbanks, a 2010 survey, orientation only
+   and not for navigation.
+
 ### Shoreline
 
 Done, in `config/coast.json`, generated by `scripts/gen_coast.py`. 133 kB raw,
@@ -1749,7 +1827,8 @@ database, or simply removing and re-adding it.
 6. Race state machine, driven by replayed tracks before it is driven by the boat.
 7. Countdown and pre-start.
 8. Flags and course selection UI.
-9. Map page. Not started; the nav entry exists and is disabled.
+9. Map page. Data done (`coast.json`, `depth.json`); the page not started and the nav
+   entry still disabled. Decisions and build order in 12.1.
 10. Config editor. Not started. `PUT /api/config/...` is designed, not built, which is
     why the deployment bind-mounts `config/` read-write: landing it should not need a
     compose change.
