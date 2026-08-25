@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import mimetypes
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -55,6 +56,21 @@ from mqtt_client import DEFAULT_BROKER, DEFAULT_PORT, DemoDriver, MqttClient
 from store import Store
 
 log = logging.getLogger(__name__)
+
+# Python's mimetypes has no built-in entry for .m4a, and it looks for one in
+# /etc/mime.types, which python:3.13-slim does not ship. So in the container the
+# countdown clips were served as application/octet-stream, where on Windows and on the
+# Pi's own Python they come out as audio/mp4. That is the whole of "the audio stopped
+# working once it was hosted in a container": nothing about the files changed, and the
+# bytes served are byte-identical to the bytes on disk.
+#
+# Registered here rather than by installing the media-types package into the image,
+# because this way it holds whatever base image the Dockerfile uses, and it is visible in
+# the place someone debugging a Content-Type would actually look.
+#
+# audio/mp4 rather than audio/x-m4a: it is the standard type for AAC in an MP4 container,
+# and it is what the dev machine was serving while this worked.
+mimetypes.add_type("audio/mp4", ".m4a")
 
 HERE = Path(__file__).resolve().parent
 CONFIG_DIR = HERE / "config"

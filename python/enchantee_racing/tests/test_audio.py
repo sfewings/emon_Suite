@@ -143,6 +143,32 @@ def test_the_clips_are_served_and_addressed_relative_to_the_page():
         response = client.get("/static/audio/" + name)
         assert response.status_code == 200, name
         assert len(response.get_data()) > 500, name
+        # And with a Content-Type a browser will take. This is the assertion that was
+        # missing, and its absence cost a silent countdown on the water.
+        #
+        # Python's mimetypes has no built-in entry for .m4a and looks for one in
+        # /etc/mime.types, which python:3.13-slim does not ship. So the clips went out as
+        # application/octet-stream from the container while the dev machine, whose
+        # mimetypes reads the Windows registry, was serving audio/mp4. Chromium decodes
+        # the same bytes either way, which is why only the boat's phones noticed.
+        # app.py registers the type; this holds it there.
+        assert response.mimetype == "audio/mp4", \
+            "%s served as %s, which Safari may refuse" % (name, response.mimetype)
+
+    # The assertion above is not enough on its own, and finding that out is the point of
+    # this paragraph. It passes on any machine whose mimetypes already knows .m4a, which
+    # is the Windows dev box and the Pi's own Python, both of which have a mime database.
+    # It only fails where the bug lives, inside the slim container, and that is the one
+    # place nobody runs the suite. Removing the registration from app.py and re-running
+    # here still passed.
+    #
+    # So the registration is asserted in the source as well. Crude, and it is what makes
+    # this test mean "does not depend on the host having a mime database" rather than
+    # "happens to work on my machine".
+    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert 'mimetypes.add_type("audio/mp4", ".m4a")' in source, \
+        "app.py must register .m4a itself: python:3.13-slim ships no /etc/mime.types, " \
+        "so without this the clips go out as application/octet-stream"
 
 
 def test_a_missing_clip_falls_back_to_a_tone_rather_than_silence():
