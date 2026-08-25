@@ -41,18 +41,20 @@
 </style>
 
 <h1>Countdown audio check</h1>
-<p>Tap the buttons in order. Turn the volume up first, and note which way the
-   ringer switch on the side of the phone is set.</p>
+<p>Tap the buttons in order. Turn the volume up first. On an iPhone or iPad, note
+   which way the ringer switch is set and try it both ways: that switch mutes Web
+   Audio and not a media element, which is the whole reason steps 3 and 4 are
+   separate. On Android check the media volume rather than the ring volume.</p>
 
 <button class="go" id="step1">1 &nbsp; Start audio</button>
 <button id="step2">2 &nbsp; Load the clips</button>
 <button id="step3">3 &nbsp; Play "five minutes" through Web Audio</button>
 <button id="step4">4 &nbsp; Play the same clip through an &lt;audio&gt; element</button>
 
-<p>The ringer switch mutes Web Audio but not a media element, which is why 4 is
-   audible on silent and 3 is not. These two are the candidate fixes. Set the
-   ringer to <b>silent</b>, tap one, then tap 3 again and see whether it is
-   audible.</p>
+<p>These two get Web Audio out of the session that is being muted, which is what
+   the app now does while a countdown is armed. On iOS, set the ringer to
+   <b>silent</b>, tap one of them, then tap 3 again and see whether it is audible.
+   Elsewhere they are an experiment: tap them and see whether anything changes.</p>
 
 <button id="step5">5 &nbsp; Ask for the playback audio session, then retry 3</button>
 <button id="step6">6 &nbsp; Play looping near-silence, then retry 3</button>
@@ -78,8 +80,43 @@
 
   function reset() { out.textContent = ""; }
 
+  // The interesting result is "step 4 audible, step 3 silent", and what that means is
+  // not the same everywhere, so the page says which platform it is talking about rather
+  // than asserting iOS at a device that is not iOS. On iOS it is the ringer switch:
+  // Web Audio plays in the ambient audio session and the switch mutes that, while a
+  // media element plays in the playback session and ignores it. Android has no such
+  // switch and does not mute Web Audio that way, so there the difference points at the
+  // volume streams or at an autoplay policy instead.
+  var ua = navigator.userAgent;
+  var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+              (/Macintosh/.test(ua) && "ontouchend" in document);
+
+  function platform() {
+    if (isIOS) return "iOS";
+    if (/Android/.test(ua)) return "Android";
+    return "this platform";
+  }
+
+  // What "media element plays, Web Audio does not" means here.
+  function whyOnlyMedia() {
+    if (isIOS) {
+      return "On iOS that is the ringer switch: Web Audio plays in the ambient audio"
+           + " session, which the switch mutes, and a media element plays in the"
+           + " playback session, which ignores it. Steps 5 and 6 are the two ways out.";
+    }
+    if (/Android/.test(ua)) {
+      return "On Android there is no ringer switch doing this. Check the media volume"
+           + " rather than the ring volume, since they are separate streams, and check"
+           + " that the tab is not muted. Steps 5 and 6 are unlikely to change anything"
+           + " here, and if they do that is worth knowing.";
+    }
+    return "That split is an iOS behaviour and this is not iOS, so treat the two steps"
+         + " below as an experiment rather than a fix.";
+  }
+
   document.getElementById("step1").addEventListener("click", function () {
     reset();
+    say("platform: " + platform());
     say("user agent: " + navigator.userAgent);
     var unprefixed = !!window.AudioContext;
     var prefixed = !!window.webkitAudioContext;
@@ -149,8 +186,8 @@
         buffer = decoded;
         say("decoded: " + Math.round(decoded.duration * 100) / 100 + " s, "
             + decoded.numberOfChannels + " channel, " + decoded.sampleRate + " Hz", "ok");
-        say("so the file and the decoder are both fine. If nothing is audible in step 3"
-            + " but step 4 works, it is the ringer switch.", "note");
+        say("so the file and the decoder are both fine. If step 3 is silent and step 4"
+            + " is audible, the file is not the problem. " + whyOnlyMedia(), "note");
       })
       .catch(function (e) {
         say("failed: " + e, "bad");
@@ -172,8 +209,7 @@
       // noteOn was its old name, so keep to the plain call.
       source.start ? source.start() : source.noteOn(0);
       say("started. You should hear “five minutes” now.", "ok");
-      say("Silence here, with sound in step 4, is the ringer switch: Web Audio plays in"
-          + " the ambient session on iOS and the switch mutes it.", "note");
+      say("Silence here with sound in step 4: " + whyOnlyMedia(), "note");
     } catch (e) {
       say("start failed: " + e, "bad");
     }
@@ -197,8 +233,7 @@
     var started = el.play();
     if (started && started.then) {
       started.then(function () {
-        say("play() resolved. If you heard this but not step 3, it is the ringer"
-            + " switch.", "note");
+        say("play() resolved. Heard this but not step 3? " + whyOnlyMedia(), "note");
       }, function (e) { say("play() rejected: " + e, "bad"); });
     }
   });
@@ -226,8 +261,9 @@
     // The official way, and one line: Safari 16.4 added navigator.audioSession, and
     // "playback" is the category that ignores the switch.
     if (!navigator.audioSession) {
-      say("navigator.audioSession is not here, so this browser is older than iOS 16.4"
-          + " and cannot be asked. Try step 6.", "bad");
+      say("navigator.audioSession is not here. On iOS that means older than 16.4;"
+          + " elsewhere it means the browser has never had it. Either way there is"
+          + " nothing to set, so try step 6.", "bad");
       return;
     }
     try {
