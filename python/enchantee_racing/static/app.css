@@ -36,6 +36,48 @@ body.night {
   --sog: #ff6b5a; --mark: #ff8f7a; --dist: #ff6b5a; --brg: #ff5a48; --cog: #d4564a;
   --time: #ff7a68; --warn: #ff9068; --bad: #ff4a3a;
   --rule: #2a0f0c; --label: #8a4038; --panel: #0a0403; --ink: #ff8f7a;
+
+  /* The map at night (DESIGN 12.1). Three dark reds in place of the chart blues, in the
+     same shallowest-darkest order, which is the one property of the palette that carries
+     meaning. The blues cannot stay: >4 m is #d8e9f5 and covers most of this screen, and a
+     pale wash over most of the screen is the opposite of what a night theme is for.
+     Diverging from the chart convention is the accepted cost here, and it is mitigated by
+     the ordering surviving and by the theme being a deliberate switch (DESIGN 9.7). */
+  --band-shallow: #7d1a10;
+  --band-mid:     #4a0f08;
+  --band-deep:    #1e0704;
+  --contour:      #ff8f7a;
+  --land:         #140806;
+  --land-edge:    #7a2a20;
+  --water:        #0d0503;
+  /* Bright enough to see. Land and water are both nearly black at night, so without a
+     visible coastline the two are indistinguishable exactly where there is no depth band
+     to imply the shore: Perth Water, Matilda Bay, the Canning entrance. The bank is the
+     one line on this page it is worth running aground over. */
+  --mark-context: #8a4038;
+  --mark-halo:    #000000;
+}
+
+/* The map by day. The band fills come from depth.json itself, so gen_depth.py owns the
+   palette and it lives in one place; these are here for the night theme to override and
+   for the things depth.json does not carry, the land and the contour strokes. */
+body {
+  --band-shallow: #2e6f9e;
+  --band-mid:     #88b9d9;
+  --band-deep:    #d8e9f5;
+  --contour:      #1c4f73;
+  --land:         #e8e2d5;
+  --land-edge:    #b8ac96;
+  /* Water with no soundings, which is not the same thing as deep water and must not look
+     like it. The 2010 survey covers 91.3 per cent of the water in its own footprint and
+     nothing outside it, so Matilda Bay, Perth Water, the Canning entrance and the whole
+     ocean west of the coast have no band (DESIGN 12). Left as the page background they
+     came out black, which reads as land or as nothing. This grey-blue reads as water and
+     is deliberately not one of the three chart blues, so it cannot be mistaken for a
+     depth. */
+  --water: #b9c9d4;
+  --mark-context: #4a5560;
+  --mark-halo: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -466,3 +508,61 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 .card .flags > * + * { margin-left: .35rem; }
 #nav > * + * { margin-left: 1px; }
 #detail-head > * + * { margin-left: .6rem; }
+
+
+/* --- the map page (DESIGN 12) ------------------------------------------------
+   One svg filling the panel, everything sized in projected metres, and every stroke
+   marked non-scaling so it stays the same width on the screen at every zoom. Without
+   that the contours would be metres wide zoomed out and invisible zoomed in. */
+#panel-map { display: flex; flex-direction: column; min-height: 0; }
+#chart {
+  flex: 1 1 0; min-height: 0; width: 100%;
+  /* The canvas is water. Everything is drawn over it: the depth bands where there are
+     soundings, the land on top of those. So unsurveyed water still looks like water
+     rather than a hole, without needing a polygon over the parts the survey never
+     reached. */
+  background: var(--water);
+  touch-action: none;   /* the pan and zoom gestures are ours, not the browser's */
+}
+#chart path, #chart line, #chart circle { vector-effect: non-scaling-stroke; }
+
+/* Bands: filled from the data, so no fill here. The night theme replaces the fill by
+   band, which is why each carries its own class as well as the shared one. */
+#chart .band { stroke: none; }
+body.night #chart .band-shallow { fill: var(--band-shallow); }
+body.night #chart .band-mid     { fill: var(--band-mid); }
+body.night #chart .band-deep    { fill: var(--band-deep); }
+
+/* Contours: 2 m solid and heavier, 4 m dashed and lighter, as DESIGN 12 specifies. The
+   2 m line is the one that changes how a leg is sailed, so it is the one with weight. */
+#chart .contour { stroke: var(--contour); fill: none; }
+#chart .contour-2 { stroke-width: 1.5; }
+#chart .contour-4 { stroke-width: 1; stroke-dasharray: 5 4; opacity: .8; }
+
+#chart .land { fill: var(--land); stroke: var(--land-edge); stroke-width: 1; }
+
+#chart .startline { stroke: var(--warn); stroke-width: 2.5; }
+/* Dashed, so it reads as a prohibition rather than as a leg (DESIGN 11.3). */
+#chart .nocross { stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 6 5; }
+
+/* Marks sit on a pale chart by day and a dark one by night, so they carry their own halo
+   rather than trusting the background. The radius and the label size are set by map.js in
+   user units and recomputed per view: the frame is metres, and a symbol has to stay the
+   same size on the screen at every zoom, which is what a chart does. */
+#chart .mark circle {
+  fill: var(--mark-context);
+  stroke: var(--mark-halo); stroke-width: 1;
+}
+#chart .mark-used circle { fill: var(--brg); stroke-width: 1.5; }
+#chart .mark-label {
+  fill: var(--ink); font-weight: 600;
+  paint-order: stroke; stroke: var(--mark-halo); stroke-width: 3px;
+}
+body.night #chart .mark-label { fill: var(--mark); }
+
+#map-caveat {
+  flex: 0 0 auto; margin: 0; padding: .35rem .6rem;
+  border-top: 2px solid var(--rule); color: var(--label);
+  font-size: 1.7vh; font-size: clamp(9px, 1.7vh, 15px);
+}
+#map-caveat.failed { color: var(--bad); }

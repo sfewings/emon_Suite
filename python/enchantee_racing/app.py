@@ -7,6 +7,7 @@ Serving:
 
     GET  /              race screen, still a skeleton
     GET  /hud           instrument HUD, ported from docs/reference/flows.json
+    GET  /map           the course map, drawn as SVG from config/ (DESIGN 12)
     GET  /hud/data      the {now, motor, fields} payload the HUD polls every 500 ms
     GET  /manifest.webmanifest  scope for both screens, so iOS keeps them in one web app
     GET  /api/state     HUD fields, position and race state in one payload
@@ -140,6 +141,12 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     @app.get("/hud")
     def hud():
         return render_template("hud.html")
+
+    @app.get("/map")
+    def course_map():
+        """The course map, the third screen (DESIGN 9.6). Its own page, not a panel on the
+        race screen, for the reasons in DESIGN 12.1."""
+        return render_template("map.html")
 
     @app.get("/hud/data")
     def hud_data():

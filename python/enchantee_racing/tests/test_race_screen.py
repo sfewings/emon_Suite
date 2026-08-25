@@ -602,6 +602,13 @@ def _page_hud():
     return flask_app.test_client().get("/hud").get_data(as_text=True)
 
 
+def _page_map():
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    return flask_app.test_client().get("/map").get_data(as_text=True)
+
+
 NAV_H = "2.6rem"
 """The height the navigation takes, and the room each page has to leave for it. One number
 in two files, which is why the test below checks they still agree."""
@@ -762,8 +769,9 @@ def test_the_manifest_scopes_both_screens_into_one_web_app():
     assert '@app.get("/manifest.webmanifest")' in source, \
         "the manifest must be served from the app root for its relative scope to work"
 
-    # Both pages link it, relatively, and keep the meta that iOS 12 reads instead.
-    for what, page in (("index.html", _page()), ("hud.html", _page_hud())):
+    # Every page links it, relatively, and keeps the meta that iOS 12 reads instead.
+    for what, page in (("index.html", _page()), ("hud.html", _page_hud()),
+                       ("map.html", _page_map())):
         link = re.search(r'<link[^>]*rel="manifest"[^>]*>', page)
         assert link, "%s does not link the manifest" % what
         href = re.search(r'href="([^"]+)"', link.group(0))
@@ -794,7 +802,8 @@ def test_the_manifest_scopes_both_screens_into_one_web_app():
         assert "%dx%d" % (width, height) == icon["sizes"], \
             "%s is %dx%d but declares %s" % (src, width, height, icon["sizes"])
 
-    for what, page in (("index.html", _page()), ("hud.html", _page_hud())):
+    for what, page in (("index.html", _page()), ("hud.html", _page_hud()),
+                       ("map.html", _page_map())):
         touch = re.search(r'<link[^>]*rel="apple-touch-icon"[^>]*>', page)
         assert touch, "%s has no apple-touch-icon, so iOS uses a screenshot" % what
         href = re.search(r'href="([^"]+)"', touch.group(0)).group(1)
@@ -826,15 +835,18 @@ def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
     """
     race_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     hud = _page_hud()
+    map_js = (ROOT / "static" / "map.js").read_text(encoding="utf-8")
 
-    for what, source in (("static/app.js", race_js), ("templates/hud.html", hud)):
+    for what, source in (("static/app.js", race_js), ("templates/hud.html", hud),
+                         ("static/map.js", map_js)):
         code = re.sub(r"^\s*//.*$", "", source, flags=re.M)
         assert "location.assign(" in code, "%s does not navigate by script" % what
         assert "preventDefault()" in code, "%s does not cancel the anchor" % what
 
-    # Every cross-page nav link is a real anchor carrying a real href, in both pages, so
+    # Every cross-page nav link is a real anchor carrying a real href, on every page, so
     # the handler has something to intercept and the link degrades to a plain one.
-    for what, page in (("index.html", _page()), ("hud.html", hud)):
+    for what, page in (("index.html", _page()), ("hud.html", hud),
+                       ("map.html", _page_map())):
         nav = re.search(r'<nav id="nav">(.*?)</nav>', page, re.S)
         assert nav, "%s has no nav" % what
         hrefs = re.findall(r'<a[^>]*\bhref="([^"]+)"', nav.group(1))
@@ -883,7 +895,27 @@ def test_the_navigation_is_never_pushed_off_or_covered():
         "the reserved height no longer matches what the HUD nav takes"
 
 
-def test_both_pages_carry_the_same_three_screen_navigation():
+# The three screens, and the path each is served at. DESIGN 9.6: no screen is a dead end,
+# so every one of them carries the same navigation and can reach the other two.
+SCREENS = {"/": "Race", "/hud": "HUD", "/map": "Map"}
+
+
+def _navs():
+    """The nav block of each of the three pages, keyed by path."""
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+    out = {}
+    for path in SCREENS:
+        page = client.get(path).get_data(as_text=True)
+        nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>", page, re.S)
+        assert nav, path
+        out[path] = nav.group(1)
+    return out
+
+
+def test_every_page_carries_the_same_three_screen_navigation():
     """No screen is a dead end, which took two goes to get right: the HUD had no way back
     to anything, and the racing screen had no way to the HUD, which is the one a crew
     actually wants mid-race (DESIGN 9.6).
@@ -891,31 +923,29 @@ def test_both_pages_carry_the_same_three_screen_navigation():
     Three names, not five. Course and Finish are things that happen to a race rather than
     places to browse to, so they are reached by the controls that mean something and have no
     navigation entry of their own.
-    """
-    store = Store()
-    flask_app = app_module.create_app(store, CONFIG)
-    flask_app.config["TESTING"] = True
-    client = flask_app.test_client()
 
-    for path in ("/", "/hud"):
-        page = client.get(path).get_data(as_text=True)
-        nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>", page, re.S)
-        assert nav, path
-        labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav.group(1))]
+    Three pages now rather than two, which is the cost DESIGN 12.1 accepted when the map
+    became its own page instead of a fourth panel.
+    """
+    for path, nav in _navs().items():
+        labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav)]
         assert labels == ["HUD", "Race", "Map"], (path, labels)
-        # Map is named so its absence is visible, and disabled so it cannot be tapped.
-        assert 'class="off"' in nav.group(1), path
+        # Nothing is disabled any more: Map used to carry class="off" because there was no
+        # map, and DESIGN 9.6 said to show it disabled until there was.
+        assert 'class="off"' not in nav, "%s still disables an entry" % path
+        # Exactly one entry is marked as where you already are, and it is this page.
+        here = re.findall(r'class="here"[^>]*>([A-Za-z]+)<', nav)
+        assert here == [SCREENS[path]], (path, here)
 
     # Every navigation target is relative, so the whole set works behind the /race/ prefix
-    # and on the app's own port alike.
-    hud_nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>",
-                        client.get("/hud").get_data(as_text=True), re.S).group(1)
-    assert 'href="."' in hud_nav
-    assert 'href="/' not in hud_nav
-    race_nav = re.search(r"<nav[^>]*id=\"nav\"(.*?)</nav>",
-                         client.get("/").get_data(as_text=True), re.S).group(1)
-    assert 'href="hud"' in race_nav
-    assert 'href="/' not in race_nav
+    # and on the app's own port alike. href="." is the race screen from anywhere else.
+    navs = _navs()
+    for path, nav in navs.items():
+        assert 'href="/' not in nav, "%s has a root-relative nav target" % path
+        assert "://" not in nav, "%s names a host" % path
+    assert 'href="hud"' in navs["/"] and 'href="map"' in navs["/"]
+    assert 'href="."' in navs["/hud"] and 'href="map"' in navs["/hud"]
+    assert 'href="."' in navs["/map"] and 'href="hud"' in navs["/map"]
 
 
 def test_selecting_a_course_lands_on_the_panel_with_the_hooters():
@@ -934,27 +964,31 @@ def test_selecting_a_course_lands_on_the_panel_with_the_hooters():
     assert body["race"]["countdown"] is None, "the countdown reads dashes until a hooter"
 
 
-def test_each_page_can_reach_the_other():
-    """A phone that lands on one of the two screens must be able to get to the other.
+def test_each_page_can_reach_both_others():
+    """A phone that lands on any screen must be able to get to the other two.
 
     It could not, for a while: the race screen had a HUD button and the HUD had nothing,
     so anyone who opened /hud was stuck with no indication that a race screen existed at
-    all. Both directions are pinned here because neither is discoverable from the code.
+    all. Every direction is pinned here because none is discoverable from the code.
+
+    href="." is how the race screen is reached from the other two: it resolves to /race/
+    behind the prefix and to / on the app's own port, where a leading slash would work on
+    the port and break behind nginx.
     """
-    store = Store()
-    flask_app = app_module.create_app(store, CONFIG)
-    flask_app.config["TESTING"] = True
-    client = flask_app.test_client()
-
-    race_screen = client.get("/").get_data(as_text=True)
-    assert 'href="hud"' in race_screen, "the race screen has no way to the HUD"
-
-    hud = client.get("/hud").get_data(as_text=True)
-    # href="." resolves to /race/ behind the prefix and to / on the app's own port. A
-    # leading slash would work on the port and break behind nginx, which is the whole
-    # reason every path in these pages is relative.
-    assert 'href="."' in hud, "the HUD has no way back to the race screen"
-    assert 'href="/"' not in hud
+    navs = _navs()
+    # what each page must be able to reach, and by which relative href
+    wanted = {
+        "/":    {"hud": "the race screen cannot reach the HUD",
+                 "map": "the race screen cannot reach the map"},
+        "/hud": {".": "the HUD cannot get back to the race screen",
+                 "map": "the HUD cannot reach the map"},
+        "/map": {".": "the map cannot get back to the race screen",
+                 "hud": "the map cannot reach the HUD"},
+    }
+    for path, targets in wanted.items():
+        for href, complaint in targets.items():
+            assert 'href="%s"' % href in navs[path], complaint
+        assert 'href="/"' not in navs[path]
 
 
 def test_the_page_references_nothing_off_box():
@@ -979,7 +1013,11 @@ def test_the_page_keeps_the_cockpit_handling():
 
 def test_the_night_theme_only_changes_colours():
     """The layout has to be identical between themes so muscle memory survives (9.7)."""
-    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    # Comments stripped first: the block explains why the map's bands change colour at
+    # night, and a declaration parser that does not strip comments reads the prose as a
+    # declaration and fails on it.
+    css = re.sub(r"/\*.*?\*/", "",
+                 (ROOT / "static" / "app.css").read_text(encoding="utf-8"), flags=re.S)
     night = re.search(r"body\.night\s*\{(.*?)\}", css, re.S)
     assert night, "no night theme"
     for declaration in night.group(1).split(";"):
