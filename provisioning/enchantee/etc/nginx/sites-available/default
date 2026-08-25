@@ -26,6 +26,29 @@ server {
 
     server_name _;
 
+    # Compress the things this box actually serves.
+    #
+    # nginx.conf already has `gzip on`, but its gzip_types list is commented out there,
+    # and nginx's default is text/html and nothing else. So every JSON response went out
+    # uncompressed, which nobody noticed until the map page needed config/coast.json and
+    # config/depth.json: 431 kB for the three map documents raw, 90 kB gzipped (DESIGN 12).
+    #
+    # Set here rather than by editing nginx.conf, because nginx.conf is not in this
+    # repository and this file is: a change made there is a change that is not provisioned
+    # and is lost on the next rebuild of the box.
+    #
+    # text/html is always compressed and cannot be removed from the list, so it is not
+    # named. gzip_vary because these responses are cacheable and a cache must not serve a
+    # compressed body to a client that did not ask for one.
+    gzip_types application/json application/manifest+json application/javascript
+               text/css text/javascript image/svg+xml text/plain;
+    gzip_min_length 1024;
+    gzip_vary on;
+    # Level 1 is nginx's default and left the map documents at 110 kB on the wire against
+    # the 88 kB section 12 quotes, which was measured at -9. 6 recovers almost all of it
+    # for CPU this Pi has spare on a handful of requests per race.
+    gzip_comp_level 6;
+
     # Node-RED dashboard 1.x emits purely relative asset paths, so rewriting the
     # root onto /ui/ is safe: /css/app.min.css -> :1880/ui/css/app.min.css
     location / {

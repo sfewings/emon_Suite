@@ -272,6 +272,7 @@ Routes, from [`etc/nginx/sites-available/default`](etc/nginx/sites-available/def
 | `/events/` | event recorder, `:5000` on the host network |
 | `/settings/` | emon settings web, `:5001` |
 | `/race/` | race support app, `:5002` on the host network |
+| `/race/api/config/{marks,courses,lines,coast,depth}` | config documents the map page draws from |
 | `/hud` | 302 to `/race/hud`, the race app's instrument HUD |
 
 The server block uses `server_name _` as the sole `default_server`. That is
@@ -279,6 +280,19 @@ deliberate: it answers to `enchantee.local`, `10.42.0.1` and whatever DHCP
 address the Pi holds, all with the same routes, so nothing has to be
 reconfigured when the mode changes. nginx never matches on the hostname, which
 is why changing the naming scheme does not touch this file at all.
+
+### 7.3.1 gzip
+
+`nginx.conf` ships `gzip on` with its `gzip_types` list commented out, and nginx's
+default is `text/html` alone, so every JSON response left this box uncompressed.
+Nobody noticed until the map page needed `coast.json` and `depth.json`: 431 kB for
+the three map documents raw, 88 kB gzipped.
+
+The types are therefore set in the server block of
+[`default`](etc/nginx/sites-available/default) rather than by editing `nginx.conf`,
+which is not in this repository: a change made there is not provisioned and is lost
+the next time the box is rebuilt. `gzip_comp_level 6` too, because the default of 1
+left the same documents at 110 kB.
 
 [`upgrade-map.conf`](etc/nginx/conf.d/upgrade-map.conf) defines
 `$connection_upgrade`, which sends `Connection: upgrade` only when the client

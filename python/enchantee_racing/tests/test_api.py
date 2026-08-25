@@ -265,6 +265,47 @@ def test_state_reports_what_the_race_screen_needs():
     assert race_block["leg_name"] == "Dolphin East"   # the name, not the id or the number
 
 
+def test_the_config_documents_the_map_needs_are_served():
+    """The map draws from config/, and nothing served it: DESIGN 12.1, build step 1.
+
+    Sent as files rather than re-serialised, so what the browser draws is byte for byte
+    what is in git, and an edited course or mark is picked up without a restart.
+    """
+    client, _store, _ticker, _published = _client()
+    for name in ("marks", "coast", "depth", "lines"):
+        response = client.get("/api/config/" + name)
+        assert response.status_code == 200, name
+        assert response.mimetype == "application/json", (name, response.mimetype)
+        body = json.loads(response.get_data(as_text=True))
+        assert body, name
+        # byte for byte what is on disk
+        on_disk = (ROOT / "config" / (name + ".json")).read_bytes()
+        assert response.get_data() == on_disk, "%s was re-serialised" % name
+
+
+def test_the_config_route_is_an_allow_list_and_not_a_path():
+    """An allow-list, so it cannot start serving something dropped into config/ later,
+    and so the name never reaches a path join unless it matched.
+
+    race.json is the interesting exclusion: it is engine tuning, an arming radius and a
+    stale cutoff, and nothing in a browser draws it.
+    """
+    client, _store, _ticker, _published = _client()
+    assert (ROOT / "config" / "race.json").exists(), "the exclusion is only meaningful if it is there"
+    assert client.get("/api/config/race").status_code == 404
+
+    for name in ("nonsense", "app", "secrets"):
+        assert client.get("/api/config/" + name).status_code == 404, name
+
+    # and nothing that looks like a way out of the directory
+    for attempt in ("..%2f..%2fapp", "%2e%2e%2fapp", "marks.json", "marks%00"):
+        response = client.get("/api/config/" + attempt)
+        assert response.status_code == 404, (attempt, response.status_code)
+
+    # the served set is exactly what app.py declares, so adding one is a deliberate edit
+    assert app_module.SERVABLE_CONFIG == ("marks", "courses", "lines", "coast", "depth")
+
+
 # --- the fix path ----------------------------------------------------------
 
 

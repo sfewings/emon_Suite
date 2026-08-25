@@ -11,6 +11,7 @@ Serving:
     GET  /manifest.webmanifest  scope for both screens, so iOS keeps them in one web app
     GET  /api/state     HUD fields, position and race state in one payload
     GET  /api/courses   the course list for the selection screen
+    GET  /api/config/<name>  one config document verbatim, for the map (DESIGN 12.1)
     POST /api/select    {course: "frostbite-3"}
     POST /api/timer     {hooter: 10 | 5 | 1 | null} or {nudge: seconds}
     POST /api/advance   {dir: +1 | -1}
@@ -74,6 +75,24 @@ mimetypes.add_type("audio/mp4", ".m4a")
 
 HERE = Path(__file__).resolve().parent
 CONFIG_DIR = HERE / "config"
+
+SERVABLE_CONFIG = ("marks", "courses", "lines", "coast", "depth")
+"""The config documents a browser may GET, by name and without an extension.
+
+An allow-list rather than a directory listing, for the same reason the Dockerfile's COPY
+list is one: it cannot start serving something that is dropped into config/ later. It is
+also what makes the route traversal-proof without any path arithmetic, since the name is
+compared against this tuple and never joined onto anything until it matches.
+
+These five are the map's inputs and they are all safe to ship: DESIGN 12 says so of
+coast.json and depth.json explicitly, and the marks, the courses and the lines are
+already served in other shapes by /api/courses and /api/course/<id>.
+
+race.json is deliberately absent. It is engine tuning, an arming radius and a stale
+cutoff, and nothing in a browser draws it. The config editor of DESIGN 13 step 10 will
+want PUT on some of these, which is why the URL has no extension: GET and PUT can then be
+the same path, as DESIGN 4 writes it.
+"""
 
 SERVICE_PORT = 5002
 
@@ -140,6 +159,25 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
         """
         return send_from_directory(HERE, "manifest.webmanifest",
                                    mimetype="application/manifest+json")
+
+    @app.get("/api/config/<name>")
+    def api_config(name):
+        """One config document, as JSON, for the map page to draw from (DESIGN 12.1).
+
+        Sent as a file rather than re-serialised, so what the browser draws is byte for
+        byte what is on disk and in git. That also means an edit to a course or a mark is
+        picked up on the next request with no restart, unlike the copy load_config() holds
+        for the engine, which is read once at startup.
+
+        These are big by the standards of this app: coast and depth are 136 kB and 234 kB
+        raw, 431 kB for the set with marks. They compress to about a fifth of that, which
+        is why the nginx block sets gzip_types; without it nginx's default of text/html
+        alone applies and all of that goes out uncompressed.
+        """
+        if name not in SERVABLE_CONFIG:
+            return jsonify({"error": "no such config document", "name": name}), 404
+        return send_from_directory(CONFIG_DIR, name + ".json",
+                                   mimetype="application/json")
 
     @app.get("/api/state")
     def api_state():
