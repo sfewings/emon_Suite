@@ -1054,6 +1054,66 @@ each of the last ten seconds. A start with a crude beep is a start; a silent gun
 not, and a codec that one phone refuses is exactly the failure that would otherwise
 show up for the first time on the water.
 
+### 10.2 The ringer switch, and the audio session
+
+iOS plays Web Audio in the **ambient** audio session, which the hardware ringer switch
+mutes. A media element plays in the **playback** session, which ignores it. A phone in a
+pocket on silent is the normal case on a boat, so as first built the countdown could be
+lost with nothing on the screen to say so, which 10.1 is explicit is the one outcome not
+worth having.
+
+Measured on the two devices the boat actually carries, with the switch set to silent
+each time, using `static/audio-check.html`:
+
+| | iPhone | iPad mini 3, iOS 12.5.7 |
+| --- | --- | --- |
+| `window.AudioContext` | present | **absent**, prefixed only |
+| `navigator.audioSession` | present | absent |
+| Web Audio alone | silent | silent |
+| media element alone | audible | audible |
+| after `audioSession.type = "playback"` | **audible** | silent, nothing to set |
+| after looping near-silence | **audible** | **audible** |
+
+Two conclusions, and the implementation is the shorter of them:
+
+1. **Both routes out of the ambient session work where they exist**, so prefer the
+   official one and fall back: `navigator.audioSession.type = "playback"` from Safari
+   16.4, otherwise a looping media element playing real audio. The iPad has no
+   `audioSession` at all, which is why the fallback is not optional.
+2. The iPad reporting no `window.AudioContext` is a separate finding and a more basic
+   one. Before that was fixed the context was never constructed there at all, so the
+   countdown was silent regardless of any session, and so was the tone that 10.1
+   promises as the fallback. The switch and the constructor were two faults wearing the
+   same symptom, which is why the first fix looked like it had not worked.
+
+**The session is held only while a countdown is armed.** Leaving the ambient session
+interrupts whatever else the phone is playing, so the app takes it when the timer is set
+and gives it back once the horn has finished: ten minutes of no music before a start
+rather than an afternoon of it. The release deliberately does not happen on the mode
+change, because T-0 is both the horn and the moment the mode becomes racing (10.1), so
+releasing there would cut off the one cue nobody can miss. It waits out the tail of the
+final clip, taken from the decoded buffer rather than guessed. An abandoned countdown
+releases at once.
+
+Scheduling is untouched by any of this. The clips still go to the audio clock, because
+the horn has to land on T-0 to the sample and a media element cannot be scheduled that
+finely (10.1). Only the session they play into changes.
+
+`static/silence.wav` is half a second at one least-significant bit, about -90 dBFS.
+Near-silence rather than silence, because some iOS versions decline to promote the
+session for a stream of digital zeros, and hand-written from the standard library
+because there is no ffmpeg on the Pi and a WAV header needs no encoder. It carries no
+`muted` attribute, which is the whole point and the reason `wake.mp4` cannot do this
+job: that one is muted on purpose, for the screen lock, and a muted element promotes
+nothing.
+
+`static/audio-check.html` is kept. It is not a screen and not in the navigation, just a
+URL, and it exists because there is no Apple device anywhere near the Pi: it reports
+which `AudioContext` the device has, the state it reaches, the fetch status and
+Content-Type, the decoded duration, and then plays one clip through Web Audio and
+through a media element so the two can be compared. The table above came out of it in
+one pass, after three rounds of guessing had not settled it.
+
 ## 11. Leg progression
 
 The engine is a state machine over `idle -> prestart -> racing -> finished`,

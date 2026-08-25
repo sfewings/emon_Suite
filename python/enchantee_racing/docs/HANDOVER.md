@@ -184,6 +184,18 @@ chart's rounding symbol on black with the buoy in the app's DodgerBlue, generate
 side is an instruction and the tests assert it, whereas on the icon it is a logo. If that
 ever reads as an instruction, change it, but do not mirror it half way.
 
+**The countdown audio needed three separate fixes and the last one is settled.** Kept
+here because the sequence is instructive rather than because anything is outstanding. The
+symptom was one thing, "no audio on the phone", and the causes were three:
+`application/octet-stream` from the container, which had nothing to do with it in the end;
+`window.AudioContext` alone, which silenced the iOS 12 iPad completely, tone fallback
+included; and the ringer switch muting Web Audio, which was the actual answer on the
+phone. Two of the three were invisible on a development machine and none was reproducible
+on the Pi, since there is no Apple device near it. What broke the deadlock was
+`static/audio-check.html`, which asks the device and prints what it sees. DESIGN 10.2 has
+the measured table. Reach for that page first next time, rather than reasoning about
+codecs.
+
 **The countdown audio is clipped and hard to make out.** The user reported it and it is
 not fixed. `trim()` in `gen_audio.py` cuts silence at a `-45 dB` peak threshold, which
 will be eating the soft onset of a fricative; "seven", "six" and "four" are the likely
