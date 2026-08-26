@@ -6,6 +6,7 @@
 #include <EmonShared.h>
 #include <RH_RF69.h>
 #include <Wire.h>
+#include <avr/wdt.h>    //watchdog timer
 
 //#define HOME_NETWORK
 #define BOAT_NETWORK
@@ -28,6 +29,8 @@ const uint16_t MODBUS_REG_COUNT = 5;
 const unsigned long SEND_WIND_INTERVAL_MS = 1000; // ms
 const unsigned long RESPONSE_TIMEOUT = 500;  // ms
 const unsigned long SEND_PRESSURE_INTERVAL_MS = 5000; // send pressure data at least every 5 seconds
+const uint16_t PACKET_SENT_TIMEOUT_MS = 200;  // ample for a 60 byte packet at 250kbps
+const uint8_t MAX_IMU_FAILURES = 5;   // consecutive IMU read failures before recovering the I2C bus
 
 // scaling as in the Mini C5A datasheet
 const float SCALE_WIND_SPEED = 0.01f; // register value * 0.01 -> m/s
@@ -199,6 +202,15 @@ int16_t readS16(uint8_t addr, uint8_t regHigh) {
   return (int16_t)((b[0] << 8) | b[1]);
 }
 
+// As readS16() but reports the failure instead of silently returning zero, so callers that publish
+// the value can keep the last known good reading rather than a fabricated one
+bool readS16Checked(uint8_t addr, uint8_t regHigh, int16_t &value) {
+  uint8_t b[2];
+  if (!readRegisters(addr, regHigh, b, 2)) return false;
+  value = (int16_t)((b[0] << 8) | b[1]);
+  return true;
+}
+
 uint32_t readU24(uint8_t addr, uint8_t reg) {
   // for MS5611 ADC read (3 bytes) after issuing ADC read command
   uint8_t b[3];
@@ -285,12 +297,112 @@ bool initMS5611()
         C[i] = ms5611ReadProm(i+1);
     }
     // basic validity checks: non-zero coefficients
-    for (int i = 0; i < 6; i++) 
+    for (int i = 0; i < 6; i++)
     {
-        if (C[i] == 0) 
+        if (C[i] == 0)
             return false;
     }
     return true;
+}
+
+//A reset part way through an I2C transfer can leave a slave holding SDA low, which stops the master
+//generating a START for ever after. Clock SCL by hand until the slave lets go, then issue a STOP
+void i2cBusClear()
+{
+    pinMode(SDA, INPUT_PULLUP);
+    pinMode(SCL, INPUT_PULLUP);
+    delayMicroseconds(10);
+
+    for (uint8_t i = 0; i < 9 && digitalRead(SDA) == LOW; i++)
+    {
+        digitalWrite(SCL, LOW);      //clears the pull up before the pin becomes an output
+        pinMode(SCL, OUTPUT);
+        delayMicroseconds(5);
+        pinMode(SCL, INPUT_PULLUP);  //release, the pull up takes it high
+        delayMicroseconds(5);
+    }
+
+    //STOP condition. SDA low to high while SCL is high
+    digitalWrite(SDA, LOW);
+    pinMode(SDA, OUTPUT);
+    delayMicroseconds(5);
+    pinMode(SDA, INPUT_PULLUP);
+    delayMicroseconds(5);
+}
+
+//Recover the bus and bring up the three GY-86 sensors. Called from setup(), and again from loop()
+//if the IMU reads keep failing
+void i2cInit()
+{
+    //Recover the bus before touching Wire, otherwise initMPU6050() can block for ever. This is the
+    //likeliest cause of a lockup with the LED left on: a brown out reset in the middle of a transfer
+    //leaves the slave driving SDA, and setup() then hangs on the first transaction
+    i2cBusClear();
+    Wire.begin();
+    //Without this the Wire library busy waits with no timeout, so one stuck slave hangs the sketch
+    //for ever. Needs Arduino AVR core 1.8.4 or later, which is where setWireTimeout() was added
+    Wire.setWireTimeout(25000, true);   //25ms, and reset the TWI hardware on a timeout
+    delay(50);
+
+    Serial.println(F("GY-86 sensor test startup"));
+
+    bool okMPU = initMPU6050();
+    Serial.print(F("MPU6050: "));
+    Serial.println(okMPU ? F("OK") : F("NOT FOUND"));
+
+    bool okHMC = initHMC5883L();
+    Serial.print(F("HMC5883L: "));
+    Serial.println(okHMC ? F("OK") : F("NOT FOUND"));
+
+    bool okMS5 = initMS5611();
+    Serial.print(F("MS5611: "));
+    Serial.println(okMS5 ? F("OK") : F("NOT FOUND"));
+}
+
+//Bring the radio up from cold. Called from setup() and again from waitPacketSentOrRecover() if the
+//driver ever wedges, so everything the sketch relies on has to be set here rather than in setup()
+bool radioInit()
+{
+    bool ok = true;
+    if (!g_rf69.init())
+    {
+        Serial.println(F("rf69 init failed"));
+        ok = false;
+    }
+    if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
+    {
+        Serial.println(F("rf69 setFrequency failed"));
+        ok = false;
+    }
+    // The encryption key has to be the same as the one in the client
+    uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    g_rf69.setEncryptionKey(key);
+    g_rf69.setHeaderId(ANEMOMETER_NODE);
+    //Leave _idleMode at its RH_RF69_OPMODE_MODE_STDBY default, see the note in loop()
+    //when using the RH_RF69 driver with the RFM69HW module, you must setTxPowercan with isHigherPowerModule set to true
+    //Otherwise, the library will not set the PA_BOOST pin high and the module will not transmit
+    //g_rf69.setTxPower(13,true);
+    Serial.print(F("RF69 initialise node: "));
+    Serial.print(ANEMOMETER_NODE);
+    Serial.print(F(" Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println(F("MHz"));
+    return ok;
+}
+
+//RH_RF69::waitPacketSent() with no argument is "while (_mode == RHModeTx) YIELD;" with no escape,
+//and RH_RF69::send() opens with the same wait, so one missed PACKETSENT interrupt wedges the radio
+//permanently: no packets, LED left on, only a power cycle recovers it. The interrupt can be missed
+//because setModeTx() writes the TX opmode register before it assigns _mode = RHModeTx, so a
+//PACKETSENT arriving in that window is seen by the ISR while _mode is still Idle and discarded, and
+//being RISING edge triggered it never comes again. Use the timeout form and rebuild the driver.
+bool waitPacketSentOrRecover()
+{
+    if( g_rf69.waitPacketSent(PACKET_SENT_TIMEOUT_MS) )
+        return true;
+
+    Serial.println(F("waitPacketSent timeout, re-initialising the radio"));
+    radioInit();
+    return false;
 }
 
 /////////////////////////////////////////////////
@@ -332,18 +444,20 @@ const uint8_t  CAL_STILL_WINDOW    = 25;   // samples examined when testing for 
 const int16_t  CAL_STILL_PP        = 400;  // max peak-to-peak per axis to count as still (~0.024 g)
 const uint16_t CAL_STILL_TIMEOUT_S = 30;   // give up waiting for stillness after this long
 
-void readRawAcc(int16_t v[3])
+// Returns false if the MPU6050 did not answer, in which case v is only partly written. The
+// calibration phases ignore the result, get_scaled_IMU() and get_gyro() do not.
+bool readRawAcc(int16_t v[3])
 {
-    v[0] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
-    v[1] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
-    v[2] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
+    return readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0, v[0])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2, v[1])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4, v[2]);
 }
 
-void readRawGyro(int16_t v[3])
+bool readRawGyro(int16_t v[3])
 {
-    v[0] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
-    v[1] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 10);
-    v[2] = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 12);
+    return readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8, v[0])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 10, v[1])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 12, v[2]);
 }
 
 // Returns false if the HMC5883L did not answer. Note the on-the-wire order is X, Z, Y.
@@ -359,7 +473,9 @@ bool readRawMag(int16_t v[3])
 }
 
 // Broadcast one calibration record so emon_RaspPiSerial can relay it to serial.
-// The caller has already set the radio header to CALIBRATION_NODE.
+// Sets the header every time rather than trusting the caller: a radio recovery inside
+// waitPacketSentOrRecover() puts it back to ANEMOMETER_NODE, and silently mislabelling the rest of
+// an in-situ magnetometer swing would waste the whole trip up the mast.
 void calBroadcast(char phase, uint8_t index, const int16_t* v, uint8_t n)
 {
     PayloadCalibration p;
@@ -368,8 +484,9 @@ void calBroadcast(char phase, uint8_t index, const int16_t* v, uint8_t n)
     p.index = index;
     for (uint8_t i = 0; i < n && i < 9; i++)
         p.v[i] = v[i];
+    g_rf69.setHeaderId(CALIBRATION_NODE);
     g_rf69.send((const uint8_t*)&p, sizeof(p));
-    g_rf69.waitPacketSent();
+    waitPacketSentOrRecover();
 }
 
 // Block until the operator sends any character. Discards anything already buffered so a
@@ -675,6 +792,10 @@ void calMagPhase(bool prompt)
 
 void collectDataForMahonyCalibration()
 {
+    //This routine waits on the operator indefinitely and sweeps for minutes at a time, so it cannot
+    //live inside the 8 second watchdog. Re-enabled at both exits, below
+    wdt_disable();
+
     Serial.println();
     Serial.println(F("#EMON_CAL,4"));
     Serial.println(F("# emon_MiniC5A_anemometer calibration capture"));
@@ -689,6 +810,7 @@ void collectDataForMahonyCalibration()
     calMagPhase(false);
     Serial.println(F("#DONE"));
     g_rf69.setHeaderId(ANEMOMETER_NODE);
+    wdt_enable(WDTO_8S);
     return;
 #endif
 
@@ -720,6 +842,7 @@ void collectDataForMahonyCalibration()
             case '0':
                 Serial.println(F("#DONE"));
                 g_rf69.setHeaderId(ANEMOMETER_NODE);
+                wdt_enable(WDTO_8S);
                 return;
             default:
                 Serial.println(F("# unrecognised, try again"));
@@ -734,12 +857,17 @@ void DoPitchRollYawLoop()
 {
     static float Axyz[3], Mxyz[3]; //centered and scaled accel/mag data
     static unsigned long lastPrint = millis();
+
+    //never returns, so it cannot live inside the 8 second watchdog
+    wdt_disable();
+
     Serial.println(F("Output for external pitch, roll, yaw display"));
     Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z, heading, loop_time_ms"));
 
     //if (millis() - lastPrint > 50)
     while(true)
     {
+        //on a failed read the previous values are printed again, so a stalled line means I2C trouble
         get_scaled_IMU(Axyz, Mxyz);  //apply relative scale and offset to RAW data. UNITS are not important
 
         Serial.print(Axyz[0]);
@@ -825,29 +953,40 @@ float vector_dot(float a[3], float b[3])
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-void vector_normalize(float a[3])
+// Returns false and leaves the vector alone if it has no length. Dividing by a zero magnitude
+// produced NaN, which propagated silently into the published heading
+bool vector_normalize(float a[3])
 {
   float mag = sqrt(vector_dot(a, a));
+  if (!(mag > 0.0f))    //written this way so a NaN magnitude also fails
+    return false;
   a[0] /= mag;
   a[1] /= mag;
   a[2] /= mag;
+  return true;
 }
 ////////////////////////////////////
 
 
 // Returns a heading (in degrees) given an acceleration vector a due to gravity, a magnetic vector m, and a facing vector p.
 // applies magnetic declination
+// Returns -1 if the geometry is degenerate, meaning the acceleration and magnetic vectors are
+// parallel so there is no horizontal reference to work from. That needs a tilt of about 66 degrees
+// here, where the magnetic dip is steep, so it takes a knockdown, but the zero length cross product
+// used to divide through to NaN and casting a NaN to int is undefined.
 int get_heading(float acc[3], float mag[3], float p[3], float magdec)
 {
   float W[3], N[3]; //derived direction vectors
 
   // cross "Up" (acceleration vector, g) with magnetic vector (magnetic north + inclination) with  to produce "West"
   vector_cross(acc, mag, W);
-  vector_normalize(W);
+  if (!vector_normalize(W))
+    return -1;
 
   // cross "West" with "Up" to produce "North" (parallel to the ground)
   vector_cross(W, acc, N);
-  vector_normalize(N);
+  if (!vector_normalize(N))
+    return -1;
 
   // compute heading in horizontal plane, correct for local magnetic declination in degrees
 
@@ -857,72 +996,87 @@ int get_heading(float acc[3], float mag[3], float p[3], float magdec)
   return heading;
 }
 
-void get_gyro(float Gxyz[3]) 
+// Returns false and leaves Gxyz untouched if the read failed
+bool get_gyro(float Gxyz[3])
 {
-  int16_t gx = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
-  int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
-  int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
+  int16_t g[3];
+  if (!readRawGyro(g))
+    return false;
 
   // GyroOffset holds the MEAN of the raw readings taken while the sensor was held
   // still by collectDataForMahonyCalibration(), so it must be SUBTRACTED. Adding it
   // doubled the bias instead of removing it.
-  Gxyz[0] = (float)gx - GyroOffset[0];
-  Gxyz[1] = (float)gy - GyroOffset[1];
-  Gxyz[2] = (float)gz - GyroOffset[2];
+  Gxyz[0] = (float)g[0] - GyroOffset[0];
+  Gxyz[1] = (float)g[1] - GyroOffset[1];
+  Gxyz[2] = (float)g[2] - GyroOffset[2];
+  return true;
 }
 
 // subtract offsets and correction matrix to accel and mag data
-
-void get_scaled_IMU(float Axyz[3], float Mxyz[3]) {
+// Returns false and leaves Axyz and Mxyz untouched if any read failed or the result could not be
+// normalized, so the caller keeps its last known good values. The old version ignored the
+// magnetometer read result and used magBuf uninitialised on a failure, which put whatever was on
+// the stack through the correction matrix and into the published payload.
+bool get_scaled_IMU(float Axyz[3], float Mxyz[3]) {
   byte i;
   float temp[3];
+  float acc[3], mag[3];
+  int16_t a[3], m[3];
 
-  int16_t ax = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
-  int16_t ay = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
-  int16_t az = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
+  if (!readRawAcc(a))
+    return false;
+  if (!readRawMag(m))    //handles the X, Z, Y order on the wire
+    return false;
 
-  uint8_t magBuf[6];
-  readRegisters(ADDR_HMC5883L, HMC_DATA_X_MSB, magBuf, 6);
-  int16_t mX = (int16_t)((magBuf[0] << 8) | magBuf[1]);
-  int16_t mZ = (int16_t)((magBuf[2] << 8) | magBuf[3]);
-  int16_t mY = (int16_t)((magBuf[4] << 8) | magBuf[5]);
-
-  Axyz[0] = ax;
-  Axyz[1] = ay;
-  Axyz[2] = az;
-  Mxyz[0] = mX;
-  Mxyz[1] = mY;
-  Mxyz[2] = mZ;
+  acc[0] = a[0];
+  acc[1] = a[1];
+  acc[2] = a[2];
+  mag[0] = m[0];
+  mag[1] = m[1];
+  mag[2] = m[2];
   //apply offsets (bias) and scale factors from Magneto
-  for (i = 0; i < 3; i++) temp[i] = (Axyz[i] - A_B[i]);
-  Axyz[0] = A_Ainv[0][0] * temp[0] + A_Ainv[0][1] * temp[1] + A_Ainv[0][2] * temp[2];
-  Axyz[1] = A_Ainv[1][0] * temp[0] + A_Ainv[1][1] * temp[1] + A_Ainv[1][2] * temp[2];
-  Axyz[2] = A_Ainv[2][0] * temp[0] + A_Ainv[2][1] * temp[1] + A_Ainv[2][2] * temp[2];
-  vector_normalize(Axyz);
+  for (i = 0; i < 3; i++) temp[i] = (acc[i] - A_B[i]);
+  acc[0] = A_Ainv[0][0] * temp[0] + A_Ainv[0][1] * temp[1] + A_Ainv[0][2] * temp[2];
+  acc[1] = A_Ainv[1][0] * temp[0] + A_Ainv[1][1] * temp[1] + A_Ainv[1][2] * temp[2];
+  acc[2] = A_Ainv[2][0] * temp[0] + A_Ainv[2][1] * temp[1] + A_Ainv[2][2] * temp[2];
+  if (!vector_normalize(acc))
+    return false;
 
   //apply offsets (bias) and scale factors from Magneto
-  for (int i = 0; i < 3; i++) temp[i] = (Mxyz[i] - M_B[i]);
-  Mxyz[0] = M_Ainv[0][0] * temp[0] + M_Ainv[0][1] * temp[1] + M_Ainv[0][2] * temp[2];
-  Mxyz[1] = M_Ainv[1][0] * temp[0] + M_Ainv[1][1] * temp[1] + M_Ainv[1][2] * temp[2];
-  Mxyz[2] = M_Ainv[2][0] * temp[0] + M_Ainv[2][1] * temp[1] + M_Ainv[2][2] * temp[2];
-  vector_normalize(Mxyz);
+  for (i = 0; i < 3; i++) temp[i] = (mag[i] - M_B[i]);
+  mag[0] = M_Ainv[0][0] * temp[0] + M_Ainv[0][1] * temp[1] + M_Ainv[0][2] * temp[2];
+  mag[1] = M_Ainv[1][0] * temp[0] + M_Ainv[1][1] * temp[1] + M_Ainv[1][2] * temp[2];
+  mag[2] = M_Ainv[2][0] * temp[0] + M_Ainv[2][1] * temp[1] + M_Ainv[2][2] * temp[2];
+  if (!vector_normalize(mag))
+    return false;
+
+  //only commit once everything succeeded
+  for (i = 0; i < 3; i++)
+  {
+    Axyz[i] = acc[i];
+    Mxyz[i] = mag[i];
+  }
+  return true;
 }
 
 
 /////////////////////////////////////////////////
 // MiniC5 anemometer routines
 
+// Note this blocks for error*500ms plus a second, so a Modbus failure costs 3 seconds of loop time
 void flashErrorToLED(int error, bool haltExecution = false)
 {
   do
-  { 
+  {
     for( int i = 0; i < error; i++)
     {
+      wdt_reset();    //this blocks for seconds, and with haltExecution for ever
       digitalWrite(MOTEINO_LED, HIGH);
       delay(300);
       digitalWrite(MOTEINO_LED, LOW);
       delay(200);
     }
+	wdt_reset();
 	delay(1000);
   }
   while( haltExecution );
@@ -1059,8 +1213,21 @@ void printValues(AnemometerReadings anemometerReadings)
 
 void setup()
 {
-    pinMode(MOTEINO_LED, OUTPUT);     
+    //Capture the reset cause and get the watchdog out of the way before anything else. After a
+    //watchdog reset the AVR re-enables the watchdog at its 16ms minimum, and if the bootloader does
+    //not clear it the chip resets again before setup() can finish. That is an endless reset loop
+    //which looks exactly like a dead board, and the reset button does not help either
+    uint8_t mcusr = MCUSR;
+    MCUSR = 0;
+    wdt_disable();
+
+    pinMode(MOTEINO_LED, OUTPUT);
     digitalWrite(MOTEINO_LED, HIGH );
+
+    //8 seconds, as used by the other emon nodes. Comfortably longer than the 500ms Modbus timeout
+    //plus the packet sends, and it turns a lockup at the top of the mast into a short gap in the log
+    wdt_enable(WDTO_8S);
+
     Serial.begin(9600);
 //    Serial.begin(115200); For DoPitchRollYaw()
 
@@ -1068,22 +1235,15 @@ void setup()
     g_rs232Serial.stopListening();  //disable as interrupt can interfer with g_rf69
     Serial.println(F("Mini-C5A Modbus RTU reader starting"));
 
-    if (!g_rf69.init())
-        Serial.println(F("rf69 init failed"));
-    if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
-        Serial.println(F("rf69 setFrequency failed"));
-    // The encryption key has to be the same as the one in the client
-    uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-    g_rf69.setEncryptionKey(key);
-    g_rf69.setHeaderId(ANEMOMETER_NODE);
-    //g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-    //when using the RH_RF69 driver with the RFM69HW module, you must setTxPowercan with isHigherPowerModule set to true
-    //Otherwise, the library will not set the PA_BOOST pin high and the module will not transmit
-    //g_rf69.setTxPower(13,true);
-    Serial.print(F("RF69 initialise node: "));
-    Serial.print(ANEMOMETER_NODE);
-    Serial.print(F(" Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println(F("MHz"));
+    //BORF here means the supply is sagging, most likely on the transmit current spike, and that is
+    //also what leaves the I2C bus stuck for i2cBusClear() to sort out below
+    Serial.print(F("Reset cause MCUSR=0x")); Serial.println(mcusr, HEX);   //0 if the bootloader cleared it
+    if( mcusr & _BV(WDRF) )  Serial.println(F(" watchdog reset"));
+    if( mcusr & _BV(BORF) )  Serial.println(F(" brown out reset"));
+    if( mcusr & _BV(EXTRF) ) Serial.println(F(" external reset"));
+    if( mcusr & _BV(PORF) )  Serial.println(F(" power on reset"));
+
+    radioInit();
 
     memset(&g_payloadAnemometer, 0, sizeof(g_payloadAnemometer));
     g_payloadAnemometer.subnode = 1;
@@ -1099,22 +1259,7 @@ void setup()
     Serial.println(F("mwv,1= apparent wind"));
     Serial.println(F("mwv,2= true wind"));
 
-    Wire.begin();
-    delay(50);
-    Serial.println(F("GY-86 sensor test startup"));
-
-    bool okMPU = initMPU6050();
-    Serial.print(F("MPU6050: "));
-    Serial.println(okMPU ? F("OK") : F("NOT FOUND"));
-
-    bool okHMC = initHMC5883L();
-    Serial.print(F("HMC5883L: "));
-    Serial.println(okHMC ? F("OK") : F("NOT FOUND"));
-
-    bool okMS5 = initMS5611();
-    Serial.print(F("MS5611: "));
-    Serial.println(okMS5 ? F("OK") : F("NOT FOUND"));
-
+    i2cInit();
 
     digitalWrite(MOTEINO_LED, LOW );
 
@@ -1130,6 +1275,9 @@ void loop()
     static unsigned long lastSendWindTime = millis();
     static unsigned long lastSendPressureTime = millis();
     static unsigned long lastGPSUpdate = 0;
+    static uint8_t imuFailures = 0;
+
+    wdt_reset();
 
     unsigned long now = millis();
 
@@ -1151,28 +1299,55 @@ void loop()
 
     if (now - lastSendWindTime >= SEND_WIND_INTERVAL_MS) 
     {
-        //turn off the radio to avoid interference with RS232 reading
+        //The radio deliberately stays in receive while the Modbus response is read. The two
+        //setIdleMode() calls that used to sit here did not turn it off: setIdleMode() only assigns
+        //RH_RF69's _idleMode field, it never touches the chip. What they did do is leave _idleMode
+        //at SLEEP across the read, so an incoming packet made the ISR put the chip to sleep, and the
+        //following send() then filled the FIFO with the chip asleep. Staying in RX is also what
+        //catches the GPS packets that true wind needs.
         lastSendWindTime = now;
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
         g_rs232Serial.listen();
         sendReadRequest();          // send request to MiniC5A anemometer
         // read and parse response
         AnemometerReadings anemometerReadings;
         bool readAnemometerOK = readResponseAndParse(anemometerReadings);
         g_rs232Serial.stopListening();
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 
         digitalWrite(MOTEINO_LED, HIGH );
 
         //Get the IMU data to publish
         // Calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
-        get_scaled_IMU(g_payloadIMU.acc, g_payloadIMU.mag);  //apply relative scale and offset to RAW data. UNITS are not important
-        get_gyro(g_payloadIMU.gyro);                         //get gyro data with offsets removed
-        g_payloadIMU.heading = get_heading(g_payloadIMU.acc, g_payloadIMU.mag, p, declination);
+        //On a failed I2C read the previous values are kept and published again, which is far better
+        //than the garbage the old code let through, but it does mean a wedged sensor shows up as a
+        //frozen heading rather than an obviously bad one. Watch for the message below.
+        bool imuOK = get_scaled_IMU(g_payloadIMU.acc, g_payloadIMU.mag);  //apply relative scale and offset to RAW data. UNITS are not important
+        if( imuOK )
+        {
+            int heading = get_heading(g_payloadIMU.acc, g_payloadIMU.mag, p, declination);
+            if( heading >= 0 )
+                g_payloadIMU.heading = heading;
+            else
+                imuOK = false;
+        }
+        if( !get_gyro(g_payloadIMU.gyro) )                   //get gyro data with offsets removed
+            imuOK = false;
+
+        if( imuOK )
+        {
+            imuFailures = 0;
+        }
+        else if( ++imuFailures >= MAX_IMU_FAILURES )
+        {
+            //Wire.setWireTimeout() has already reset the TWI hardware, so the only thing left that
+            //it cannot fix is a slave holding SDA low. Clock it out and re-initialise the sensors
+            Serial.println(F("IMU reads failing, recovering the I2C bus"));
+            i2cInit();
+            imuFailures = 0;
+        }
 
         g_rf69.setHeaderId(IMU_NODE);
         g_rf69.send((const uint8_t*) &g_payloadIMU, sizeof(PayloadIMU) );
-        if( g_rf69.waitPacketSent() )
+        if( waitPacketSentOrRecover() )
         {
             EmonSerial::PrintIMUPayload(&g_payloadIMU);
         }
@@ -1192,7 +1367,7 @@ void loop()
             g_payloadAnemometer.temperature = anemometerReadings.temperature;  // degree celcius
 
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-            if( g_rf69.waitPacketSent() )
+            if( waitPacketSentOrRecover() )
             {
                 EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
             }
@@ -1208,7 +1383,7 @@ void loop()
             g_payloadAnemometer.subnode = 1;    //apparent wind
             g_payloadAnemometer.windDirection = apparentWindDirection;
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-            if( g_rf69.waitPacketSent() )   
+            if( waitPacketSentOrRecover() )   
             {
                 EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
             }
@@ -1225,7 +1400,7 @@ void loop()
                 g_payloadAnemometer.windDirection = tw.twd;
                 g_payloadAnemometer.windSpeed = tw.tws;
                 g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-                if( g_rf69.waitPacketSent() )   
+                if( waitPacketSentOrRecover() )   
                 {
                     EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
                 }
@@ -1252,7 +1427,7 @@ void loop()
                 g_payloadPressure.temperature = anemometerReadings.temperature;
 
                 g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
-                if( g_rf69.waitPacketSent() )
+                if( waitPacketSentOrRecover() )
                 {
                     EmonSerial::PrintPressurePayload(&g_payloadPressure);
                 }
@@ -1266,7 +1441,7 @@ void loop()
                 // g_payloadPressure.humidity = 0;
                 // get_temperature_pressure(g_payloadPressure.temperature, g_payloadPressure.pressure );
                 // g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
-                // if( g_rf69.waitPacketSent() )
+                // if( waitPacketSentOrRecover() )
                 // {
                 //     EmonSerial::PrintPressurePayload(&g_payloadPressure);
                 // }
