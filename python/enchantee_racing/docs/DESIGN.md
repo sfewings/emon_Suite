@@ -1629,9 +1629,10 @@ than something that happens to them.
    **The map does not follow the boat**, and that was decided rather than overlooked. Fit
    returns to the course, and a chart that re-centres itself under a finger mid-pinch is
    worse than one that stays where it was put.
-6. **Legibility.** Caveats on the page rather than only in a loader comment:
-   crowd-sourced banks, nothing about sandbanks, a 2010 survey, orientation only and not
-   for navigation.
+6. **Legibility.** Caveats in the document rather than only in a loader comment:
+   crowd-sourced banks, nothing about sandbanks, the datum and which way its error runs,
+   orientation only and not for navigation. On the page at first and now the chart's own
+   description, for the reason 12.2 gives.
 
    Labels turned out to need two mechanisms, not one. **A zoom threshold alone is not
    enough**, and that is the thing worth carrying forward. At the racing extent the twenty
@@ -2067,6 +2068,61 @@ The boat is centred when that extent is asked for and not followed after that. F
 was considered and dropped, as it was in 12.1: a view that recentres itself fights the
 hand that just panned it. For the same reason, a course change refits the view only when
 the view is on the inner extent **and** has not been dragged by hand.
+
+### 12.3 The region depths, and what they changed on the page
+
+`depth.json` grew from the river to the whole mapped extent: Rottnest, Gage Roads, Owen
+Anchorage, Cockburn Sound, Warnbro and the northern beaches. Two stages, the SC2010
+multibeam at 2 m for the river and the five DoT composite surfaces at 10 m for the rest,
+declared in the document's `coverage`. The generator's side of that is above; this is what
+it cost the page, which is less than expected in one way and more in another.
+
+**Nothing about the drawing had to change.** The schema went to `pfsyc-depth/2` but the
+feature contract did not move: two kinds, `band` and `contour`, keyed by `properties.band`
+and `properties.depth_m`, the same five band ids and the same three levels.
+`drawDepth` reads all of that as literals and validates none of it, so a regeneration that
+renamed a property would draw an empty chart and report nothing. That contract is now
+asserted against the real `config/depth.json` in `tests/test_map.py`, along with the day
+palette matching the colours the generator writes into the document for QGIS.
+
+**It costs 392 kB on the wire, not 1.9 MB.** nginx gzips `application/json` and the file
+is repetitive coordinate text, so it compresses 4.8:1. All six config documents together
+are 487 kB compressed. On the Pi's own browser the page is ready 0.62 s after the request
+with 2427 paths and 78,174 coordinate pairs, against about 16,000 before. The iPad mini 3
+is the machine that decides whether that is acceptable and it cannot be measured from
+here; the thresholds that already existed do most of the work, the aid register being
+hidden past 25 m per pixel and every mark label past 50.
+
+**The canvas is no longer water, and that is the real change.** `#chart`'s background was
+a grey-blue called `--water`, and the reasoning was sound while the survey covered the
+river alone: every gap in it was somewhere a person could see was water, and rendering the
+page with a black canvas had found those gaps reading as land. The region surveys inverted
+it. The map now extends well past its own data, about a third of the Everything extent is
+off the chart, and that third includes real open ocean north and west of Rottnest. Painted
+water-blue it said "sea" about places holding no information at all, which is precisely
+the mistake `gen_depth.py` refuses to make *inside* the region when it paints unsurveyed
+water green rather than deep.
+
+So the token is `--nodata`, a neutral grey by day, deliberately outside the four chart
+blues and the foreshore green, and the edge of the data is now visible. A test holds it
+15 luma clear of every band and under 20 of channel spread, so it cannot drift into being
+a blue.
+
+At night it is the darkest thing on the page and **off the chart is hard to tell from the
+deepest water**. That is accepted rather than solved. A brighter red-grey was tried first
+and landed between the mid and deep bands in brightness, which on a palette that has given
+up hue is the same as landing on them; the five bands already spend the usable range and
+the theme forbids reaching outside red for a sixth tone. What makes it survivable is that
+the night theme is used in the river, on the Race course extent, where nothing off the
+chart is on the screen, and that the coastline is drawn bright for exactly this reason.
+
+**The caveat was wrong on the page after the datum correction.** It said "depths below low
+water from a 2010 survey", which reads as conservative, and the correction above is that
+they are on AHD and the error runs the other way. The page said the unsafe thing for as
+long as it took to notice, which is the argument for the caveat being asserted rather than
+merely written: the test now requires it to name AHD, to say "not chart datum", and to say
+which direction the error runs, and to not contain the old wording. Naming a datum without
+saying what it costs leaves the crew to work it out, which is not a caveat.
 
 ## 13. Build order
 

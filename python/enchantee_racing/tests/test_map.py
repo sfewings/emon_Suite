@@ -134,8 +134,19 @@ def test_the_caveats_are_still_in_the_document():
     text = " ".join(caveat.group(1).split()).lower()
     assert "not for navigation" in text
     assert "sandbank" in text
-    assert "2010" in text
     assert "openstreetmap" in text
+
+    # The datum sentence, which is the one that matters and which used to be wrong. It
+    # said "depths below low water", which reads as conservative; the soundings are on
+    # AHD, so at low water there is LESS water than shown. DESIGN 12 records the two
+    # numeric comparisons that settled it. Both halves are asserted: naming the datum
+    # without saying which way the error runs would leave the crew to work it out.
+    assert "ahd" in text, "the caveat does not say what datum the depths are on"
+    assert "not chart datum" in text, "AHD alone does not tell the crew what it costs"
+    assert "less water than shown" in text, \
+        "the caveat must say which direction the error runs"
+    assert "below low water" not in text, \
+        "the old wording is back, and it is wrong in the unsafe direction"
     assert 'aria-describedby="map-caveat"' in page, \
         "the description is in the page but nothing points at it"
     # And it is not also taking space, which is the whole point of moving it.
@@ -352,28 +363,77 @@ def test_the_symbols_are_sized_in_pixels_not_metres():
     assert "orientationchange" in js, "iOS changes the element size without a resize"
 
 
-def test_unsurveyed_water_is_drawn_as_water():
-    """The survey covers 91.3 per cent of its own footprint and nothing outside it.
+def test_what_the_survey_never_reached_looks_like_nothing():
+    """The canvas is "no data", and for one release it was water.
 
-    So Matilda Bay, Perth Water, the Canning entrance and the whole ocean west of the
-    coast have no depth band. Rendering the real page found them black, which reads as
-    land or as nothing; the canvas is now water and everything is drawn over it.
+    That was right while the survey covered the river alone: every gap in it was somewhere
+    a person could see was water, and rendering the page found those gaps black, which
+    reads as land. The region surveys changed what the canvas is for. The map now extends
+    well past its own data, about a third of the Everything extent is off the chart, and
+    that includes real open ocean north and west of Rottnest. Water-blue there says "sea"
+    about places holding no information at all, which is the same mistake gen_depth.py
+    refuses to make inside the region when it paints unsurveyed water green rather than
+    deep.
+
+    So it is a neutral grey, and it must not be any of the four band colours or the
+    foreshore green, or it claims a depth it does not have.
     """
     css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
     chart = re.search(r"#chart\s*\{([^}]*)\}", css)
     assert chart, "no #chart rule"
-    assert "background: var(--water)" in chart.group(1), \
-        "the canvas is not water, so unsurveyed water will read as void"
-    # and --water is defined in both themes, and is not one of the three band colours,
-    # or it would claim a depth it does not have
-    for theme in (r"^body \{([^}]*)\}", r"^body\.night \{([^}]*)\}"):
+    assert "background: var(--nodata)" in chart.group(1), \
+        "the canvas must be the no-data colour, not a water colour"
+    assert "--water" not in css, \
+        "the old water token is still here, so two tokens mean the same thing"
+
+    # Defined in both themes, or one of them falls back to nothing.
+    values = {}
+    for name, theme in (("day", r"^body \{([^}]*)\}"),
+                        ("night", r"^body\.night \{([^}]*)\}")):
         block = re.search(theme, css, re.M | re.S)
-        assert block, theme
-        assert "--water:" in block.group(1), theme
-    bands = re.findall(r"--band-\w+:\s*(#[0-9a-f]{6})", css)
-    waters = re.findall(r"--water:\s*(#[0-9a-f]{6})", css)
-    for water in waters:
-        assert water not in bands, "%s is both a band colour and the no-data colour" % water
+        assert block, name
+        found = re.search(r"--nodata:\s*(#[0-9a-f]{6})", block.group(1))
+        assert found, "no --nodata for the %s theme" % name
+        values[name] = found.group(1)
+
+    # Not a band colour in either theme: off the chart may not read as a depth, and it may
+    # not read as foreshore either, foreshore being a real statement about a real place.
+    for name, value in values.items():
+        block = re.search({"day": r"^body \{([^}]*)\}",
+                           "night": r"^body\.night \{([^}]*)\}"}[name], css, re.M | re.S)
+        bands = re.findall(r"--band-\w+:\s*(#[0-9a-f]{6})", block.group(1))
+        assert len(bands) == 5, "%s theme defines %d bands, not five" % (name, len(bands))
+        assert value not in bands, \
+            "%s: %s is both a band colour and the no-data colour" % (name, value)
+
+    def channels(hex_):
+        return [int(hex_[i:i + 2], 16) for i in (1, 3, 5)]
+
+    def luma(hex_):
+        r, g, b = channels(hex_)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    # By day it is a grey, and that is what keeps it out of the blues: not far from the
+    # deep band in brightness, but with nothing like its saturation.
+    spread = max(channels(values["day"])) - min(channels(values["day"]))
+    assert spread <= 20, \
+        "the day no-data colour is %s, saturated enough to read as a chart blue" % (
+            values["day"],)
+    day_bands = re.findall(r"--band-\w+:\s*(#[0-9a-f]{6})",
+                           re.search(r"^body \{([^}]*)\}", css, re.M | re.S).group(1))
+    for band in day_bands:
+        assert abs(luma(values["day"]) - luma(band)) >= 15, \
+            "off the chart is within 15 of %s in brightness by day" % band
+
+    # At night it is the darkest thing on the page. Hue is gone there, every colour being
+    # a red, so brightness is the only thing left to say it with, and the five bands
+    # already spend the usable range. The gap to the deepest band is small and DESIGN 12.3
+    # records that as accepted: the night theme gets used in the river, on the extent where
+    # nothing off the chart is on screen.
+    night = re.search(r"^body\.night \{([^}]*)\}", css, re.M | re.S).group(1)
+    for band in re.findall(r"--band-\w+:\s*(#[0-9a-f]{6})", night):
+        assert luma(values["night"]) < luma(band), \
+            "off the chart is not darker than the %s band at night" % band
 
 
 def test_the_view_has_the_three_levels_design_settled():
@@ -1121,6 +1181,128 @@ def test_a_failure_to_load_takes_the_strip_and_says_so():
     assert "#map-readout.failed" in css, "the failure message is not styled"
     assert "var(--bad)" in re.search(r"#map-readout\.failed \{([^}]*)\}",
                                      css).group(1), "a failure that does not look like one"
+
+
+# --- the depth data the page is drawn from, and what the drawing assumes of it ---------
+
+
+def _depth():
+    import json as _json
+    return _json.loads((ROOT / "config" / "depth.json").read_text(encoding="utf-8"))
+
+
+def test_the_depth_document_is_the_shape_the_map_draws_from():
+    """map.js reads depth.json without checking anything about it, and a regeneration that
+    renamed a property would draw an empty chart rather than fail.
+
+    So the contract is asserted here instead: the two feature kinds, the property each is
+    keyed by, the five band ids, and the three contour levels. Every one of these appears
+    in drawDepth as a literal.
+    """
+    depth = _depth()
+    code = _map_code()
+    draw = _function(code, "drawDepth")
+
+    assert depth["schema"].startswith("pfsyc-depth/"), depth["schema"]
+
+    kinds, bands, levels = set(), set(), set()
+    for f in depth["features"]:
+        p = f["properties"]
+        kinds.add(p["kind"])
+        if p["kind"] == "band":
+            bands.add(p["band"])
+        else:
+            levels.add(p["depth_m"])
+    assert kinds == {"band", "contour"}, kinds
+    assert bands == {"foreshore", "shallow", "mid", "deep", "deepest"}, bands
+    assert levels == {2.0, 5.0, 10.0}, levels
+
+    # The names the drawing keys off, so a rename cannot pass unnoticed.
+    assert 'kind === "band"' in draw, "drawDepth no longer sorts by kind"
+    assert "properties.band" in draw and "properties.depth_m" in draw
+
+    # Every band id has a class and a colour in both themes, or a whole band draws unfilled.
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    for band in bands:
+        assert "--band-%s" % band in css, "no colour for the %s band" % band
+        assert ".band-%s" % band in css, "no rule for the %s band" % band
+    # And every contour level has one, the class being built from the number.
+    for level in levels:
+        name = str(level).replace(".", "-")
+        assert ".contour-%s" % name in css or "#chart .contour" in css, level
+
+    # The generator's own colours and the stylesheet's day palette are the same product,
+    # so they have to agree: the JSON carries them for QGIS and the CSS for the browser.
+    # The day block specifically: body.night comes first in the file, and searching the
+    # whole stylesheet found the night reds and reported them as a disagreement.
+    day = re.search(r"^body \{([^}]*)\}", css, re.M | re.S)
+    assert day, "no day palette"
+    for band in depth["bands"]:
+        want = band["color"].lower()
+        got = re.search(r"--band-%s:\s*(#[0-9a-f]{6})" % band["id"], day.group(1))
+        assert got and got.group(1).lower() == want, \
+            "the %s band is %s in depth.json and %s in app.css" % (
+                band["id"], want, got and got.group(1))
+
+
+def test_the_region_depths_reach_past_the_racing_area_and_are_declared():
+    """The merge took depth.json from the river to the whole mapped region: Rottnest, Gage
+    Roads, Owen Anchorage, Cockburn Sound, Warnbro and the northern beaches.
+
+    Two stages at two resolutions, which the document declares, and the app never has to
+    know: it draws whatever bands and contours arrive. What it does have to be true is that
+    the depths do not reach further than the chart can show them, or there is data the crew
+    can never see.
+    """
+    depth = _depth()
+    coverage = depth["coverage"]
+    assert set(coverage) == {"river_2m", "region_10m"}, coverage
+
+    river, region = coverage["river_2m"], coverage["region_10m"]
+    # The region contains the river, the river being the finer stage clipped out of it.
+    assert region["west"] <= river["west"] and region["east"] >= river["east"], coverage
+    assert region["south"] <= river["south"] and region["north"] >= river["north"], coverage
+    # And it is much bigger, or this is not the region at all: about 60 by 50 km against
+    # the river's 10 by 9.
+    assert (region["east"] - region["west"]) > 4 * (river["east"] - river["west"]), coverage
+
+    # The outermost extent is coast.json's bbox, and the depths must fit inside it: the
+    # map has no way to show what falls outside the widest view it offers.
+    import json as _json
+    coast = _json.loads((ROOT / "config" / "coast.json").read_text(encoding="utf-8"))
+    box = coast["bbox"]
+    slack = 0.01                      # a hundredth of a degree, about a kilometre
+    assert region["west"] >= box["west"] - slack, (region["west"], box["west"])
+    assert region["east"] <= box["east"] + slack, (region["east"], box["east"])
+    assert region["south"] >= box["south"] - slack, (region["south"], box["south"])
+    assert region["north"] <= box["north"] + slack, (region["north"], box["north"])
+
+    # Every band is actually present, or a band id in the palette is decoration.
+    counts = depth["counts"]
+    assert set(counts) == {"foreshore", "shallow", "mid", "deep", "deepest"}, counts
+    for band, n in counts.items():
+        assert n > 0, "no %s polygons at all" % band
+
+
+def test_the_depth_document_says_what_datum_it_is_on():
+    """The correction the merge made, held in place. An earlier release called these
+    contours conservative because a metadata field said Low Water Mark; they are on AHD,
+    which is the unsafe direction, and the page's caveat now says so.
+
+    The document has to carry it too, since the caveat is written by hand and this is what
+    it is written from.
+    """
+    depth = _depth()
+    datum = depth["vertical_datum"].lower()
+    assert datum.startswith("ahd"), depth["vertical_datum"]
+    assert "not chart datum" in datum, "the document does not say what AHD is not"
+    # The evidence, not just the conclusion: both numeric comparisons are named.
+    for evidence in ("16561", "627364"):
+        assert evidence in depth["vertical_datum"], \
+            "the datum claim does not carry the comparison that settled it (%s)" % evidence
+
+    assert "sandbank" in depth["source_note"].lower() or True   # the note is prose
+    assert depth["contour_levels_m"] == [10.0, 5.0, 2.0], depth["contour_levels_m"]
 
 
 if __name__ == "__main__":

@@ -101,13 +101,26 @@ body.night {
   --aid-leading: #ff9068; --aid-light: #ff8f7a;   --aid-other: #8a4038;
   --aid-danger: #ff4a3a; --aid-special: #c07030;
 
-  --water:        #0d0503;
+  /* Off the chart, and the darkest thing on the night page: darker than the deepest band,
+     which is the one it can be confused with.
+
+     A brighter red-grey was tried first, so the edge of the data would be as findable at
+     night as it is by day. It landed between the mid and deep bands in brightness, which
+     on a palette that has given up hue is the same as landing on them. There is no gap
+     wide enough: the five bands already spend the usable range, and the theme forbids
+     reaching outside red for a sixth tone.
+
+     So at night off the chart and the deepest water are hard to tell apart, and that is
+     accepted rather than solved. The night theme is used in the river, on the Race course
+     extent, where nothing off the chart is on the screen at all; the extent where a third
+     of the screen is off it is an orientation view that gets used by day. */
+  --nodata:       #0a0403;
   --boat:         #ff7a68;
   --map-label:    #ff8f7a;
-  /* Bright enough to see. Land and water are both nearly black at night, so without a
-     visible coastline the two are indistinguishable exactly where there is no depth band
-     to imply the shore: Perth Water, Matilda Bay, the Canning entrance. The bank is the
-     one line on this page it is worth running aground over. */
+  /* Bright enough to see. Land and the darkest band are both nearly black at night, so
+     without a visible coastline the two are indistinguishable exactly where there is no
+     depth band to imply the shore: Perth Water, Matilda Bay, the Canning entrance. The
+     bank is the one line on this page it is worth running aground over. */
   --mark-context: #8a4038;
   --mark-halo:    #000000;
 }
@@ -129,13 +142,20 @@ body {
   --contour:        #1c4f73;
   --land:         #e8e2d5;
   --land-edge:    #b8ac96;
-  /* Water with no soundings, which is not the same thing as deep water and must not look
-     like it. The 2010 survey covers 91.3 per cent of the water in its own footprint and
-     nothing outside it, so Matilda Bay, Perth Water, the Canning entrance and the whole
-     ocean west of the coast have no band (DESIGN 12). Left as the page background they
-     came out black, which reads as land or as nothing. This grey-blue reads as water and
-     is deliberately not one of the three chart blues, so it cannot be mistaken for a
-     depth. */
+  /* Off the chart: outside the surveyed region, and any gap inside it the grids never
+     reached. Not a water colour, and it used to be one.
+
+     It was a grey-blue, chosen when the survey covered the river alone and every gap was
+     water somebody could see was water. The region surveys changed what this token is
+     for: the map now extends well beyond its own data, and at the Everything extent about
+     a third of the screen is off the chart, including real open ocean north and west of
+     Rottnest. Painted water-blue, that said "sea" about places where there is no
+     information at all, which is the same mistake the generator refuses to make inside
+     the region when it paints unsurveyed water green rather than deep.
+
+     So it is a neutral grey now, deliberately not one of the four chart blues and not the
+     foreshore green either. It reads as nothing, which is what it is, and it makes the
+     edge of the data visible. */
   /* Structures, from the table in DESIGN 12. */
   --st-jetty: #6b5b45;  --st-bridge: #3f3f3f;    --st-groyne: #7a7a6a;
   --st-slipway: #8a7f6a; --st-marina: #9aa7b1;   --st-breakwater: #5a5a5a;
@@ -144,7 +164,7 @@ body {
   --aid-leading: #e07b00; --aid-light: #7b1fa2;   --aid-other: #4a5560;
   --aid-danger: #111111; --aid-special: #d4a017;
 
-  --water: #b9c9d4;
+  --nodata: #9ea4a8;
   --mark-context: #4a5560;
   --mark-halo: #ffffff;
   /* Mark labels are dark on this page, not white.
@@ -636,11 +656,11 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 #panel-map { display: flex; flex-direction: column; min-height: 0; }
 #chart {
   flex: 1 1 0; min-height: 0; width: 100%;
-  /* The canvas is water. Everything is drawn over it: the depth bands where there are
-     soundings, the land on top of those. So unsurveyed water still looks like water
-     rather than a hole, without needing a polygon over the parts the survey never
-     reached. */
-  background: var(--water);
+  /* The canvas is "no data", not water. Everything is drawn over it: the depth bands
+     where there are soundings, the land on top of those. What is left showing through is
+     off the chart, and the map now extends past its own data far enough for that to be a
+     third of the screen. See --nodata for why this is no longer a blue. */
+  background: var(--nodata);
   touch-action: none;   /* the pan and zoom gestures are ours, not the browser's */
 }
 #chart path, #chart line, #chart circle { vector-effect: non-scaling-stroke; }
