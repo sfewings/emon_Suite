@@ -283,9 +283,22 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
         events = store.drain_events()
         publisher = app.config.get("EVENT_PUBLISHER")
         for event in events:
-            log.info("race event: %s leg %s %s (%s)", event.get("type"), event.get("leg"),
-                     event.get("leg_name"), event.get("source"))
-            if publisher is not None:
+            if publisher is None:
+                # Nothing else will say it happened. Demo mode and the tests take this
+                # path, and a transition nobody can see is worse than a duplicate line.
+                log.info("race event: %s leg %s %s (%s)", event.get("type"),
+                         event.get("leg"), event.get("leg_name"), event.get("source"))
+            else:
+                # publish_event logs as it publishes, so logging here as well printed
+                # every command twice, once as __main__ and once as mqtt_client, while a
+                # fix-driven event printed once because MqttClient drains and publishes
+                # without coming through here.
+                #
+                # That asymmetry is worth avoiding for a specific reason: the original
+                # EVENT_PUBLISHER bug was diagnosed by counting these lines and noticing
+                # which kinds appeared twice. Leaving a second, opposite asymmetry in
+                # place would mislead exactly the person who next reads this log for the
+                # same purpose. One line per event, whichever thread drained it.
                 publisher(event)
         return events
 

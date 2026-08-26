@@ -265,6 +265,50 @@ def test_state_reports_what_the_race_screen_needs():
     assert race_block["leg_name"] == "Dolphin East"   # the name, not the id or the number
 
 
+def test_each_event_is_logged_once_however_it_was_drained():
+    """One line per transition, whichever thread got to the queue first.
+
+    publish_event logs as it publishes, so logging in the drain as well printed every
+    command twice, once as __main__ and once as mqtt_client, while a fix-driven event
+    printed once because MqttClient drains and publishes without going through the drain
+    at all. Seen in a replay: select, timer, start and both manual advances doubled while
+    every automatic rounding did not.
+
+    Worth pinning rather than shrugging at. The original EVENT_PUBLISHER bug was found by
+    counting these lines and noticing which kinds appeared twice, so a second and opposite
+    asymmetry would mislead the next person doing exactly that.
+    """
+    import logging
+
+    records = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            if "race event" in record.getMessage():
+                records.append(record)
+
+    handler = Collect()
+    logging.getLogger().addHandler(handler)
+    try:
+        # with a publisher: the publisher is the one that speaks
+        client, _store, _ticker, published = _client()
+        _post(client, "/api/select", {"course": "frostbite-3"})
+        assert len(published) == 1, published
+        assert len(records) == 0, "the drain logged an event the publisher will log"
+
+        # without one: the drain speaks, or nothing does
+        records[:] = []
+        store = Store()
+        flask_app = app_module.create_app(store, CONFIG)
+        flask_app.config["TESTING"] = True
+        flask_app.config["EVENT_PUBLISHER"] = None
+        bare = flask_app.test_client()
+        _post(bare, "/api/select", {"course": "frostbite-3"})
+        assert len(records) == 1, "a transition nobody publishes must still be logged"
+    finally:
+        logging.getLogger().removeHandler(handler)
+
+
 def test_the_config_documents_the_map_needs_are_served():
     """The map draws from config/, and nothing served it: DESIGN 12.1, build step 1.
 
