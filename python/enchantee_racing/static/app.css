@@ -51,6 +51,7 @@ body.night {
   --land-edge:    #7a2a20;
   --water:        #0d0503;
   --boat:         #ff7a68;
+  --map-label:    #ff8f7a;
   /* Bright enough to see. Land and water are both nearly black at night, so without a
      visible coastline the two are indistinguishable exactly where there is no depth band
      to imply the shore: Perth Water, Matilda Bay, the Canning entrance. The bank is the
@@ -79,6 +80,15 @@ body {
   --water: #b9c9d4;
   --mark-context: #4a5560;
   --mark-halo: #ffffff;
+  /* Mark labels are dark on this page, not white.
+     The race screen is a black screen and --ink is white for it, which is right there and
+     wrong here: the chart is pale, the >4 m band covers most of it at #d8e9f5, and white
+     text with a white halo on that is a smear rather than a name. It read as the labels
+     going blurry, and widening the halo to its proper 3 px made a contrast fault that was
+     always there impossible to miss.
+     Dark navy reads against all three depth bands, against the land, and against the
+     no-data grey, which is every background a label can land on. */
+  --map-label: #10334d;
   /* Own ship. Its own colour rather than borrowing one, because it is the thing the crew
      looks for first and it must not be confused with a leg, a mark or the start line. A
      strong green: pale green vanished against the >4 m band, which is most of the water. */
@@ -596,10 +606,25 @@ body.night #chart .band-deep    { fill: var(--band-deep); }
 }
 #chart .mark-used circle { fill: var(--brg); stroke-width: 1.5; }
 #chart .mark-label {
-  fill: var(--ink); font-weight: 600;
-  paint-order: stroke; stroke: var(--mark-halo); stroke-width: 3px;
+  fill: var(--map-label); font-weight: 600;
+  paint-order: stroke; stroke: var(--mark-halo);
+  /* No stroke-width here, deliberately. map.js sets it as an attribute on the layer,
+     in user units against the current scale, the same way it sets font-size.
+     `stroke-width: 3px` inside an svg means three *user units*, not three screen pixels,
+     so it was a halo three metres wide fixed to the ground: 0.8 px across zoomed out and
+     about ten zoomed in, which swallowed the eleven-pixel glyphs and read as the text
+     going blurry. Reported from all three devices, which is what said it was not a
+     rendering quirk of one of them.
+     It cannot be set here even as a fallback: CSS beats a presentation attribute, so a
+     declaration here would override the value the layer inherits down. Nor is
+     vector-effect: non-scaling-stroke used, which is how the paths and circles above stay
+     constant, because its support on <text> has never been dependable in Safari and
+     Safari is what the boat runs. */
+  paint-order: stroke;
 }
-body.night #chart .mark-label { fill: var(--mark); }
+/* Night keeps a dark halo, so the pairing stays light-on-dark rather than becoming
+   light-on-light the way the day theme accidentally did. */
+body.night #chart .mark-label { fill: var(--map-label); }
 /* Hidden by layoutLabels when a label will not fit, rather than removed: the node stays
    and costs nothing, and the next view change may well find room for it again. */
 #chart .mark-label[hidden] { display: none; }

@@ -521,7 +521,8 @@ def test_the_label_width_is_estimated_with_the_halo_modelled_separately():
     def token(name, text):
         return re.search(r"\b%s\b" % re.escape(name), text) is not None
 
-    assert "LABEL_CHAR_W = 0.63" in code
+    # 0.66 is the measured median ratio of rendered width to characters times font size.
+    assert "LABEL_CHAR_W = 0.66" in code
     layout = _function(code, "layoutLabels")
     for name in ("LABEL_HALO_PX", "LABEL_AIR_PX", "LABEL_CHAR_W"):
         assert re.search(r"\bvar %s = [\d.]+;" % name, code), \
@@ -530,14 +531,85 @@ def test_the_label_width_is_estimated_with_the_halo_modelled_separately():
             "%s is declared but never used in the layout" % name
     assert "getBBox" not in code, "measuring every label would cost a layout per view"
 
-    # The halo the estimate models is the one the stylesheet actually paints.
+    # One source of truth for the halo: LABEL_HALO_PX both paints the stroke and pads the
+    # estimate, so the estimate is always modelling the halo that is drawn. This used to
+    # cross-check a stroke-width in the stylesheet, and that stroke-width is exactly where
+    # the blur came from, so there is nothing there to disagree with any more.
+    assert token("LABEL_HALO_PX", _function(code, "applyScale")), \
+        "the halo the estimate models is not the halo being drawn"
+
+
+def test_the_label_halo_is_sized_per_view_and_not_in_css():
+    """Reported from all three devices: names go blurry as you zoom in, then disappear.
+
+    stroke-width: 3px inside an svg is three *user units*, not three screen pixels, so the
+    halo was three metres wide and fixed to the ground. Measured: 0.82 px across at the
+    fitted view and growing without limit as you zoom, until it swallowed the
+    eleven-pixel glyphs. Now set as an attribute on the layer against the current scale,
+    the way the font size already was, and measured at exactly 3 px across a nine-fold
+    zoom range.
+
+    It cannot be a CSS declaration even as a fallback: CSS beats a presentation attribute,
+    so a stroke-width here would override the value the layer inherits down. That is the
+    trap this test exists to hold shut.
+    """
+    code = _map_code()
+    scale = _function(code, "applyScale")
+    assert 'setAttribute("stroke-width"' in scale, \
+        "the halo is not sized against the view, so it will grow as you zoom in"
+    assert "LABEL_HALO_PX" in scale
+
     css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
-    label = re.search(r"#chart \.mark-label \{([^}]*)\}", css)
+    label = re.search(r"#chart \.mark-label \{(.*?)\}", css, re.S)
     assert label, "no mark-label rule"
-    stroke = re.search(r"stroke-width:\s*([\d.]+)px", label.group(1))
-    assert stroke, label.group(1)
-    assert abs(float(stroke.group(1)) * 2 - 6) < 0.01, \
-        "the halo changed but LABEL_HALO_PX did not"
+    body = re.sub(r"/\*.*?\*/", "", label.group(1), flags=re.S)
+    assert "stroke-width" not in body, \
+        "a stroke-width in CSS overrides the inherited attribute and the blur comes back"
+
+    # vector-effect would be the other way to do it, and is deliberately not used on text:
+    # Safari's support for it there has never been dependable, and Safari is what the boat
+    # runs. So the paths and circles use it and the labels do not.
+    shapes = re.search(r"#chart path, #chart line, #chart circle \{([^}]*)\}", css)
+    assert shapes and "non-scaling-stroke" in shapes.group(1)
+    assert "text" not in shapes.group(1)
+
+
+def test_a_label_and_its_halo_are_different_colours():
+    """The other half of the same report, and the larger half.
+
+    --ink is white because the race screen is a black screen, and --mark-halo is white
+    because the chart is pale. The label used --ink, so on this page it was white text
+    with a white halo over a >4 m band of #d8e9f5: a smear rather than a name. Widening
+    the halo to its proper 3 px made a contrast fault that was always there impossible to
+    miss.
+
+    So the map has its own label colour, dark by day and light by night, and this asserts
+    the pairing can never collapse again in either theme.
+    """
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+
+    def tokens(selector):
+        block = re.search(r"(?m)^%s \{(.*?)^\}" % re.escape(selector), css, re.S)
+        assert block, selector
+        found = {}
+        for name, value in re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{6})", block.group(1)):
+            found[name] = value.lower()
+        return found
+
+    day = tokens("body")
+    night = tokens("body.night")
+
+    label = re.search(r"#chart \.mark-label \{(.*?)\}", css, re.S).group(1)
+    assert "var(--map-label)" in label, "the label does not use the map's own colour"
+    assert "var(--ink)" not in label, \
+        "--ink is white for the black race screen and is wrong on a pale chart"
+
+    for theme, values in (("day", day), ("night", night)):
+        assert "--map-label" in values, "no label colour for %s" % theme
+        assert "--mark-halo" in values, "no halo colour for %s" % theme
+        assert values["--map-label"] != values["--mark-halo"], \
+            "%s: label and halo are both %s, which is a smear and not a name" % (
+                theme, values["--map-label"])
 
 
 def test_every_mark_carries_a_label_node():

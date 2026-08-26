@@ -390,8 +390,8 @@
   // much larger for "Bond" than for "Bricklanding A". So the halo is modelled separately
   // rather than averaged into the per-character figure, which is what made one number fit
   // both ends.
-  var LABEL_CHAR_W = 0.63;      // width of a character as a fraction of the font size
-  var LABEL_HALO_PX = 6;        // the 3 px stroke, both sides
+  var LABEL_CHAR_W = 0.66;      // width of a character as a fraction of the font size
+  var LABEL_HALO_PX = 3;        // the halo's stroke width, in screen pixels
   var LABEL_AIR_PX = 2;         // so two labels that just miss still look separate
 
   function overlaps(a, b) {
@@ -429,6 +429,7 @@
       // getBBox. Measuring 131 text nodes would force a layout on every view change, and
       // this page already had to be made faster for the iPad once; an estimate that is a
       // few pixels out only ever costs a label that could have fitted.
+      // A stroke of width W paints W/2 either side, so it adds W to the box, not 2W.
       var w = sym.chars * fontH * LABEL_CHAR_W + (LABEL_HALO_PX + LABEL_AIR_PX * 2) * mpp;
       var air = LABEL_AIR_PX * mpp;
 
@@ -491,6 +492,11 @@
     var mpp = metresPerPixel();
     if (!isFinite(mpp) || mpp <= 0) return;
     el.marks.setAttribute("font-size", (SYMBOL_PX.label * mpp).toFixed(2));
+    // The halo, in user units, for the same reason as the font size: a stroke-width given
+    // in CSS px inside an svg is user units, so a fixed one is a halo of fixed size on the
+    // ground that grows on screen as you zoom in until it swallows the glyphs. Inherited
+    // by the labels rather than set on each of them, which is one write instead of 131.
+    el.marks.setAttribute("stroke-width", (LABEL_HALO_PX * mpp).toFixed(2));
     for (var i = 0; i < symbols.length; i++) {
       var sym = symbols[i];
       var px = sym.used ? SYMBOL_PX.used : SYMBOL_PX.context;
