@@ -147,9 +147,18 @@ html, body {
 
 #app {
   display: flex; flex-direction: column;
-  height: 100vh; height: 100dvh;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-           env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* Three answers, best last. 100vh is what iOS 12 has and it is not the visible height:
+     in a standalone app with a translucent status bar it includes what the status bar sits
+     over, which showed as the navigation half clipped along the bottom of the iPad. 100dvh
+     is right and needs Safari 15.4. --app-h is window.innerHeight, measured by
+     static/viewport.js, and is right everywhere. A browser with no JavaScript falls back
+     through the list. */
+  height: 100vh; height: 100dvh; height: var(--app-h, 100dvh);
+  /* No bottom inset here. It belongs to the navigation, which is the bottom-most thing on
+     the page: applied there, the nav's background reaches the edge of the screen and its
+     buttons still sit above the home indicator, where a tap target has to be. Applied here
+     it left a band of dead black below the nav on the iPhone. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
 
 /* --- panels: exactly one visible, chosen by the mode class on body --- */
@@ -224,7 +233,16 @@ body.mode-detail   #panel-detail { display: flex; }
 #cog      { color: var(--cog);  font-size: 5vh; font-size: clamp(18px, 5vh, 48px); }
 #relative { color: var(--brg);  font-size: 5vh; font-size: clamp(18px, 5vh, 48px); }
 #elapsed  { color: var(--time); font-size: 8vh; font-size: clamp(26px, 8vh, 80px); }
-#countdown { color: var(--time); font-size: 22vh; font-size: clamp(56px, 22vh, 220px); }
+/* Capped by width as well as height, which every big reading here needs and only these
+   two actually overflow without.
+   Measured on a 375 px viewport: 22vh came out at 147 px and "09:55" rendered 409 px of
+   glyphs, so the last digit ran off the screen. Digits are 0.556 em each here, so six
+   characters need the font under (width - 16) / 3.34, which is about 26vw.
+   min() rather than clamp for the cap because min() is Safari 11.1 and clamp is 13.1, and
+   the plain vw fallback ahead of it is what iOS 12 uses: on a wide desktop that fallback
+   alone would be enormous, which is why the min() line matters as well. */
+#countdown { color: var(--time); font-size: 26vw;
+             font-size: clamp(56px, min(22vh, 26vw), 220px); }
 .unit { color: var(--label); font-size: 2vh; font-size: clamp(11px, 2vh, 20px);
         letter-spacing: .08em; text-transform: uppercase; }
 
@@ -364,6 +382,11 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   border-top: 2px solid var(--rule);
   flex: 0 0 auto;
   background: var(--bg);
+  /* The home indicator's height, so the row's background reaches the bottom of the screen
+     while its buttons stay above the indicator. This does not give the panels more room,
+     since the nav grows by exactly what #app stopped reserving; what it removes is the
+     band of dead space below the nav. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 #nav a, #nav button {
   flex: 1 1 0; min-height: 2.6rem; min-width: 0;
@@ -415,7 +438,9 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 
 /* Both numbers large: they are what anyone wants off this screen, read across a cockpit
    by someone who has just stopped concentrating (DESIGN 9.6). */
-#final-elapsed { color: var(--time); font-size: 17vh; font-size: clamp(44px, 17vh, 170px); }
+/* Seven characters, "0:11:21", so it needs a tighter cap than the countdown's six. */
+#final-elapsed { color: var(--time); font-size: 22vw;
+                 font-size: clamp(44px, min(17vh, 22vw), 170px); }
 #final-course  { color: var(--mark); font-size: 8vh; font-size: clamp(24px, 8vh, 76px); }
 #final-secondary {
   padding: .35rem .6rem; color: var(--label);

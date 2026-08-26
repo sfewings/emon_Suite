@@ -26,6 +26,9 @@
 <link rel="apple-touch-icon" href="static/icon-180.png">
 <title>Enchantee map</title>
 <link rel="stylesheet" href="static/app.css">
+<!-- Before the body, so --app-h is set before #app is first laid out and there is no
+     flash of the wrong height. See the file for why CSS alone cannot do this. -->
+<script src="static/viewport.js"></script>
 
 <div id="app">
   <section class="panel" id="panel-map">

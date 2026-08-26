@@ -614,6 +614,15 @@ NAV_H = "2.6rem"
 in two files, which is why the test below checks they still agree."""
 
 
+def _bare(path):
+    """A stylesheet with its comments taken out.
+
+    The rule bodies here are read whole, and this stylesheet explains itself at length
+    inside them, so an unstripped comment reads as declarations that are not there.
+    """
+    return re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+
+
 def _nav_rules(css, selector):
     block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
     assert block, selector
@@ -704,7 +713,10 @@ def test_nothing_above_the_app_takes_up_any_room():
     ids, depth = [], 0
     for tag in re.finditer(r'<(/?)(\w+)([^>]*?)(/?)>', before):
         closing, element, attrs, selfclose = tag.groups()
-        if element in ("meta", "title", "link", "br"):
+        # Elements that generate no box, so they cannot make the page taller: the void
+        # ones, and <script>, which the UA stylesheet gives display: none. Skipped on
+        # both the open and the close tag, so the depth stays balanced.
+        if element in ("meta", "title", "link", "br", "script"):
             continue
         if closing:
             depth -= 1
@@ -1235,6 +1247,127 @@ def test_the_pendants_all_taper_and_the_naval_flags_do_not():
         body = (FLAGS / (name + ".svg")).read_text(encoding="utf-8")
         assert 'viewBox="0 0 90 60"' in body, name
         assert "polygon" not in body, "%s is rectangular" % name
+
+
+
+def test_the_app_is_as_tall_as_the_screen_actually_is():
+    """100vh is not the visible height on iOS, and that showed as a clipped navigation.
+
+    In a standalone web app with a translucent status bar, iOS counts the area under the
+    status bar in 100vh, so #app was taller than what could be seen and the bottom of it,
+    the navigation, hung off the screen. 100dvh is the correct answer and arrived in
+    Safari 15.4; the iPad on the boat is on 12. window.innerHeight is right on every
+    version of everything, so viewport.js measures it.
+
+    Three declarations in ascending order of correctness, because a browser takes the last
+    one it understands and ignores the rest. Dropping either of the first two would leave
+    a no-JavaScript browser with nothing.
+    """
+    # Comments stripped: _nav_rules keeps the whole rule body, and #app's carries a long
+    # note that mentions every one of the three heights by name.
+    css = _bare(ROOT / "static" / "app.css")
+    app_rule = _nav_rules(css, "#app")
+
+    heights = re.findall(r"height:\s*([^;]+)", app_rule)
+    assert heights == ["100vh", "100dvh", "var(--app-h, 100dvh)"], \
+        "the three heights must all be there, worst first: %r" % (heights,)
+
+    script = (ROOT / "static" / "viewport.js").read_text(encoding="utf-8")
+    code = re.sub(r"//[^\n]*", "", script)
+    assert "window.innerHeight" in code, "the point of the file is to measure, not assume"
+    assert "--app-h" in code and "documentElement" in code, \
+        "the property has to land on an ancestor of #app"
+    # It has to be re-measured, or a rotation or a split-screen leaves a stale height.
+    for event in ("resize", "orientationchange", "visibilitychange"):
+        assert event in code, "no listener for %s, so the height goes stale" % event
+
+    # Loaded by the two pages built from app.css, and loaded before #app so the height is
+    # set before the first layout rather than after a visible reflow.
+    for path, page in (("/", _page()), ("/map", _page_map())):
+        assert "static/viewport.js" in page, "%s never measures its height" % path
+        assert page.index("static/viewport.js") < page.index('<div id="app">'), \
+            "%s loads viewport.js too late to matter" % path
+
+    # The HUD is deliberately self-contained, no external script and no external
+    # stylesheet (DESIGN 9.1), and reserves its nav height by hand. Left alone.
+    assert "viewport.js" not in _page_hud(), \
+        "the HUD has no external script, and its nav is out of the flow anyway"
+
+
+def test_the_navigation_reaches_the_bottom_of_the_screen():
+    """The home indicator's inset belongs to the nav, not to the page around it.
+
+    On #app it padded the whole column, which left a band of the page's background below
+    the navigation doing nothing, on a screen where every pixel is scarce. On #nav the
+    row's background runs to the edge of the glass and its buttons still clear the
+    indicator, which is where a tap target has to be.
+
+    This buys no extra room for the panels, since the nav grows by exactly what #app gave
+    up. It removes dead space, which is what was actually reported.
+    """
+    css = _bare(ROOT / "static" / "app.css")
+
+    app_rule = _nav_rules(css, "#app")
+    padding = re.search(r"padding:\s*([^;]+)", app_rule)
+    assert padding, "#app still needs the other three insets, for a landscape notch"
+    sides = padding.group(1).split()
+    assert len(sides) == 4, "four sides, so the bottom one is named and can be checked"
+    assert sides[2] == "0", "the bottom inset moved to #nav; #app must not claim it twice"
+    for side in (sides[0], sides[1], sides[3]):
+        assert side.startswith("env(safe-area-inset-"), side
+
+    assert "padding-bottom: env(safe-area-inset-bottom)" in _nav_rules(css, "#nav"), \
+        "without it the buttons sit under the home indicator"
+
+
+# The readouts with no natural width limit, and the widest string each ever shows.
+# Every one of these is sized off the viewport, and a font sized by height alone runs off
+# the side of a narrow screen: #countdown at 22vh measured 409px of glyphs in 375px.
+BIG_READOUTS = {
+    "#countdown": "09:55",
+    "#final-elapsed": "0:11:21",
+}
+
+# The widest digit in the stack's first font, as a fraction of the font size, measured in
+# chromium at three viewports and rounded up. Digits are tabular here, so one number does.
+GLYPH_EM = 0.56
+
+
+def test_the_big_readouts_fit_the_narrowest_screen():
+    """A font sized in vh overflows a tall narrow screen, and the phone is one.
+
+    The countdown is the largest thing the app draws and the one reading the crew cannot
+    afford to lose a digit from. At 22vh on the phone it came out at 147px and its five
+    characters needed 409px of a 375px screen, so the seconds ran off the edge. It looked
+    right on the iPad and on a desktop, both of which are wider than they are tall.
+
+    The cap is a vw term, so it scales with the dimension that was actually short. min()
+    is Safari 11.1 and clamp() is 13.1, so the plain vw declaration ahead of the clamp is
+    what the iPad on iOS 12 uses; the clamp is what keeps a wide desktop from taking the
+    vw term literally and drawing something enormous.
+    """
+    css = _bare(ROOT / "static" / "app.css")
+
+    for selector, widest in BIG_READOUTS.items():
+        rule = _nav_rules(css, selector)
+        sizes = re.findall(r"font-size:\s*([^;]+)", rule)
+        assert len(sizes) == 2, \
+            "%s needs a plain fallback and then a capped size, got %r" % (selector, sizes)
+        fallback, capped = sizes
+
+        vw = re.fullmatch(r"([\d.]+)vw", fallback)
+        assert vw, "%s: the iOS 12 fallback must be sized by width: %r" % (selector, fallback)
+        assert "min(" in capped and "vw" in capped, \
+            "%s: the modern size must be capped by width too: %r" % (selector, capped)
+
+        # The narrowest screen the app is used on, an iPhone SE in portrait, and the
+        # widest reading that selector ever holds.
+        width = 320.0
+        font = float(vw.group(1)) / 100.0 * width
+        glyphs = font * GLYPH_EM * len(widest)
+        assert glyphs < width, \
+            "%s overflows a %dpx screen: %r needs %dpx of %dpx" % (
+                selector, width, widest, round(glyphs), width)
 
 
 if __name__ == "__main__":

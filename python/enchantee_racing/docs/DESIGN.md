@@ -889,7 +889,42 @@ visible on anything modern, which is why both got as far as the boat:
   collapsing them, and the gap was only ever putting them back. It is a plain block now
   and needs no gap on any browser.
 
-Both are pinned by tests, since neither can be observed on a development machine. The
+A third arrived once the map page had joined the navigation, and it is the same shape:
+
+- `100vh` on iOS is **not the visible height**. In a standalone app with a translucent
+  status bar it counts the area the status bar sits over, so `#app` was taller than the
+  screen and the bottom of it, the navigation, hung half off the iPad. `100dvh` is the
+  right answer and needs Safari 15.4. `window.innerHeight` is right on every version of
+  everything, so `static/viewport.js` measures it and hands it over as `--app-h`, and
+  `#app` declares all three heights in ascending order of correctness: a browser takes
+  the last one it understands, and one with no JavaScript still gets the best of the
+  other two. The script re-measures on `resize`, on `orientationchange` after the delay
+  9.6 already needed, and on becoming visible again, since a device rotated while in the
+  background reports the old size otherwise.
+
+  `hud.html` is left out of this. It is self-contained by decision (9.1), no external
+  script and no external stylesheet, and its nav has been out of the flow since the port
+  anyway.
+
+And one that is not a missing feature but a wrong axis:
+
+- **A font sized only in `vh` overflows a tall narrow screen.** The countdown at `22vh`
+  came out at 147 px on the phone, and its five characters wanted 409 px of a 375 px
+  screen, so the seconds ran off the edge. It looked correct on the iPad and on a
+  desktop, both of which are wider than they are tall, which is why it took a phone to
+  see. The two readings with no natural width limit are now capped by a `vw` term as
+  well: `min(22vh, 26vw)` inside the clamp, with a plain `26vw` ahead of it for iOS 12,
+  since `min()` is Safari 11.1 while `clamp()` is 13.1. The plain fallback alone would
+  draw something enormous on a wide desktop, so both lines earn their place, and the
+  height term is still what applies on every device the boat carries.
+
+The home indicator's inset moved in the same pass, from `#app` to `#nav`. On the page it
+padded the whole column and left a band of background below the navigation doing nothing;
+on the row, the background runs to the edge of the glass and the buttons still clear the
+indicator, which is where a tap target has to be. It buys the panels no height, the nav
+growing by exactly what the page gave up, but the dead space is what was reported.
+
+All of these are pinned by tests, since none can be observed on a development machine. The
 general lesson is the one section 9.6 already records in a different form: on this
 project, a layout fault is worth measuring before it is theorised about. Rendering the
 real page at the device's viewport and reading back computed sizes distinguished "the

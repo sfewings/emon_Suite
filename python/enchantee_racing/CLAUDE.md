@@ -29,9 +29,12 @@ their absence.
   `location.pathname`, the way the existing HUD page does. `/hud` is a 302 alias for
   `/race/hud`, for the crew.
 - **The browser floor is iOS 12**, set by the iPad mini 3 on the boat. No `clamp()`
-  (Safari 13.1) and no flexbox `gap` (14.1) without a fallback ahead of it. Neither
-  failure is visible on a development machine, both reached the boat once, and both
-  are now pinned by tests. Grid gap is fine. See DESIGN 9.8.1.
+  (Safari 13.1), no flexbox `gap` (14.1) and no `dvh` (15.4) without a fallback ahead
+  of it. `min()` and `env()` are fine, and so is grid gap. Screen height comes from
+  `static/viewport.js` as `--app-h`, because `100vh` on iOS is not the visible height.
+  Size the huge readouts by **both** axes: `vh` alone overflows a narrow screen. None of
+  these failures is visible on a development machine, all of them reached the boat once,
+  and all are now pinned by tests. See DESIGN 9.8.1.
 
 ## Operating environment
 
@@ -66,6 +69,9 @@ config/                 marks.json, courses.json, lines.json, coast.json, race.j
 templates/              index.html, hud.html
 static/                 app.js, app.css, flags/*.svg, audio/, icon*, depth.json
 scripts/                gen_*.py, which regenerate everything in config/
+static/                 app.js, app.css, map.js, geo.js, viewport.js, flags/*.svg,
+                        audio/, icon*
+scripts/                gen_*.py, which regenerate everything in config/; outputs committed
 config/                 marks.json, courses.json, lines.json, race.json,
                         coast.json, depth.json, structures.json, navaids.json
                         (the last four are the map basemap, all gen_*.py output)
