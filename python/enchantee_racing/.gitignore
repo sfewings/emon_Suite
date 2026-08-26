@@ -8,3 +8,7 @@ scripts/_depth_work.tif
 scripts/_depth_vec.gpkg
 scripts/_depth_work.gpkg
 scripts/_land_burn.gpkg
+docs/qgis/swan_depth.new.gpkg
+docs/qgis/swan_coast.new.gpkg
+scripts/_structures_osm_cache.osm
+docs/qgis/swan_structures.new.gpkg

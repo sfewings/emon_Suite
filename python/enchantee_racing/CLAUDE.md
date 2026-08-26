@@ -62,7 +62,8 @@ engine/race.py          mode and leg state machine, pure functions
 templates/              index.html, hud.html
 static/                 app.js, app.css, flags/*.svg, audio/, icon*, depth.json
 scripts/                gen_*.py, which regenerate everything in config/
-config/                 marks.json, courses.json, lines.json, coast.json, race.json
+config/                 marks.json, courses.json, lines.json, race.json,
+                        coast.json, depth.json, structures.json  (map basemap)
 manifest.webmanifest    served from the app root, not static/ (DESIGN 9.8.1)
 Dockerfile              COPY is an allow-list; a new root file must be added to it
 scripts/                generators, outputs committed

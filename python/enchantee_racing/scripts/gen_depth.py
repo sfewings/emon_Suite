@@ -1,4 +1,4 @@
-"""Generate config/depth.json: the 2 m and 4 m depth contours, and the three bands.
+"""Generate config/depth.json: the 2 m, 5 m and 10 m depth contours and their bands.
 
 Run with QGIS's own Python. The BAG reader is a GDAL plugin that QGIS ships but does
 not put on the driver path, so GDAL_DRIVER_PATH has to be set; this script sets it
@@ -69,7 +69,7 @@ RES = 2.0                 # working grid, from 1 m source
 NODATA = -9999.0
 BAG_NODATA = 1e6
 DATUM_SHIFT = 0.0         # -0.756 to express contours against AHD instead of LWM
-CONTOURS = [-4.0, -2.0]
+CONTOURS = [-10.0, -5.0, -2.0]
 OPEN_LOW, OPEN_HIGH = -1000.0, 1000.0
 LAND_VALUE = 0.5          # so gap filling ramps up to the shore instead of off a cliff
 FILL_DIST = 120           # cells, = 240 m
@@ -78,9 +78,10 @@ MIN_BAND_AREA = 400.0
 MIN_LINE_LEN = 40.0
 
 BANDS = [
-    {"id": "shallow", "zmin": -2.0,     "zmax": OPEN_HIGH, "depth": "0-2 m", "color": "#2e6f9e"},
-    {"id": "mid",     "zmin": -4.0,     "zmax": -2.0,      "depth": "2-4 m", "color": "#88b9d9"},
-    {"id": "deep",    "zmin": OPEN_LOW, "zmax": -4.0,      "depth": ">4 m",  "color": "#d8e9f5"},
+    {"id": "shallow", "zmin": -2.0,     "zmax": OPEN_HIGH, "depth": "0-2 m",  "color": "#1f5c8b"},
+    {"id": "mid",     "zmin": -5.0,     "zmax": -2.0,      "depth": "2-5 m",  "color": "#4e8fbd"},
+    {"id": "deep",    "zmin": -10.0,    "zmax": -5.0,      "depth": "5-10 m", "color": "#92c0dc"},
+    {"id": "deepest", "zmin": OPEN_LOW, "zmax": -10.0,     "depth": ">10 m",  "color": "#d8e9f5"},
 ]
 
 
@@ -265,6 +266,38 @@ def classify(zmin, zmax):
     return None
 
 
+def write_gpkg(bands_layer, contours_layer):
+    """Build the GeoPackage beside the target, then move it into place.
+
+    QGIS holds an open handle on any GeoPackage it has layered, so writing straight
+    to OUT_GPKG dies with WinError 32 whenever the project is open. Staging and
+    replacing means a locked target costs you the desktop copy, not the run: the
+    staged file is left next to it and config/depth.json, which is what the app
+    actually loads, is already written by the time this is called.
+    """
+    # Must end in .gpkg: the driver appends its own extension otherwise, and you get
+    # a stray "swan_depth.gpkg.new.gpkg" while the replace fails on a missing file.
+    stage = OUT_GPKG[:-5] + ".new.gpkg"
+    if os.path.exists(stage):
+        os.remove(stage)
+    for lyr, nm in ((bands_layer, "depth_bands"), (contours_layer, "depth_contours")):
+        o = QgsVectorFileWriter.SaveVectorOptions()
+        o.driverName = "GPKG"
+        o.layerName = nm
+        o.fileEncoding = "UTF-8"
+        if os.path.exists(stage):
+            o.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
+        QgsVectorFileWriter.writeAsVectorFormatV3(lyr, stage,
+                                                  QgsCoordinateTransformContext(), o)
+    try:
+        os.replace(stage, OUT_GPKG)
+        print("wrote %s (%d bytes)" % (OUT_GPKG, os.path.getsize(OUT_GPKG)))
+    except OSError as e:
+        print("COULD NOT REPLACE %s: %s" % (OUT_GPKG, e))
+        print("   it is open in QGIS. The new one is %s" % stage)
+        print("   close the project (or remove the depth layers) and rename it over.")
+
+
 def finish(bands, lines, arr, bounds, nx, ny):
     ob = QgsVectorLayer("MultiPolygon?crs=EPSG:4326", "depth_bands", "memory")
     ob.dataProvider().addAttributes([QgsField("band", QVariant.String),
@@ -325,19 +358,6 @@ def finish(bands, lines, arr, bounds, nx, ny):
     if unplaced:
         print("   marks in no band (%d): %s" % (len(unplaced), unplaced[:12]))
 
-    if os.path.exists(OUT_GPKG):
-        os.remove(OUT_GPKG)
-    for lyr, nm in ((ob, "depth_bands"), (ol, "depth_contours")):
-        o = QgsVectorFileWriter.SaveVectorOptions()
-        o.driverName = "GPKG"
-        o.layerName = nm
-        o.fileEncoding = "UTF-8"
-        if os.path.exists(OUT_GPKG):
-            o.actionOnExistingFile = QgsVectorFileWriter.CreateOrOverwriteLayer
-        QgsVectorFileWriter.writeAsVectorFormatV3(lyr, OUT_GPKG,
-                                                  QgsCoordinateTransformContext(), o)
-    print("wrote %s (%d bytes)" % (OUT_GPKG, os.path.getsize(OUT_GPKG)))
-
     doc = {
         "schema": "pfsyc-depth/1",
         "generated_from": [BLOB + n for n in BAGS],
@@ -346,7 +366,7 @@ def finish(bands, lines, arr, bounds, nx, ny):
         "vertical_datum": ("Low Water Mark, which the DoT survey index records as "
                            "0.756 m below AHD. Depths are below LWM, the chart "
                            "convention; at mean water level expect about 0.76 m more."),
-        "source_note": ("2 m and 4 m depth contours and the three depth bands for the "
+        "source_note": ("2 m, 5 m and 10 m depth contours and the four depth bands for the "
                         "Swan and Canning. Land masked using config/coast.json, and the "
                         "unsurveyed strip between the shallowest sounding and the shore "
                         "is interpolated, so the 0-2 m band reaches the bank. Surveyed "
@@ -368,6 +388,8 @@ def finish(bands, lines, arr, bounds, nx, ny):
         json.dump(doc, fh, separators=(",", ":"))
     print("wrote %s (%d bytes, %d features)"
           % (OUT_JSON, os.path.getsize(OUT_JSON), len(doc["features"])))
+
+    write_gpkg(ob, ol)
 
 
 if __name__ == "__main__":
