@@ -2101,7 +2101,40 @@ was considered and dropped, as it was in 12.1: a view that recentres itself figh
 hand that just panned it. For the same reason, a course change refits the view only when
 the view is on the inner extent **and** has not been dragged by hand.
 
-### 12.3 The region depths, and what they changed on the page
+### 12.3 Two fingers pan as well as pinch
+
+Asked for from the boat. A two-finger drag did nothing at all, so moving the chart meant
+changing grip to one finger, and the crew is wearing gloves and holding on with the other
+hand.
+
+The cause is worth recording because the code looked right. `zoomAbout` scales and then
+puts the user-space point that was under the finger back under the finger, which is what
+makes a pinch feel anchored. The pinch handler passed it the midpoint the fingers had just
+arrived at, for both. Hold the spread and the factor is 1, and a point put back under
+itself does not move: the pan was computed and then discarded, every frame.
+
+It is one transform, not two modes. Scale about where the fingers **were**, then put
+whatever was under them where the fingers **are**. Hold the spread and that is a pure pan;
+change it and both happen at once; there is no mode to be in and nothing to switch. The
+destination is a defaulted parameter, so the mouse wheel is the same call with two
+arguments fewer, which is the pure zoom it always was.
+
+Two fingers landing on the same pixel give no scale to divide by. That used to abandon the
+gesture; it now falls back to a pure pan, because two fingers touching should still drag
+the chart.
+
+Measured with real TouchEvents at the iPad viewport, from the Race course extent at 4.2 m
+per pixel: two fingers moved 120 px left and 90 up with the spread held panned 548 m and
+411 with the size unchanged to four decimal places; spread apart about a held midpoint
+scaled by 0.4545 and moved the centre 174 m out of a 27.8 km view; both together did both.
+One finger still pans, 411 m and 274 for 90 px and 60.
+
+No new cost on the machine that is slowest at this. Single-finger pan is still coalesced to
+one view per frame and the two-finger path still applies at once, which it must, since it
+reads the CTM back between its two writes. Two-finger panning is the cheaper half of a
+pinch: the size does not change, so `applyScale` does not run.
+
+### 12.4 The region depths, and what they changed on the page
 
 `depth.json` grew from the river to the whole mapped extent: Rottnest, Gage Roads, Owen
 Anchorage, Cockburn Sound, Warnbro and the northern beaches. Two stages, the SC2010

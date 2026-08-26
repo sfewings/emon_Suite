@@ -340,16 +340,23 @@
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  // Zoom about a fixed screen point. The size is set first and the view then shifted so
-  // the user-space point that was under the finger is under it again, which is exact at
-  // any aspect ratio and needs no knowledge of the letterboxing.
-  function zoomAbout(clientX, clientY, factor) {
+  // Zoom about a screen point, and put that point down somewhere else. The size is set
+  // first and the view then shifted so the user-space point that was under the finger is
+  // under it again, which is exact at any aspect ratio and needs no knowledge of the
+  // letterboxing.
+  //
+  // toX and toY are where that point should end up, and default to where it started. Two
+  // fingers giving a pinch and a drag at once is one transform, not two: scale about where
+  // the fingers were, then place what was under them where they are now. Passing the same
+  // point twice is a pure zoom, which is what the wheel does.
+  function zoomAbout(clientX, clientY, factor, toX, toY) {
     var anchor = clientToUser(clientX, clientY);
     if (!anchor) return;
     setView({ x: view.x, y: view.y, w: view.w * factor, h: view.h * factor });
     moved = true;
     labelZoom();
-    var now = clientToUser(clientX, clientY);
+    var now = clientToUser(toX === undefined ? clientX : toX,
+                           toY === undefined ? clientY : toY);
     if (!now) return;
     setView({ x: view.x + (anchor.x - now.x), y: view.y + (anchor.y - now.y),
               w: view.w, h: view.h });
@@ -385,10 +392,22 @@
             event.touches[0].clientY - gesture.y, gesture.from);
     } else if (gesture.kind === "pinch" && event.touches.length === 2) {
       var now = spread(event.touches);
-      if (!now || !gesture.spread) return;
       var mid = midpoint(event.touches);
-      zoomAbout(mid.x, mid.y, gesture.spread / now);
-      gesture.spread = now;
+      // Two fingers pan as well as pinch, which is what the crew asked for and what every
+      // other map does. The scale is about where the fingers were, and then whatever was
+      // under them is put where they are now: hold the spread and it is a pure pan, change
+      // the spread and it is both at once, and there is no mode to be in.
+      //
+      // Anchoring on the new midpoint instead, which is what this did, silently threw the
+      // pan away: with the spread unchanged the factor is 1, and a point placed back under
+      // itself does not move.
+      //
+      // A spread of zero means the two fingers are on the same pixel and there is no scale
+      // to be had from them, so it falls back to a pure pan rather than returning: two
+      // fingers touching still ought to drag the chart.
+      var factor = (now && gesture.spread) ? gesture.spread / now : 1;
+      zoomAbout(gesture.mid.x, gesture.mid.y, factor, mid.x, mid.y);
+      if (now) gesture.spread = now;
       gesture.mid = mid;
     }
   }

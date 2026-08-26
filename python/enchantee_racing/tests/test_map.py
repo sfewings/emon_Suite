@@ -427,7 +427,7 @@ def test_what_the_survey_never_reached_looks_like_nothing():
 
     # At night it is the darkest thing on the page. Hue is gone there, every colour being
     # a red, so brightness is the only thing left to say it with, and the five bands
-    # already spend the usable range. The gap to the deepest band is small and DESIGN 12.3
+    # already spend the usable range. The gap to the deepest band is small and DESIGN 12.4
     # records that as accepted: the night theme gets used in the river, on the extent where
     # nothing off the chart is on screen.
     night = re.search(r"^body\.night \{([^}]*)\}", css, re.M | re.S).group(1)
@@ -1303,6 +1303,66 @@ def test_the_depth_document_says_what_datum_it_is_on():
 
     assert "sandbank" in depth["source_note"].lower() or True   # the note is prose
     assert depth["contour_levels_m"] == [10.0, 5.0, 2.0], depth["contour_levels_m"]
+
+
+def test_two_fingers_pan_as_well_as_pinch():
+    """Asked for from the boat, and it is what every other map does.
+
+    The pinch anchored on the midpoint the fingers had just arrived at, which silently
+    threw the pan away: hold the spread and the factor is 1, and a point put back under
+    itself does not move. So a two-finger drag did nothing at all and the crew had to
+    change grip to move the chart.
+
+    It is one transform, not a pinch mode and a pan mode: scale about where the fingers
+    were, then put whatever was under them where the fingers are now. Hold the spread and
+    that is a pure pan; change it and both happen at once; there is nothing to be in.
+
+    Driven with real TouchEvents at the iPad viewport, from the Race course extent, 4.2 m
+    per pixel: two fingers moved 120 px left and 90 up with the spread held panned the view
+    548 m and 411 with the size unchanged to four decimal places; spread apart about a held
+    midpoint scaled by 0.4545 and moved the centre 174 m out of a 27.8 km view; doing both
+    at once did both. One finger still pans, 411 m and 274 for 90 px and 60.
+    """
+    code = _map_code()
+    zoom = _function(code, "zoomAbout")
+    move = _function(code, "onTouchMove")
+
+    # The destination is a parameter, and it defaults to the origin so a pure zoom is the
+    # same call with two arguments fewer. That is what the wheel does.
+    assert re.search(r"function zoomAbout\(clientX, clientY, factor, toX, toY\)", zoom), \
+        "zoomAbout cannot put the anchor down anywhere but where it started"
+    assert "toX === undefined ? clientX : toX" in zoom, "no default for a pure zoom"
+    assert "toY === undefined ? clientY : toY" in zoom
+    wheel = re.search(r"zoomAbout\(e\.clientX, e\.clientY, [^)]*\)", code)
+    assert wheel and "," in wheel.group(0), wheel
+    # Three arguments, so two commas: point, point, factor and no destination.
+    assert wheel.group(0).count(",") == 2, \
+        "the wheel should be a pure zoom, so it passes no destination: %s" % wheel.group(0)
+
+    # The pinch passes the old midpoint as the anchor and the new one as the destination.
+    # This is the whole fix, and getting the two the wrong way round is the old bug.
+    assert "zoomAbout(gesture.mid.x, gesture.mid.y, factor, mid.x, mid.y)" in move, \
+        "the pinch does not carry the midpoint's movement into the view"
+    assert re.search(r"var mid = midpoint\(event\.touches\);", move), move
+    assert "gesture.mid = mid" in move, "the midpoint is never advanced, so it drifts"
+
+    # Two fingers on the same pixel give no scale, and that must fall back to panning
+    # rather than abandoning the move: two fingers touching still ought to drag the chart.
+    assert "(now && gesture.spread) ? gesture.spread / now : 1" in move, \
+        "a zero spread is not handled, or it is handled by giving up"
+    assert not re.search(r"if \(!now \|\| !gesture\.spread\) return;", move), \
+        "a degenerate spread still abandons the gesture"
+    assert "if (now) gesture.spread = now" in move, \
+        "a zero spread would be stored and then divided by"
+
+    # And the two paths that reach the view are unchanged in kind: one finger is coalesced
+    # to a frame, two fingers are applied at once. Two-finger panning is the cheaper half
+    # of a pinch, applyScale not running when the size did not change, so it adds no cost
+    # to the machine that was already slowest at this (DESIGN 12.1).
+    pan = _function(code, "panBy")
+    assert "scheduleView(" in pan, "single-finger pan is no longer coalesced to a frame"
+    assert "setView(" in zoom and "scheduleView(" not in zoom, \
+        "the pinch has to apply at once: it reads the CTM back between the two writes"
 
 
 if __name__ == "__main__":
