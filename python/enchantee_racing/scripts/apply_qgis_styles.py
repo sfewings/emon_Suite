@@ -32,7 +32,8 @@ STRUCT = os.path.join(QGIS_DIR, "swan_structures.gpkg")
 NAVAIDS = os.path.join(QGIS_DIR, "swan_navaids.gpkg")
 COAST = os.path.join(QGIS_DIR, "swan_coast.gpkg")
 
-# Kept identical to BANDS in gen_depth.py. Shallowest darkest, chart convention.
+# Kept identical to BANDS/FORESHORE in gen_depth.py. Shallowest darkest, chart
+# convention. Depths are below AHD, not chart datum: see DESIGN 12.
 DEPTH_BANDS = [("foreshore", "unsurveyed / foreshore", "#a8c66c"),
                ("shallow", "0 - 2 m", "#1f5c8b"),
                ("mid", "2 - 5 m", "#4e8fbd"),
@@ -113,14 +114,14 @@ def main():
              QgsRendererCategory(v, QgsFillSymbol.createSimple(
                  {"color": c, "outline_style": "no"}), lb)
              for v, lb, c in DEPTH_BANDS]),
-         "Foreshore plus depth bands 0-2 / 2-5 / 5-10 / >10 m below LWM")
+         "Foreshore plus depth bands 0-2 / 2-5 / 5-10 / >10 m below AHD")
 
     save(DEPTH, "depth_contours",
          categorized("depth_m", [
              QgsRendererCategory(v, QgsLineSymbol.createSimple(
                  {"color": c, "width": w, "width_unit": "Point", "line_style": s}), lb)
              for v, lb, c, w, s in DEPTH_LINES]),
-         "Depth contours 2 / 5 / 10 m below LWM")
+         "Depth contours 2 / 5 / 10 m below AHD")
 
     print("structures:")
     save(STRUCT, "structure_lines",

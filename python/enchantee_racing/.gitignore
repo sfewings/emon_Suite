@@ -20,3 +20,6 @@ scripts/_surveyed.gpkg
 # and committing one would ship a half-written transaction.
 *.gpkg-shm
 *.gpkg-wal
+scripts/_surveyed_*.gpkg
+scripts/_work_*.tif
+scripts/_vec_*.gpkg
