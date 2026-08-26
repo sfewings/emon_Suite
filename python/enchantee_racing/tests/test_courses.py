@@ -540,11 +540,11 @@ def test_the_leg_table_says_which_legs_are_beats_when_the_wind_is_known():
     assert all(r["leg_type"] is None for r in without)
 
     rows = course.leg_table(frostbite3, INDEX, LINES, twd=0.0)
-    assert all(r["leg_type"] in ("close hauled", "reach", "run") for r in rows)
-    # a leg straight into a northerly is close hauled, one straight away from it is a run
+    assert all(r["leg_type"] in ("beat", "reach", "run") for r in rows)
+    # a leg straight into a northerly is a beat, one straight away from it is a run
     for row in rows:
         off = abs(nav.norm180(0.0 - row["bearing"]))
-        expected = "close hauled" if off < 40.0 else "run" if off > 140.0 else "reach"
+        expected = "beat" if off < 40.0 else "run" if off > 140.0 else "reach"
         assert row["leg_type"] == expected, (row["leg"], row["bearing"])
 
 
@@ -553,11 +553,11 @@ def test_the_leg_type_thresholds_have_one_definition():
     cannot disagree about what a leg is."""
     from engine import race as race_module
 
-    assert race_module.leg_type(0.0, 10.0) == course.leg_type(0.0, 10.0) == "close hauled"
+    assert race_module.leg_type(0.0, 10.0) == course.leg_type(0.0, 10.0) == "beat"
     assert race_module.leg_type(0.0, 90.0) == course.leg_type(0.0, 90.0) == "reach"
     assert race_module.leg_type(0.0, 179.0) == course.leg_type(0.0, 179.0) == "run"
     assert race_module.leg_type(None, 90.0) is course.leg_type(None, 90.0) is None
-    assert race_module.CLOSE_HAUL_MAX == course.CLOSE_HAUL_MAX
+    assert race_module.BEAT_MAX == course.BEAT_MAX
     assert race_module.RUN_MIN == course.RUN_MIN
 
 

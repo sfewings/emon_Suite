@@ -112,7 +112,7 @@ def test_navigation_is_absent_before_any_fix_and_after_the_finish():
 
 
 def test_the_leg_type_comes_free_from_the_wind_direction():
-    """Under 40 degrees off the wind is close hauled, over 140 a run, otherwise a reach.
+    """Under 40 degrees off the wind is a beat, over 140 a run, otherwise a reach.
 
     Useful before the rounding rather than after it: it is what says which sail to have
     ready (DESIGN 3).
@@ -122,7 +122,7 @@ def test_the_leg_type_comes_free_from_the_wind_direction():
     boat = nav.destination(mark, 250.0, 900.0)
     bearing = nav.bearing(boat, mark)
 
-    for offset, expected in ((5.0, "close hauled"), (90.0, "reach"), (175.0, "run")):
+    for offset, expected in ((5.0, "beat"), (90.0, "reach"), (175.0, "run")):
         mqtt_client.handle_message(store, "anemometer/windDirection/2",
                                    str(nav.norm360(bearing + offset)).encode())
         store.on_position({"lat": boat.lat, "lon": boat.lon})
@@ -165,13 +165,13 @@ def test_the_next_leg_type_is_the_leg_after_the_rounding_not_this_one():
     boat = nav.destination(mark, 250.0, 900.0)
     onward = nav.bearing(mark, beyond)
 
-    # A wind dead against the leg after the rounding: that leg is close hauled, and the one
+    # A wind dead against the leg after the rounding: that leg is a beat, and the one
     # being sailed now is something else entirely.
     mqtt_client.handle_message(store, "anemometer/windDirection/2", str(onward).encode())
     store.on_position({"lat": boat.lat, "lon": boat.lon})
     block = store.state()["race"]["nav"]
-    assert block["next_leg_type"] == "close hauled"
-    assert block["leg_type"] != "close hauled", "the current leg is not the one being reported"
+    assert block["next_leg_type"] == "beat"
+    assert block["leg_type"] != "beat", "the current leg is not the one being reported"
 
 
 def test_the_last_leg_has_nothing_after_it():
@@ -1054,7 +1054,8 @@ def test_the_night_theme_only_changes_colours():
 # which is why both shipped. On the iPad every clamped font-size was dropped and the
 # readings rendered at the default 16 px, against the 132 px the distance computes to at
 # that viewport when clamp works; and the secondary line came out as
-# "leg5of10· thenHallmark-147°close hauled".
+# "leg5of10· thenHallmark-147°close hauled". The leg type is the shorter "beat" now, but
+# this is what the iPad actually showed at the time and the record is left as it was.
 CSS_FILES = ("static/app.css",)
 HTML_WITH_CSS = ("templates/hud.html",)
 
@@ -1600,6 +1601,63 @@ def test_the_hud_has_a_night_palette_of_its_own():
         assert night[hud_name].lower() == app_night[app_name].lower(), \
             "--%s is %s at night on the HUD and %s on the other two screens" % (
                 hud_name, night[hud_name], app_night[app_name])
+
+
+# The three leg types, and the whole of the set. One word each.
+LEG_TYPES = ("beat", "reach", "run")
+
+
+def test_a_leg_type_is_one_short_word():
+    """"beat", not "close hauled", which it was for a while.
+
+    Four characters against twelve, and it is read in two places with no room for twelve:
+    the race screen's secondary row, where it comes last after the leg number, the next
+    mark's name and the transit angle, and the leg table's right-hand column beside the
+    cumulative distance. It is also the crew's own word for the leg.
+
+    The length is the point, so it is asserted rather than left to the string. A future
+    "close hauled", "downwind run" or "broad reach" would each undo the fix silently, the
+    row not breaking so much as quietly eating the mark name beside it.
+    """
+    from engine import course as course_module
+
+    produced = set()
+    for twd in range(0, 360, 5):
+        for bearing in range(0, 360, 5):
+            got = course_module.leg_type(float(twd), float(bearing))
+            assert got in LEG_TYPES, (twd, bearing, got)
+            produced.add(got)
+    assert produced == set(LEG_TYPES), "a type that can never occur: %s" % (
+        set(LEG_TYPES) - produced,)
+
+    for word in LEG_TYPES:
+        assert len(word) <= 5, "%r is too long for the row it is read in" % word
+        assert " " not in word, "%r is two words, and it is read where one fits" % word
+
+    # Both modules answer the same, race.py delegating to course.py, so the briefing sheet
+    # and the race screen cannot disagree about what a leg is.
+    assert race.leg_type(0.0, 10.0) == "beat"
+    assert race.BEAT_MAX == course_module.BEAT_MAX == 40.0
+    assert race.RUN_MIN == course_module.RUN_MIN == 140.0
+    # One definition, not two that happen to hold the same number today: equality alone
+    # passes right up until someone edits one of them.
+    import inspect
+    source = inspect.getsource(race)
+    for name in ("BEAT_MAX", "RUN_MIN"):
+        assert "%s = course_module.%s" % (name, name) in source, \
+            "race.py keeps its own %s, so the two can drift" % name
+    assert "return course_module.leg_type(" in inspect.getsource(race.leg_type), \
+        "race.py has its own copy of the arithmetic"
+
+    # And nothing anywhere still emits the long form. The prose is left alone, "sailing
+    # close hauled" being the sailing term and course.py's docstring naming the old label
+    # in order to say it is the old label; what may not come back is a value.
+    for rel in ("engine/course.py", "engine/race.py", "static/app.js", "static/map.js",
+                "templates/hud.html", "templates/index.html"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        for emit in ('return "close hauled"', '= "close hauled"',
+                     "return 'close hauled'", 'textContent = "close hauled"'):
+            assert emit not in text, "%s still produces the long form" % rel
 
 
 if __name__ == "__main__":

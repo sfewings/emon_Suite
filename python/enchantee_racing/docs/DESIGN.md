@@ -134,9 +134,26 @@ TWA is not measured. It is `norm180(twd - hdg)`. AWA comes from
 `anemometer/windDirection/0` if present, else `norm180(awd - hdg)`. Port the
 existing implementations rather than rewriting them.
 
-Leg type comes free from `norm180(twd - bearingToMark)`: under about 40 degrees is
-close hauled, over 140 is a run, otherwise a reach. Showing the next leg type before
+Leg type comes free from `norm180(twd - bearingToMark)`: under about 40 degrees is a
+**beat**, over 140 is a **run**, otherwise a **reach**. Showing the next leg type before
 rounding is useful for sail selection.
+
+One short word each, and that is a constraint rather than a preference. The label was
+changed to "close hauled" for a while and changed back, because it is read in two places
+that are short of width, neither of which is obvious from the value's own definition:
+
+- The race screen's secondary row, where it comes last after the leg number, the next
+  mark's name and the transit angle. Measured on the longest realistic row, "leg 10 of 10
+  - then Bricklanding B -147 <type>": 224 px against 265 at a 320 px viewport, so the
+  short word returns 41 px, rising to 67 on the iPad.
+- The leg table's right-hand column, which is sized to its content, so the long word does
+  not clip: it takes width off the mark name beside it instead. That column is 50 px wide
+  with "beat" and 83 with "close hauled" at 320 px, 67 against 111 at 375.
+
+Neither was actually overflowing at the current font sizes, so this is headroom and not a
+repair. It is headroom in the two places where a longer mark name or a larger font is most
+likely to spend it. A test asserts each type is one word of five characters or fewer, so
+"broad reach" or "downwind run" cannot arrive later and undo it silently.
 
 ## 4. API
 
@@ -1044,8 +1061,8 @@ comparable side by side, and nothing needs it to change.
 ### 9.11 Course detail
 
 A page showing one whole course: every leg in order, with the mark's name and number,
-which side to round it, the leg's length and bearing, the running total, and which
-legs are close hauled when the wind direction is known. Served by `GET /api/course/<id>`,
+which side to round it, the leg's length and bearing, the running total, and each leg's
+type, beat, reach or run, when the wind direction is known. Served by `GET /api/course/<id>`,
 which composes `engine.course.leg_table()` with the series metadata.
 
 It is **not a screen** and is not in the navigation. It is a panel like the others,

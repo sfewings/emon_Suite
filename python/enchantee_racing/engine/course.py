@@ -240,24 +240,34 @@ def leg_table(
     return rows
 
 
-# Under this off the wind it is close hauled, over the other it is a run (DESIGN 3).
-CLOSE_HAUL_MAX = 40.0
+# Under this off the wind it is a beat, over the other it is a run (DESIGN 3).
+BEAT_MAX = 40.0
 RUN_MIN = 140.0
+
+CLOSE_HAUL_MAX = BEAT_MAX
+"""The old name for BEAT_MAX. Kept because it is the threshold, not the word, and a
+reader coming from an older commit or an older DESIGN will look for it."""
 
 
 def leg_type(twd: Optional[float], bearing_to_mark: Optional[float]) -> Optional[str]:
-    """close hauled, reach or run for a leg, from norm180(twd - bearing) (DESIGN 3).
+    """beat, reach or run for a leg, from norm180(twd - bearing) (DESIGN 3).
 
     Lives here rather than in race.py, which called it first, because the detail page
     wants it for a course nobody is sailing and race.py already imports this module. One
     definition, so the briefing sheet and the race screen cannot disagree about what a
     leg is.
+
+    "beat" rather than "close hauled", which it said for a while. Four characters against
+    twelve, and it is read in two places that have no room for twelve: the race screen's
+    secondary row, where it is the last of "leg 2 of 10 - then Hallmark -147 close hauled",
+    and the leg table's right-hand column beside the cumulative distance. The crew's own
+    word for the leg, and the one that fits.
     """
     if twd is None or bearing_to_mark is None:
         return None
     off_the_wind = abs(nav.norm180(twd - bearing_to_mark))
-    if off_the_wind < CLOSE_HAUL_MAX:
-        return "close hauled"
+    if off_the_wind < BEAT_MAX:
+        return "beat"
     if off_the_wind > RUN_MIN:
         return "run"
     return "reach"

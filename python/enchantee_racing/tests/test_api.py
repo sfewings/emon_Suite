@@ -784,7 +784,7 @@ def test_the_course_detail_endpoint_names_the_leg_types_when_the_wind_is_known()
     store.set("twd", 200.0)
     with_wind = json.loads(client.get("/api/course/frostbite-3").get_data(as_text=True))
     assert with_wind["twd"] == 200.0
-    assert all(leg["leg_type"] in ("close hauled", "reach", "run")
+    assert all(leg["leg_type"] in ("beat", "reach", "run")
                for leg in with_wind["legs"])
 
 
