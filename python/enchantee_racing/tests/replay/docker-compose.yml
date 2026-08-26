@@ -1,8 +1,20 @@
-# A broker to replay recorded races through. Nothing else: the app runs from the
-# checkout so it can be edited between runs, which is the point of replaying.
+# A broker to replay recorded races through, and optionally the app as well.
+#
+# The broker alone by default, because the app is usually wanted from the checkout with
+# `python app.py`, where Ctrl+C and up-arrow is the fastest edit-and-rerun loop there is
+# and that is the point of replaying.
 #
 #   docker compose -f tests/replay/docker-compose.yml up -d
 #   docker compose -f tests/replay/docker-compose.yml down
+#
+# The app comes with it under the `app` profile, which is for the case where the app is
+# not what is being edited: checking a recording, driving a phone or a tablet at it, or
+# running a replay beside the provisioned stack on the boat's Pi. It runs the published
+# image with this checkout bind-mounted over /app, so static/ edits are still live and
+# templates/ and config/ still need a `docker restart racing_replay` (CLAUDE.md).
+#
+#   REPLAY_MQTT_PORT=1884 REPLAY_APP_PORT=5003 \
+#     docker compose -f tests/replay/docker-compose.yml --profile app up -d
 #
 # Port 1883 on the host by default, so the app's default --broker localhost reaches it
 # and the recorded data arrives on exactly the topics the boat publishes.
@@ -18,7 +30,11 @@
 #
 #   REPLAY_MQTT_PORT=1884 docker compose -f tests/replay/docker-compose.yml up -d
 #
-# Then point the app at it with --broker-port 1884, and the replay with -p 1884.
+# Then point the app at it with --broker-port 1884, and the replay with -p 1884. Under the
+# app profile the port is wired through for you and only the replay still needs it named.
+#
+# REPLAY_APP_PORT does the same for the app's own port, and on the Pi it has to be set for
+# the same reason: the provisioned enchantee_racing container holds 5002.
 
 services:
   mosquitto:
@@ -28,4 +44,36 @@ services:
       - "${REPLAY_MQTT_PORT:-1883}:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  # The app, only under `--profile app`. Without the profile this service is not created,
+  # so the default `up -d` is exactly the broker it always was.
+  racing:
+    image: sfewings32/emon_enchantee_racing
+    container_name: racing_replay
+    profiles:
+      - app
+    # Host networking, so the app reaches the broker on localhost at whatever port the
+    # host published it on, and serves on the host's own port without a second mapping.
+    # The provisioned compose file does the same thing for the same reason.
+    network_mode: host
+    environment:
+      MQTT_IP: localhost
+      MQTT_PORT: ${REPLAY_MQTT_PORT:-1883}
+      # 0.0.0.0, not the image's 127.0.0.1 default. The deployed copy binds loopback
+      # because nginx fronts it; this one is reached directly, and a replay that loads on
+      # the Pi and not on a phone is the easiest mistake here to make.
+      BIND_HOST: 0.0.0.0
+      SERVICE_PORT: ${REPLAY_APP_PORT:-5002}
+      # The recording's clock is local time and the log lines are read against it, so the
+      # replay wants the boat's zone whatever the host is set to. Same value the
+      # provisioned stack passes as TIMEZONE.
+      TZ: ${TZ:-Australia/Perth}
+    volumes:
+      # The checkout over the image's /app, two levels up from this file. The image is
+      # only providing Python and its packages; every line of the app being run is the one
+      # in the working tree, which is what makes a replay worth running.
+      - ../..:/app
+    depends_on:
+      - mosquitto
     restart: unless-stopped

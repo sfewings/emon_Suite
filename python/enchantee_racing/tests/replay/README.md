@@ -18,6 +18,77 @@ and a half minutes, so the wind swings and the motor panels come and go while yo
 
 Stop the broker with `docker compose -f tests/replay/docker-compose.yml down`.
 
+## On the boat's Pi, beside the provisioned stack
+
+The loop above cannot be run as it stands on `enchantee`: the provisioned stack already
+holds 1883 and 5002. Both ports move, and the app comes up in a container alongside the
+broker rather than from a shell, so the whole rig is one command.
+
+```
+REPLAY_MQTT_PORT=1884 REPLAY_APP_PORT=5003 \
+  docker compose -f tests/replay/docker-compose.yml --profile app up -d
+
+../venv/bin/python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT \
+  -p 1884 --speed 60
+```
+
+Then open <http://enchantee.local:5003/> from a phone or a tablet, which is the point of
+running it this way: the deployed copy on <http://enchantee.local/race/> keeps serving the
+real broker throughout and is not disturbed.
+
+Bring it down with the profile named, or the app is left running:
+
+```
+docker compose -f tests/replay/docker-compose.yml --profile app down
+```
+
+`down` without `--profile app` removes the broker and leaves `racing_replay` up, holding
+port 5003. That is how compose profiles work rather than a bug, and it is the one thing
+about this worth remembering.
+
+### The three things that catch people out
+
+- **`../venv/bin/python`, not `python3`.** On the Pi neither interpreter has both
+  dependencies: the system `python3` has Flask but no paho, and `python/venv` has paho but
+  no Flask. `replay.py` and `crosscheck.py` need paho, so they need the venv; the tests
+  need Flask, so they run under `python3` (HANDOVER.md).
+- **`-p 1884` on the replay.** The compose file wires the app to the broker for you, but
+  `replay.py` is not in the compose file and still has to be told. Without it the replay
+  publishes into the provisioned broker on 1883, which is not harmless: see the comment at
+  the top of `docker-compose.yml` for the four things in that stack which react to it.
+- **`--url` on the crosscheck.** It defaults to 5002, which is the deployed app, so
+  without it you are checking the wrong instance and comparing a replay against live data.
+
+```
+../venv/bin/python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT \
+  -p 1884 -x 120 --stop 13:22
+../venv/bin/python tests/replay/crosscheck.py tests/data/20260816_Frostbite_3.TXT \
+  --at 13:22 --url http://127.0.0.1:5003/api/state
+```
+
+That pair takes about 10 s of wall clock and prints `0 of 9 fields disagree`.
+
+### Editing while it runs
+
+The container bind-mounts this checkout over its `/app`, so the image only supplies Python
+and its packages and every line being run is the one in the working tree. `static/` edits
+are live on the next reload. `templates/` and `config/` are cached by Flask, so those need:
+
+```
+docker restart racing_replay
+```
+
+That one has cost an hour more than once: a template edit that appears to have done
+nothing, on the screen you are staring at.
+
+### Why the app is behind a profile
+
+Without `--profile app` the compose file is exactly the broker it always was, because most
+of the time the app is wanted from a shell with `python app.py`, where Ctrl+C and up-arrow
+is the fastest edit-and-rerun loop there is. The profile is for when the app is not the
+thing being edited: checking a recording, driving a phone at it, or running beside the
+provisioned stack as above.
+
 ## Useful arguments
 
 | Argument | Effect |

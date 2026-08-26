@@ -111,17 +111,18 @@ To run a **second** instance against a replayed race without disturbing the depl
 which is how the display gets tested on a phone:
 
 ```
-REPLAY_MQTT_PORT=1884 docker compose -f tests/replay/docker-compose.yml up -d
-docker run -d --name racing_replay --network host \
-  -v /share/emon_Suite/python/enchantee_racing:/app \
-  -e MQTT_IP=localhost -e MQTT_PORT=1884 \
-  -e BIND_HOST=0.0.0.0 -e SERVICE_PORT=5003 -e TZ=Australia/Perth \
-  sfewings32/emon_enchantee_racing:latest
+REPLAY_MQTT_PORT=1884 REPLAY_APP_PORT=5003 \
+  docker compose -f tests/replay/docker-compose.yml --profile app up -d
 ```
 
-`BIND_HOST=0.0.0.0` is the easy one to forget: the image defaults to `127.0.0.1` because
-nginx fronts the deployed copy, and without the override the page loads on the Pi and not
-on a phone. Then <http://enchantee.local:5003/>, and drive it with the replay below.
+Both the broker and a second app, in one command. This was a `docker compose up` for the
+broker and then a nine-line `docker run` for the app, with `BIND_HOST=0.0.0.0` as the easy
+one to forget: the image defaults to `127.0.0.1` because nginx fronts the deployed copy,
+and without the override the page loads on the Pi and not on a phone. The compose file
+carries all of that now, and `tests/replay/README.md` has the rest of the loop.
+
+Bring it down with the profile named, `--profile app down`, or the app is left holding
+5003. Then <http://enchantee.local:5003/>, and drive it with the replay below.
 
 `REPLAY_MQTT_PORT` exists because the provisioned stack holds 1883. Replaying into that
 broker works but is not free: `emon_mqtt_to_influx` writes the race into InfluxDB under

@@ -108,6 +108,124 @@ def test_drain_time_is_long_enough_to_matter():
     assert replay.DRAIN_S >= 1.0
 
 
+# --- the rig itself, and the instructions for it ---------------------------------------
+#
+# The commands in tests/replay/README.md are the ones anyone starting a replay copies, and
+# a wrong one costs an afternoon rather than a test run: publishing into the provisioned
+# broker writes a replayed race into InfluxDB under today's timestamps, and checking the
+# wrong port compares a replay against live data. So the file and the instructions are
+# held to each other here.
+
+
+def _compose():
+    return (ROOT / "tests" / "replay" / "docker-compose.yml").read_text(encoding="utf-8")
+
+
+def _replay_readme():
+    return (ROOT / "tests" / "replay" / "README.md").read_text(encoding="utf-8")
+
+
+def test_the_rig_can_come_up_in_one_command_and_the_app_is_optional():
+    """The broker alone by default, the app under --profile app.
+
+    Default unchanged, because most of the time the app is wanted from a shell where
+    Ctrl+C and up-arrow is the fastest edit-and-rerun loop there is. The profile is for
+    when the app is not the thing being edited: driving a phone at it, or running beside
+    the provisioned stack on the boat's Pi, where 1883 and 5002 are both taken.
+    """
+    import re
+
+    compose = _compose()
+    assert "container_name: racing_replay" in compose
+    assert "container_name: enchantee_replay_mqtt" in compose
+
+    # The app is behind the profile, and the broker is not.
+    app = compose[compose.index("  racing:"):]
+    assert re.search(r"profiles:\s*\n\s*- app", app), \
+        "the app is not behind a profile, so the plain up -d now starts it too"
+    broker = compose[compose.index("  mosquitto:"):compose.index("  racing:")]
+    assert "profiles:" not in broker, "the broker must always come up"
+
+    # Both ports come from variables with the plain-loop defaults, so the file works
+    # unchanged on a laptop and moves out of the way on the Pi.
+    assert "${REPLAY_MQTT_PORT:-1883}:1883" in compose
+    assert "MQTT_PORT: ${REPLAY_MQTT_PORT:-1883}" in app, \
+        "the app is not wired to the same broker port as the published one"
+    assert "SERVICE_PORT: ${REPLAY_APP_PORT:-5002}" in app
+
+    # 0.0.0.0, or the page loads on the Pi and not on the phone it is being tested on.
+    assert "BIND_HOST: 0.0.0.0" in app, \
+        "the replay app would bind loopback and be unreachable from a phone"
+    # The image defaults to loopback because nginx fronts the deployed copy, which is what
+    # makes this override necessary rather than decorative.
+    provisioned = (ROOT.parent.parent / "provisioning" / "enchantee"
+                   / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "BIND_HOST=127.0.0.1" in provisioned, \
+        "the deployed copy no longer binds loopback, so check this override is still right"
+
+    # The checkout over /app, two levels up from the compose file, or the replay runs the
+    # image's copy of the code and proves nothing about the working tree.
+    assert "- ../..:/app" in app, "the app container does not mount the checkout"
+
+    # The boat's clock, because the recording's timestamps are local time.
+    assert "TZ: ${TZ:-Australia/Perth}" in app
+
+
+def test_the_readme_gives_the_commands_that_actually_work():
+    """Every command in the Pi section was run verbatim before it was written down.
+
+    Three of them carry an argument that is silently wrong if omitted, and each has its
+    own reason: -p 1884 sends the replay to the isolated broker rather than the boat's,
+    --url points the crosscheck at the replay rather than the deployed app, and
+    --profile app on the way down stops the app being left holding the port.
+    """
+    readme = _replay_readme()
+    compose = _compose()
+
+    assert "--profile app up -d" in readme, "the README does not say how to start the app"
+    assert "--profile app down" in readme, "the README does not say how to stop it"
+    assert "REPLAY_MQTT_PORT=1884" in readme and "REPLAY_APP_PORT=5003" in readme
+
+    # Both variables it names are the ones the compose file reads.
+    for name in ("REPLAY_MQTT_PORT", "REPLAY_APP_PORT"):
+        assert name in compose, "the README names %s and the compose file does not" % name
+
+    # The three easily-forgotten arguments, each with its reason nearby. Checked on EVERY
+    # invocation in the Pi section rather than once in the file: the first version of this
+    # asserted the port appeared somewhere, and passed with it deleted from one of the two
+    # commands, which is exactly the copy-and-paste that costs the afternoon.
+    import re
+
+    start = readme.index("## On the boat's Pi")
+    end = readme.index("\n## ", start)
+    section = readme[start:end]
+
+    invocations = re.findall(r"[^\n]*replay\.py[^`]*?(?=\n\n|\n```)", section, re.S)
+    assert invocations, "the Pi section gives no replay command at all"
+    for call in invocations:
+        assert "-p 1884" in call, \
+            "a replay command with no -p would publish into the provisioned broker: %r" % (
+                " ".join(call.split()),)
+
+    checks = re.findall(r"[^\n]*crosscheck\.py[^`]*?(?=\n\n|\n```)", section, re.S)
+    assert checks, "the Pi section gives no crosscheck command"
+    for call in checks:
+        assert "--url http://127.0.0.1:5003/api/state" in call, \
+            "a crosscheck with no --url compares the replay against the deployed app: %r" % (
+                " ".join(call.split()),)
+    assert "docker restart racing_replay" in readme, \
+        "template and config edits need a restart and the README does not say so"
+    assert "../venv/bin/python" in readme, \
+        "the Pi's system python3 has no paho, so the commands must name the venv"
+
+    # And the long docker run it replaces is gone from both files that carried it.
+    handover = (ROOT / "docs" / "HANDOVER.md").read_text(encoding="utf-8")
+    for name, text in (("README.md", readme), ("HANDOVER.md", handover)):
+        assert "docker run -d --name racing_replay" not in text, \
+            "%s still gives the nine-line docker run" % name
+        assert "--profile app" in text, "%s does not mention the profile" % name
+
+
 if __name__ == "__main__":
     import traceback
 
