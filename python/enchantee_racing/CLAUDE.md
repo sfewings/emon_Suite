@@ -58,26 +58,32 @@ modal dialogs, nothing that needs two hands.
 ```
 app.py                  Flask routes, static and template serving
 mqtt_client.py          paho subscriptions, writes into the store
-store.py                thread-safe {v, ts} cache, one lock
+store.py                thread-safe {v, ts} cache, one lock, and the shared settings
 engine/nav.py           ENU projection, distance, bearing, line crossing
-engine/course.py        load and validate marks/courses/lines
+engine/course.py        load and validate marks/courses/lines, and the leg table
 engine/race.py          mode and leg state machine, pure functions
 templates/              index.html, hud.html, map.html
-static/                 app.js, app.css, map.js, geo.js, flags/*.svg, audio/, icon*
-scripts/                gen_*.py, which regenerate config/ and static/; outputs committed
-config/                 marks.json, courses.json, lines.json, coast.json, race.json, depth.json
-templates/              index.html, hud.html
-static/                 app.js, app.css, flags/*.svg, audio/, icon*, depth.json
-scripts/                gen_*.py, which regenerate everything in config/
-static/                 app.js, app.css, map.js, geo.js, viewport.js, flags/*.svg,
-                        audio/, icon*
-scripts/                gen_*.py, which regenerate everything in config/; outputs committed
+static/                 app.js and app.css, the race screen
+                        map.js and geo.js, the map
+                        theme.js, day and night, shared by index and map
+                        viewport.js, the measured screen height, same two
+                        flags/*.svg, audio/, wake.mp4, silence.wav, icon*
+                        audio-check.html, and geo-check.html with geo-fixture.json,
+                        which are diagnostics rather than part of the app
+scripts/                gen_*.py, which regenerate config/ and parts of static/;
+                        all outputs committed. Also extract_courses.py,
+                        apply_qgis_styles.py and a vendored shapefile.py
 config/                 marks.json, courses.json, lines.json, race.json,
                         coast.json, depth.json, structures.json, navaids.json
                         (the last four are the map basemap, all gen_*.py output)
 manifest.webmanifest    served from the app root, not static/ (DESIGN 9.8.1)
+requirements.txt        what the image installs; nothing is installed at runtime
 Dockerfile              COPY is an allow-list; a new root file must be added to it
-tests/                  pytest, and every file also runs standalone
+Dockerfile.dockerignore its paths are relative to the build context root, which is
+                        python/, because a .dockerignore in this directory is inert
+docs/                   DESIGN.md, and HANDOVER.md between machines
+tests/                  pytest, and every file also runs standalone. Plus replay/
+                        and data/, the recorded tracks, and geodesic_reference.py
 ```
 
 `engine/` must contain **no I/O**. It takes a position, a timestamp and a course,
