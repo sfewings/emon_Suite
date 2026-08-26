@@ -1710,7 +1710,7 @@ def test_the_layout_probe_can_tell_the_three_heights_apart():
     # It has to reproduce the chain under test, not something like it.
     for rule in ("flex: 1 1 auto", "min-height: 0", "overflow: hidden",
                  "grid-auto-rows: minmax(min-content, 1fr)",
-                 "repeat(auto-fit, minmax(9rem, 1fr))"):
+                 "grid-template-columns: 1fr 1fr"):
         assert rule in page, "the probe does not reproduce %r" % rule
 
     # And it reports what the answer turns on.
@@ -1818,13 +1818,16 @@ def test_every_flag_has_an_intrinsic_size_and_not_only_a_ratio():
     falls back to the CSS default width for a replaced element: 300px. Two of those makes
     a card 600px wide at min-content, which is four times the grid's 9rem track.
 
-    The iPad mini reported the course list needing 922px in a 764px box with four courses
-    in it, which is about 221px each: four rows, one column, on a screen 755px wide with a
-    144px minimum track. A collapsed grid is what that looks like, and an item far wider
-    than its track is the most likely reason for one on an old engine.
+    That was offered as the reason the iPad's course grid had collapsed to one column, and
+    it was not. The device reports the flags rendering 83x42, the correct 2:1 at a 41.6px
+    box, so they were never 300px wide there and never squeezed the grid. (It reports a
+    natural size of 83x41 as well: iOS 12 gives the used size for an SVG image, not the
+    intrinsic one, so that field says nothing either way on the machine that matters.)
 
-    So every flag now carries width and height matching its viewBox. The probe reports the
-    natural size, so the device confirms it: 120x60 or 90x60 rather than 300x150.
+    The attributes stay because an SVG that states its own size is correct regardless, and
+    because a browser that does fall back to 300px would be wrong in a way nothing here
+    would notice. It is not a fix for anything, and DESIGN 9.8.1 records which of these
+    guesses the device actually settled.
     """
     flags = sorted((ROOT / "static" / "flags").glob("*.svg"))
     assert len(flags) == 8, [f.name for f in flags]
@@ -1887,6 +1890,98 @@ def test_nothing_asks_ios_for_a_composited_scroller():
     # And the other composited layer on the page, which is the next suspect if this is not
     # the one: a video that plays for ever at opacity 0 on z-index -1 behind everything.
     assert 'getElementById("wake")' in probe, "the wake video cannot be ruled out"
+
+
+def test_the_course_grid_counts_its_columns_rather_than_fitting_them():
+    """repeat(auto-fit, minmax(9rem, 1fr)) resolved to one column on the iPad mini.
+
+    Four courses needed 922px in a 764px box, about 221px a card, which is four rows on a
+    screen 755px wide with a 144px track minimum. Three quarters of the width was going
+    unused and the crew had to scroll a list that fits twice over.
+
+    Counting the repetitions needs a definite available inline size, and this grid is a
+    flex item whose width comes from stretching, which is the case old WebKit gets wrong.
+    Counted columns need none of that machinery, and no series has more than four courses,
+    so four columns puts any of them on one row.
+
+    Measured in a browser at six widths: 2 columns at 320 and 375, 3 at 480, 4 at 768,
+    1024 and 1400; the cards are 150px at the narrowest, which is still over the 9rem they
+    want; and the list scrolls only at 320, where two rows cannot fit 241px of height and
+    nothing can be done about that.
+    """
+    css = _bare(ROOT / "static" / "app.css")
+    rule = _nav_rules(css, "#cards")
+
+    assert "auto-fit" not in rule and "auto-fill" not in rule, \
+        "the column count is being computed again, and that is what failed"
+    assert "grid-template-columns: 1fr 1fr;" in rule, \
+        "no default column count: %s" % rule
+    # A definite inline size, so the track sizing has something to divide.
+    assert "width: 100%" in rule, \
+        "a grid in a column flex container should say its own width"
+
+    # Three and four columns as the screen allows, in px so the breakpoints do not move
+    # with the root font size.
+    steps = re.findall(
+        r"@media \(min-width: (\d+)px\) \{ #cards \{ grid-template-columns: ([^;]+); \} \}",
+        css)
+    assert [s[0] for s in steps] == ["480", "720"], steps
+    assert [s[1].count("1fr") for s in steps] == [3, 4], steps
+
+    # No series has more than four courses, so four columns is one row for any of them.
+    import json as _json
+    courses = _json.loads(
+        (ROOT / "config" / "courses.json").read_text(encoding="utf-8"))["courses"]
+    per = {}
+    for course in courses:
+        per[course["series"]] = per.get(course["series"], 0) + 1
+    assert max(per.values()) <= 4, \
+        "a series has %d courses, so four columns no longer fits one on a row" % max(
+            per.values())
+
+    # And every step leaves the cards at least the 9rem they ask for. 9rem is 144px at the
+    # default root size, and .5rem of gap and .4rem of padding come off the width first.
+    for width, columns in ((320, 2), (375, 2), (480, 3), (720, 4), (768, 4)):
+        gaps = 8 * (columns - 1)
+        card = (width - 12.8 - gaps) / columns
+        assert card >= 144, "%dpx over %d columns gives %.0fpx cards" % (
+            width, columns, card)
+
+
+def test_nothing_composited_sits_behind_the_page():
+    """The panel not always painting is measured as a paint fault, and the wake-lock video
+    is the only composited layer left after the touch-scrolling hint went.
+
+    It plays for ever, so it is composited whatever else is true of it, and on a negative
+    z-index it sits behind the page content, which is the arrangement that forces
+    everything above it into a layer of its own. Content laid out and not painted is what
+    that looks like when the compositor gets it wrong.
+
+    Nothing needs to be behind the page. Both of these are one pixel at the top left at
+    zero opacity and neither takes a pointer, so above the content is as invisible as
+    below it and asks less of the compositor. This is a suspect rather than a diagnosis,
+    and the probe can stop the video in one tap to settle it.
+    """
+    css = _bare(ROOT / "static" / "app.css")
+    hud = _bare_text(_page_hud())
+
+    for name, text in (("app.css", css), ("hud.html", hud)):
+        for value in re.findall(r"z-index:\s*(-?\d+)", text):
+            assert int(value) >= 0, \
+                "%s puts something on z-index %s, behind the page" % (name, value)
+
+    # The wake video keeps everything that makes it work: still out of the flow, still
+    # invisible, still not display: none, which would let a browser stop decoding it.
+    # The rule is a grouped selector, #wake and #quiet sharing one body, so it is found
+    # by searching for the group rather than named exactly.
+    found = re.search(r"#wake,\s*#quiet\s*\{([^}]*)\}", css)
+    assert found, "the wake and quiet rule has been split or renamed"
+    rule = " ".join(found.group(1).split())
+    assert "position: fixed" in rule
+    assert "opacity: 0" in rule
+    assert "display: none" not in rule, \
+        "an undecoded video keeps no backlight on (DESIGN 9.8)"
+    assert "pointer-events: none" in rule
 
 
 if __name__ == "__main__":

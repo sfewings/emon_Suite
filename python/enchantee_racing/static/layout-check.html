@@ -46,7 +46,9 @@
   #cards {
     flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
     display: grid; grid-gap: .5rem; gap: .5rem; padding: .4rem;
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    /* Counted columns, as app.css. auto-fit was what this replica was built with and the
+       iPad resolved it to one track; see app.css for the numbers. */
+    grid-template-columns: 1fr 1fr;
     grid-auto-rows: minmax(min-content, 1fr);
   }
   .card { display: flex; flex-direction: column; background: #0d0d0d;
@@ -59,6 +61,8 @@
          text-transform: uppercase; }
   .controls { display: flex; flex: 0 0 auto; padding: .4rem; }
   #nav { display: flex; flex: 0 0 auto; border-top: 2px solid #262626; background: #000; }
+  @media (min-width: 480px) { #cards { grid-template-columns: 1fr 1fr 1fr; } }
+  @media (min-width: 720px) { #cards { grid-template-columns: 1fr 1fr 1fr 1fr; } }
   #nav span { flex: 1 1 0; min-width: 0; min-height: 2.6rem;
               display: flex; align-items: center; justify-content: center;
               color: #767676; font-size: 13px; text-transform: uppercase; }

@@ -251,11 +251,20 @@
   /* The wake-lock video has to be playing and on the page, but never seen. Deliberately
      not display:none and not visibility:hidden: a browser that considers the element
      invisible is entitled to stop decoding it, and a video that is not being decoded is
-     not a reason to keep the backlight on. One transparent pixel behind everything. */
+     not a reason to keep the backlight on. One transparent pixel, over everything.
+
+     Over, not behind, and it said behind for a long time. A video that plays for ever is a
+     composited layer whatever else is true of it, and on a negative z-index it sits under
+     the page content, which is the arrangement that forces everything above it into a
+     layer of its own; content laid out and not painted is what that looks like when the
+     compositor gets it wrong, and that is the fault being chased on the race screen. This
+     page carries its own copy of the element and had the same z-index, so it gets the same
+     change: one transparent pixel in the top left corner is as invisible over the page as
+     under it, and asks less of the compositor. app.css says the same at more length. */
   #wake {
     position: fixed; top: 0; left: 0;
     width: 1px; height: 1px;
-    opacity: 0; z-index: -1;
+    opacity: 0; z-index: 0;
     pointer-events: none;
   }
 

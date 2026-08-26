@@ -377,7 +377,20 @@ button.warn { border-color: var(--warn); color: var(--warn); }
      the default, and on iOS 12 it costs momentum in this list and buys a list that is
      visible, which is not a difficult trade. DESIGN 9.8.1. */
   display: grid; gap: .5rem; padding: .4rem;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  /* An explicit inline size, so the track sizing has something definite to divide. This is
+     a grid inside a column flex container, where the width comes from stretching. */
+  width: 100%;
+  /* Counted columns rather than repeat(auto-fit, minmax(9rem, 1fr)).
+     The iPad mini reported four courses needing 922px in a 764px box, about 221px a card,
+     which is four rows on a screen 755px wide with a 144px track minimum: auto-fit had
+     resolved to one column and left three quarters of the width unused. Counting the
+     repetitions needs a definite available inline size and this grid is a flex item, which
+     is the case old WebKit gets wrong.
+     Counted columns need none of that machinery. No series has more than four courses, so
+     four columns puts any of them on one row and the list stops scrolling at all on a
+     tablet. The widths stay above the 9rem the cards want at every step: 150px at 320
+     wide, 177 at 375, 150 at 480, 182 at 768. */
+  grid-template-columns: 1fr 1fr;
   /* Rows take the height their content needs, and the container scrolls when they do
      not all fit. Without this the cards are squeezed to fit the viewport instead, which
      is how a phone ended up showing flags 0 px tall and the wind note painted across
@@ -396,6 +409,10 @@ button.warn { border-color: var(--warn); color: var(--warn); }
      their content again. Both halves are load-bearing. */
   grid-auto-rows: minmax(min-content, 1fr);
 }
+/* Three across once there is room for three at 9rem, four once there is room for four.
+   Plain px so the breakpoints do not move with the root font size. */
+@media (min-width: 480px) { #cards { grid-template-columns: 1fr 1fr 1fr; } }
+@media (min-width: 720px) { #cards { grid-template-columns: 1fr 1fr 1fr 1fr; } }
 /* A card is two targets: the body sails the course, the strip reads it (DESIGN 9.11). */
 .card {
   display: flex; flex-direction: column;
@@ -638,7 +655,21 @@ button.warn { border-color: var(--warn); color: var(--warn); }
    in the first minute. */
 #quiet {
   position: fixed; top: 0; left: 0; width: 1px; height: 1px;
-  opacity: 0; z-index: -1; pointer-events: none;
+  /* z-index 0, not -1. #wake is a video that plays for ever, so it is a composited layer
+     whatever else is true of it, and a composited layer on a negative z-index sits BEHIND
+     the page content, which is the arrangement that forces everything above it into a
+     layer of its own. Content laid out and not painted is what that looks like when the
+     compositor gets it wrong, and the panel not always painting on the iPad mini is
+     measured as exactly that kind of fault.
+
+     Nothing about either element needs to be behind the page. Both are one pixel at the
+     top left corner at zero opacity and neither takes a pointer, so above the content is
+     as invisible as below it and asks less of the compositor.
+
+     Still not display: none and not visibility: hidden: a browser that considers the
+     element invisible is entitled to stop decoding it, and a video that is not being
+     decoded keeps no backlight on. */
+  opacity: 0; z-index: 0; pointer-events: none;
 }
 
 @media (orientation: landscape) and (max-height: 500px) {

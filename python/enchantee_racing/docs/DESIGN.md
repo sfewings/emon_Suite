@@ -1001,21 +1001,39 @@ A third arrived once the map page had joined the navigation, and it is the same 
   - **The course list needs 922px in a 764px box**, with four courses in it, on a screen
     755px wide with a 144px minimum track. That is about 221px a card in a single column,
     so the grid had collapsed to one track and was ignoring three quarters of the width.
-    The cause is in the flag files: an SVG with a `viewBox` and no `width` or `height` has
-    an intrinsic **ratio** but no intrinsic **size**, and the cards draw the flags
-    `height: 100%; width: auto`, which needs the ratio. An engine that does not use the
-    ratio of a viewBox-only image falls back to the CSS default width for a replaced
-    element, 300px, and two of those make a card 600px wide at min-content, four times its
-    track. All eight flags now carry `width` and `height` matching their viewBox. The probe
-    prints the natural size, so the device says whether it took: 120x60 or 90x60 rather
-    than 300x150.
 
-  Neither is confirmed from the boat yet, and both are stated as what the measurements
-  point at rather than as settled. The probe keeps two switches for the confirmation: one
-  puts the composited scroller back, because a page that stops blanking has to be made to
-  blank again before the cause is established, and one stops the wake-lock video, which is
-  the only other composited layer on the page and the next suspect if the scroller is not
-  the one.
+    The flag files were blamed first: an SVG with a `viewBox` and no `width` or `height`
+    has an intrinsic ratio but no intrinsic size, and the cards draw them
+    `height: 100%; width: auto`, so an engine that ignores the ratio falls back to 300px
+    and two of those make a card 600px wide at min-content. Wrong again. The device reports
+    the flags rendering 83x42, the correct 2:1 at a 41.6px box, so they were never 300px
+    wide there. (It reports a natural size of 83x41 as well, iOS 12 giving the used size
+    for an SVG image rather than the intrinsic one, so that field says nothing either way
+    on the machine that matters. The attributes were added anyway and stay, an SVG that
+    states its own size being correct regardless, but they fixed nothing.)
+
+    What was left is the thing being computed: `repeat(auto-fit, minmax(9rem, 1fr))`.
+    Counting repetitions needs a definite available inline size, and this grid is a flex
+    item whose width comes from stretching, which is the case old WebKit gets wrong. So the
+    columns are counted instead, two then three then four by media query, which needs none
+    of that machinery. No series has more than four courses, so four columns puts any of
+    them on one row. Measured at six widths: 2 columns at 320 and 375, 3 at 480, 4 at 768,
+    1024 and 1400; cards never below the 9rem they ask for; scrolling only at 320, where
+    two rows cannot fit into 241px and nothing can be done about that.
+
+  Removing the composited scroller made the blanking intermittent rather than reliable,
+  which is progress and not a cure. What is left composited is the wake-lock video, which
+  plays for ever and so is a layer whatever else is true of it, and it sat on `z-index: -1`
+  **behind** the page content, which is the arrangement that forces everything above it
+  into a layer of its own. Both pages carried their own copy and both are now on `z-index:
+  0`: one transparent pixel in the top left corner is as invisible over the page as under
+  it and asks less of the compositor. Everything that makes the wake lock work is
+  untouched, in particular that it is not `display: none`, which would let a browser stop
+  decoding it.
+
+  Still a suspect and not a diagnosis. The probe keeps two switches for the confirmation:
+  one puts the composited scroller back, because a page that stops blanking has to be made
+  to blank again before the cause is established, and one stops the video outright.
 
   The lesson is the one 9.6 and 9.8.1 keep relearning, and it cost a release to learn it
   again: **a theory that explains every symptom is not evidence.** The replica could not
