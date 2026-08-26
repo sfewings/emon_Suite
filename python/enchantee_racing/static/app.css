@@ -600,6 +600,9 @@ body.night #chart .band-deep    { fill: var(--band-deep); }
   paint-order: stroke; stroke: var(--mark-halo); stroke-width: 3px;
 }
 body.night #chart .mark-label { fill: var(--mark); }
+/* Hidden by layoutLabels when a label will not fit, rather than removed: the node stays
+   and costs nothing, and the next view change may well find room for it again. */
+#chart .mark-label[hidden] { display: none; }
 
 /* The scope label sits in the controls row with the two buttons, and takes what room is
    left rather than a share of it: the buttons are what a hand reaches for. */

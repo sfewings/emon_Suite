@@ -439,6 +439,118 @@ def test_the_leg_after_this_one_is_marked_too_and_more_lightly():
         "the next leg and a line it is a breach to cross share a dash pattern"
 
 
+def test_labels_are_thinned_by_collision_and_not_only_by_zoom():
+    """A threshold alone would leave the racing extent with no names on it at all.
+
+    That is the view the crew uses to see the whole race area, and at it the twenty course
+    marks overlap into an unreadable mat, so a rule that showed labels above some zoom and
+    nothing below would trade one unusable view for another. Thresholds decide who is
+    eligible; collision thins the eligible down to what fits.
+
+    Measured in a browser at 375 wide, on leg 3 of Frostbite 3, counting real getBBox
+    overlaps rather than intended ones: 10 labels fitted to the course, 18 at the racing
+    extent, 0 at the coast extent, and no overlapping pair at any of them. Nothing placed
+    outside the view either.
+    """
+    code = _map_code()
+    assert "function layoutLabels" in code
+    layout = _function(code, "layoutLabels")
+
+    # Eligibility by zoom, in both directions.
+    assert "LABEL_MAX_MPP" in code, "nothing stops labels at the coast extent"
+    assert "LABEL_CONTEXT_MPP" in code, "context marks are never eligible"
+    assert "showContext" in layout and "showAny" in layout
+
+    # And thinning by collision on top, which is the half a threshold cannot do.
+    assert "function overlaps" in code
+    assert "placed.push" in layout, "nothing remembers what has already been placed"
+
+
+def test_the_label_that_matters_most_never_loses_a_collision():
+    """Priority is the mark being sailed to, then the rest of the course, then context.
+
+    Ordering is what makes thinning safe: without it, which twenty of a hundred and
+    thirty-one names survive would be an accident of array order, and the one the crew
+    actually needs could be the one dropped.
+    """
+    code = _map_code()
+    rank = _function(code, "rank")
+    assert "targetId" in rank and "return 0" in rank, "the target is not ranked first"
+    assert "sym.used ? 1 : 2" in rank, "course marks do not outrank context marks"
+    assert "function targetMarkId" in code, "nothing works out which mark is the target"
+
+    # A stable tie-break, or labels flicker between two poll ticks as equal-ranked marks
+    # swap places.
+    layout = _function(code, "layoutLabels")
+    assert "order.sort" in layout
+
+
+def test_a_blocked_label_tries_the_other_side_before_giving_up():
+    """Four placements, so a name blocked on one side goes to the other rather than
+    vanishing. It is also what keeps labels off the edge of the screen: an off-screen
+    placement is rejected like any other collision, and measured in a browser no shown
+    label falls outside the view at either zoom level."""
+    code = _map_code()
+    layout = _function(code, "layoutLabels")
+    assert layout.count('anchor: "start"') == 2 and layout.count('anchor: "end"') == 2, \
+        "fewer than four placements are tried"
+    assert "bounds.left" in layout and "bounds.right" in layout, "no edge rejection"
+    assert "text-anchor" in layout, "an end-anchored placement needs the attribute set"
+
+
+def test_the_label_width_is_estimated_with_the_halo_modelled_separately():
+    """Measured, and the first attempt was wrong.
+
+    0.58 of the font size per character let seven pairs overlap at the racing extent. The
+    real ratio runs 0.66 for a long name to 0.72 for a short one, and the spread is the
+    halo: mark-label paints a 3 px stroke behind the text, a constant that is
+    proportionally far larger for "Bond" than for "Bricklanding A". Folding it into the
+    per-character figure cannot fit both ends, so it is modelled on its own.
+
+    Estimated rather than measured with getBBox because measuring 131 text nodes would
+    force a layout on every view change, and this page has already had to be made faster
+    for the iPad once. An estimate a few pixels wide only ever costs a label that could
+    have fitted.
+    """
+    code = _map_code()
+
+    # Whole-token matching, not substring. Renaming LABEL_HALO_PX to LABEL_HALO_PX_UNUSED
+    # left the substring in place and this test passed with the halo out of the estimate,
+    # which is the same shape of hole as the guard that matched pointerdown inside a
+    # comment.
+    def token(name, text):
+        return re.search(r"\b%s\b" % re.escape(name), text) is not None
+
+    assert "LABEL_CHAR_W = 0.63" in code
+    layout = _function(code, "layoutLabels")
+    for name in ("LABEL_HALO_PX", "LABEL_AIR_PX", "LABEL_CHAR_W"):
+        assert re.search(r"\bvar %s = [\d.]+;" % name, code), \
+            "%s is not declared as a number" % name
+        assert token(name, layout), \
+            "%s is declared but never used in the layout" % name
+    assert "getBBox" not in code, "measuring every label would cost a layout per view"
+
+    # The halo the estimate models is the one the stylesheet actually paints.
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    label = re.search(r"#chart \.mark-label \{([^}]*)\}", css)
+    assert label, "no mark-label rule"
+    stroke = re.search(r"stroke-width:\s*([\d.]+)px", label.group(1))
+    assert stroke, label.group(1)
+    assert abs(float(stroke.group(1)) * 2 - 6) < 0.01, \
+        "the halo changed but LABEL_HALO_PX did not"
+
+
+def test_every_mark_carries_a_label_node():
+    """Including the 111 no current course visits, because a zoom past the context
+    threshold makes them eligible and making text nodes on every view change would be
+    worse than keeping them. They cost nothing hidden."""
+    code = _map_code()
+    draw = _function(code, "drawMarks")
+    assert "chars:" in draw, "the name length is not kept for the width estimate"
+    # no condition on `used` around creating the label any more
+    assert "if (used) {" not in draw, "only course marks get a label node"
+
+
 def test_the_overlay_follows_a_change_of_course():
     """A course change is a deliberate act that just happened, so the map follows it, the
     same principle DESIGN 9.6 applies to a mode change on the race screen.

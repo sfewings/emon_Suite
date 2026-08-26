@@ -365,6 +365,128 @@
     return Math.max(width / rect.width, height / rect.height);
   }
 
+  // --- which labels are shown, and where (DESIGN 12.1 step 6) --------------------------
+  //
+  // Two things decide it. A threshold says which marks are eligible at this zoom, and
+  // collision avoidance thins whatever is eligible down to what actually fits.
+  //
+  // A threshold alone is not enough, which is the thing worth knowing here. At the racing
+  // extent the twenty course marks overlap into an unreadable mat, so a rule that showed
+  // course labels above some zoom and nothing below it would leave the view the crew uses
+  // to see the whole race area with no names on it at all. Thinning by collision keeps as
+  // many as fit at every zoom, which is what a chart does.
+  //
+  // Priority decides who survives a collision: the mark being sailed to first, then the
+  // rest of the course, then the context marks. So the label that matters most is the one
+  // that is never dropped.
+  var LABEL_MAX_MPP = 50;       // beyond this nothing is labelled: the coast extent
+  var LABEL_CONTEXT_MPP = 1.0;  // below this the 111 context marks are eligible too
+  // Estimated label width: characters, plus the halo, plus a little air.
+  //
+  // Measured rather than guessed, and the first guess was wrong. 0.58 of the font size per
+  // character let seven pairs overlap at the racing extent, because the real ratio runs
+  // from 0.66 for a long name to 0.72 for a short one. The spread is the halo: mark-label
+  // paints a 3 px stroke behind the text, which adds a constant that is proportionally
+  // much larger for "Bond" than for "Bricklanding A". So the halo is modelled separately
+  // rather than averaged into the per-character figure, which is what made one number fit
+  // both ends.
+  var LABEL_CHAR_W = 0.63;      // width of a character as a fraction of the font size
+  var LABEL_HALO_PX = 6;        // the 3 px stroke, both sides
+  var LABEL_AIR_PX = 2;         // so two labels that just miss still look separate
+
+  function overlaps(a, b) {
+    return !(a.right < b.left || b.right < a.left ||
+             a.bottom < b.top || b.bottom < a.top);
+  }
+
+  function layoutLabels(targetId) {
+    var mpp = metresPerPixel();
+    if (!isFinite(mpp) || mpp <= 0 || !view) return;
+
+    var showContext = mpp <= LABEL_CONTEXT_MPP;
+    var showAny = mpp <= LABEL_MAX_MPP;
+
+    // Priority order, and a stable one: the target, then the course, then the rest. Array
+    // order is the tie-break, which is marks.json order, so the same marks win the same
+    // collisions every time and labels do not flicker between two poll ticks.
+    var order = symbols.slice();
+    order.sort(function (a, b) {
+      return rank(a, targetId) - rank(b, targetId);
+    });
+
+    var gap = (SYMBOL_PX.used + SYMBOL_PX.labelGap) * mpp;
+    var fontH = SYMBOL_PX.label * mpp;
+    var placed = [];
+    var bounds = { left: view.x, right: view.x + view.w,
+                   top: view.y, bottom: view.y + view.h };
+
+    for (var i = 0; i < order.length; i++) {
+      var sym = order[i];
+      var eligible = showAny && (sym.used || showContext);
+      if (!eligible) { hide(sym.label); continue; }
+
+      // The label's width is estimated from its character count rather than measured with
+      // getBBox. Measuring 131 text nodes would force a layout on every view change, and
+      // this page already had to be made faster for the iPad once; an estimate that is a
+      // few pixels out only ever costs a label that could have fitted.
+      var w = sym.chars * fontH * LABEL_CHAR_W + (LABEL_HALO_PX + LABEL_AIR_PX * 2) * mpp;
+      var air = LABEL_AIR_PX * mpp;
+
+      // Four placements, tried in order, so a label blocked on one side can go to the
+      // other rather than being dropped. This is also what keeps names off the edge of
+      // the screen: an off-screen placement is rejected like any other collision.
+      var options = [
+        { x: sym.x + gap, y: sym.y - gap, anchor: "start" },
+        { x: sym.x - gap, y: sym.y - gap, anchor: "end" },
+        { x: sym.x + gap, y: sym.y + gap + fontH * 0.8, anchor: "start" },
+        { x: sym.x - gap, y: sym.y + gap + fontH * 0.8, anchor: "end" }
+      ];
+
+      var chosen = null;
+      for (var o = 0; o < options.length && !chosen; o++) {
+        var opt = options[o];
+        var box = {
+          left: opt.anchor === "start" ? opt.x : opt.x - w,
+          right: opt.anchor === "start" ? opt.x + w : opt.x,
+          top: opt.y - fontH * 0.8 - air,
+          bottom: opt.y + fontH * 0.2 + air
+        };
+        if (box.left < bounds.left || box.right > bounds.right ||
+            box.top < bounds.top || box.bottom > bounds.bottom) continue;
+        var clash = false;
+        for (var j = 0; j < placed.length && !clash; j++) {
+          clash = overlaps(box, placed[j]);
+        }
+        if (!clash) { chosen = { opt: opt, box: box }; }
+      }
+
+      if (!chosen) { hide(sym.label); continue; }
+      sym.label.setAttribute("x", chosen.opt.x.toFixed(1));
+      sym.label.setAttribute("y", chosen.opt.y.toFixed(1));
+      sym.label.setAttribute("text-anchor", chosen.opt.anchor);
+      sym.label.removeAttribute("hidden");
+      placed.push(chosen.box);
+    }
+  }
+
+  function rank(sym, targetId) {
+    if (targetId && sym.id === targetId) return 0;
+    return sym.used ? 1 : 2;
+  }
+
+  function hide(label) {
+    if (label) label.setAttribute("hidden", "hidden");
+  }
+
+  // The mark the race is steering to, so its label is the one that never loses a
+  // collision. Null before the gun and after the finish, which is correct: there is no
+  // mark being sailed to then.
+  function targetMarkId() {
+    if (!lastState || !lastState.race || !courseNow || !courseNow.legs) return null;
+    var leg = courseNow.legs[lastState.race.leg];
+    return leg ? leg.mark : null;
+  }
+
   function applyScale() {
     var mpp = metresPerPixel();
     if (!isFinite(mpp) || mpp <= 0) return;
@@ -373,12 +495,10 @@
       var sym = symbols[i];
       var px = sym.used ? SYMBOL_PX.used : SYMBOL_PX.context;
       sym.circle.setAttribute("r", (px * mpp).toFixed(2));
-      if (sym.label) {
-        var gap = (SYMBOL_PX.used + SYMBOL_PX.labelGap) * mpp;
-        sym.label.setAttribute("x", (sym.x + gap).toFixed(1));
-        sym.label.setAttribute("y", (sym.y - gap).toFixed(1));
-      }
     }
+    // Placement and visibility are layoutLabels()' business, not this loop's: where a
+    // label goes depends on where every other label went.
+    layoutLabels(targetMarkId());
     // The overlay is sized in pixels too, so a change of scale has to redraw it. Cheap:
     // a dozen nodes against the chart's sixteen thousand coordinate pairs, which is the
     // whole reason the chart is built once and this is not.
@@ -467,15 +587,19 @@
       // view. Same for the label's offset, so it stays beside its mark rather than
       // drifting away from it as the scale changes.
       var circle = add(g, "circle", { cx: xy[0].toFixed(1), cy: xy[1].toFixed(1), r: 0 });
-      var label = null;
-      // Labels for the course marks only, for now. Which marks are labelled at which zoom
-      // is build step 6; at the racing extent 131 labels is illegible and DESIGN 12 says
-      // so.
-      if (used) {
-        label = add(g, "text", { x: xy[0], y: xy[1], class: "mark-label" });
-        label.textContent = m.name;
-      }
-      symbols.push({ circle: circle, label: label, used: used, x: xy[0], y: xy[1] });
+      // Every mark gets a label node, including the 111 that no current course visits.
+      // Which of them are shown is layoutLabels()' business and changes with the zoom;
+      // creating them once is cheaper than making and destroying text nodes on every view
+      // change, and they cost nothing while hidden.
+      var label = add(g, "text", { x: xy[0], y: xy[1], class: "mark-label" });
+      label.textContent = m.name;
+      symbols.push({
+        circle: circle, label: label, used: used, id: m.id,
+        x: xy[0], y: xy[1],
+        // The name's length, kept so the label's width can be estimated without asking
+        // the browser to measure it. See layoutLabels().
+        chars: (m.name || "").length
+      });
     });
   }
 

@@ -1510,10 +1510,38 @@ than something that happens to them.
    **The map does not follow the boat**, and that was decided rather than overlooked. Fit
    returns to the course, and a chart that re-centres itself under a finger mid-pinch is
    worse than one that stays where it was put.
-6. **Legibility.** Labels by zoom threshold, course marks before context marks, and the
-   caveats from the two sections above visible on the page rather than only in a loader
-   comment: crowd-sourced banks, nothing about sandbanks, a 2010 survey, orientation only
-   and not for navigation.
+6. **Legibility.** Caveats on the page rather than only in a loader comment:
+   crowd-sourced banks, nothing about sandbanks, a 2010 survey, orientation only and not
+   for navigation.
+
+   Labels turned out to need two mechanisms, not one. **A zoom threshold alone is not
+   enough**, and that is the thing worth carrying forward. At the racing extent the twenty
+   course marks overlap into an unreadable mat, so a rule that showed labels above some
+   zoom and nothing below it would trade one unusable view for another, and the view it
+   would have sacrificed is the one the crew uses to see the whole race area.
+
+   So thresholds decide who is *eligible* and collision thins the eligible to what fits.
+   Nothing is labelled beyond 50 m per pixel, which is the coast extent; the 111 context
+   marks become eligible below 1 m per pixel; course marks are always eligible and are
+   simply thinned. Four placements are tried per label, so one blocked on a side goes to
+   the other, and an off-screen placement is rejected like any other collision, which is
+   what keeps names off the edge.
+
+   Priority decides who survives: the mark being sailed to, then the rest of the course,
+   then context. Without an order, which twenty of a hundred and thirty-one names survive
+   would be an accident of array order and the one the crew needs could be the one
+   dropped. The sort is stable, or labels flicker between poll ticks.
+
+   Widths are **estimated, not measured**. getBBox on 131 text nodes forces a layout on
+   every view change, and this page had already to be made faster for the iPad once. The
+   estimate models the halo separately from the characters, because `mark-label` paints a
+   3 px stroke behind the text and that constant is proportionally far larger for "Bond"
+   than for "Bricklanding A": one per-character figure cannot fit both ends, and the first
+   attempt at 0.58 let seven pairs overlap.
+
+   Measured at 375 wide, counting real overlaps rather than intended ones: 10 labels
+   fitted to a course, 18 at the racing extent, none at the coast extent, no overlapping
+   pair at any zoom, and nothing placed outside the view.
 
 ### Shoreline
 
