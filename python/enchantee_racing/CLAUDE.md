@@ -32,7 +32,10 @@ their absence.
   (Safari 13.1), no flexbox `gap` (14.1) and no `dvh` (15.4) without a fallback ahead
   of it. `min()` and `env()` are fine, and so is grid gap. Screen height comes from
   `static/viewport.js` as `--app-h`, because `100vh` on iOS is not the visible height.
-  Size the huge readouts by **both** axes: `vh` alone overflows a narrow screen. None of
+  Size the huge readouts by **both** axes: `vh` alone overflows a narrow screen. Give
+  every SVG a `width` and `height`, not just a `viewBox`: a ratio without a size is
+  resolved as 300px wide there. No `-webkit-overflow-scrolling: touch`, which makes a
+  composited scroller whose content stops being painted. None of
   these failures is visible on a development machine, all of them reached the boat once,
   and all are now pinned by tests. See DESIGN 9.8.1.
 

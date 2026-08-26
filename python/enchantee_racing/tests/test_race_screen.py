@@ -1810,6 +1810,85 @@ def test_the_probe_measures_the_real_screen_and_is_absent_unless_asked_for():
         assert banned not in code, "%r is not ES5" % banned
 
 
+def test_every_flag_has_an_intrinsic_size_and_not_only_a_ratio():
+    """A viewBox alone gives an SVG an intrinsic RATIO but no intrinsic SIZE.
+
+    The cards draw the flags at `height: 100%; width: auto` inside a 2.6rem box, which
+    needs the ratio, and a browser that does not use the ratio of a viewBox-only image
+    falls back to the CSS default width for a replaced element: 300px. Two of those makes
+    a card 600px wide at min-content, which is four times the grid's 9rem track.
+
+    The iPad mini reported the course list needing 922px in a 764px box with four courses
+    in it, which is about 221px each: four rows, one column, on a screen 755px wide with a
+    144px minimum track. A collapsed grid is what that looks like, and an item far wider
+    than its track is the most likely reason for one on an old engine.
+
+    So every flag now carries width and height matching its viewBox. The probe reports the
+    natural size, so the device confirms it: 120x60 or 90x60 rather than 300x150.
+    """
+    flags = sorted((ROOT / "static" / "flags").glob("*.svg"))
+    assert len(flags) == 8, [f.name for f in flags]
+
+    for path in flags:
+        text = path.read_text(encoding="utf-8")
+        root = text[text.index("<svg"):text.index(">", text.index("<svg"))]
+        box = re.search(r'viewBox="0 0 (\d+) (\d+)"', root)
+        assert box, "%s has no viewBox" % path.name
+        size = re.search(r'width="(\d+)"\s+height="(\d+)"', root)
+        assert size, "%s has a ratio but no intrinsic size" % path.name
+        assert size.groups() == box.groups(), \
+            "%s is %sx%s but says %sx%s" % ((path.name,) + size.groups() + box.groups())
+        # Before the viewBox, so the size is the first thing a parser has.
+        assert root.index("width=") < root.index("viewBox="), path.name
+
+    # And the two ratios the plate actually uses, so a wrong number here is a wrong shape
+    # on the screen rather than only a wrong attribute (DESIGN 8).
+    ratios = {}
+    for path in flags:
+        text = path.read_text(encoding="utf-8")
+        w, h = re.search(r'width="(\d+)"\s+height="(\d+)"', text).groups()
+        ratios.setdefault("%s:%s" % (w, h), []).append(path.name)
+    assert set(ratios) == {"120:60", "90:60"}, ratios
+    assert all(n.startswith("pendant") for n in ratios["120:60"]), ratios["120:60"]
+    assert all(n.startswith("naval") for n in ratios["90:60"]), ratios["90:60"]
+
+
+def test_nothing_asks_ios_for_a_composited_scroller():
+    """The panel blanking on the iPad was measured as a paint fault, not a layout one.
+
+    The probe's restyle button reported the geometry identical either side of the picture
+    coming back, so the boxes were right all along and the pixels were not being drawn.
+    Content that is laid out but not painted inside a composited scroller is the
+    best-known failure of -webkit-overflow-scrolling: touch, which both scrolling surfaces
+    in this app used to carry.
+
+    It costs nothing on iOS 13 and later, where the property was removed and momentum is
+    the default. On iOS 12 it costs momentum in two lists and buys lists that are visible.
+    """
+    # Comments stripped: both files name the property in order to say it is not used, and
+    # naming it is not using it. The same trap as the clamp() check in the probe test.
+    css = _bare(ROOT / "static" / "app.css")
+    hud = _bare_text(_page_hud())
+    for name, text in (("app.css", css), ("hud.html", hud)):
+        assert "-webkit-overflow-scrolling" not in text, \
+            "%s still asks for a composited scroller" % name
+
+    # The surfaces still scroll: it is the compositing hint that went, not the overflow.
+    for selector in ("#cards", "#detail-legs"):
+        rule = _nav_rules(css, selector)
+        assert "overflow-y: auto" in rule, "%s no longer scrolls at all" % selector
+        assert "min-height: 0" in rule, selector
+
+    # The probe can put it back, because a page that stops blanking without it has to be
+    # made to blank again on demand before the cause is established.
+    probe = (ROOT / "static" / "probe.js").read_text(encoding="utf-8")
+    assert re.search(r"cards\.style\.webkitOverflowScrolling = ", probe), \
+        "nothing can reproduce the fault, so nothing can confirm the cure"
+    # And the other composited layer on the page, which is the next suspect if this is not
+    # the one: a video that plays for ever at opacity 0 on z-index -1 behind everything.
+    assert 'getElementById("wake")' in probe, "the wake video cannot be ruled out"
+
+
 if __name__ == "__main__":
     import traceback
 

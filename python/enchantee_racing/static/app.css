@@ -366,7 +366,16 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 }
 #cards {
   flex: 1 1 0; min-height: 0; overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  /* No -webkit-overflow-scrolling: touch. It made this a composited scroller on iOS, and
+     the panel going blank on the iPad mini a moment after appearing was measured as a
+     PAINT fault and not a layout one: the probe's restyle button reported the geometry
+     identical either side of the picture coming back, so the boxes were right all along
+     and the pixels were not being drawn. Content laid out but not painted inside a
+     composited scroller is the best-known failure of this property.
+
+     It costs nothing on iOS 13 and later, where the property was removed and momentum is
+     the default, and on iOS 12 it costs momentum in this list and buys a list that is
+     visible, which is not a difficult trade. DESIGN 9.8.1. */
   display: grid; gap: .5rem; padding: .4rem;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   /* Rows take the height their content needs, and the container scrolls when they do
@@ -551,7 +560,8 @@ button.warn { border-color: var(--warn); color: var(--warn); }
    phone at a readable size, and this page is read at rest rather than at the helm. */
 #detail-legs {
   flex: 1 1 0; min-height: 0; overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  /* Nor here, for the reason given on #cards: the same property, the same composited
+     scroller, and this list is on the same screen. */
 }
 .leg {
   display: grid;

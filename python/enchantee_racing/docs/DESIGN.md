@@ -987,6 +987,36 @@ A third arrived once the map page had joined the navigation, and it is the same 
   The inline height is kept because one mechanism is simpler than two, and the two CSS
   declarations stay ahead of it for a browser with no JavaScript.
 
+  What the probe then found, on the real screen, settled both:
+
+  - **The blanking is a paint fault, not a layout fault.** Restyling brought the picture
+    back with the geometry byte-for-byte identical, so the boxes were right throughout and
+    the pixels were simply not drawn. That rules out every height, every flex basis and
+    every grid track at a stroke, and points at the compositor. Both scrolling surfaces
+    carried `-webkit-overflow-scrolling: touch`, which asks iOS for a composited scroller
+    and whose best-known failure is exactly this. Removed from both. It costs nothing on
+    iOS 13 and later, where the property was removed and momentum is the default; on
+    iOS 12 it costs momentum in two lists and buys lists that are visible.
+
+  - **The course list needs 922px in a 764px box**, with four courses in it, on a screen
+    755px wide with a 144px minimum track. That is about 221px a card in a single column,
+    so the grid had collapsed to one track and was ignoring three quarters of the width.
+    The cause is in the flag files: an SVG with a `viewBox` and no `width` or `height` has
+    an intrinsic **ratio** but no intrinsic **size**, and the cards draw the flags
+    `height: 100%; width: auto`, which needs the ratio. An engine that does not use the
+    ratio of a viewBox-only image falls back to the CSS default width for a replaced
+    element, 300px, and two of those make a card 600px wide at min-content, four times its
+    track. All eight flags now carry `width` and `height` matching their viewBox. The probe
+    prints the natural size, so the device says whether it took: 120x60 or 90x60 rather
+    than 300x150.
+
+  Neither is confirmed from the boat yet, and both are stated as what the measurements
+  point at rather than as settled. The probe keeps two switches for the confirmation: one
+  puts the composited scroller back, because a page that stops blanking has to be made to
+  blank again before the cause is established, and one stops the wake-lock video, which is
+  the only other composited layer on the page and the next suspect if the scroller is not
+  the one.
+
   The lesson is the one 9.6 and 9.8.1 keep relearning, and it cost a release to learn it
   again: **a theory that explains every symptom is not evidence.** The replica could not
   show the fault, which should have been the first thing checked about the replica rather

@@ -219,4 +219,47 @@
     tick();
   });
   attach(button);
+
+  // Two bisect switches, so the device can name the layer at fault without another build.
+  //
+  // The blanking is measured as a paint fault, and the page has exactly two things that
+  // ask iOS for a composited layer: the touch-scrolling hint on #cards, now removed, and
+  // the wake-lock video, which plays for ever at opacity 0 behind everything on z-index
+  // -1. If the panel still blanks, one of these two will say which.
+  function switcher(label, x, fn) {
+    var b = document.createElement("button");
+    b.textContent = label;
+    b.setAttribute("style", [
+      "position:fixed", "right:4px", "bottom:" + x + "px", "z-index:99",
+      "min-height:2.6rem", "background:#111", "color:#fff",
+      "border:2px solid #ffa500", "border-radius:6px",
+      "font:13px/1 Menlo,monospace", "padding:0 10px"
+    ].join(";"));
+    b.addEventListener("click", function () {
+      log.push("t+" + ((Date.now() - t0) / 1000).toFixed(1) + "s  " + fn());
+      tick();
+    });
+    attach(b);
+  }
+
+  // Put the composited scroller back, so a page that stops blanking without it can be made
+  // to blank again on demand. That is the confirmation, not the absence of a symptom.
+  switcher("touch scroll on", 48, function () {
+    var cards = document.getElementById("cards");
+    if (!cards) return "no #cards";
+    var on = cards.style.webkitOverflowScrolling === "touch";
+    cards.style.webkitOverflowScrolling = on ? "auto" : "touch";
+    return "touch scrolling " + (on ? "off" : "ON, watch for the blank");
+  });
+
+  // Take the wake-lock video out of the compositor. It is the other layer, and if the
+  // blanking survives the scroller fix this is the next suspect.
+  switcher("kill wake video", 92, function () {
+    var wake = document.getElementById("wake");
+    if (!wake) return "no #wake";
+    try { wake.pause(); } catch (e) { /* nothing to do about it */ }
+    wake.removeAttribute("src");
+    wake.style.display = "none";
+    return "wake video stopped and hidden; the screen will sleep now";
+  });
 }());
