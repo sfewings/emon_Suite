@@ -76,6 +76,7 @@ if os.path.isdir(_PLUGINS):
     os.environ.setdefault("GDAL_DRIVER_PATH", _PLUGINS)
 
 import numpy as np
+from scipy import ndimage
 from osgeo import gdal, ogr, osr
 from qgis.core import (QgsApplication, QgsVectorLayer, QgsGeometry, QgsRectangle,
                        QgsCoordinateReferenceSystem, QgsFeature, QgsField,
@@ -113,10 +114,29 @@ CONTOURS = [-10.0, -5.0, -2.0]
 OPEN_LOW, OPEN_HIGH = -1000.0, 1000.0
 LAND_VALUE = 0.5         # so gap filling ramps up to the shore instead of off a cliff
 FILL_M = 240.0           # how far interpolation reaches into a gap, metres
-# Per stage. The river is looked at zoomed in on a phone, so it keeps small
-# detail. The region is looked at zoomed out and at 10 m the contour generator
-# emits thousands of short offshore fragments that are pure noise at that scale;
-# without these the file is 3.7 MB instead of well under 1.
+# Multibeam swath edges are noisy: the outer beams of each pass wobble by more
+# than the gap between two contour levels, so a band boundary crossing a swath
+# edge comes out as a row of comb teeth. Three cleanups, all in cells, per stage:
+#   MEDIAN_CELLS  a SMALL median, to kill isolated spikes
+#   GAUSS_SIGMA   the actual smoother
+#   MASK_CLEAN    opening then closing of the surveyed footprint, which removes
+#                 the thin fingers of coverage at the edge of a swath
+#
+# The median must stay small. It is edge-preserving, which means on a gentle
+# gradient it does not smooth, it TERRACES: a wide median turns a slope into a
+# staircase of plateaus, and contouring a plateau edge gives a boundary that is a
+# regular sawtooth. Widening the median from 9 to 13 cells visibly made the gentle
+# slope south of the Melville channel worse, not better, which is what pointed
+# this out. A Gaussian preserves the gradient and removes the wobble, so it does
+# the work and the median only removes spikes it would otherwise smear.
+MEDIAN_CELLS = {"river": 3, "region": 3}
+GAUSS_SIGMA = {"river": 4.0, "region": 2.0}
+MASK_CLEAN = {"river": 4, "region": 2}
+
+# Also per stage. The river is looked at zoomed in on a phone, so it keeps small
+# detail. The region is looked at zoomed out, and at 10 m the contour generator
+# emits thousands of short offshore fragments that are noise at that scale;
+# without these the file is 3.7 MB instead of under 2.
 MIN_BAND_AREA = {"river": 400.0, "region": 8000.0}
 MIN_LINE_LEN = {"river": 40.0, "region": 250.0}
 # Region foreshore only within this distance of the SHORE. Anchoring it to the
@@ -247,6 +267,49 @@ def write_tif(path, arr, bounds, nx, ny, res, wkt):
     return path
 
 
+def disk(r):
+    y, x = np.ogrid[-r:r + 1, -r:r + 1]
+    return (x * x + y * y) <= r * r
+
+
+def clean_mask(mask, r):
+    """Opening then closing: drop thin swath fingers, then fill the pinholes.
+
+    Opening alone leaves the survey edge pitted where a tooth was removed;
+    closing alone keeps the teeth and joins them. Both, in that order, gives a
+    footprint that follows the real edge of coverage.
+    """
+    if r <= 0:
+        return mask
+    st = disk(r)
+    out = ndimage.binary_opening(mask, structure=st)
+    out = ndimage.binary_closing(out, structure=st)
+    kept = out.sum()
+    print("   mask clean r=%d cells: %d -> %d cells (%+.1f%%)"
+          % (r, mask.sum(), kept, 100.0 * (kept - mask.sum()) / max(mask.sum(), 1)))
+    return out
+
+
+def smooth(arr, k, sigma):
+    """Small median for spikes, then a Gaussian for the actual smoothing.
+
+    Nodata is a large negative, so it would drag either filter down near the edge
+    of coverage. It is neutralised first and restored afterwards; the only
+    contaminated cells are a narrow ring outside the surveyed footprint, which
+    gets clipped away anyway.
+    """
+    valid = arr != NODATA
+    if not valid.any():
+        return arr
+    tmp = np.where(valid, arr, np.float32(arr[valid].mean())).astype(np.float32)
+    if k > 1:
+        tmp = ndimage.median_filter(tmp, size=k, mode="nearest")
+    if sigma > 0:
+        tmp = ndimage.gaussian_filter(tmp, sigma=sigma, mode="nearest")
+    tmp[~valid] = NODATA
+    return tmp.astype(np.float32)
+
+
 def surveyed_polygons(mask, bounds, nx, ny, res, wkt, tag):
     """Polygons over cells a survey actually measured, before any gap filling.
 
@@ -287,7 +350,8 @@ def stage(name, sources, bounds, res, simplify, water, land_gpkg,
     if int((grid != NODATA).sum()) == 0:
         raise SystemExit("%s: no source data on the grid" % name)
 
-    surveyed = surveyed_polygons(grid != NODATA, bounds, nx, ny, res, wkt, name)
+    surveyed = surveyed_polygons(clean_mask(grid != NODATA, MASK_CLEAN[name]),
+                                 bounds, nx, ny, res, wkt, name)
 
     # Burn land slightly above datum so the fill ramps toward the shore rather
     # than off a cliff, then interpolate the gaps.
@@ -301,8 +365,13 @@ def stage(name, sources, bounds, res, simplify, water, land_gpkg,
     gdal.FillNodata(targetBand=b, maskBand=None,
                     maxSearchDist=int(round(FILL_M / res)), smoothingIterations=2)
     b.SetNoDataValue(NODATA)
+    arr = b.ReadAsArray()
+    b.WriteArray(smooth(arr, MEDIAN_CELLS[name], GAUSS_SIGMA[name]))
+    b.SetNoDataValue(NODATA)
     b.FlushCache()
     ds = None
+    print("   smoothed: median %d cells, gaussian sigma %.1f cells (%.0f m)"
+          % (MEDIAN_CELLS[name], GAUSS_SIGMA[name], GAUSS_SIGMA[name] * res))
 
     cds = gdal.Open(work)
     cband = cds.GetRasterBand(1)
@@ -433,7 +502,7 @@ def main():
     water_river, _ = water_layer(river_bounds)
     water_region, _ = water_layer(region_bounds, exclude=river_box)
 
-    rb, rl, rf, _ = stage("river", RIVER_SOURCES, river_bounds, 2.0, 5.0,
+    rb, rl, rf, _ = stage("river", RIVER_SOURCES, river_bounds, 2.0, 8.0,
                           water_river, land_gpkg, "footprint", wkt)
     gb, gl, gf, _ = stage("region", REGION_SOURCES, region_bounds, 10.0, 20.0,
                           water_region, land_gpkg, "near_shore", wkt,
