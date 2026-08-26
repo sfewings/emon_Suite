@@ -59,6 +59,10 @@ store.py                thread-safe {v, ts} cache, one lock
 engine/nav.py           ENU projection, distance, bearing, line crossing
 engine/course.py        load and validate marks/courses/lines
 engine/race.py          mode and leg state machine, pure functions
+templates/              index.html, hud.html, map.html
+static/                 app.js, app.css, map.js, geo.js, flags/*.svg, audio/, icon*
+scripts/                gen_*.py, which regenerate config/ and static/; outputs committed
+config/                 marks.json, courses.json, lines.json, coast.json, race.json, depth.json
 templates/              index.html, hud.html
 static/                 app.js, app.css, flags/*.svg, audio/, icon*, depth.json
 scripts/                gen_*.py, which regenerate everything in config/
@@ -67,7 +71,6 @@ config/                 marks.json, courses.json, lines.json, race.json,
                         (the last four are the map basemap, all gen_*.py output)
 manifest.webmanifest    served from the app root, not static/ (DESIGN 9.8.1)
 Dockerfile              COPY is an allow-list; a new root file must be added to it
-scripts/                generators, outputs committed
 tests/                  pytest, and every file also runs standalone
 ```
 
