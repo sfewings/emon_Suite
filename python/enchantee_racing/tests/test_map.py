@@ -386,6 +386,59 @@ def test_the_leg_being_sailed_is_the_one_with_weight():
     assert "function midOfLine" in code
 
 
+def test_the_leg_after_this_one_is_marked_too_and_more_lightly():
+    """Three states on a course that crosses itself, so weight alone will not separate
+    them: Frostbite 3 puts ten legs over the same water.
+
+    --sog and --dist are the same DodgerBlue, so the leg being sailed is already told
+    apart by width and opacity alone, and a third step of that would be three widths of
+    one line to read at a glance on a wet screen. The next leg therefore differs in kind
+    as well as degree, dashed against the current leg's solid, and heavier than the rest.
+
+    Verified in a browser mid-race on leg 3 of Frostbite 3: ten legs, one now at index 3,
+    one next at index 4, eight plain, and three distinct computed styles.
+    """
+    code = _map_code()
+    draw = _function(code, "drawCourse")
+    assert "legIndex + 1 === i" in draw, "the leg after this one is not marked"
+    assert "leg-next" in draw
+    # Current wins where both could apply, and the last leg has no next.
+    assert draw.index("leg-now") < draw.index("leg-next"), \
+        "the current leg must take precedence over the next"
+
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    def rule(selector):
+        found = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        assert found, "no rule for %s" % selector
+        return found.group(1)
+
+    plain = rule("#chart .leg-line")
+    nxt = rule("#chart .leg-line.leg-next")
+    now = rule("#chart .leg-line.leg-now")
+
+    def width(body):
+        found = re.search(r"stroke-width:\s*([\d.]+)", body)
+        assert found, body
+        return float(found.group(1))
+
+    # A strict hierarchy, so the three are ordered and not merely different.
+    assert width(plain) < width(nxt) < width(now), (width(plain), width(nxt), width(now))
+    # And the next leg is dashed where the other two are not, which is the difference in
+    # kind that makes it findable rather than merely thicker.
+    assert "stroke-dasharray" in nxt, "the next leg is not distinguishable in kind"
+    assert "stroke-dasharray: none" in now, \
+        "the current leg must clear the dash, or a later edit to the shared rule dashes it"
+    assert "stroke-dasharray" not in plain
+
+    # Not the same dash as the no-cross lines: a glance takes the pattern before the
+    # colour, and those mean something entirely different (DESIGN 11.3).
+    nocross = rule("#chart .nocross")
+    next_dash = re.search(r"stroke-dasharray:\s*([^;]+)", nxt).group(1).strip()
+    nocross_dash = re.search(r"stroke-dasharray:\s*([^;]+)", nocross).group(1).strip()
+    assert next_dash != nocross_dash, \
+        "the next leg and a line it is a breach to cross share a dash pattern"
+
+
 def test_the_overlay_follows_a_change_of_course():
     """A course change is a deliberate act that just happened, so the map follows it, the
     same principle DESIGN 9.6 applies to a mode change on the race screen.

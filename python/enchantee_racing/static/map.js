@@ -517,10 +517,15 @@
       var to = leg.mark && markIndexNow[leg.mark];
       var point = to ? project([to.lon, to.lat]) : startMid;   // the finish is the line
       var current = (legIndex !== null && legIndex === i);
+      // The leg after this one. Not decoration: it is what decides sail selection and
+      // which way to round before the crew gets there, which is why DESIGN 9.2 already
+      // gives it a place in the secondary row with its transit angle and leg type. On the
+      // last leg there is no next, and nothing is marked.
+      var next = (legIndex !== null && legIndex + 1 === i);
       add(el.course, "line", {
         x1: previous[0].toFixed(1), y1: previous[1].toFixed(1),
         x2: point[0].toFixed(1), y2: point[1].toFixed(1),
-        class: "leg-line" + (current ? " leg-now" : "")
+        class: "leg-line" + (current ? " leg-now" : (next ? " leg-next" : ""))
       });
       if (current && to) {
         // A ring round the mark being sailed to. Sized in pixels like every other symbol

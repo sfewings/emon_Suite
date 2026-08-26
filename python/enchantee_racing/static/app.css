@@ -556,8 +556,29 @@ body.night #chart .band-deep    { fill: var(--band-deep); }
    same size on the screen at every zoom, which is what a chart does. */
 /* The course being sailed, over the chart. The leg ahead is the one the crew is steering,
    so it is the one with weight; the rest is context for where the race goes next. */
+/* Three states, and the middle one has to be spottable among a course that crosses
+   itself: Frostbite 3 has ten legs over the same water, so weight alone does not
+   separate them. --sog and --dist are the same DodgerBlue, so the leg being sailed is
+   already distinguished by width and opacity only, and adding a third step of the same
+   treatment would have given three widths of one line to tell apart at a glance on a wet
+   screen.
+
+   So the next leg differs in kind as well as in degree: dashed rather than solid, which
+   reads as "not yet" against the current leg's "now", and heavier than the rest of the
+   course so it is plainly one of the two that matter. The dash is longer than the
+   no-cross lines' so the two do not read as the same kind of mark; those are red and
+   these are blue, but a glance takes the pattern before the colour.
+
+   Knowing the leg after this one is what DESIGN 9.2 already puts in the secondary row,
+   with its transit angle and leg type, because it is what decides sail selection and
+   which way to round before the crew gets there. This is that, on the chart. */
 #chart .leg-line { stroke: var(--sog); stroke-width: 1.5; fill: none; opacity: .55; }
-#chart .leg-line.leg-now { stroke: var(--dist); stroke-width: 3; opacity: 1; }
+#chart .leg-line.leg-next {
+  stroke: var(--dist); stroke-width: 2.2; opacity: .9; stroke-dasharray: 14 6;
+}
+#chart .leg-line.leg-now {
+  stroke: var(--dist); stroke-width: 3; opacity: 1; stroke-dasharray: none;
+}
 /* A ring round the mark being sailed to, rather than a different colour: the mark keeps
    the colour it has everywhere else on this page and gains an annotation. */
 #chart .target-ring { fill: none; stroke: var(--dist); stroke-width: 2; }

@@ -1493,6 +1493,23 @@ than something that happens to them.
 5. **The live overlay.** Boat and heading vector off `/api/state`, course legs with the
    next mark emphasised, the rounding symbols reused rather than redrawn. A fix older
    than 5 s hides the boat rather than drawing it where it is not (9.5).
+
+   **Three leg states, not two.** The leg being sailed, the leg after it, and the rest.
+   The middle one was asked for after watching a replay, and it is the same thing 9.2
+   already puts in the secondary row with its transit angle and leg type, because that is
+   what decides sail selection and which way to round before the crew gets there.
+
+   It differs in kind as well as in degree, dashed where the current leg is solid, and
+   that is not decoration. `--sog` and `--dist` are the same DodgerBlue, so the current
+   leg is told apart by width and opacity alone; a third step of the same treatment would
+   be three widths of one line to read at a glance on a wet screen, on a course that
+   crosses itself ten times. The dash is longer than the one on the no-cross lines, since
+   a glance takes the pattern before the colour and those two mean nothing like each
+   other (11.3).
+
+   **The map does not follow the boat**, and that was decided rather than overlooked. Fit
+   returns to the course, and a chart that re-centres itself under a finger mid-pinch is
+   worse than one that stays where it was put.
 6. **Legibility.** Labels by zoom threshold, course marks before context marks, and the
    caveats from the two sections above visible on the page rather than only in a loader
    comment: crowd-sourced banks, nothing about sandbanks, a 2010 survey, orientation only
