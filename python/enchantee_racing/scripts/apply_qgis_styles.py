@@ -33,7 +33,8 @@ NAVAIDS = os.path.join(QGIS_DIR, "swan_navaids.gpkg")
 COAST = os.path.join(QGIS_DIR, "swan_coast.gpkg")
 
 # Kept identical to BANDS in gen_depth.py. Shallowest darkest, chart convention.
-DEPTH_BANDS = [("shallow", "0 - 2 m", "#1f5c8b"),
+DEPTH_BANDS = [("foreshore", "unsurveyed / foreshore", "#a8c66c"),
+               ("shallow", "0 - 2 m", "#1f5c8b"),
                ("mid", "2 - 5 m", "#4e8fbd"),
                ("deep", "5 - 10 m", "#92c0dc"),
                ("deepest", "> 10 m", "#d8e9f5")]
@@ -112,7 +113,7 @@ def main():
              QgsRendererCategory(v, QgsFillSymbol.createSimple(
                  {"color": c, "outline_style": "no"}), lb)
              for v, lb, c in DEPTH_BANDS]),
-         "Depth bands 0-2 / 2-5 / 5-10 / >10 m below LWM")
+         "Foreshore plus depth bands 0-2 / 2-5 / 5-10 / >10 m below LWM")
 
     save(DEPTH, "depth_contours",
          categorized("depth_m", [

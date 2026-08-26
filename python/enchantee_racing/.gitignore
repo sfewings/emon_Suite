@@ -14,3 +14,9 @@ scripts/_structures_osm_cache.osm
 docs/qgis/swan_structures.new.gpkg
 scripts/_navaids_cache.json
 docs/qgis/swan_navaids.new.gpkg
+scripts/_surveyed.gpkg
+
+# SQLite WAL sidecars, created whenever QGIS has a GeoPackage open. Transient,
+# and committing one would ship a half-written transaction.
+*.gpkg-shm
+*.gpkg-wal

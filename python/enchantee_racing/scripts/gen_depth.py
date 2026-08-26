@@ -1,4 +1,4 @@
-"""Generate config/depth.json: the 2 m, 5 m and 10 m depth contours and their bands.
+"""Generate config/depth.json: depth contours, depth bands, and the foreshore.
 
 Run with QGIS's own Python. The BAG reader is a GDAL plugin that QGIS ships but does
 not put on the driver path, so GDAL_DRIVER_PATH has to be set; this script sets it
@@ -28,6 +28,14 @@ VERTICAL DATUM: the BAGs are reduced to Low Water Mark, which the index records 
 0.756 m BELOW AHD. Contours here are depths below LWM, which is the chart convention
 and the conservative one: at mean water level there is about 0.76 m more than the
 contour says. Set DATUM_SHIFT to -0.756 to move the contours onto AHD instead.
+
+THE GREEN CLASS IS NOT A DEPTH. The multibeam stops where the survey vessel could
+float, and its shallowest sounding is -1.10 m, so the strip between that and the
+bank is unmeasured. The gap is still interpolated, because contours drawn against a
+cliff edge look wrong, but the interpolated area is then pulled back out and emitted
+as `foreshore` rather than as shallow water. It is green for the same reason a paper
+chart and every commercial plotter make an intertidal area green: "we do not know"
+must not look like "deep".
 
 Still true, and belongs anywhere this is used: surveyed 2010, and Swan sandbanks move.
 Uncertainty in the BAG is 0.25 to 0.30 m. Orientation only, not for navigation.
@@ -76,6 +84,12 @@ FILL_DIST = 120           # cells, = 240 m
 SIMPLIFY_M = 5.0
 MIN_BAND_AREA = 400.0
 MIN_LINE_LEN = 40.0
+
+# The green one is not a depth class. It is water the multibeam never reached,
+# which is the shore fringe and the drying flats, and it is rendered the way a
+# paper chart and every commercial plotter render an intertidal area: green, not
+# a shade of blue, because "we do not know" must not look like "deep".
+FORESHORE = {"id": "foreshore", "depth": "unsurveyed / foreshore", "color": "#a8c66c"}
 
 BANDS = [
     {"id": "shallow", "zmin": -2.0,     "zmax": OPEN_HIGH, "depth": "0-2 m",  "color": "#1f5c8b"},
@@ -165,6 +179,39 @@ def write_tif(path, arr, bounds, nx, ny, wkt):
     return path
 
 
+def surveyed_polygons(grid, bounds, nx, ny, wkt, authid):
+    """Polygons covering cells the survey actually measured, before gap filling.
+
+    gdal.Polygonize with the same band as its own mask emits polygons only where
+    the band is non-zero, which is exactly the footprint wanted.
+    """
+    x0, y0, x1, y1 = bounds
+    mask = (grid != NODATA).astype(np.uint8)
+    mds = gdal.GetDriverByName("MEM").Create("", nx, ny, 1, gdal.GDT_Byte)
+    mds.SetGeoTransform((x0, RES, 0, y1, 0, -RES))
+    mds.SetProjection(wkt)
+    mb = mds.GetRasterBand(1)
+    mb.WriteArray(mask)
+
+    out = os.path.join(HERE, "_surveyed.gpkg")
+    if os.path.exists(out):
+        os.remove(out)
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(wkt)
+    vds = ogr.GetDriverByName("GPKG").CreateDataSource(out)
+    lyr = vds.CreateLayer("surveyed", srs, ogr.wkbPolygon)
+    lyr.CreateField(ogr.FieldDefn("v", ogr.OFTInteger))
+    gdal.Polygonize(mb, mb, lyr, 0)
+    n = lyr.GetFeatureCount()
+    vds = None
+    mds = None
+    print("surveyed footprint: %d polygons" % n)
+
+    q = QgsVectorLayer(out + "|layername=surveyed", "surveyed", "ogr")
+    # dissolve so later clips see one geometry rather than thousands of cells
+    return run("native:dissolve", {"INPUT": run("native:fixgeometries", {"INPUT": q})})
+
+
 def run(alg, params):
     p = dict(params)
     p.setdefault("OUTPUT", "memory:")
@@ -215,6 +262,11 @@ def main():
     got = int((arr != NODATA).sum())
     print("after land burn + fill: %d cells (%.1f%%)" % (got, 100.0 * got / arr.size))
 
+    # The fill above makes the contours smooth, but it invents values between the
+    # shallowest sounding and the bank. Keep the pre-fill footprint so those
+    # invented areas can be pulled back out and shown as foreshore instead.
+    surveyed = surveyed_polygons(grid, bounds, nx, ny, wkt, authid)
+
     # --- contour ------------------------------------------------------------
     cds = gdal.Open(work)
     cband = cds.GetRasterBand(1)
@@ -243,20 +295,63 @@ def main():
     bl = QgsVectorLayer(vec + "|layername=bands", "b", "ogr")
     cl = QgsVectorLayer(vec + "|layername=contours", "c", "ogr")
 
-    b2 = run("native:clip", {"INPUT": run("native:fixgeometries", {"INPUT": bl}),
+    # Simplify the survey edge ONCE and cut both sides with that same line. Doing
+    # it per-layer after clipping leaves hairline white slivers between the blue
+    # bands and the green foreshore, because each side rounds the shared boundary
+    # its own way.
+    surveyed = run("native:fixgeometries",
+                   {"INPUT": run("native:simplifygeometries",
+                                 {"INPUT": surveyed, "METHOD": 0,
+                                  "TOLERANCE": SIMPLIFY_M})})
+
+    # blue only where the survey actually reached
+    b2 = run("native:simplifygeometries",
+             {"INPUT": run("native:fixgeometries", {"INPUT": bl}),
+              "METHOD": 0, "TOLERANCE": SIMPLIFY_M})
+    b2 = run("native:clip", {"INPUT": run("native:fixgeometries", {"INPUT": b2}),
                              "OVERLAY": water})
-    b2 = run("native:simplifygeometries", {"INPUT": b2, "METHOD": 0, "TOLERANCE": SIMPLIFY_M})
+    b2 = run("native:clip", {"INPUT": b2, "OVERLAY": surveyed})
     b2 = run("native:multiparttosingleparts", {"INPUT": run("native:fixgeometries", {"INPUT": b2})})
     b2 = run("native:extractbyexpression", {"INPUT": b2, "EXPRESSION": "$area > %f" % MIN_BAND_AREA})
     b2 = run("native:reprojectlayer", {"INPUT": b2, "TARGET_CRS": QgsCoordinateReferenceSystem("EPSG:4326")})
 
-    c2 = run("native:clip", {"INPUT": cl, "OVERLAY": water})
-    c2 = run("native:simplifygeometries", {"INPUT": c2, "METHOD": 0, "TOLERANCE": SIMPLIFY_M})
+    c2 = run("native:simplifygeometries", {"INPUT": cl, "METHOD": 0, "TOLERANCE": SIMPLIFY_M})
+    c2 = run("native:clip", {"INPUT": c2, "OVERLAY": water})
+    c2 = run("native:clip", {"INPUT": c2, "OVERLAY": surveyed})
     c2 = run("native:multiparttosingleparts", {"INPUT": c2})
     c2 = run("native:extractbyexpression", {"INPUT": c2, "EXPRESSION": "$length > %f" % MIN_LINE_LEN})
     c2 = run("native:reprojectlayer", {"INPUT": c2, "TARGET_CRS": QgsCoordinateReferenceSystem("EPSG:4326")})
-    print("kept bands=%d lines=%d" % (b2.featureCount(), c2.featureCount()))
-    finish(b2, c2, arr, bounds, nx, ny)
+    # no further simplify: surveyed is already simplified, and re-rounding here is
+    # exactly what would reopen the slivers
+    fore = run("native:difference", {"INPUT": water, "OVERLAY": surveyed})
+    fore = run("native:multiparttosingleparts", {"INPUT": run("native:fixgeometries", {"INPUT": fore})})
+    fore = run("native:extractbyexpression",
+               {"INPUT": fore, "EXPRESSION": "$area > %f" % MIN_BAND_AREA})
+    fore = run("native:reprojectlayer",
+               {"INPUT": fore, "TARGET_CRS": QgsCoordinateReferenceSystem("EPSG:4326")})
+    print("kept bands=%d lines=%d foreshore=%d"
+          % (b2.featureCount(), c2.featureCount(), fore.featureCount()))
+    finish(b2, c2, fore, arr, bounds, nx, ny)
+
+
+def coverage_bbox(bounds):
+    """The survey grid footprint in WGS84.
+
+    Outside this rectangle there is no depth product at all, which is a different
+    thing from `foreshore` (inside it, but unsurveyed). Perth Water above about
+    115.858 E falls outside; the map should not imply coverage there.
+    """
+    x0, y0, x1, y1 = bounds
+    src = osr.SpatialReference(); src.ImportFromEPSG(28350)
+    dst = osr.SpatialReference(); dst.ImportFromEPSG(4326)
+    src.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    dst.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    ct = osr.CoordinateTransformation(src, dst)
+    pts = [ct.TransformPoint(x, y)[:2] for x, y in
+           ((x0, y0), (x0, y1), (x1, y0), (x1, y1))]
+    lons = [p[0] for p in pts]; lats = [p[1] for p in pts]
+    return {"west": round(min(lons), 6), "east": round(max(lons), 6),
+            "south": round(min(lats), 6), "north": round(max(lats), 6)}
 
 
 def classify(zmin, zmax):
@@ -298,13 +393,18 @@ def write_gpkg(bands_layer, contours_layer):
         print("   close the project (or remove the depth layers) and rename it over.")
 
 
-def finish(bands, lines, arr, bounds, nx, ny):
+def finish(bands, lines, foreshore, arr, bounds, nx, ny):
     ob = QgsVectorLayer("MultiPolygon?crs=EPSG:4326", "depth_bands", "memory")
     ob.dataProvider().addAttributes([QgsField("band", QVariant.String),
                                      QgsField("depth", QVariant.String),
                                      QgsField("color", QVariant.String)])
     ob.updateFields()
     feats, skipped = [], 0
+    for f in foreshore.getFeatures():
+        nf = QgsFeature(ob.fields())
+        nf.setGeometry(f.geometry())
+        nf.setAttributes([FORESHORE["id"], FORESHORE["depth"], FORESHORE["color"]])
+        feats.append(nf)
     for f in bands.getFeatures():
         s = classify(f["zmin"], f["zmax"])
         if s is None:
@@ -366,14 +466,21 @@ def finish(bands, lines, arr, bounds, nx, ny):
         "vertical_datum": ("Low Water Mark, which the DoT survey index records as "
                            "0.756 m below AHD. Depths are below LWM, the chart "
                            "convention; at mean water level expect about 0.76 m more."),
-        "source_note": ("2 m, 5 m and 10 m depth contours and the four depth bands for the "
-                        "Swan and Canning. Land masked using config/coast.json, and the "
-                        "unsurveyed strip between the shallowest sounding and the shore "
-                        "is interpolated, so the 0-2 m band reaches the bank. Surveyed "
-                        "2010 and Swan sandbanks move. ORIENTATION ONLY, NOT FOR "
-                        "NAVIGATION."),
-        "bands": [{"id": b["id"], "depth": b["depth"], "color": b["color"]} for b in BANDS],
+        "source_note": ("2 m, 5 m and 10 m depth contours and the four depth bands for "
+                        "the Swan and Canning, plus a fifth class, foreshore. Land is "
+                        "masked using config/coast.json. The blue bands cover only water "
+                        "the multibeam actually measured; water inside the bank that it "
+                        "never reached is the foreshore class, green, because the "
+                        "shallowest sounding in the BAG is -1.10 m and everything "
+                        "shallower is the drying fringe. Do not read foreshore as a "
+                        "depth: it means unsurveyed. Surveyed 2010 and Swan sandbanks "
+                        "move. ORIENTATION ONLY, NOT FOR NAVIGATION."),
+        "bands": ([{"id": FORESHORE["id"], "depth": FORESHORE["depth"],
+                    "color": FORESHORE["color"]}]
+                  + [{"id": b["id"], "depth": b["depth"], "color": b["color"]}
+                     for b in BANDS]),
         "contour_levels_m": [abs(v) for v in CONTOURS],
+        "coverage_bbox": coverage_bbox(bounds),
         "type": "FeatureCollection",
         "features": [],
     }
