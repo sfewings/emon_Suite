@@ -36,10 +36,20 @@
     marks: document.getElementById("layer-marks"),
     course: document.getElementById("layer-course"),
     boat: document.getElementById("layer-boat"),
-    fit: document.getElementById("map-fit"),
-    out: document.getElementById("map-out"),
-    scope: document.getElementById("map-scope")
+    zoom: document.getElementById("map-zoom"),
+    readout: document.getElementById("map-readout")
   };
+
+  // The four cells of the strip, left to right. Their contents change with what the boat
+  // is doing; the cells themselves never move.
+  var cells = el.readout
+    ? Array.prototype.map.call(el.readout.querySelectorAll(".cell"), function (cell) {
+        return { cell: cell,
+                 lbl: cell.querySelector(".lbl"),
+                 val: cell.querySelector(".val"),
+                 unit: cell.querySelector(".unit") };
+      })
+    : [];
 
   var SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -61,18 +71,28 @@
 
   // --- the view ----------------------------------------------------------------------
   //
-  // Three levels, which DESIGN 12.1 settled: fit to the current course, then out to the
-  // racing bbox, then out again to the whole coast extent. Two zoom-outs rather than one
-  // because coast.json was deliberately generated far wider than the racing area for
-  // ocean races and the island anchorages, and a single level would have to choose
-  // between making that unreachable and making the ordinary case illegible.
+  // Three named extents, which DESIGN 12.2 settled: the race course, the river, and
+  // everything. Two zoom-outs rather than one because coast.json was deliberately
+  // generated far wider than the racing area for ocean races and the island anchorages,
+  // and a single level would have to choose between making that unreachable and making
+  // the ordinary case illegible.
   //
-  // Free pan and pinch on top of that, and a Fit button to get back. The buttons are the
-  // reliable path: they work with wet hands and one of them always returns the crew to
-  // the course, which is what matters when the map has been dragged somewhere useless.
+  // One button cycles them and free pan and pinch sit on top of it. Once the chart has
+  // been moved the button offers to fit the extent it names before it will advance, so the
+  // tap that recovers a map dragged somewhere useless is always the next tap. That was the
+  // one property of the old two-button Fit/Out pair worth carrying over.
   var view = null;           // {x, y, w, h} in projected metres, mirrors the viewBox
-  var levels = [];           // extents, index 0 the course, 2 the whole coast
+  var levels = [];           // extents, index 0 the course, 2 everything
   var level = 0;
+  var moved = false;         // the view has been panned or pinched off levels[level]
+
+  var LEVEL_NAMES = ["Race course", "River", "Everything"];
+
+  // The span of the innermost extent when there is no course to fit: a region the size of
+  // a race, with the boat in the middle of it. The twenty-three courses in config run from
+  // 1856 m to 5349 m across with a median of 3082, so 3000 m is a race-sized view by
+  // measurement rather than by feel (DESIGN 12.2).
+  var COURSE_SPAN_M = 3000;
 
   // Zoom limits. Out is the coast extent with a little slack, so the map cannot end up a
   // speck in a void; in is 100 m across, which is a mark approach and about as close as
@@ -233,10 +253,56 @@
     });
   }
 
+  // The innermost extent when no course is selected: a race-sized region centred on the
+  // boat. Not the racing bbox, which is three times the span of any course and shows the
+  // crew a view they never sail in; and not a follow, which was considered and dropped
+  // because a view that recentres itself fights the hand that just panned it. The boat is
+  // put in the middle when this extent is asked for, and stays where it goes after that.
+  //
+  // With no fix, the start line's inner end, which is the origin and the club.
+  function boatRegion() {
+    var half = COURSE_SPAN_M / 2;
+    var at = [0, 0];
+    var fix = lastState && lastState.position && !lastState.position.stale
+            ? lastState.position.v : null;
+    if (fix && origin) at = project([fix.lon, fix.lat]);
+    return { x: at[0] - half, y: at[1] - half, w: COURSE_SPAN_M, h: COURSE_SPAN_M };
+  }
+
+  // levels[0] is whichever of the two the boat is in a position to want: the course being
+  // sailed if there is one, else a race-sized region around the boat, recomputed each time
+  // it is asked for so it is centred on where the boat is now rather than where it was at
+  // load.
+  function innerExtent() {
+    return courseExtentNow || boatRegion();
+  }
+
   function showLevel(i) {
     level = Math.min(Math.max(i, 0), levels.length - 1);
+    if (level === 0) levels[0] = innerExtent();
     setView(padded(levels[level]));
-    if (el.out) el.out.disabled = (level >= levels.length - 1);
+    moved = false;
+    labelZoom();
+  }
+
+  // The button says where you are and, once the chart has been moved, what one tap will
+  // get you back to. Two states rather than one because a name alone is a label and the
+  // crew needs a control: after a pinch, "FIT RIVER" is the only text on the page that
+  // says the view is no longer any of the three.
+  function labelZoom() {
+    if (!el.zoom) return;
+    var name = LEVEL_NAMES[level] || "";
+    el.zoom.textContent = moved ? "Fit " + name : name;
+    el.zoom.setAttribute("data-fit", moved ? "yes" : "no");
+  }
+
+  // A tap fits the named extent first if the chart has been moved off it, and otherwise
+  // steps to the next one and wraps. Wrapping rather than stopping at Everything: with one
+  // button there is no other way back in, and a control that does nothing when tapped is
+  // worse on a wet screen than one that goes somewhere.
+  function cycleZoom() {
+    if (moved) showLevel(level);
+    else showLevel((level + 1) % levels.length);
   }
 
   // --- gestures ----------------------------------------------------------------------
@@ -281,6 +347,8 @@
     var anchor = clientToUser(clientX, clientY);
     if (!anchor) return;
     setView({ x: view.x, y: view.y, w: view.w * factor, h: view.h * factor });
+    moved = true;
+    labelZoom();
     var now = clientToUser(clientX, clientY);
     if (!now) return;
     setView({ x: view.x + (anchor.x - now.x), y: view.y + (anchor.y - now.y),
@@ -292,6 +360,7 @@
     // another CTM round trip. Dragging right moves the chart right, which means the
     // window over it moves left.
     var mpp = metresPerPixel();
+    if (!moved) { moved = true; labelZoom(); }
     scheduleView({ x: from.x - dxPixels * mpp, y: from.y - dyPixels * mpp,
                    w: from.w, h: from.h });
   }
@@ -687,6 +756,7 @@
   var POLL_MS = 500;
   var BOAT_PX = { hull: 9, vector: 34, ring: 9 };
   var courseNow = null;        // the course document, refetched when the id changes
+  var courseExtentNow = null;  // its extent, or null when no course is selected
   var markIndexNow = {};
   var linesNow = null;
   var boatShape = null;        // {hull, vector}
@@ -802,20 +872,139 @@
     }
   }
 
-  var scopeNames = ["racing area", "racing area", "Swan and the coast"];
+  // --- the four readings under the chart -----------------------------------------------
+  //
+  // The strip DESIGN 12.2 settled, in the space the caveat used to take. Which four
+  // readings depends on what the boat is doing, because a map is the screen the crew is
+  // looking at when they are not looking at the other two, and the reason to leave it was
+  // always one number.
+  //
+  // The three sets, and the order they are tested in: racing first, so motoring inside a
+  // race still shows the race. That order is the crew's, not a guess.
+  var STALE_S = 15;            // instruments dim past this, as app.js and hud.html
+  var NM_ABOVE_M = 500;        // metres below, nautical miles above (DESIGN 9.4)
+  var METRES_TO_NM = 1 / 1852;
+  var BLANK = "---";
+
+  var READOUTS = {
+    // Racing: where the mark is and how the wind sits, which is the whole of steering a
+    // leg. Distance and off-the-bow come from the race engine and are blank without a
+    // fix, exactly as they are on the other two screens (DESIGN 9.5).
+    racing: [
+      { key: "dist", label: "distance" },
+      { key: "rel",  label: "off the bow", unit: "deg" },
+      { key: "twa",  label: "TWA", unit: "deg" },
+      { key: "tws",  label: "TWS", unit: "kt" }
+    ],
+    // Motoring: the four SevCon readings, in the HUD's order and its colours.
+    motor: [
+      { key: "rpm",  label: "RPM" },
+      { key: "cur",  label: "current", unit: "A" },
+      { key: "mot",  label: "motor", unit: "\u00b0C" },
+      { key: "ctrl", label: "controller", unit: "\u00b0C" }
+    ],
+    // Anything else: sailing, but not racing. COG rather than a bearing, because outside a
+    // race there is no mark to take one to and the boat's own course is the only bearing
+    // there is; it is labelled COG for that reason and not BRG.
+    idle: [
+      { key: "sog", label: "SOG", unit: "kt" },
+      { key: "cog", label: "COG", unit: "deg" },
+      { key: "twa", label: "TWA", unit: "deg" },
+      { key: "tws", label: "TWS", unit: "kt" }
+    ]
+  };
+
+  function whichSet(state) {
+    if (!state) return "idle";
+    if (state.race && state.race.mode === "racing") return "racing";
+    if (state.motor) return "motor";
+    return "idle";
+  }
+
+  function fixed1(v) { return v.toFixed(1); }
+  function whole(v)  { return String(Math.round(v)); }
+
+  // Signed, port negative, as every other relative angle in this app (DESIGN 9.3).
+  function signed(v) {
+    var n = Math.round(v);
+    return (n > 0 ? "+" : "") + n;
+  }
+
+  function degrees(v) {
+    return ("00" + (((Math.round(v) % 360) + 360) % 360)).slice(-3);
+  }
+
+  var FORMAT = { sog: fixed1, tws: fixed1, cur: fixed1,
+                 twa: signed, rel: signed, cog: degrees,
+                 rpm: whole, mot: whole, ctrl: whole };
+
+  // One reading: its text, its unit if that can change, and whether it is old enough to
+  // dim. Blank rather than dim when the number cannot be known at all, since a dimmed
+  // number still reads as a number in spray (DESIGN 9.5).
+  function reading(state, key) {
+    var nav = state && state.race ? state.race.nav : null;
+    if (key === "dist") {
+      if (!nav || nav.distance_m === null || nav.distance_m === undefined) {
+        return { text: BLANK, unit: "m" };
+      }
+      return nav.distance_m < NM_ABOVE_M
+        ? { text: whole(nav.distance_m), unit: "m" }
+        : { text: (nav.distance_m * METRES_TO_NM).toFixed(2), unit: "nm" };
+    }
+    if (key === "rel") {
+      if (!nav || nav.relative === null || nav.relative === undefined) {
+        return { text: BLANK };
+      }
+      return { text: signed(nav.relative) };
+    }
+    var f = state && state.fields ? state.fields[key] : null;
+    if (!f || typeof f.v !== "number") return { text: BLANK };
+    return { text: (FORMAT[key] || whole)(f.v), stale: f.age > STALE_S };
+  }
+
+  var readoutSet = null;
+
+  function renderReadout(state) {
+    if (!cells.length) return;
+    var name = whichSet(state);
+    var spec = READOUTS[name];
+
+    // The labels and units are only rewritten when the set itself changes. They are
+    // constant within a set, and this runs twice a second.
+    var changed = name !== readoutSet;
+    readoutSet = name;
+
+    for (var i = 0; i < cells.length; i++) {
+      var c = cells[i];
+      var s = spec[i];
+      if (!s) { c.cell.style.display = "none"; continue; }
+      if (changed) {
+        c.cell.setAttribute("data-key", s.key);
+        c.lbl.textContent = s.label;
+        c.unit.textContent = s.unit || "";
+      }
+      var r = reading(state, s.key);
+      c.val.textContent = r.text;
+      // Only the distance switches its own unit, and only that cell is told to.
+      if (r.unit !== undefined) c.unit.textContent = r.unit;
+      c.val.classList.toggle("stale", !!r.stale);
+    }
+  }
 
   function onState(state) {
     var id = state && state.race ? state.race.course : null;
     var have = courseNow ? courseNow.id : null;
     if (id !== have) {
-      // The crew has chosen a different course, or abandoned one. Refetch it, refit the
-      // view to it, and rename the scope: a course change is a deliberate act that just
-      // happened, so following it is what the crew expects, the same principle DESIGN 9.6
-      // applies to a mode change on the race screen.
+      // The crew has chosen a different course, or abandoned one. Refetch it and refit the
+      // view: a course change is a deliberate act that just happened, so following it is
+      // what the crew expects, the same principle DESIGN 9.6 applies to a mode change on
+      // the race screen. Only when the view is on the inner level and has not been dragged
+      // somewhere by hand, because refitting under a hand that just panned is the one
+      // thing this page must never do.
       if (!id) {
         courseNow = null;
-        levels[0] = levels[1];
-        scopeNames[0] = "racing area";
+        courseExtentNow = null;
+        if (level === 0 && !moved) showLevel(0);
         drawCourse(state);
         return;
       }
@@ -823,12 +1012,8 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (course) {
           courseNow = course;
-          var fitted = courseExtent(course, markIndexNow, linesNow);
-          levels[0] = fitted || levels[1];
-          scopeNames[0] = course ? (course.series_name || "course") + " " + course.course_no
-                                 : "racing area";
-          if (level === 0) showLevel(0);
-          if (el.scope) el.scope.textContent = scopeNames[level];
+          courseExtentNow = courseExtent(course, markIndexNow, linesNow);
+          if (level === 0 && !moved) showLevel(0);
           drawCourse(state);
         })
         .catch(function () { /* the chart is still a chart without a course on it */ });
@@ -845,6 +1030,7 @@
         lastState = state;
         onState(state);
         drawBoat(state);
+        renderReadout(state);
       })
       .catch(function () { /* a dropout self-heals on the next poll (DESIGN 2) */ });
   }
@@ -860,10 +1046,11 @@
   }
 
   function fail(message) {
-    var note = document.getElementById("map-caveat");
-    if (note) {
-      note.textContent = "Map data did not load: " + message;
-      note.className = "failed";
+    // The readings are worth nothing if the chart is not there, so the message takes the
+    // whole strip. It used to be written over the caveat line, which is where the strip is.
+    if (el.readout) {
+      el.readout.textContent = "Map data did not load: " + message;
+      el.readout.className = "failed";
     }
   }
 
@@ -937,12 +1124,15 @@
       drawLines(lines, markIndex);
       drawMarks(marks);
 
-      // Three levels, outermost last (DESIGN 12.1). The course level falls back to the
-      // racing bbox when no course is selected, which keeps the array three long and the
-      // Out button's meaning the same either way.
-      var racing = extentOf(marks.bbox);
-      var fitted = courseExtent(course, markIndex, lines);
-      levels = [fitted || racing, racing, extentOf(coast.bbox)];
+      // The three named extents, outermost last (DESIGN 12.2). Index 0 is a placeholder:
+      // showLevel recomputes it every time it is selected, because with no course it is a
+      // region around the boat and the boat moves.
+      //
+      // "River" is marks.json's bbox, 10.3 by 7.9 km, which is every mark the club races
+      // to and so is the working stretch of the Swan whatever the chart calls it.
+      // "Everything" is coast.json's, 57 by 51 km, deliberately generated far wider for
+      // the ocean races and the island anchorages.
+      var river = extentOf(marks.bbox);
 
       // What the poll needs, kept where it can reach it. The chart is built once and the
       // overlay redrawn on every poll, so these are the only pieces of the load that
@@ -950,25 +1140,14 @@
       courseNow = course;
       markIndexNow = markIndex;
       linesNow = lines;
-      scopeNames[0] = course && fitted
-        ? (course.series_name || "course") + " " + course.course_no
-        : "racing area";
+      courseExtentNow = courseExtent(course, markIndex, lines);
 
-      var label = function () {
-        if (el.scope) el.scope.textContent = scopeNames[level];
-      };
+      levels = [courseExtentNow || river, river, extentOf(coast.bbox)];
 
       bindGestures();
-      el.chart.addEventListener("touchend", label);
-      window.addEventListener("mouseup", label);
-      if (el.fit) {
-        el.fit.addEventListener("click", function () { showLevel(0); label(); });
-      }
-      if (el.out) {
-        el.out.addEventListener("click", function () { showLevel(level + 1); label(); });
-      }
+      if (el.zoom) el.zoom.addEventListener("click", cycleZoom);
       showLevel(0);
-      label();
+      renderReadout(null);
 
       // The overlay, and then the poll that keeps it current. Drawn once immediately so
       // the course is on the chart before the first poll returns.

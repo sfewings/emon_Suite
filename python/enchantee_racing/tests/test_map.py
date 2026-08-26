@@ -116,20 +116,30 @@ def test_the_page_references_nothing_off_box_and_nothing_absolutely():
     assert 'src="static/geo.js"' in page and 'src="static/map.js"' in page
 
 
-def test_the_caveats_are_on_the_page_and_not_only_in_a_comment():
-    """DESIGN 12 requires them, and this is the one screen that looks like a chart.
+def test_the_caveats_are_still_in_the_document():
+    """They were a visible line and are now the chart's description (DESIGN 12.2).
 
-    Crowd-sourced banks, a 2010 survey, and nothing about sandbanks, which is where the
-    trouble on Melville Water actually is.
+    The crew asked for that strip for numbers, having read the same sentence at the foot
+    of the screen for a season. It still has to be in the page, and it still has to say
+    all four things DESIGN 12 requires, because none of the data changed: crowd-sourced
+    banks, a 2010 survey, and nothing about the sandbanks, which is where the trouble on
+    Melville Water actually is.
+
+    On the svg rather than loose in the body, and pointed at by aria-describedby, so
+    anything reading the chart out gets it and nothing spends screen on it.
     """
     page = _page()
-    caveat = re.search(r'id="map-caveat"[^>]*>(.*?)</p>', page, re.S)
-    assert caveat, "no caveat on the map"
+    caveat = re.search(r'<desc id="map-caveat"[^>]*>(.*?)</desc>', page, re.S)
+    assert caveat, "the caveat has left the document altogether"
     text = " ".join(caveat.group(1).split()).lower()
     assert "not for navigation" in text
     assert "sandbank" in text
     assert "2010" in text
     assert "openstreetmap" in text
+    assert 'aria-describedby="map-caveat"' in page, \
+        "the description is in the page but nothing points at it"
+    # And it is not also taking space, which is the whole point of moving it.
+    assert not re.search(r'<p id="map-caveat"', page), "the visible line is back"
 
 
 def test_the_map_asks_for_its_data_the_way_the_app_asks_for_everything():
@@ -375,27 +385,40 @@ def test_the_view_has_the_three_levels_design_settled():
     (DESIGN 12.1).
 
     Measured in a browser against a selected Frostbite course 3: 1967 x 2648 m fitted,
-    11080 x 8726 at the racing bbox, 61230 x 55544 at the coast, and Out disabled at the
-    last of them.
+    11080 x 8726 at the river, 61230 x 55544 at everything.
+
+    Named, since DESIGN 12.2: one button carries the names, so they are the only thing
+    that tells the crew where they are.
     """
     js = _map_js()
-    assert "levels = [fitted || racing, racing, extentOf(coast.bbox)]" in js, \
-        "the three levels are not the ones DESIGN 12.1 settled"
+    assert "levels = [courseExtentNow || river, river, extentOf(coast.bbox)]" in js, \
+        "the three levels are not the ones DESIGN 12.2 settled"
     assert "function showLevel" in js
-    assert "el.out.disabled" in js, "Out gives no sign that it has run out of levels"
+    names = re.search(r"LEVEL_NAMES = \[([^\]]*)\]", js)
+    assert names, "the extents have no names"
+    assert [n.strip().strip('"') for n in names.group(1).split(",")] == \
+        ["Race course", "River", "Everything"], names.group(1)
     page = _page()
-    assert 'id="map-fit"' in page and 'id="map-out"' in page
-    assert 'id="map-scope"' in page, "nothing names what is on the screen"
+    assert 'id="map-zoom"' in page, "no zoom control"
+    # The two it replaced are gone, not merely unused.
+    for dead in ("map-fit", "map-out", "map-scope"):
+        assert dead not in page and dead not in js, dead
 
 
-def test_the_default_view_is_the_course_and_falls_back_to_the_racing_area():
+def test_the_default_view_is_the_course_and_falls_back_to_a_race_sized_region():
     """DESIGN 12 says fit to the current course. No course selected is the ordinary idle
-    case, and then the racing bbox is the right view, so a missing course must not be
-    treated as a failure.
+    case, and a missing course must not be treated as a failure.
+
+    What it falls back to changed in DESIGN 12.2. It was the racing bbox, which is 10 km
+    across, three times the span of any course in config and a view the boat never sails
+    in. It is now a race-sized square with the boat in the middle of it, which is the
+    innermost of the three extents whether or not a race is on.
     """
     js = _map_js()
     assert "showLevel(0)" in js, "the map does not open on the fitted level"
-    assert "fitted || racing" in js, "no fallback when no course is selected"
+    assert "function boatRegion" in js, "no fallback when no course is selected"
+    assert "courseExtentNow || boatRegion()" in js, \
+        "the inner extent does not fall back to the boat"
     assert "function fetchCourse" in js
     fetch_course = _function(_map_code(), "fetchCourse")
     assert "return null" in fetch_course
@@ -755,10 +778,17 @@ def test_the_overlay_follows_a_change_of_course():
     code = _map_code()
     on_state = _function(code, "onState")
     assert "id !== have" in on_state, "a change of course is not noticed"
-    assert "levels[0]" in on_state, "the fitted level is not updated for the new course"
+    assert "courseExtentNow = courseExtent(" in on_state, \
+        "the inner extent is not updated for the new course"
     assert "drawCourse(state)" in on_state
-    # and no course means no legs and the racing bbox back
+    # and no course means no legs and the boat-centred region back
     assert "if (!id)" in on_state, "abandoning a course is not handled"
+    assert on_state.count("courseExtentNow = null") == 1, \
+        "abandoning a course leaves the old extent to be fitted"
+    # Refitting under a hand that has just panned the chart is the one thing this page
+    # must never do, so following a course change is conditional on both.
+    assert on_state.count("if (level === 0 && !moved) showLevel(0);") == 2, \
+        "a course change refits the view even when the crew has dragged it somewhere"
 
 
 def test_the_overlay_is_redrawn_when_the_scale_changes():
@@ -804,6 +834,293 @@ def test_the_boat_has_its_own_colour():
     for theme in (r"^body \{([^}]*)\}", r"^body\.night \{([^}]*)\}"):
         block = re.search(theme, css, re.M | re.S)
         assert block and "--boat:" in block.group(1), "no boat colour for %s" % theme
+
+
+# --- the readings under the chart, and the one zoom control (DESIGN 12.2) --------------
+
+
+# The three sets, and every reading in each, in the order the crew asked for them.
+READOUT_SETS = {
+    "racing": ["dist", "rel", "twa", "tws"],
+    "motor": ["rpm", "cur", "mot", "ctrl"],
+    "idle": ["sog", "cog", "twa", "tws"],
+}
+
+
+def test_the_strip_shows_the_four_readings_for_what_the_boat_is_doing():
+    """A map is the screen the crew is on when they are not on the other two, and the
+    reason to leave it was always one number. So the space the caveat had carries four.
+
+    Three sets, and the order they are tested in matters: racing first, so motoring inside
+    a race still shows the race. That order is the crew's.
+    """
+    code = _map_code()
+
+    for name, keys in READOUT_SETS.items():
+        block = re.search(re.escape(name) + r":\s*\[(.*?)\]", code, re.S)
+        assert block, "no %s set" % name
+        assert re.findall(r'key:\s*"(\w+)"', block.group(1)) == keys, \
+            "%s is not the four readings in the order asked for" % name
+        # Every one is labelled, or the number is unidentifiable.
+        assert len(re.findall(r"label:", block.group(1))) == len(keys), name
+
+    which = _function(code, "whichSet")
+    assert which.index('"racing"') < which.index('"motor"'), \
+        "motoring during a race would hide the race"
+    assert 'race.mode === "racing"' in which, "the racing set is not chosen by the mode"
+    assert "state.motor" in which, "the motor set is not chosen by the motor flag"
+
+    # Four cells in the markup, so the strip is the same height before the first poll as
+    # after it and the chart above is never resized by data arriving.
+    page = _page()
+    strip = re.search(r'<div id="map-readout">(.*?)</div>\s*</section>', page, re.S)
+    assert strip, "no readout strip on the page"
+    assert strip.group(1).count('class="cell"') == 4, \
+        "the strip must hold four cells whatever is in them"
+    for part in ("lbl", "val", "unit"):
+        assert strip.group(1).count('class="%s"' % part) == 4, part
+    assert max(len(keys) for keys in READOUT_SETS.values()) == 4, \
+        "a set has more readings than there are cells"
+
+
+def test_a_reading_that_cannot_be_known_is_blank_and_an_old_one_is_dimmed():
+    """Blanked, not dimmed, when the number cannot be known at all: a dimmed number still
+    reads as a number in spray (DESIGN 9.5). Dimmed when it is real but old, which is what
+    the other two screens do at the same 15 s.
+
+    Distance and off-the-bow come from the race engine's nav block, which is null whenever
+    there is no fix or the fix is past the 5 s cutoff, so those two blank on their own.
+    """
+    code = _map_code()
+    reading = _function(code, "reading")
+    assert "BLANK" in reading
+    assert "race.nav" in reading, "the mark readings do not come from the engine"
+    assert "f.age > STALE_S" in reading, "an old instrument reading is not marked"
+    render = _function(code, "renderReadout")
+    assert 'classList.toggle("stale"' in render, "nothing dims a stale reading"
+
+    # The same three numbers as the other two screens, which each carry their own copy.
+    js = _map_js()
+    for name, value in (("STALE_S", "15"), ("NM_ABOVE_M", "500"),
+                        ("METRES_TO_NM", "1 / 1852")):
+        for path, text in (("static/map.js", js),
+                           ("static/app.js", (ROOT / "static" / "app.js").read_text(
+                               encoding="utf-8")),
+                           ("templates/hud.html", (ROOT / "templates" / "hud.html")
+                               .read_text(encoding="utf-8"))):
+            assert re.search(r"\b%s\s*=\s*%s\b" % (name, re.escape(value)), text), \
+                "%s: %s is not %s" % (path, name, value)
+
+
+def test_the_distance_switches_its_own_unit_and_nothing_else_does():
+    """Metres under 500, nautical miles above, unit label switched with the value
+    (DESIGN 9.4). It is the only reading here whose unit is not constant, and the only
+    cell that is allowed to rewrite one.
+    """
+    code = _map_code()
+    reading = _function(code, "reading")
+    assert 'unit: "m"' in reading and 'unit: "nm"' in reading
+    assert "NM_ABOVE_M" in reading
+
+    render = _function(code, "renderReadout")
+    # Labels and units are only rewritten when the set changes, this running twice a
+    # second, so the one that does change has to be handled outside that.
+    assert "if (r.unit !== undefined)" in render, \
+        "a switched unit would be overwritten, or written on every poll"
+
+
+def test_one_button_names_the_extent_and_offers_to_fit_it_once_moved():
+    """One control where there were two (DESIGN 12.2).
+
+    It names the extent on the screen and cycles to the next, and once the chart has been
+    pinched or dragged it says Fit and comes back to that extent first. So the tap that
+    recovers a map dragged somewhere useless is always the next tap, which was the one
+    property of the old Fit button worth keeping.
+
+    It wraps at the outermost. With one button there is no other way back in, and a
+    control that does nothing when tapped is worse on a wet screen than one that moves.
+    """
+    code = _map_code()
+    cycle = _function(code, "cycleZoom")
+    assert "if (moved) showLevel(level);" in cycle, \
+        "a moved chart advances instead of coming back"
+    assert "(level + 1) % levels.length" in cycle, "the button does not wrap"
+
+    label = _function(code, "labelZoom")
+    assert "LEVEL_NAMES[level]" in label, "the button does not name where it is"
+    assert 'moved ? "Fit "' in label, "a moved chart is indistinguishable from a fitted one"
+
+    show = _function(code, "showLevel")
+    assert "moved = false" in show, "fitting an extent leaves the chart marked as moved"
+    assert "labelZoom()" in show, "the button is not relabelled when the level changes"
+
+    # A gesture has to set it, or the button never offers to come back.
+    for name in ("zoomAbout", "panBy"):
+        assert "moved = true" in _function(code, name), \
+            "%s does not take the view off the extent" % name
+
+    assert 'el.zoom.addEventListener("click", cycleZoom)' in code, "nothing is bound"
+
+
+def test_with_no_course_the_inner_extent_is_race_sized_and_centred_on_the_boat():
+    """DESIGN 12.2. The racing bbox used to stand in here and it is the wrong view: 10.3 km
+    across, three times the span of any course in config, and a stretch of river the boat
+    never sails all of.
+
+    The span is measured, not chosen. The twenty-three courses in config run 1856 m to
+    5349 m across with a median of 3082, so 3000 m is a race-sized view.
+
+    Centred when the extent is asked for, and not followed after that. A view that
+    recentres itself fights the hand that just panned it, and the crew asked for the
+    following to be left out.
+    """
+    code = _map_code()
+    js = _map_js()
+
+    span = re.search(r"COURSE_SPAN_M = (\d+)", js)
+    assert span, "no span for the boat-centred extent"
+    assert 2500 <= int(span.group(1)) <= 4000, \
+        "%s m is not a race-sized view; the courses run 1856 to 5349" % span.group(1)
+
+    region = _function(code, "boatRegion")
+    assert "position" in region and "stale" in region, \
+        "a stale fix would centre the view on where the boat used to be"
+    assert "COURSE_SPAN_M" in region
+    # With no fix at all, the origin, which is the start line's inner end and the club.
+    assert "var at = [0, 0]" in region, "no fallback with no fix"
+
+    # Recomputed on selection rather than at load, or it centres on where the boat was
+    # when the page opened.
+    show = _function(code, "showLevel")
+    assert "levels[0] = innerExtent()" in show, \
+        "the inner extent is fixed at load, so the boat drifts out of it"
+
+    # And it really is the innermost of the three.
+    assert "levels = [courseExtentNow || river, river," in js
+
+    # The courses this was measured against are still the courses in config.
+    import json as _json
+    marks = {m["id"]: m for m in
+             _json.loads((ROOT / "config" / "marks.json").read_text())["marks"]}
+    lines = _json.loads((ROOT / "config" / "lines.json").read_text())
+    courses = _json.loads((ROOT / "config" / "courses.json").read_text())["courses"]
+    o = lines["start_finish"]["inner"]
+    import math
+    mlon = 111320.0 * math.cos(math.radians(o["lat"]))
+    spans = []
+    for course in courses:
+        pts = [(0.0, 0.0),
+               ((lines["start_finish"]["outer"]["lon"] - o["lon"]) * mlon,
+                (lines["start_finish"]["outer"]["lat"] - o["lat"]) * 111132.0)]
+        for leg in course["legs"]:
+            m = marks.get(leg.get("mark"))
+            if m:
+                pts.append(((m["lon"] - o["lon"]) * mlon,
+                            (m["lat"] - o["lat"]) * 111132.0))
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        spans.append(max(max(xs) - min(xs), max(ys) - min(ys)))
+    spans.sort()
+    median = spans[len(spans) // 2]
+    assert abs(median - int(span.group(1))) < 600, \
+        "the courses have changed: median span is now %.0f m against a %s m view" % (
+            median, span.group(1))
+
+
+def test_the_strip_never_takes_room_from_the_chart():
+    """The chart is the flexible thing on this page and the four readings are not, so the
+    strip is flex: 0 0 auto and never wraps or scrolls. A reading that has to be hunted
+    for is no use on a moving boat.
+    """
+    css = re.sub(r"/\*.*?\*/", "",
+                 (ROOT / "static" / "app.css").read_text(encoding="utf-8"), flags=re.S)
+
+    def rules(selector):
+        block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        assert block, selector
+        return " ".join(block.group(1).split())
+
+    strip = rules("#map-readout")
+    assert "flex: 0 0 auto" in strip, "the strip would take room from the chart"
+    assert "display: flex" in strip
+    cell = rules("#map-readout .cell")
+    assert "flex: 1 1 0" in cell and "min-width: 0" in cell, \
+        "a long reading would push the others off the row"
+    assert "overflow: hidden" in cell
+    assert "white-space: nowrap" in rules("#map-readout .val"), \
+        "a reading that wraps changes the height of the strip"
+
+    # Margins, not flex gap: gap is Safari 14.1 and the floor is 12 (DESIGN 9.8.1).
+    assert "gap" not in strip and "gap" not in cell
+    assert "margin-left" in rules("#map-readout .cell + .cell")
+
+    # Every clamp keeps a plain fallback ahead of it, for the same reason. The generic
+    # test on the race screen covers app.css as a whole; this checks the new rules did
+    # not arrive without one.
+    for selector in ("#map-readout .lbl", "#map-readout .val", "#map-readout .unit"):
+        body = rules(selector)
+        if "clamp(" not in body:
+            continue
+        sizes = re.findall(r"font-size:\s*([^;]+)", body)
+        assert len(sizes) >= 2 and "clamp(" not in sizes[0], \
+            "%s: no plain font-size ahead of the clamp" % selector
+
+
+def test_every_reading_keeps_the_colour_it_has_on_the_other_screens():
+    """The same quantity is the same colour on whichever screen the crew is looking at.
+    That is the whole of the colour language, and a fifth palette on a third page would
+    undo it.
+
+    The wind and motor variables only existed in hud.html, which is self-contained, so
+    they are copied into app.css rather than invented. The night theme has to define every
+    one of them too: nothing there may be blue or green, the point of the theme being that
+    no wavelength but red reaches the eye (DESIGN 9.7).
+    """
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    hud = (ROOT / "templates" / "hud.html").read_text(encoding="utf-8")
+
+    keys = sorted({k for keys in READOUT_SETS.values() for k in keys})
+    # dist and rel are the map's own names for readings the other screens carry as the
+    # distance and the relative bearing, and they use those two variables.
+    variables = {"dist": "dist", "rel": "brg", "cog": "cog", "sog": "sog",
+                 "twa": "twa", "tws": "tws", "rpm": "rpm", "cur": "cur",
+                 "mot": "mot", "ctrl": "ctrl"}
+    for key in keys:
+        var = variables[key]
+        assert '#map-readout .cell[data-key="%s"] .val { color: var(--%s); }' % (key, var) \
+            in " ".join(css.split()).replace(" {", " {"), \
+            "%s has no colour, or not the one the other screens give it" % key
+
+    day = re.search(r":root \{(.*?)\n\}", css, re.S)
+    night = re.search(r"body\.night \{(.*?)\n\}", css, re.S)
+    assert day and night
+    for var in sorted(set(variables.values())):
+        assert "--%s:" % var in day.group(1), "--%s is not defined for the day" % var
+        assert "--%s:" % var in night.group(1), "--%s is not defined for the night" % var
+
+    # The four that came from the HUD keep the HUD's values, or the same reading is two
+    # colours depending on which screen it is read from.
+    for var in ("twa", "tws", "rpm", "cur", "ctrl", "mot"):
+        want = re.search(r"--%s:\s*(#[0-9a-fA-F]{6})" % var, hud)
+        assert want, "hud.html does not define --%s" % var
+        got = re.search(r"--%s:\s*(#[0-9a-fA-F]{6})" % var, day.group(1))
+        assert got and got.group(1).lower() == want.group(1).lower(), \
+            "--%s is %s on the map and %s on the HUD" % (
+                var, got and got.group(1), want.group(1))
+
+
+def test_a_failure_to_load_takes_the_strip_and_says_so():
+    """It used to be written over the caveat line, which is where the strip is now. The
+    readings are worth nothing if the chart is not there, so the message takes all of it.
+    """
+    code = _map_code()
+    fail = _function(code, "fail")
+    assert "el.readout" in fail, "the failure message has nowhere to go"
+    assert '"failed"' in fail
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    assert "#map-readout.failed" in css, "the failure message is not styled"
+    assert "var(--bad)" in re.search(r"#map-readout\.failed \{([^}]*)\}",
+                                     css).group(1), "a failure that does not look like one"
 
 
 if __name__ == "__main__":

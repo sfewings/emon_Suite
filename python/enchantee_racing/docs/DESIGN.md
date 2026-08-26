@@ -1931,6 +1931,77 @@ A layer already in an open project keeps the renderer the project saved, so afte
 changing the bands, an existing layer needs Properties, Style, Load Style, From
 database, or simply removing and re-adding it.
 
+### 12.2 What the strip says, and the one zoom control
+
+Two changes after a season of using the page, and both come from the same observation:
+the map was the screen the crew sat on, and the reason they left it was always a single
+number.
+
+**Four readings, in the space the caveat had.** The disclaimer had been read. It is the
+same sentence every time the screen is opened, it never changes, and it was taking the
+one strip of the page that could carry data. So it moved from a paragraph under the chart
+to the chart's own `<desc>`, pointed at by `aria-describedby`: still in the document,
+still saying exactly what 12 and the two source sections say, still there for anything
+reading the page out. None of the data changed and none of the caveats are withdrawn.
+That was the crew's call to make about their own boat, and it is recorded here because the
+next person to read section 12 will wonder where the line went.
+
+Which four depends on what the boat is doing, and the sets are the crew's, in the order
+they are tested in:
+
+| state | the four readings |
+|---|---|
+| racing | distance to the next mark, off the bow, TWA, TWS |
+| motoring | RPM, current, motor temperature, controller temperature |
+| otherwise | SOG, COG, TWA, TWS |
+
+Racing is tested **before** motoring, so motoring inside a race still shows the race.
+That ordering is the point of having one: the two conditions are not exclusive, the boat
+having an engine and a rule book that permits using it.
+
+Two details worth writing down. The third set's second reading is COG, not a bearing:
+outside a race there is no mark to take a bearing to, and the boat's own course is the
+only bearing there is, so it is labelled COG and not BRG. And every reading keeps the
+colour it has on the other two screens. The wind and motor variables only existed inside
+`hud.html`, which is self-contained, so they are copied into `app.css` rather than chosen
+again, and the night theme defines all of them in reds; a fifth palette on a third page
+would undo the whole colour language. A test holds the copies to each other.
+
+The strip is `flex: 0 0 auto` and never wraps or scrolls. The chart is the flexible thing
+on this page and four numbers are not, and a reading that has to be hunted for is no use
+on a moving boat. The cells are in the markup rather than built, so the strip is the same
+height before the first poll as after it and the chart is never resized by data arriving.
+Measured at 320, 375, 768 and 1400 px: nothing overflows, no label clips, and the strip
+is 42 to 64 px.
+
+**One button where there were two.** `Fit` and `Out` became a single control that names
+the extent it is showing and cycles to the next:
+
+| name | what it is | span |
+|---|---|---|
+| Race course | the course being sailed, or a race-sized region around the boat | ~2 to 5 km |
+| River | `marks.json`'s bbox, every mark the club races to | 10.3 x 7.9 km |
+| Everything | `coast.json`'s bbox, the ocean races and the island anchorages | 57 x 51 km |
+
+Once the chart has been pinched or dragged the button says `Fit` and comes back to the
+extent it names before it will advance. That keeps the one property of the old pair worth
+keeping, that the tap which recovers a map dragged somewhere useless is always the next
+tap, and it is also the only text on the page that says the view is no longer any of the
+three, which is what the old `map-scope` label was for. It wraps at the outermost: with
+one button there is no other way back in, and a control that does nothing when tapped is
+worse on a wet screen than one that moves.
+
+With no race selected, the innermost extent is a race-sized square with the boat in the
+middle. It used to be the racing bbox, which is the wrong view by a factor of three: 10 km
+across, where the twenty-three courses in `config` run 1856 m to 5349 m with a median of
+3082. So the span is 3000 m, measured rather than felt, and a test recomputes that median
+from `config` and fails if the courses change enough to move it.
+
+The boat is centred when that extent is asked for and not followed after that. Following
+was considered and dropped, as it was in 12.1: a view that recentres itself fights the
+hand that just panned it. For the same reason, a course change refits the view only when
+the view is on the inner extent **and** has not been dragged by hand.
+
 ## 13. Build order
 
 1. `engine/nav.py` with unit tests, using the MGA94 grid columns as fixtures.

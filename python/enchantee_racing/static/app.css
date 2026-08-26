@@ -34,6 +34,15 @@
   --mark:  #ffffff;   /* the next mark name: the largest thing on the screen */
   --dist:  #1e90ff;   /* distance, as SOG, because both are speed-and-distance */
   --brg:   #ffff00;   /* bearing, as HDG on the HUD                           */
+  /* The wind and motor readings, for the map's strip (DESIGN 12.2). Values copied from
+     hud.html rather than chosen: the same quantity is the same colour on whichever screen
+     the crew happens to be looking at, and that is the whole of the colour language. */
+  --twa:   #ffa500;   /* true wind angle, as the HUD and as a breach warning   */
+  --tws:   #1e90ff;   /* true wind speed, as SOG, both being speeds            */
+  --rpm:   #98fb98;   /* PaleGreen, as the SevCon page                         */
+  --cur:   #00ffff;   /* Cyan, as the SevCon page                              */
+  --ctrl:  #ff0000;   /* Red, as the SevCon page                               */
+  --mot:   #b22222;   /* FireBrick, as the SevCon page                         */
   --cog:   #ffff99;   /* course over ground, the lighter tint, as on the HUD   */
   --time:  #98fb98;   /* elapsed and countdown: PaleGreen, as RPM             */
   --warn:  #ffa500;   /* a breach, an early crossing: TWA orange              */
@@ -51,6 +60,10 @@
 body.night {
   --sog: #ff6b5a; --mark: #ff8f7a; --dist: #ff6b5a; --brg: #ff5a48; --cog: #d4564a;
   --time: #ff7a68; --warn: #ff9068; --bad: #ff4a3a;
+  /* The map strip's readings, in the same reds. Nothing here may be blue or green: the
+     point of the theme is that no wavelength but red reaches the eye. */
+  --twa: #ff9068; --tws: #ff6b5a; --rpm: #ff7a68;
+  --cur: #ff8f7a; --ctrl: #ff4a3a; --mot: #c03528;
   --rule: #2a0f0c; --label: #8a4038; --panel: #0a0403; --ink: #ff8f7a;
 
   /* The map at night (DESIGN 12.1). Three dark reds in place of the chart blues, in the
@@ -772,17 +785,56 @@ body.night #chart .mark-label { fill: var(--map-label); }
 
 /* The scope label sits in the controls row with the two buttons, and takes what room is
    left rather than a share of it: the buttons are what a hand reaches for. */
-#map-scope {
-  flex: 1 1 auto; min-width: 0; align-self: center; text-align: right;
-  color: var(--label); padding-right: .2rem;
-  font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-#map-out[disabled] { opacity: .35; }
+/* The four readings under the chart (DESIGN 12.2). One row, never scrolling, never
+   wrapping: this is a glance, and a reading that has to be hunted for is no use at all.
 
-#map-caveat {
-  flex: 0 0 auto; margin: 0; padding: .35rem .6rem;
-  border-top: 2px solid var(--rule); color: var(--label);
-  font-size: 1.7vh; font-size: clamp(9px, 1.7vh, 15px);
+   flex: 0 0 auto so the chart above gives way first. The chart is the flexible thing on
+   this page and these four numbers are not. */
+#map-readout {
+  display: flex; flex: 0 0 auto;
+  border-top: 2px solid var(--rule);
+  padding: .2rem .3rem;
 }
-#map-caveat.failed { color: var(--bad); }
+#map-readout .cell {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+/* Margins, not flex gap: gap is Safari 14.1 and the floor is 12 (DESIGN 9.8.1). */
+#map-readout .cell + .cell { margin-left: .3rem; border-left: 2px solid var(--rule); }
+#map-readout .lbl {
+  color: var(--label); text-transform: uppercase; letter-spacing: .04em;
+  font-size: 1.4vh; font-size: clamp(8px, 1.4vh, 13px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+/* The number, and the only thing on this row sized to be read rather than referred to.
+   Tabular figures so a changing reading does not shuffle its own digits sideways. */
+#map-readout .val {
+  color: var(--ink); font-weight: 600;
+  font-size: 3.0vh; font-size: min(3.0vh, 7vw);
+  font-size: clamp(15px, min(3.0vh, 7vw), 32px);
+  font-variant-numeric: tabular-nums; -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+  line-height: 1.05; white-space: nowrap;
+}
+#map-readout .unit {
+  color: var(--label);
+  font-size: 1.4vh; font-size: clamp(8px, 1.4vh, 13px);
+  white-space: nowrap;
+}
+/* Each reading in the colour that quantity has on every other screen. */
+#map-readout .cell[data-key="dist"] .val { color: var(--dist); }
+#map-readout .cell[data-key="rel"]  .val { color: var(--brg); }
+#map-readout .cell[data-key="cog"]  .val { color: var(--cog); }
+#map-readout .cell[data-key="sog"]  .val { color: var(--sog); }
+#map-readout .cell[data-key="twa"]  .val { color: var(--twa); }
+#map-readout .cell[data-key="tws"]  .val { color: var(--tws); }
+#map-readout .cell[data-key="rpm"]  .val { color: var(--rpm); }
+#map-readout .cell[data-key="cur"]  .val { color: var(--cur); }
+#map-readout .cell[data-key="ctrl"] .val { color: var(--ctrl); }
+#map-readout .cell[data-key="mot"]  .val { color: var(--mot); }
+/* A failure to load the chart data, which used to be written over the caveat line. It
+   takes the whole strip, because there are no readings worth showing if the map is not
+   there and the message is longer than a cell. */
+#map-readout.failed { display: block; color: var(--bad); padding: .35rem .6rem;
+  font-size: 1.7vh; font-size: clamp(9px, 1.7vh, 15px); }

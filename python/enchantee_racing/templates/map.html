@@ -42,8 +42,17 @@
       the contours that divide them, then land over the top of both, then the marks and
       the course over everything.
     -->
+    <!--
+      The caveats. They were a visible line under the chart and are now the chart's own
+      description: the crew asked for that strip for numbers, and after a season of looking
+      at the same sentence every time the screen is opened it had stopped being read. It is
+      still in the document, still says exactly what the sources say, and DESIGN 12 carries
+      it in full. Nothing about the data changed, only who is being told.
+    -->
     <svg id="chart" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"
-         aria-label="Course map">
+         aria-label="Course map" aria-describedby="map-caveat">
+      <desc id="map-caveat">Orientation only, not for navigation. Depths below low water
+        from a 2010 survey; banks from OpenStreetMap. Neither shows sandbanks.</desc>
       <g id="layer-bands"></g>
       <g id="layer-contours"></g>
       <g id="layer-land"></g>
@@ -66,32 +75,34 @@
     </svg>
 
     <!--
-      Two controls, and only two (CLAUDE.md: minimum interaction). Out steps through the
-      three levels DESIGN 12.1 settled, and Fit comes back to the course, which is the
-      recovery when the chart has been dragged somewhere useless. Free pan and pinch sit
-      on top of both; the buttons are the path that works with wet hands.
+      One control (CLAUDE.md: minimum interaction). It names the extent that is on the
+      screen and cycles to the next one, and once the chart has been pinched or dragged it
+      says FIT instead and comes back to that same extent first. So the tap that recovers a
+      map dragged somewhere useless is always the next tap, which is the one property of
+      the old Fit button worth keeping. Free pan and pinch sit on top of it.
 
-      map-scope names what is on the screen, because after a pinch the crew cannot tell a
-      fitted course from the racing area by looking, and "where am I zoomed to" is exactly
-      the question a map with no labels at that scale cannot answer.
+      Empty in the markup: the label is the current extent's name and only map.js knows
+      which that is (DESIGN 12.2).
     -->
     <div class="controls">
-      <button id="map-fit" class="primary">Fit</button>
-      <button id="map-out">Out</button>
-      <span id="map-scope"></span>
+      <button id="map-zoom" class="primary"></button>
     </div>
 
     <!--
-      The caveats, on the page rather than only in a loader comment. Both source sections
-      insist on them and this is the one screen that looks like a chart, which is exactly
-      why they have to be visible: OSM banks are crowd-sourced, the survey is from 2010,
-      and neither says anything about the sandbanks, which is where the trouble on
-      Melville Water actually is (DESIGN 12).
+      Four readings, in the space the caveat used to have. Which four depends on what the
+      boat is doing, and map.js fills all of it, labels and units included: a map with no
+      numbers on it sends the crew back to the other two screens for the one thing they
+      needed while looking at it (DESIGN 12.2).
+
+      The cells are in the markup rather than built, so the strip is the same height before
+      the first poll as after it and the chart above it is never resized by data arriving.
     -->
-    <p id="map-caveat">
-      Orientation only, not for navigation. Depths below low water from a 2010 survey;
-      banks from OpenStreetMap. Neither shows sandbanks.
-    </p>
+    <div id="map-readout">
+      <div class="cell"><span class="lbl"></span><span class="val">---</span><span class="unit"></span></div>
+      <div class="cell"><span class="lbl"></span><span class="val">---</span><span class="unit"></span></div>
+      <div class="cell"><span class="lbl"></span><span class="val">---</span><span class="unit"></span></div>
+      <div class="cell"><span class="lbl"></span><span class="val">---</span><span class="unit"></span></div>
+    </div>
   </section>
 
   <nav id="nav">
