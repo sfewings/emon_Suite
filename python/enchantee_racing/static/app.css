@@ -14,6 +14,22 @@
 */
 
 :root {
+  /* The clearance below the navigation labels, and the whole of what the bottom of the
+     screen gives up.
+
+     iOS reports env(safe-area-inset-bottom) as 34pt on a phone with a home indicator,
+     which is the system's swipe-up gesture area and far larger than the indicator itself:
+     the pill is 5pt tall and sits 8pt off the bottom edge, so 13pt clears it. Reserving
+     the full 34 left a visible band of nothing along the bottom of the phone, twice, on a
+     screen where nothing else is allowed to waste a pixel. So the labels clear the pill
+     and no more, and the buttons themselves pad down to the glass, which grows the area
+     you can hit rather than shrinking it.
+
+     Declared twice: a browser that does not know min() drops the second and gets 0, which
+     is what it had before any of this. min() is Safari 11.1 and the floor here is 12. */
+  --nav-pad: 0px;
+  --nav-pad: min(env(safe-area-inset-bottom), 0.9rem);
+
   --sog:   #1e90ff;
   --mark:  #ffffff;   /* the next mark name: the largest thing on the screen */
   --dist:  #1e90ff;   /* distance, as SOG, because both are speed-and-distance */
@@ -382,14 +398,22 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   border-top: 2px solid var(--rule);
   flex: 0 0 auto;
   background: var(--bg);
-  /* The home indicator's height, so the row's background reaches the bottom of the screen
-     while its buttons stay above the indicator. This does not give the panels more room,
-     since the nav grows by exactly what #app stopped reserving; what it removes is the
-     band of dead space below the nav. */
-  padding-bottom: env(safe-area-inset-bottom);
+  /* No inset here. It goes on the links, one rule down: on the row it reserved a band of
+     nav-coloured nothing along the bottom of the phone, which is the space that was
+     reported as given up twice. */
 }
 #nav a, #nav button {
-  flex: 1 1 0; min-height: 2.6rem; min-width: 0;
+  /* The label band is 2.6rem wherever the button is, and --nav-pad is added to it rather
+     than taken out of it: box-sizing is border-box here, so a bare min-height would let
+     the padding eat the label's own room and the visible row would shrink to the height
+     of the text. See --nav-pad for what the clearance is and why it is not the full inset.
+
+     Padding rather than margin, so the button's background and its hit area both run to
+     the bottom of the glass while the label stays above the indicator, centred in the
+     content box. */
+  flex: 1 1 0; min-width: 0;
+  min-height: calc(2.6rem + var(--nav-pad));
+  padding-bottom: var(--nav-pad);
   border: none; border-radius: 0;
   background: var(--bg); color: var(--label);
   font: inherit; font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);

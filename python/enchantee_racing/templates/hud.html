@@ -55,6 +55,22 @@
      wind angles Orange, heading Yellow. The apparent (and course) row of each
      pair is tinted lighter so the two rows in a panel stay apart at a glance. */
   :root {
+    /* The clearance below the navigation labels, and the whole of what the bottom of the
+       screen gives up.
+
+       iOS reports env(safe-area-inset-bottom) as 34pt on a phone with a home indicator,
+       which is the system's swipe-up gesture area and far larger than the indicator itself:
+       the pill is 5pt tall and sits 8pt off the bottom edge, so 13pt clears it. Reserving
+       the full 34 left a visible band of nothing along the bottom of the phone, twice, on a
+       screen where nothing else is allowed to waste a pixel. So the labels clear the pill
+       and no more, and the buttons themselves pad down to the glass, which grows the area
+       you can hit rather than shrinking it.
+
+       Declared twice: a browser that does not know min() drops the second and gets 0, which
+       is what it had before any of this. min() is Safari 11.1 and the floor here is 12. */
+    --nav-pad: 0px;
+    --nav-pad: min(env(safe-area-inset-bottom), 0.9rem);
+
     --sog:   #1e90ff;   /* speed over ground   - as Navigation 'Speed'          */
     --twa:   #ffa500;   /* true wind angle     - as Weather 'True Wind Dir'     */
     --awa:   #ffcc80;   /* apparent wind angle - lighter tint of that orange    */
@@ -169,7 +185,11 @@
   #nav {
     position: fixed; z-index: 2;
     left: env(safe-area-inset-left); right: env(safe-area-inset-right);
-    bottom: env(safe-area-inset-bottom);
+    /* Hard against the bottom of the glass, the indicator's height being taken by the
+       links below instead. Sitting the whole row above the inset left a band of page
+       behind it doing nothing, which is the same fault the race page had (DESIGN 9.8.1);
+       #hud's reserve is unchanged either way, the row still being inset + 2.6rem tall. */
+    bottom: 0;
     display: flex;
     border-top: 2px solid var(--rule);
     background: #000;
@@ -179,7 +199,12 @@
   #nav > * + * { margin-left: 1px; }
   .row.multi .sub > * + * { margin-left: .4em; }
   #nav a {
-    flex: 1 1 0; min-height: 2.6rem; min-width: 0;
+    /* As the race page, and for the reasons given there: the label band stays 2.6rem, the
+       clearance is added to it rather than taken out of it, and the button pads down to
+       the glass so the hit area is the larger of the two. */
+    flex: 1 1 0; min-width: 0;
+    min-height: calc(2.6rem + var(--nav-pad));
+    padding-bottom: var(--nav-pad);
     display: flex; align-items: center; justify-content: center;
     color: var(--label); text-decoration: none;
     font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
@@ -188,7 +213,10 @@
   #nav a:active { background: var(--rule); }
   #nav a.here { color: #fff; box-shadow: inset 0 3px 0 0 var(--sog); }
   #nav a.off { opacity: .3; pointer-events: none; }
-  #hud { padding-bottom: calc(env(safe-area-inset-bottom) + 2.6rem); }
+  /* The room this page keeps clear for its own out-of-flow nav, which has to be the
+     nav's real height: 2.6rem of label plus the clearance below it. Two copies of one
+     number, in two files, and the tests check they still agree. */
+  #hud { padding-bottom: calc(2.6rem + var(--nav-pad)); }
 
   /* The wake-lock video has to be playing and on the page, but never seen. Deliberately
      not display:none and not visibility:hidden: a browser that considers the element

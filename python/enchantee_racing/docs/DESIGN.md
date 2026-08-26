@@ -918,11 +918,29 @@ And one that is not a missing feature but a wrong axis:
   draw something enormous on a wide desktop, so both lines earn their place, and the
   height term is still what applies on every device the boat carries.
 
-The home indicator's inset moved in the same pass, from `#app` to `#nav`. On the page it
-padded the whole column and left a band of background below the navigation doing nothing;
-on the row, the background runs to the edge of the glass and the buttons still clear the
-indicator, which is where a tap target has to be. It buys the panels no height, the nav
-growing by exactly what the page gave up, but the dead space is what was reported.
+The home indicator's inset took three passes, and the first two were the same mistake
+twice. It began on `#app`, where it padded the whole column and left a band of page
+background below the navigation. Moved to `#nav`, the row's background reached the glass
+but its buttons still stopped short of it, so the band was still there in the nav's
+colour and came straight back from the boat. Both reserved the whole of what iOS reports,
+and that is the point: `env(safe-area-inset-bottom)` is 34pt on a phone, which is the
+system's swipe-up gesture region, not the indicator. The indicator is a 5pt pill sitting
+8pt off the bottom edge, so 13pt clears it.
+
+So `--nav-pad` is `min(env(safe-area-inset-bottom), 0.9rem)`, about 14px, and it is the
+whole of what the bottom of the screen gives up. It sits on the buttons rather than on
+anything above them, so their background and their hit area both run to the glass while
+the label stays above the pill, and it is **added to** the 2.6rem label band rather than
+taken out of it: `box-sizing` is `border-box` here, and a bare `min-height` let the
+padding eat the label's own room, collapsing the visible row to the height of the text.
+That was caught by measuring, not by looking at it.
+
+Measured at the phone's viewport with the inset simulated, all three pages agree: a 42px
+label band, the button reaching the glass, the label 15px clear of the pill, and 20px
+returned to the panels. `--nav-pad` is declared twice, `0px` and then the `min()`, so a
+browser without `min()` gets what it had before; the floor is Safari 12 and `min()` is
+11.1, so nothing real takes the fallback. `hud.html` carries its own copy of all of this,
+being self-contained, and the tests check the two against each other.
 
 All of these are pinned by tests, since none can be observed on a development machine. The
 general lesson is the one section 9.6 already records in a different form: on this

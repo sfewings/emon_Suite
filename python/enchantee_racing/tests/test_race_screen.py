@@ -623,6 +623,11 @@ def _bare(path):
     return re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
 
 
+def _bare_text(text):
+    """The same as _bare, for a page that has already been rendered."""
+    return re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+
+
 def _nav_rules(css, selector):
     block = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
     assert block, selector
@@ -899,11 +904,16 @@ def test_the_navigation_is_never_pushed_off_or_covered():
     # --- the HUD: out of flow, and the reserved height must match the real one ---
     hud_nav = _nav_rules(hud, "#nav")
     assert "position: fixed" in hud_nav
-    assert "bottom: env(safe-area-inset-bottom)" in hud_nav
+    # Hard against the bottom of the glass. Where the home indicator's height is taken
+    # instead is the subject of its own test below.
+    assert "bottom: 0" in hud_nav
     assert "background:" in hud_nav, "it sits over the panels, so it needs one"
-    reserved = "padding-bottom: calc(env(safe-area-inset-bottom) + %s)" % NAV_H
+    # The two copies of the row's height, checked against each other. What is below the
+    # label as well as the label itself, since the reserve has to be the whole row: the
+    # clearance is the subject of its own test.
+    reserved = "padding-bottom: calc(%s + var(--nav-pad))" % NAV_H
     assert reserved in " ".join(hud.split()), "hud.html reserves no room for its nav"
-    assert "min-height: %s" % NAV_H in _nav_rules(hud, "#nav a"), \
+    assert "min-height: calc(%s + var(--nav-pad))" % NAV_H in _nav_rules(hud, "#nav a"), \
         "the reserved height no longer matches what the HUD nav takes"
 
 
@@ -1097,7 +1107,9 @@ def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
                  flags=re.S)
     button = re.search(r"\nbutton\s*\{(.*?)\}", css, re.S)
     assert button, "no button rule"
-    height = re.search(r"min-height:\s*([\d.]+)rem", button.group(1))
+    # calc() allowed, the rem term being what matters: the navigation's height is 2.6rem
+    # of label plus a clearance that is zero on anything without a home indicator.
+    height = re.search(r"min-height:\s*(?:calc\()?([\d.]+)rem", button.group(1))
     assert height and float(height.group(1)) >= 3.0, button.group(1)
 
     # Every override of that height is listed here, so shrinking a control is a decision
@@ -1117,8 +1129,11 @@ def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
         # height six names as long as "Sunday Afternoon Div III" wrapped to three lines
         # each and pushed the course cards into a scroller on a phone.
         "#series button": 2.75,
-        # The bottom navigation, at 41.6 px, is a shade under the 44 px minimum. Left as
-        # it is rather than quietly changed: NAV_H pins this number and hud.html carries
+        # The bottom navigation's label band, 41.6 px, a shade under the 44 px minimum.
+        # The button is taller than its label band by --nav-pad, so on a phone with a home
+        # indicator the thing you actually hit clears 44 px; this is the floor on a device
+        # with no indicator, where there is no gesture area to be crowded by either. Left
+        # as it is rather than quietly changed: NAV_H pins this number and hud.html carries
         # its own copy of it, which another test checks the two against, so raising it is
         # a deliberate two-file change and not a tidy-up.
         "#nav a, #nav button": 2.6,
@@ -1126,7 +1141,7 @@ def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
     for selector, expected in allowed.items():
         rule = re.search(re.escape(selector) + r"\s*\{(.*?)\}", css, re.S)
         assert rule, "no rule for %s" % selector
-        override = re.search(r"min-height:\s*([\d.]+)rem", rule.group(1))
+        override = re.search(r"min-height:\s*(?:calc\()?([\d.]+)rem", rule.group(1))
         assert override and float(override.group(1)) == expected, \
             "%s changed height without changing this test: %s" % (selector, rule.group(1))
         assert float(override.group(1)) >= 2.5, \
@@ -1135,7 +1150,7 @@ def test_the_controls_are_big_enough_to_hit_on_a_moving_boat():
     # And nothing else undercuts it. Any other rule setting a button min-height must be
     # added above with its reason.
     for match in re.finditer(r"([^{}]*button[^{}]*)\{([^}]*)\}", css):
-        override = re.search(r"min-height:\s*([\d.]+)rem", match.group(2))
+        override = re.search(r"min-height:\s*(?:calc\()?([\d.]+)rem", match.group(2))
         if not override:
             continue
         selector = " ".join(match.group(1).split())
@@ -1295,15 +1310,24 @@ def test_the_app_is_as_tall_as_the_screen_actually_is():
 
 
 def test_the_navigation_reaches_the_bottom_of_the_screen():
-    """The home indicator's inset belongs to the nav, not to the page around it.
+    """The bottom of the phone gives up --nav-pad and nothing else.
 
-    On #app it padded the whole column, which left a band of the page's background below
-    the navigation doing nothing, on a screen where every pixel is scarce. On #nav the
-    row's background runs to the edge of the glass and its buttons still clear the
-    indicator, which is where a tap target has to be.
+    Three goes at this. On #app the inset padded the whole column and left a band of page
+    background below the navigation. Moved to #nav, the row's background reached the glass
+    but its buttons still stopped short of it, so the band was still there in the nav's
+    colour and was reported again. Both of those reserved the full 34pt iOS calls the
+    bottom safe area, which is the swipe-up gesture region and much larger than the
+    indicator it is there to avoid: the pill is 5pt tall and 8pt off the edge, so 13pt
+    clears it. --nav-pad is that clearance, and it is all the screen loses.
 
-    This buys no extra room for the panels, since the nav grows by exactly what #app gave
-    up. It removes dead space, which is what was actually reported.
+    Three things have to hold together, and each of them has failed once:
+
+    - Only the buttons carry the padding. On #app or #nav it reserves a band above the
+      glass instead of below the label.
+    - The label band is 2.6rem plus the padding, not 2.6rem including it. box-sizing is
+      border-box here, so a bare min-height let the padding eat the label's own room and
+      the visible row collapsed to the height of the text.
+    - It is a clearance, not the whole inset, which is the point of the exercise.
     """
     css = _bare(ROOT / "static" / "app.css")
 
@@ -1316,8 +1340,36 @@ def test_the_navigation_reaches_the_bottom_of_the_screen():
     for side in (sides[0], sides[1], sides[3]):
         assert side.startswith("env(safe-area-inset-"), side
 
-    assert "padding-bottom: env(safe-area-inset-bottom)" in _nav_rules(css, "#nav"), \
-        "without it the buttons sit under the home indicator"
+    assert "padding-bottom" not in _nav_rules(css, "#nav"), \
+        "on the row this reserves a band of nav-coloured nothing along the bottom"
+
+    hud = _bare_text(_page_hud())
+    hud_nav = _nav_rules(hud, "#nav")
+    assert "bottom: 0" in hud_nav, \
+        "the HUD's nav is fixed; above the inset it floats and leaves a band behind it"
+    assert "padding" not in hud_nav, hud_nav
+
+    # Both stylesheets define the clearance, and both define it twice: a browser with no
+    # min() drops the second and gets the 0px it had before any of this.
+    for name, sheet in (("app.css", css), ("hud.html", hud)):
+        root = re.findall(r":root\s*\{([^}]*)\}", sheet)
+        assert root, name
+        pads = re.findall(r"--nav-pad:\s*([^;]+)", " ".join(root))
+        assert pads == ["0px", "min(env(safe-area-inset-bottom), 0.9rem)"], \
+            "%s: the fallback and the clearance, in that order, got %r" % (name, pads)
+
+    # The buttons carry it, and their label band is 2.6rem on top of it rather than
+    # including it, which border-box would otherwise do.
+    for name, rule in (("app.css", _nav_rules(css, "#nav a, #nav button")),
+                       ("hud.html", _nav_rules(hud, "#nav a"))):
+        assert "padding-bottom: var(--nav-pad)" in rule, \
+            "%s: the buttons stop short of the bottom of the screen" % name
+        assert "min-height: calc(%s + var(--nav-pad))" % NAV_H in rule, \
+            "%s: border-box lets the padding eat the label's own room" % name
+
+    # And the HUD reserves exactly what its out-of-flow nav now takes.
+    assert "padding-bottom: calc(%s + var(--nav-pad))" % NAV_H in " ".join(hud.split()), \
+        "hud.html no longer reserves the room its nav takes"
 
 
 # The readouts with no natural width limit, and the widest string each ever shows.
