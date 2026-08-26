@@ -264,5 +264,16 @@
   </nav>
 
 </div>
+<!-- The layout and paint log, only when it is asked for by ?probe=1, and absent from the
+     page otherwise. It measures the real screen on the machine that shows the fault, two
+     of which have been reported from the iPad mini and neither of which can be reproduced
+     on a development machine (DESIGN 9.8.1). -->
+<script>
+if (location.search.indexOf("probe=1") >= 0) {
+  var probe = document.createElement("script");
+  probe.src = "static/probe.js";
+  document.head.appendChild(probe);
+}
+</script>
 <script src="static/theme.js" defer></script>
 <script src="static/app.js" defer></script>

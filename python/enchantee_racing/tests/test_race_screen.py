@@ -1277,13 +1277,12 @@ def test_the_app_is_as_tall_as_the_screen_actually_is():
     version of everything, so viewport.js measures it.
 
     It is written onto #app as an inline pixel height, and the first version of this set a
-    custom property on documentElement instead. That was tidier and broke two things on
-    iOS 12, both reported from the boat, and both because a var()-derived height is not a
-    definite height there: the course list grew past the bottom of the glass, the flex
-    chain below #app having nothing definite to resolve against, and the panels went blank
-    a moment after appearing, a re-measure having restyled #app without re-laying out its
-    descendants. An inline pixel height is definite everywhere and an element-level style
-    change is re-laid-out reliably.
+    custom property on documentElement instead. The change is a simplification and not a
+    fix: it was made on the theory that a var()-derived height is not a definite height on
+    iOS 12, which would have explained both of the iPad's course-screen faults at once, and
+    layout-check.html put that theory to the device and disproved it. One mechanism is
+    still simpler than two, so it stays, and DESIGN 9.8.1 records the theory and the
+    disproof rather than only the outcome.
 
     The stylesheet keeps two declarations in ascending order of correctness for a browser
     with no JavaScript, and must keep both: a browser takes the last one it understands.
@@ -1742,6 +1741,73 @@ def test_the_layout_probe_can_tell_the_three_heights_apart():
     flex_rules = re.findall(r"\{[^{}]*display: flex[^{}]*\}", page)
     for rule in flex_rules:
         assert "gap:" not in rule, "flexbox gap needs Safari 14.1: %s" % rule
+
+
+def test_the_probe_measures_the_real_screen_and_is_absent_unless_asked_for():
+    """static/probe.js, after layout-check.html measured a replica and proved nothing.
+
+    The replica could not show either iPad fault, which was read as evidence about the
+    fault and was really evidence about the replica. This one goes on the real screen, so
+    there is nothing left to be different.
+
+    Two things it must do, because they are what the last round lacked. It logs every
+    change to the geometry as it happens, so the instant the panel goes blank is in the log
+    with whatever moved beside it, rather than being described afterwards from memory. And
+    its restyle button answers the question that decides what kind of fault this is: if the
+    geometry is identical when the picture comes back, the layout was right all along and
+    the pixels were simply not painted, which is a compositing fault and has nothing to do
+    with heights.
+    """
+    probe = (ROOT / "static" / "probe.js").read_text(encoding="utf-8")
+    page = _page()
+
+    # Absent unless asked for. A diagnostic that ships enabled is a diagnostic that gets
+    # left on.
+    # Comments stripped first: the note above the loader explains the ?probe=1 query, and
+    # matching that satisfied an ordering check while the loader itself was unconditional.
+    markup = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    assert "static/probe.js" in markup, "the race screen cannot load the probe"
+    guard = re.search(r'if \(location\.search\.indexOf\("probe=1"\) >= 0\)', markup)
+    assert guard, "nothing guards the probe, so it ships enabled"
+    assert guard.start() < markup.index("static/probe.js"), \
+        "the probe is loaded before anything checks whether it was asked for"
+
+    # The distinction it exists to draw.
+    assert "RESTYLE: geometry " in probe, "no restyle probe"
+    assert "UNCHANGED (a paint fault" in probe and "CHANGED (a layout fault" in probe, \
+        "the restyle button does not say what its answer means"
+
+    # A log of changes, not just a current reading.
+    assert "function diff(" in probe, "nothing records what changed"
+    assert "log.push(" in probe and "MAX_LOG" in probe, "the log is unbounded or absent"
+    assert "setInterval(" in probe, "it samples once and cannot catch a transition"
+
+    # The things that decide each fault. The flag images are here because they are the one
+    # part of a card with no intrinsic size: the SVGs report 300x150, the CSS default for a
+    # replaced element, so width: auto is resolved from the aspect ratio and an engine that
+    # gets that wrong makes every card the wrong shape.
+    # Each one actually computed and returned, not merely named in the diff list.
+    for field, computed in (("naturalWidth", "img.naturalWidth"),
+                            ("cardsScroll", "cardsScroll: cards ? cards.scrollHeight"),
+                            ("cardsClient", "cardsClient: cards ? cards.clientHeight"),
+                            ("detailsOff", "detailsOff: offscreen"),
+                            ("pageScroll", "pageScroll: document.documentElement"),
+                            ("appInline", "appInline: app.style.height")):
+        assert computed in probe, "the probe does not report %s" % field
+    assert "function paintable(" in probe and "panelPaint: paintable(" in probe, \
+        "nothing checks whether the boxes could be painted at all"
+
+    # It attaches whether or not DOMContentLoaded has already fired: it is inserted by
+    # script, so it can finish loading either side of that event, and waiting for the event
+    # alone left the overlay off the page entirely the first time.
+    assert "if (document.body) document.body.appendChild" in probe, \
+        "the overlay is lost when the script loads after DOMContentLoaded"
+
+    # ES5, comments aside, or it cannot run on the browser under test.
+    code = re.sub(r"/\*.*?\*/", "", probe, flags=re.S)
+    code = re.sub(r"(?<!:)//[^\n]*", "", code)
+    for banned in (" let ", "=>", " const ", "`"):
+        assert banned not in code, "%r is not ES5" % banned
 
 
 if __name__ == "__main__":

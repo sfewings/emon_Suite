@@ -968,28 +968,35 @@ A third arrived once the map page had joined the navigation, and it is the same 
   script and no external stylesheet, and its nav has been out of the flow since the port
   anyway.
 
-  **The height goes on `#app` as an inline pixel value, not through a custom property**,
-  and the first version did the tidy thing instead: `--app-h` on the root element and
-  `height: var(--app-h, 100dvh)` in the stylesheet. That broke two things on the iPad
-  mini and nothing anywhere else, and they are one thing: **on iOS 12 a var()-derived
-  height is not a definite height.**
+  The height goes on `#app` as an inline pixel value rather than through a custom
+  property, and that is a simplification, **not a fix for anything**. It is recorded here
+  with the wrong theory it came from, because the wrong theory is the useful part.
 
-  - The course list grew past the bottom of the glass. `#app`'s height is what makes the
-    whole column definite: `.panel` takes a share of it, `#cards` takes a share of that
-    and scrolls inside it, and the grid's `1fr` rows divide what is left. With no definite
-    basis to resolve against, the rows fall back to their content and the column overflows.
-  - The panels went blank a moment after appearing, and toggling day/night brought them
-    back. Re-measuring changed the property on the root, which restyled `#app` without
-    re-laying out its descendants; the navigation stayed because it needs no height of its
-    own. The crew's workaround put a class on the body, which forces a full restyle, and
-    that is what identified the fault.
+  Two faults were reported from the iPad mini and nowhere else, both on the
+  course-selection screen: the panel went blank a moment after appearing, and the course
+  list ran past the bottom of the screen. The theory was that they were one fault, that on
+  iOS 12 a `var()`-derived height is not a *definite* height, so the flex chain below
+  `#app` had nothing to resolve against and a re-measure restyled without re-laying out.
+  It was a tidy explanation that fitted both symptoms and the crew's own workaround.
 
-  An inline pixel height is definite on every browser and an element-level style change is
-  re-laid-out reliably. The two CSS declarations stay for a browser with no JavaScript.
-  `static/layout-check.html` puts the three ways of setting a height in front of the device
-  with a re-measure button and a restyle button, because neither fault can be reproduced on
-  a development machine, which is the same reason `geo-check.html` and `audio-check.html`
-  exist.
+  It is wrong. `static/layout-check.html` puts all three ways of setting the height in
+  front of the device with a re-measure button and a restyle button, and on the iPad all
+  three are identical: `#app` 1024 against an `innerHeight` of 1024, no page scroll, every
+  Details button on screen, and re-measuring blanks nothing. So `var()` was never the
+  problem, the custom property was never the problem, and the two faults are still open.
+  The inline height is kept because one mechanism is simpler than two, and the two CSS
+  declarations stay ahead of it for a browser with no JavaScript.
+
+  The lesson is the one 9.6 and 9.8.1 keep relearning, and it cost a release to learn it
+  again: **a theory that explains every symptom is not evidence.** The replica could not
+  show the fault, which should have been the first thing checked about the replica rather
+  than read as the fault being absent. `static/probe.js`, loaded onto the real screen by
+  `?probe=1`, measures the real thing instead: it logs every change to the geometry as it
+  happens, so the moment the screen goes blank is in the log, and its restyle button
+  answers the one question that decides what kind of fault this is. If the geometry is
+  unchanged when the picture comes back, the layout was right all along and the pixels
+  were simply not painted, which is a compositing fault and has nothing to do with
+  heights.
 
 And one that is not a missing feature but a wrong axis:
 

@@ -8,28 +8,23 @@
 // 15.4, where the boat's iPad is on 12. window.innerHeight is the visible height on every
 // version of everything, so this reads it.
 //
-// It goes on the element's own style attribute, in px. The first version of this file set
-// a custom property on documentElement instead and let the stylesheet say
-// `height: var(--app-h, 100dvh)`, which is tidier and broke two things on iOS 12, both
-// reported from the boat and both explained by the same thing: a var()-derived height is
-// not a definite height there.
+// It goes on the element's own style attribute, in px. The first version set a custom
+// property on documentElement instead and let the stylesheet say
+// `height: var(--app-h, 100dvh)`, which is tidier.
 //
-//   - The course list ran off the bottom of the screen. #app's height is what makes the
-//     flex chain below it definite: .panel takes a share of it, #cards takes a share of
-//     that and scrolls inside it, and the grid's 1fr rows divide it. With the height
-//     arriving through var(), none of those had a definite basis to resolve against, so
-//     the rows fell back to their content and the column grew past the glass.
+// This is a simplification and NOT a fix for anything, which is worth saying because it
+// was written as one. Two faults on the iPad mini, the course list running off the bottom
+// of the screen and the panel going blank a moment after appearing, looked like one fault
+// with a tidy explanation: that a var()-derived height is not a definite height on iOS 12,
+// so the flex chain below had nothing to resolve against and a re-measure restyled without
+// re-laying out. static/layout-check.html put all three ways of setting the height in
+// front of the iPad and they came back identical: #app 1024 of an innerHeight of 1024, no
+// page scroll, every button on screen, and re-measuring blanking nothing. The theory was
+// wrong and both faults are still open (DESIGN 9.8.1).
 //
-//   - The panel went blank a moment after appearing. Re-measuring changed the property on
-//     the root element, which restyled #app without re-laying out its descendants, so the
-//     panels were left unpainted while the navigation, being the last child and needing no
-//     height of its own, stayed. Toggling day/night put a class on the body, which forces
-//     a full restyle, and the page came back. That was the crew's workaround and it is
-//     what identified this.
-//
-// An inline pixel height is a definite height on every browser and an element-level style
-// change is re-laid-out reliably. The stylesheet keeps 100vh and then 100dvh ahead of it,
-// so a browser with no JavaScript still gets the best answer it can.
+// One mechanism is still simpler than two, so the inline height stays. The stylesheet
+// keeps 100vh and then 100dvh ahead of it, so a browser with no JavaScript still gets the
+// best answer it can.
 //
 // Loaded before the body content on purpose, so the height is set on #app the moment it
 // exists and there is no flash at the wrong size.
