@@ -92,8 +92,9 @@ def test_the_layers_are_in_the_order_design_12_states():
     spill over the bank.
     """
     page = _page()
-    wanted = ["layer-bands", "layer-contours", "layer-land", "layer-lines", "layer-marks",
-              "layer-course", "layer-boat"]
+    wanted = ["layer-bands", "layer-contours", "layer-land",
+              "layer-structures", "layer-navaids",
+              "layer-lines", "layer-marks", "layer-course", "layer-boat"]
     found = re.findall(r'<g id="(layer-[\w-]+)"', page)
     assert found == wanted, found
     # The course and the boat are last because they are the only things that move and the
@@ -139,9 +140,15 @@ def test_the_map_asks_for_its_data_the_way_the_app_asks_for_everything():
     assert '"/api/config' not in js.replace('base + "/api/config', ""), \
         "an absolute config path would break behind the prefix"
     # every document it needs, and no more
-    for name in ("lines", "marks", "coast", "depth"):
+    wanted = {"lines", "marks", "coast", "depth", "structures", "navaids"}
+    for name in wanted:
         assert 'fetchJson("%s")' % name in js, name
-    assert set(re.findall(r'fetchJson\("(\w+)"\)', js)) == {"lines", "marks", "coast", "depth"}
+    assert set(re.findall(r'fetchJson\("(\w+)"\)', js)) == wanted
+    # and every one of them is servable, or the fetch 404s
+    assert wanted <= set(app_module.SERVABLE_CONFIG) | {"lines"}, \
+        "the map fetches a document the config route will not serve"
+    for name in wanted:
+        assert name in app_module.SERVABLE_CONFIG, "%s is not servable" % name
 
 
 def test_the_map_projects_through_the_shared_transcription():
@@ -174,16 +181,36 @@ def test_the_data_the_map_draws_is_the_shape_it_expects():
     kinds = set(f["properties"]["kind"] for f in depth["features"])
     assert kinds == {"band", "contour"}, kinds
 
+    # Five classes on a 2/5/10 split, foreshore among them. An earlier 2/4 cut put 70 per
+    # cent of the marks in its top band, which is another way of saying it carried no
+    # information (DESIGN 12). If a regeneration changes the set, the night palette and
+    # the draw order in map.js both have to move with it, which is what this catches.
     bands = set(f["properties"]["band"] for f in depth["features"]
                 if f["properties"]["kind"] == "band")
-    assert bands == {"shallow", "mid", "deep"}, bands
+    assert bands == {"foreshore", "shallow", "mid", "deep", "deepest"}, bands
+
+    # Every band the data carries has a night colour and a place in the draw order.
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    code = _map_code()
+    order = re.search(r"var order = \{([^}]*)\}", code)
+    assert order, "no band draw order"
+    for band in bands:
+        assert "--band-%s:" % band in css, "%s has no colour token" % band
+        # The order object keys on the bare band name, and `deep` is a substring of
+        # `deepest`, so this matches the key and not merely the letters.
+        assert re.search(r"\b%s\s*:" % re.escape(band), order.group(1)), \
+            "%s has no place in the draw order" % band
+    # And nothing in the order that the data no longer carries, which would be a band
+    # drawn in a position for a class that has gone.
+    keys = set(re.findall(r"(\w+)\s*:", order.group(1)))
+    assert keys == bands, "draw order and data disagree: %s" % (keys ^ bands)
     # every band carries the colour the map fills it with, so the palette lives in the
     # data and not in two places
     for f in depth["features"]:
         if f["properties"]["kind"] == "band":
             assert re.match(r"^#[0-9a-f]{6}$", f["properties"]["color"]), f["properties"]
         else:
-            assert f["properties"]["depth_m"] in (2.0, 4.0), f["properties"]
+            assert f["properties"]["depth_m"] in (2.0, 5.0, 10.0), f["properties"]
 
     coast = json.loads((ROOT / "config" / "coast.json").read_text(encoding="utf-8"))
     assert all(f["properties"]["kind"] == "land" for f in coast["features"]), \
@@ -198,6 +225,102 @@ def test_the_data_the_map_draws_is_the_shape_it_expects():
         assert len(line["marks"]) == 2, line["id"]
         for mark_id in line["marks"]:
             assert mark_id in known, "%s names an unknown mark %s" % (line["id"], mark_id)
+
+
+def test_an_aid_that_is_also_a_racing_mark_is_drawn_once():
+    """DESIGN 12 is explicit: draw it once, and marks.json wins.
+
+    105 of the 785 aids sit within 25 m of a mark in the register, mostly the 67
+    club-owned yacht buoys, because DoT records the racing buoys too. marks.json wins
+    because it carries the rounding and the course data, which the register does not.
+
+    Verified in a browser: 680 dots drawn, which is 785 minus 105 exactly.
+    """
+    code = _map_code()
+    draw = _function(code, "drawNavaids")
+    assert "dup_mark" in draw, "the map does not know about the overlap"
+    assert "return" in draw.split("dup_mark")[1][:40], \
+        "a duplicated aid is not skipped"
+
+    # and the data still carries the field on every feature, or the filter is silently a
+    # no-op
+    navaids = json.loads((ROOT / "config" / "navaids.json").read_text(encoding="utf-8"))
+    assert all("dup_mark" in f["properties"] for f in navaids["features"]), \
+        "not every aid carries dup_mark, so the filter cannot be trusted"
+    dups = [f for f in navaids["features"] if f["properties"]["dup_mark"]]
+    assert dups, "no aid is flagged as a duplicate, which contradicts DESIGN 12"
+    # every id it names is a real mark, or the overlap was computed against something else
+    marks = json.loads((ROOT / "config" / "marks.json").read_text(encoding="utf-8"))
+    known = set(m["id"] for m in marks["marks"])
+    for f in dups:
+        assert f["properties"]["dup_mark"] in known, f["properties"]["dup_mark"]
+
+
+def test_the_aid_dots_cost_one_declaration_and_not_an_attribute_each():
+    """680 dots, and none of them is resized when the view changes.
+
+    Every other symbol on this page has to be written to when the scale changes, because
+    the frame is metres. These do not: an aid is a zero-length line with a round cap, and
+    #chart line already carries vector-effect: non-scaling-stroke, which makes
+    stroke-width mean screen pixels. So one declaration in the stylesheet holds all 680 at
+    a constant size.
+
+    This test exists because the first attempt did it the hard way and got it wrong twice
+    over: it wrote stroke-width per view in user units, which the non-scaling-stroke rule
+    then read as screen pixels, so 3.5 px at 14.43 m per pixel came out as fifty and the
+    chart vanished under 680 blobs.
+    """
+    code = _map_code()
+    scale = _function(code, "applyScale")
+    assert "NAVAID_PX" not in code, \
+        "the aid size is back in the script, where non-scaling-stroke will multiply it"
+    assert 'el.navaids.setAttribute("stroke-width"' not in scale, \
+        "sizing the aids per view double-applies the scale"
+
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    navaid = re.search(r"#chart \.navaid \{([^}]*)\}", css)
+    assert navaid, "no navaid rule"
+    assert "stroke-width" in navaid.group(1), "nothing sizes the aid dots"
+    assert "stroke-linecap: round" in navaid.group(1), \
+        "without a round cap a zero-length line paints nothing"
+    # the rule that makes it screen pixels has to still cover line
+    shapes = re.search(r"#chart path, #chart line, #chart circle \{([^}]*)\}", css)
+    assert shapes and "non-scaling-stroke" in shapes.group(1), \
+        "the aid dots depend on this rule covering line"
+
+    # Still gated by zoom, which is the one thing that does need a write, and it is one.
+    assert "NAVAID_MAX_MPP" in code
+    assert 'el.navaids.setAttribute("display", "none")' in scale
+
+
+def test_the_structures_and_aids_are_styled_by_the_kinds_the_data_carries():
+    """A regenerated document that renamed a kind would draw unstyled shapes, not wrong
+    ones, and nothing would raise. This notices instead.
+
+    Every kind in each document needs a rule, and the colours are the ones DESIGN 12
+    tabulates.
+    """
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+
+    structures = json.loads((ROOT / "config" / "structures.json").read_text(encoding="utf-8"))
+    kinds = set(f["properties"]["kind"] for f in structures["features"])
+    assert kinds == {"jetty", "bridge", "groyne", "slipway", "marina", "breakwater"}, kinds
+    for kind in kinds:
+        assert ".structure-%s" % kind in css, "%s is drawn but not styled" % kind
+        assert "--st-%s:" % kind in css, "%s has no colour token" % kind
+
+    navaids = json.loads((ROOT / "config" / "navaids.json").read_text(encoding="utf-8"))
+    aid_kinds = set(f["properties"]["kind"] for f in navaids["features"])
+    for kind in aid_kinds:
+        assert ".navaid-%s" % kind in css, "aid kind %s is drawn but not styled" % kind
+
+    # IALA system A, which is what the register uses: port red, starboard green. Getting
+    # these the wrong way round on a chart is worse than not drawing them.
+    for theme in (r"^body \{(.*?)^\}", r"^body\.night \{(.*?)^\}"):
+        block = re.search(theme, css, re.S | re.M)
+        assert block, theme
+        for token in ("--aid-port", "--aid-starboard", "--aid-leading"):
+            assert token + ":" in block.group(1), "%s missing from %s" % (token, theme)
 
 
 def test_the_symbols_are_sized_in_pixels_not_metres():

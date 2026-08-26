@@ -30,6 +30,8 @@
     bands: document.getElementById("layer-bands"),
     contours: document.getElementById("layer-contours"),
     land: document.getElementById("layer-land"),
+    structures: document.getElementById("layer-structures"),
+    navaids: document.getElementById("layer-navaids"),
     lines: document.getElementById("layer-lines"),
     marks: document.getElementById("layer-marks"),
     course: document.getElementById("layer-course"),
@@ -77,6 +79,10 @@
   // data simplified at 10 m can honestly be read (DESIGN 12).
   var MIN_SPAN_M = 100;
   var MAX_SLACK = 1.25;
+
+  // The zoom past which the aid register is more clutter than information. Their size is
+  // in the stylesheet, where non-scaling-stroke already holds it constant on screen.
+  var NAVAID_MAX_MPP = 25;
 
   function project(lonLat) {
     // GeoJSON is [lon, lat]; geo.js takes {lat, lon}. Being the only place the two
@@ -497,6 +503,20 @@
     // ground that grows on screen as you zoom in until it swallows the glyphs. Inherited
     // by the labels rather than set on each of them, which is one write instead of 131.
     el.marks.setAttribute("stroke-width", (LABEL_HALO_PX * mpp).toFixed(2));
+
+    // The aid dots need no sizing at all, and working out why was the useful part.
+    //
+    // They are lines, and #chart line already carries vector-effect: non-scaling-stroke,
+    // which makes stroke-width mean screen pixels rather than user units. So a constant
+    // stroke-width in the stylesheet is already a constant size on the screen at every
+    // zoom, and the elaborate per-view write this used to do was multiplying by the
+    // scale a second time: 3.5 by 14.43 metres per pixel came out as fifty screen pixels
+    // and the chart disappeared under 680 blobs.
+    //
+    // What is left here is the gate. Beyond NAVAID_MAX_MPP the whole register is a swarm
+    // of dots over the ocean and tells the crew nothing, and one attribute hides the lot.
+    if (mpp > NAVAID_MAX_MPP) el.navaids.setAttribute("display", "none");
+    else el.navaids.removeAttribute("display");
     for (var i = 0; i < symbols.length; i++) {
       var sym = symbols[i];
       var px = sym.used ? SYMBOL_PX.used : SYMBOL_PX.context;
@@ -523,9 +543,14 @@
       (f.properties.kind === "band" ? bands : contours).push(f);
     });
 
-    // Deep first so shallow draws over it: the bands overlap at their shared edges and
-    // shallowest-darkest only reads if the shallow one wins (DESIGN 12).
-    var order = { deep: 0, mid: 1, shallow: 2 };
+    // Deepest first so the shallower ones draw over: the bands overlap at their shared
+    // edges and shallowest-darkest only reads if the shallow one wins (DESIGN 12).
+    //
+    // Five classes now, not three, on a 2/5/10 split. foreshore draws last because it is
+    // the shallowest thing on the chart: it is not a depth at all but the strip the survey
+    // vessel could not float over, which on the Swan is the drying fringe. Its colour is
+    // green and comes from the data like the rest.
+    var order = { deepest: 0, deep: 1, mid: 2, shallow: 3, foreshore: 4 };
     bands.sort(function (a, b) {
       return (order[a.properties.band] || 0) - (order[b.properties.band] || 0);
     });
@@ -550,6 +575,46 @@
   function drawCoast(coast) {
     coast.features.forEach(function (f) {
       add(el.land, "path", { d: pathFor(f.geometry), class: "land" });
+    });
+  }
+
+  // --- the built edge of the river, and the aid network -------------------------------
+
+  function drawStructures(structures) {
+    // Polygons and lines in one document: jetties arrive as both, since OSM maps some
+    // piers as areas and some as ways. pathFor handles either, and fill versus stroke is
+    // left to the class so a jetty line and a jetty polygon look like the same thing.
+    structures.features.forEach(function (f) {
+      add(el.structures, "path", {
+        d: pathFor(f.geometry),
+        class: "structure structure-" + f.properties.kind
+      });
+    });
+  }
+
+  // 785 aids, and they cannot be circles.
+  //
+  // Every symbol on this page has to hold its size on the screen while the frame is in
+  // metres, which for the marks means writing an r to each of them whenever the scale
+  // changes. That is 131 writes and it was already worth optimising for the iPad. Adding
+  // 785 more would put 916 attribute writes on the zoom path.
+  //
+  // So an aid is a zero-length line with a round cap, and its size is the layer's
+  // stroke-width. stroke-width inherits, so the whole set resizes with one attribute
+  // write instead of 785, and a round cap on a zero-length line paints a dot.
+  function drawNavaids(navaids) {
+    navaids.features.forEach(function (f) {
+      // An aid that is also a racing mark is drawn once, and marks.json wins because it
+      // carries the rounding and the course data. DESIGN 12 says so explicitly: 105 of
+      // these sit within 25 m of a mark, mostly the club-owned yacht buoys, since DoT
+      // records the racing buoys too.
+      if (f.properties.dup_mark) return;
+      var xy = project(f.geometry.coordinates);
+      add(el.navaids, "line", {
+        x1: xy[0].toFixed(1), y1: xy[1].toFixed(1),
+        x2: xy[0].toFixed(1), y2: xy[1].toFixed(1),
+        class: "navaid navaid-" + f.properties.kind + (f.properties.lit ? " navaid-lit" : "")
+      });
     });
   }
 
@@ -851,10 +916,12 @@
   }
 
   Promise.all([fetchJson("lines"), fetchJson("marks"),
-               fetchJson("coast"), fetchJson("depth"), fetchCourse()])
+               fetchJson("coast"), fetchJson("depth"),
+               fetchJson("structures"), fetchJson("navaids"), fetchCourse()])
     .then(function (all) {
       var lines = all[0], marks = all[1], coast = all[2], depth = all[3];
-      var course = all[4];
+      var structures = all[4], navaids = all[5];
+      var course = all[6];
 
       // The origin has to be set before anything is projected, and everything below
       // depends on it, which is why it is the first thing this function does.
@@ -865,6 +932,8 @@
 
       drawDepth(depth);
       drawCoast(coast);
+      drawStructures(structures);
+      drawNavaids(navaids);
       drawLines(lines, markIndex);
       drawMarks(marks);
 

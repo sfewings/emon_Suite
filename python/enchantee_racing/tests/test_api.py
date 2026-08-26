@@ -346,8 +346,10 @@ def test_the_config_route_is_an_allow_list_and_not_a_path():
         response = client.get("/api/config/" + attempt)
         assert response.status_code == 404, (attempt, response.status_code)
 
-    # the served set is exactly what app.py declares, so adding one is a deliberate edit
-    assert app_module.SERVABLE_CONFIG == ("marks", "courses", "lines", "coast", "depth")
+    # The served set is exactly this, so adding one is a deliberate edit and not a
+    # side effect. structures and navaids joined when the basemap grew (DESIGN 12).
+    assert app_module.SERVABLE_CONFIG == ("marks", "courses", "lines", "coast", "depth",
+                                          "structures", "navaids")
 
 
 # --- the fix path ----------------------------------------------------------

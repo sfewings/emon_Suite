@@ -77,7 +77,8 @@ mimetypes.add_type("audio/mp4", ".m4a")
 HERE = Path(__file__).resolve().parent
 CONFIG_DIR = HERE / "config"
 
-SERVABLE_CONFIG = ("marks", "courses", "lines", "coast", "depth")
+SERVABLE_CONFIG = ("marks", "courses", "lines", "coast", "depth",
+                   "structures", "navaids")
 """The config documents a browser may GET, by name and without an extension.
 
 An allow-list rather than a directory listing, for the same reason the Dockerfile's COPY
@@ -85,9 +86,11 @@ list is one: it cannot start serving something that is dropped into config/ late
 also what makes the route traversal-proof without any path arithmetic, since the name is
 compared against this tuple and never joined onto anything until it matches.
 
-These five are the map's inputs and they are all safe to ship: DESIGN 12 says so of
-coast.json and depth.json explicitly, and the marks, the courses and the lines are
-already served in other shapes by /api/courses and /api/course/<id>.
+These are the map's inputs and they are all safe to ship: DESIGN 12 says so of the
+basemap documents explicitly, and the marks, the courses and the lines are already
+served in other shapes by /api/courses and /api/course/<id>. structures.json and
+navaids.json joined the set when the basemap grew; both are OSM or DoT extracts under
+CC BY 4.0, which section 12 records.
 
 race.json is deliberately absent. It is engine tuning, an arming radius and a stale
 cutoff, and nothing in a browser draws it. The config editor of DESIGN 13 step 10 will
