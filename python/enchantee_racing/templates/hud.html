@@ -87,6 +87,29 @@
     --rule:  #262626;   /* panel divider           */
     --label: #767676;
   }
+
+  /* Night: red on black, switched by hand and never automatically (DESIGN 9.7). This page
+     had no night theme at all until the setting became shared, which is how the gap came
+     to light: the toggle existed on one panel of one page and could not reach here.
+
+     Every reading is a red. Nothing may be blue, green or yellow, the whole point of the
+     theme being that no other wavelength reaches the eye. That costs this page's colour
+     language for one night: the four pairs are told apart by tint alone rather than by
+     hue, tint being all that is left. The layout does not move, so muscle memory survives
+     the change, which is the property 9.7 asks for.
+
+     Values identical to the ones app.css uses for the same readings, so the three screens
+     are the same colour at night as they are by day. A test holds the two files together. */
+  body.night {
+    /* Each pair's second member is the darker of the two, three quarters of the first,
+       which is the same way round app.css tells --brg from --cog. Going lighter is not
+       available: red is already at the top of its channel, so a paler tint can only be
+       made by adding green and blue, and that is the one thing this theme may not do. */
+    --sog: #ff6b5a; --twa: #ff9068; --awa: #bf6c4e; --tws: #ff6b5a; --aws: #bf5043;
+    --hdg: #ff5a48; --cog: #d4564a; --mark: #ff8f7a;
+    --rpm: #ff7a68; --cur: #ff8f7a; --ctrl: #ff4a3a; --mot: #c03528;
+    --rule: #2a0f0c; --label: #8a4038;
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%; overflow: hidden;
@@ -198,19 +221,26 @@
      iPad mini 3's iOS 12. static/app.css does the same for the race page. */
   #nav > * + * { margin-left: 1px; }
   .row.multi .sub > * + * { margin-left: .4em; }
-  #nav a {
+  /* The three links and the theme toggle, which has to be a button and has to look and
+     measure exactly like the links beside it: a user agent gives a button its own font,
+     border, background and 6px of side padding, and under border-box a flex-basis of 0
+     cannot absorb that padding, so an unreset button comes out wider than its neighbours.
+     Four equal cells is the point, the row being hit by feel. */
+  #nav a, #nav button {
     /* As the race page, and for the reasons given there: the label band stays 2.6rem, the
-       clearance is added to it rather than taken out of it, and the button pads down to
+       clearance is added to it rather than taken out of it, and the cell pads down to
        the glass so the hit area is the larger of the two. */
     flex: 1 1 0; min-width: 0;
     min-height: calc(2.6rem + var(--nav-pad));
-    padding-bottom: var(--nav-pad);
+    padding: 0 0 var(--nav-pad) 0;
     display: flex; align-items: center; justify-content: center;
     color: var(--label); text-decoration: none;
+    background: none; border: none; border-radius: 0;
+    font: inherit;
     font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);
     font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   }
-  #nav a:active { background: var(--rule); }
+  #nav a:active, #nav button:active { background: var(--rule); }
   #nav a.here { color: #fff; box-shadow: inset 0 3px 0 0 var(--sog); }
   #nav a.off { opacity: .3; pointer-events: none; }
   /* The room this page keeps clear for its own out-of-flow nav, which has to be the
@@ -246,10 +276,13 @@
 <video id="wake" src="static/wake.mp4" muted loop playsinline webkit-playsinline
        preload="auto" disableremoteplayback></video>
 <div id="pip"></div>
+<!-- The theme is the fourth cell on all three screens, and its label is whichever theme
+     one tap will switch to. See index.html's nav for why it is here and not on a panel. -->
 <nav id="nav">
   <a class="here">HUD</a>
   <a href=".">Race</a>
   <a href="map">Map</a>
+  <button data-theme-toggle></button>
 </nav>
 <div id="hud">
   <div class="panel">
@@ -440,6 +473,39 @@
     });
   }
 
+  // Day and night, from the server, exactly as static/theme.js does it for the other two
+  // screens. Duplicated rather than shared because this page is self-contained by
+  // decision, no external script and no external stylesheet, so the port could be
+  // compared against the Node-RED tab side by side (DESIGN 9.1). One test holds this copy
+  // and that file to each other.
+  var theme = null;
+  var THEME_OTHER = { day: "night", night: "day" };
+  var THEME_LABEL = { day: "Night", night: "Day" };
+  var themeButtons = document.querySelectorAll("[data-theme-toggle]");
+
+  function applyTheme(next) {
+    if (next !== "day" && next !== "night") return;
+    if (next === theme) return;
+    theme = next;
+    document.body.classList.toggle("night", next === "night");
+    [].forEach.call(themeButtons, function (b) { b.textContent = THEME_LABEL[next]; });
+  }
+
+  function postTheme() {
+    var want = THEME_OTHER[theme] || "night";
+    applyTheme(want);      // at once, not on the next poll: see theme.js
+    var url = location.pathname.replace(/\/+$/, "").replace(/\/hud$/, "") + "/api/settings";
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                 body: JSON.stringify({ theme: want }) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.theme) applyTheme(d.theme); })
+      .catch(function () { /* the next poll corrects it */ });
+  }
+
+  [].forEach.call(themeButtons, function (b) {
+    b.addEventListener("click", postTheme);
+  });
+
   var failures = 0;
   function tick() {
     // The page can be served behind a proxy prefix (eg /race/hud or /nodered/hud), so
@@ -456,6 +522,7 @@
         swapped = setRacing(d.race && d.race.mode === "racing") || swapped;
         paint(d);
         paintRace(d);
+        applyTheme(d.theme);
         if (swapped) fitAll();   // rows that were hidden had no size to fit to
       })
       .catch(function () { if (++failures > 3) pip.classList.add("down"); });

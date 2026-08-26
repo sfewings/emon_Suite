@@ -99,6 +99,12 @@ is the main reason the engine lives here rather than in Node-RED.
 - Distance shows metres below 500 m and nautical miles above.
 - Config lives in readable JSON on disk, one copy, read by both the server and the
   browser.
+- **Anything the crew sets is server state**, held in `store.py` and returned in
+  `/api/state`, which all three pages poll anyway. Never a class a page toggles on
+  itself and never `localStorage`: there are three separate documents and several
+  devices, and a setting in one of them reaches none of the others. The night theme was
+  the exception and it came back from the boat as three separate bug reports. See
+  DESIGN 9.7 and 9.9.
 
 ## Gotchas that will bite
 

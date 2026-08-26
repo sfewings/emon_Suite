@@ -837,6 +837,51 @@ preserves night vision, switched manually rather than automatically, since an
 automatic switch during a race is worse than a stale one. Keep the layout
 identical between themes so muscle memory survives the change.
 
+**The setting is server state, not browser state.** It began as a class the race page
+toggled on its own document, with the button on the course-selection panel, and three
+faults came back from the boat at once: it could only be set from that one panel, it
+never reached the HUD or the map, and walking to either of those and back lost it. Those
+are one fault. A setting held in a document cannot survive leaving that document, and
+these are three separate documents by decision, the HUD being self-contained (9.1) and
+the map being its own page (12.1).
+
+So it lives in the store and rides in `/api/state`, which all three pages poll twice a
+second anyway, and `POST /api/settings` sets it. That is what 9.9 already says about
+everything else here: every device renders the same server state and any device can drive
+it. It is the right answer for this setting rather than a convenient one, because the sun
+sets on the whole boat at once; a per-browser preference would have to be set on the
+phone, the iPad and the laptop separately. The store accepts only its two values, since
+the value becomes a class on the body of three pages.
+
+The **toggle is the fourth cell of the navigation**, the one piece of furniture all three
+screens share, so it is one tap from anywhere and in the same place. Its label is the
+theme one tap will switch to, not the one in force: a control that names its own state
+needs a second affordance to say it is a control, and the theme in force is already
+obvious from the whole screen being red. The three screen names keep their learned
+positions and the toggle is appended after them.
+
+Two things fell out of doing this. **The HUD had no night theme at all**, which nothing
+had noticed because nothing could ask it to go dark; it has one now, and every reading in
+it is a red. That costs the page's colour language for the night: its four pairs are true
+and apparent readings told apart by hue, and at night they are told apart by tint alone,
+the second of each pair being three quarters of the first. Going paler was not available,
+red already being at the top of its channel, so a lighter tint could only be made by
+adding green and blue, which is the one thing this theme may not do.
+
+And the toggle has to be a `<button>` in a row of links. A user agent gives a button its
+own font, border, background and 6px of side padding, and under `border-box` a
+`flex-basis` of 0 cannot absorb that padding, so the unreset buttons measured 85px against
+their neighbours' 73, and the HUD's, which its rule did not select at all, measured 52
+against 238. Four equal cells is the point: the row is hit by feel.
+
+**What was not done.** The obvious reading of these three faults is that the screens
+should be one document sharing one scope. They should not. Both separations are load-
+bearing and recorded: 12.1 rejected the map as a fourth panel because it is 88 kB of chart
+data plus projection and gesture code that a crew watching a countdown never needs, and
+9.1 keeps `hud.html` self-contained so the port can still be compared against the
+Node-RED tab side by side. What was missing was never shared documents, it was shared
+settings, and there is exactly one of those. `/api/settings` is where the next one goes.
+
 ### 9.8 Keeping the screen alive
 
 Screen Wake Lock requires a secure context and is unavailable over plain HTTP.
@@ -954,6 +999,10 @@ fixes.
 Every device renders the same server state and any device can drive it. There is
 no primary and no pairing step. A device that reloads mid-race picks up the
 current state on its first poll.
+
+This governs settings as well as race state, which 9.7 records the app having to learn
+once. Anything the crew sets goes in the store and comes back in `/api/state`; nothing
+that matters is remembered by a browser. The theme is the whole of the settings so far.
 
 ### 9.10 The HUD while racing
 

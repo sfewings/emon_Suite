@@ -389,6 +389,24 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
         """Back to idle. Only ever the crew: nothing here resets itself (DESIGN 11.5)."""
         return _race_response(store.apply_race(race.reset))
 
+    @app.post("/api/settings")
+    def api_settings():
+        """{theme: "day" | "night"}. Returns the settings in force afterwards.
+
+        Settings are server state, not browser state, for the reason DESIGN 9.9 gives
+        about everything else here: every device renders the same state and any device can
+        drive it. The theme was the exception and it was the wrong exception. Held in the
+        page it had to be set on each device, could only be set from the one screen that
+        carried the button, and was lost by walking to another screen, all three of which
+        were reported from the boat.
+
+        The store ignores a theme that is not one of its two, and the response says what
+        is in force, so a page never has to assume its own post took.
+        """
+        body = request.get_json(silent=True) or {}
+        theme = store.set_theme(body.get("theme"))
+        return jsonify({"theme": theme})
+
     return app
 
 

@@ -913,7 +913,8 @@ def test_the_navigation_is_never_pushed_off_or_covered():
     # clearance is the subject of its own test.
     reserved = "padding-bottom: calc(%s + var(--nav-pad))" % NAV_H
     assert reserved in " ".join(hud.split()), "hud.html reserves no room for its nav"
-    assert "min-height: calc(%s + var(--nav-pad))" % NAV_H in _nav_rules(hud, "#nav a"), \
+    assert "min-height: calc(%s + var(--nav-pad))" % NAV_H in \
+        _nav_rules(hud, "#nav a, #nav button"), \
         "the reserved height no longer matches what the HUD nav takes"
 
 
@@ -1361,8 +1362,10 @@ def test_the_navigation_reaches_the_bottom_of_the_screen():
     # The buttons carry it, and their label band is 2.6rem on top of it rather than
     # including it, which border-box would otherwise do.
     for name, rule in (("app.css", _nav_rules(css, "#nav a, #nav button")),
-                       ("hud.html", _nav_rules(hud, "#nav a"))):
-        assert "padding-bottom: var(--nav-pad)" in rule, \
+                       ("hud.html", _nav_rules(hud, "#nav a, #nav button"))):
+        # The bottom of a four-sided padding, the sides having to be zeroed as well so a
+        # button measures the same as a link. See the theme test for why.
+        assert "padding: 0 0 var(--nav-pad) 0" in rule, \
             "%s: the buttons stop short of the bottom of the screen" % name
         assert "min-height: calc(%s + var(--nav-pad))" % NAV_H in rule, \
             "%s: border-box lets the padding eat the label's own room" % name
@@ -1420,6 +1423,183 @@ def test_the_big_readouts_fit_the_narrowest_screen():
         assert glyphs < width, \
             "%s overflows a %dpx screen: %r needs %dpx of %dpx" % (
                 selector, width, widest, round(glyphs), width)
+
+
+# --- the theme, which is shared state and not a class this page toggles on itself ------
+
+
+def test_the_theme_is_server_state_and_reaches_every_screen():
+    """Three faults came back from the boat at once and they are one fault.
+
+    Night could only be set from the course-selection panel, because that is where the
+    button was; it did not reach the HUD or the map, because a class on this document
+    cannot; and walking to either of those and back lost it, because nothing remembered.
+    A setting held in a document cannot survive leaving that document, and these are three
+    separate documents by decision (DESIGN 9.1 and 12.1).
+
+    So it is server state, which is what DESIGN 9.9 already says about everything else
+    here: every device renders the same state and any device can drive it. It rides in
+    /api/state, which all three pages poll twice a second anyway.
+    """
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    # In the state document every page already fetches, so no page polls twice for it.
+    assert client.get("/api/state").get_json()["theme"] == "day", "day by default"
+
+    got = client.post("/api/settings", json={"theme": "night"}).get_json()
+    assert got == {"theme": "night"}, "the response must say what is in force"
+    assert client.get("/api/state").get_json()["theme"] == "night", \
+        "a setting that does not reach the state document reaches no other device"
+
+    # It ends up as a class on the body of three pages, so nothing else may get through.
+    for bad in ("rubbish", "", None, "Night", "day night", 7, {"a": 1}):
+        assert client.post("/api/settings", json={"theme": bad}).get_json() == \
+            {"theme": "night"}, bad
+    assert client.get("/api/state").get_json()["theme"] == "night", \
+        "a rejected value changed the theme anyway"
+    # The answer is what is in force, not what was asked for, so a page never has to
+    # assume its own post took.
+    import inspect
+    body = inspect.getsource(Store.set_theme)
+    assert "return self._theme" in body and "return name" not in body, body
+    assert Store.THEMES == ("day", "night"), \
+        "the allowed set is the two, and it is named in the store"
+
+    # And back, since a toggle has to work in both directions.
+    assert client.post("/api/settings", json={"theme": "day"}).get_json() == {"theme": "day"}
+
+
+def test_every_screen_can_set_the_theme_and_none_of_them_keeps_its_own():
+    """The toggle is the fourth cell of the navigation, which is the one piece of furniture
+    all three screens share, so it is one tap from anywhere and in the same place.
+
+    Its label is the theme one tap will switch to, not the one in force: a control that
+    names its own state needs a second affordance to say it is a control, and the theme in
+    force is already obvious from the whole screen being red.
+    """
+    navs = _navs()
+    assert len(navs) == 3
+    for path, nav in navs.items():
+        assert "data-theme-toggle" in nav, "%s cannot set the theme" % path
+        # Empty in the markup: whichever theme is in force decides the word, and only the
+        # script knows which that is.
+        assert re.search(r"<button data-theme-toggle>\s*</button>", nav), path
+
+    # Four equal cells, on all three screens. A user agent gives a button its own font,
+    # border, background and 6px of side padding, and under border-box a flex-basis of 0
+    # cannot absorb that padding, so an unreset button measures wider than the links
+    # beside it: the race page came out 85, 73, 73, 85 and the HUD's toggle, which its
+    # rule did not select at all, came out 52 against 238. The row is hit by feel.
+    for name, sheet in (("app.css", _bare(ROOT / "static" / "app.css")),
+                        ("hud.html", _bare_text(_page_hud()))):
+        rule = _nav_rules(sheet, "#nav a, #nav button")
+        assert "flex: 1 1 0" in rule, name
+        assert "padding: 0 0 var(--nav-pad) 0" in rule, \
+            "%s: the sides must be zeroed, not only the bottom set" % name
+    hud_rule = _nav_rules(_bare_text(_page_hud()), "#nav a, #nav button")
+    for reset in ("background: none", "border: none", "font: inherit"):
+        assert reset in hud_rule, \
+            "hud.html: a button needs %s or it does not look like a link" % reset
+
+    # Gone from the panel it used to live on, or there are two controls for one setting.
+    page = _page()
+    assert 'id="night"' not in page, "the old panel button is still there"
+    js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    assert 'on("night"' not in js, "the old handler still toggles this document only"
+
+    # Applied from the poll on all three, so a change made anywhere arrives everywhere
+    # within half a second.
+    for name in ("app.js", "map.js"):
+        text = (ROOT / "static" / name).read_text(encoding="utf-8")
+        assert "window.Theme.apply(state.theme)" in text, \
+            "%s never applies the theme it is told" % name
+        assert 'src="static/theme.js"' in (_page() if name == "app.js" else _page_map()), \
+            "%s's page does not load theme.js" % name
+    # In the poll, not merely somewhere in the file: postTheme applies the server's
+    # answer too, and matching that one would pass with the poll's line deleted.
+    hud = _page_hud()
+    assert re.search(r"paintRace\(d\);\s*\n\s*applyTheme\(d\.theme\);", hud), \
+        "the HUD never applies the theme its poll is told"
+    # Self-contained is the actual invariant: no external script at all, not merely no
+    # mention of the shared one, which its comments name in order to say it is a copy.
+    assert "<script src=" not in hud, "the HUD is self-contained (DESIGN 9.1)"
+
+
+def test_the_huds_copy_of_the_theme_switch_matches_the_shared_one():
+    """hud.html is self-contained by decision, no external script and no external
+    stylesheet, so the port could be compared against the Node-RED tab side by side
+    (DESIGN 9.1). That means a second copy of this, and two copies drift.
+    """
+    shared = (ROOT / "static" / "theme.js").read_text(encoding="utf-8")
+    hud = _page_hud()
+
+    # The same two directions and the same two labels, or one screen offers Night while
+    # another offers Day for the same state.
+    for text in (shared, hud):
+        assert re.search(r"day:\s*\"night\",\s*night:\s*\"day\"", text), text[:0] or "OTHER"
+        assert re.search(r"day:\s*\"Night\",\s*night:\s*\"Day\"", text), "LABEL"
+
+    # Both post to /api/settings, both take the server's answer as final, and both apply
+    # at once rather than waiting for the next poll.
+    for name, text in (("theme.js", shared), ("hud.html", hud)):
+        assert "/api/settings" in text, name
+        # The server is the authority: whatever it answers is what the page shows, so a
+        # refused value puts the page back rather than leaving it lying.
+        assert re.search(r"if \(d && d\.theme\) appl\w*\(d\.theme\)", text), \
+            "%s does not take the server's answer as final" % name
+        assert '{ theme: want }' in text or "{ theme: want }" in text, name
+        assert "location.pathname" in text, "%s hardcodes a host" % name
+        assert text.count("classList.toggle(\"night\"") == 1, name
+
+
+def test_the_hud_has_a_night_palette_of_its_own():
+    """It had none. The gap was invisible while the toggle lived on one panel of one page,
+    since nothing could ask this page to go dark, and DESIGN 9.7 has asked for it since
+    the beginning.
+
+    Every reading is a red. Nothing may be blue, green or yellow: the point of the theme is
+    that no other wavelength reaches the eye, and this page's four colour pairs give up
+    being told apart by hue for the night, tint being what is left.
+    """
+    hud = _page_hud()
+    block = re.search(r"body\.night \{(.*?)\}", hud, re.S)
+    assert block, "hud.html has no night theme"
+    night = dict(re.findall(r"--([a-z]+):\s*(#[0-9a-fA-F]{6})", block.group(1)))
+
+    day_block = re.search(r":root \{(.*?)\n  \}", hud, re.S)
+    day = dict(re.findall(r"--([a-z]+):\s*(#[0-9a-fA-F]{6})", day_block.group(1)))
+    assert set(night) == set(day), \
+        "every colour needs a night value: missing %s" % (set(day) - set(night),)
+
+    # Red-dominant, and not by a little: red at least half again either other channel.
+    for name, value in night.items():
+        r, g, b = (int(value[i:i + 2], 16) for i in (1, 3, 5))
+        assert r >= 1.5 * g and r >= 1.5 * b, \
+            "--%s is %s, which is not a red" % (name, value)
+
+    # Each pair still has to be two colours, or the night theme silently merges the true
+    # and apparent readings into one.
+    for a, b in (("twa", "awa"), ("tws", "aws"), ("hdg", "cog")):
+        assert night[a] != night[b], \
+            "--%s and --%s are the same red, so the pair cannot be read apart" % (a, b)
+
+    # The same reading is the same colour on every screen, day or night, so the three
+    # copies of each value have to agree. --brg is app.css's name for the HUD's --hdg.
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    shared = re.search(r"body\.night \{(.*?)\n\}", css, re.S)
+    assert shared
+    app_night = dict(re.findall(r"--([a-z-]+):\s*(#[0-9a-fA-F]{6})", shared.group(1)))
+    for hud_name, app_name in (("sog", "sog"), ("cog", "cog"), ("hdg", "brg"),
+                               ("mark", "mark"), ("twa", "twa"), ("tws", "tws"),
+                               ("rpm", "rpm"), ("cur", "cur"), ("ctrl", "ctrl"),
+                               ("mot", "mot"), ("rule", "rule"), ("label", "label")):
+        assert hud_name in night and app_name in app_night, (hud_name, app_name)
+        assert night[hud_name].lower() == app_night[app_name].lower(), \
+            "--%s is %s at night on the HUD and %s on the other two screens" % (
+                hud_name, night[hud_name], app_night[app_name])
 
 
 if __name__ == "__main__":

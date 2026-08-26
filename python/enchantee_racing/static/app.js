@@ -174,7 +174,9 @@
     }
   });
 
-  on("night", function () { document.body.classList.toggle("night"); });
+  // The night button used to be here, toggling a class on this document and nothing else.
+  // It is server state now and lives in the navigation on all three pages: see
+  // static/theme.js for the three faults that came back from the boat.
 
   // Tapping a screen name is a view change and never a command: looking at the course list
   // during a race must not end the race (DESIGN 9.6). `viewing` holds the override until
@@ -626,6 +628,9 @@
         el.pip.classList.remove("down");
         render(state);
         renderHud(state);
+        // The theme comes with the state, so a change made on any device or any screen
+        // reaches this one within half a second (static/theme.js).
+        if (window.Theme) window.Theme.apply(state.theme);
         announceChanges(state.race);
       })
       .catch(function () { if (++failures > 3) el.pip.classList.add("down"); });

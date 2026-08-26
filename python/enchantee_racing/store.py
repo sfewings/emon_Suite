@@ -122,6 +122,11 @@ class Store:
         self._race = race.initial()
         self._context: Optional[race.Context] = None
         self._pending: list = []
+        # The theme, which is server state for the reason DESIGN 9.9 gives about all the
+        # rest of it: every device renders the same state and any device can drive it. The
+        # sun sets on the whole boat at once, so a theme held per browser would have to be
+        # set three times and would still be lost by walking between screens.
+        self._theme = "day"
 
     def set(self, key: str, value: Any, ts: Optional[float] = None) -> None:
         """Record a reading. ts defaults to now, and is the arrival time, not fix time."""
@@ -164,7 +169,27 @@ class Store:
         state = derive(snapshot, now)
         state["position"] = derive_position(snapshot, now)
         state["race"] = self.race_payload(now)
+        state["theme"] = self.theme()
         return state
+
+    # --- settings ----------------------------------------------------------
+
+    THEMES = ("day", "night")
+    """The only two, and the whole of the allowed set. Named here rather than checked at
+    the route, because the value ends up as a class on the body of three pages and an
+    arbitrary string out of a request has no business going there."""
+
+    def theme(self) -> str:
+        with self._lock:
+            return self._theme
+
+    def set_theme(self, name: str) -> str:
+        """Set the theme, ignoring anything that is not one of the two. Returns the theme
+        in force afterwards, so a caller never has to guess whether it took."""
+        with self._lock:
+            if name in Store.THEMES:
+                self._theme = name
+            return self._theme
 
     # --- the race ----------------------------------------------------------
 

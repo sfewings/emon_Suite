@@ -426,7 +426,11 @@ button.warn { border-color: var(--warn); color: var(--warn); }
      content box. */
   flex: 1 1 0; min-width: 0;
   min-height: calc(2.6rem + var(--nav-pad));
-  padding-bottom: var(--nav-pad);
+  /* The sides explicitly zero, not just the bottom set. A button carries 6px of padding
+     from the user agent, and under border-box a flex-basis of 0 cannot absorb it, so the
+     two buttons in this row came out 12px wider than the two links beside them. Four
+     equal cells is the point: the row is hit by feel. */
+  padding: 0 0 var(--nav-pad) 0;
   border: none; border-radius: 0;
   background: var(--bg); color: var(--label);
   font: inherit; font-size: 1.9vh; font-size: clamp(10px, 1.9vh, 17px);

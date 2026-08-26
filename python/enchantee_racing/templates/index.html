@@ -81,7 +81,7 @@
     <div id="series"></div>
     <div id="cards"></div>
     <div class="controls">
-      <button id="night">Night</button>
+      <!-- Night moved to the navigation, where all three screens can reach it. -->
       <!-- Only while a race is live: a way back to it, since choosing a course is not the
            only reason to be looking at this screen (DESIGN 9.6). -->
       <button class="primary" id="resume" hidden>Race</button>
@@ -247,11 +247,21 @@
        shows is the race's business, not the navigation's. Moving between those panels is
        done by the controls that mean something: Back off leg 1 to the course list, Next off
        the last leg to Finish, Course off Finish (DESIGN 9.6). -->
+  <!--
+    Three screens and the theme, which is a fourth cell rather than a control on one panel
+    of one page. It was on the course-selection panel, which meant it could only be set
+    from there and could not be set at all from the HUD or the map (DESIGN 9.7). The three
+    screens keep their learned positions and the toggle is appended after them.
+
+    Its label is written by theme.js, being whichever theme one tap will switch to.
+  -->
   <nav id="nav">
     <a href="hud">HUD</a>
     <button class="here" data-show="race">Race</button>
     <a href="map">Map</a>
+    <button data-theme-toggle></button>
   </nav>
 
 </div>
+<script src="static/theme.js" defer></script>
 <script src="static/app.js" defer></script>
