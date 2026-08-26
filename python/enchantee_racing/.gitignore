@@ -12,3 +12,5 @@ docs/qgis/swan_depth.new.gpkg
 docs/qgis/swan_coast.new.gpkg
 scripts/_structures_osm_cache.osm
 docs/qgis/swan_structures.new.gpkg
+scripts/_navaids_cache.json
+docs/qgis/swan_navaids.new.gpkg

@@ -5,7 +5,7 @@
 QGIS reads a default style out of a GeoPackage's `layer_styles` table when a layer
 is added, so embedding them here means nobody has to restyle by hand after
 regenerating. It also keeps the desktop colours and the colours the app draws with
-in one place: both come from the same dicts in gen_depth.py and gen_structures.py.
+in one place: both come from the same dicts in the gen_*.py generators.
 
 A layer already in an open project keeps the renderer the project saved, so after
 running this, an existing layer needs Properties, Style, Load Style, From database,
@@ -29,6 +29,7 @@ QGIS_DIR = os.path.join(REPO, "docs", "qgis")
 
 DEPTH = os.path.join(QGIS_DIR, "swan_depth.gpkg")
 STRUCT = os.path.join(QGIS_DIR, "swan_structures.gpkg")
+NAVAIDS = os.path.join(QGIS_DIR, "swan_navaids.gpkg")
 COAST = os.path.join(QGIS_DIR, "swan_coast.gpkg")
 
 # Kept identical to BANDS in gen_depth.py. Shallowest darkest, chart convention.
@@ -52,7 +53,30 @@ STRUCT_AREAS = [("jetty", "Jetty / pier", "#6b5b45"),
                 ("breakwater", "Breakwater", "#5a5a5a"),
                 ("marina", "Marina", "#9aa7b1")]
 
-STRUCT_POINTS = [("light", "Light / beacon", "#c8402c")]
+# Kept identical to RULES in gen_navaids.py. IALA A: port red, starboard green.
+# Leading marks are orange because they are the ones you line up, not pass.
+NAVAIDS_KINDS = [
+    ("lighthouse",       "Lighthouse",              "#d92b1f", "star",     "4.5"),
+    ("light_major",      "Major light",             "#d92b1f", "star",     "3.2"),
+    ("light_minor",      "Minor light",             "#e2574c", "star",     "2.4"),
+    ("leading",          "Leading mark",            "#e07b00", "triangle", "3.0"),
+    ("beacon_port",      "Port beacon",             "#cc2222", "square",   "2.2"),
+    ("beacon_starboard", "Starboard beacon",        "#1f8f3a", "square",   "2.2"),
+    ("beacon_cardinal",  "Cardinal beacon",         "#f0c020", "diamond",  "2.4"),
+    ("beacon_danger",    "Isolated danger beacon",  "#222222", "square",   "2.4"),
+    ("beacon_special",   "Special mark beacon",     "#f0c020", "square",   "2.2"),
+    ("beacon_other",     "Beacon",                  "#6d6d6d", "square",   "2.0"),
+    ("buoy_port",        "Port buoy",               "#cc2222", "circle",   "2.2"),
+    ("buoy_starboard",   "Starboard buoy",          "#1f8f3a", "circle",   "2.2"),
+    ("buoy_cardinal",    "Cardinal buoy",           "#f0c020", "diamond",  "2.2"),
+    ("buoy_danger",      "Isolated danger buoy",    "#222222", "circle",   "2.4"),
+    ("buoy_special",     "Special mark buoy",       "#f0c020", "circle",   "2.2"),
+    ("buoy_yacht",       "Yacht racing buoy",       "#3a7ca8", "circle",   "1.8"),
+    ("buoy_other",       "Buoy",                    "#6d6d6d", "circle",   "2.0"),
+    ("ais",              "AIS / virtual",           "#8a5fd0", "pentagon", "2.4"),
+    ("racon",            "Racon",                   "#8a5fd0", "pentagon", "2.4"),
+    ("other",            "Other",                   "#999999", "circle",   "1.8"),
+]
 
 
 def categorized(field, cats):
@@ -113,13 +137,14 @@ def main():
              for v, lb, c in STRUCT_AREAS]),
          "Jetty, breakwater and marina areas")
 
-    save(STRUCT, "structure_points",
+    print("navaids:")
+    save(NAVAIDS, "navaids",
          categorized("kind", [
              QgsRendererCategory(v, QgsMarkerSymbol.createSimple(
-                 {"name": "star", "color": c, "size": "3.0",
-                  "outline_color": "40,20,15,255", "outline_width": "0.2"}), lb)
-             for v, lb, c in STRUCT_POINTS]),
-         "Lights and beacons")
+                 {"name": shape, "color": c, "size": sz,
+                  "outline_color": "30,30,30,255", "outline_width": "0.2"}), lb)
+             for v, lb, c, shape, sz in NAVAIDS_KINDS]),
+         "Navigation aids, DoT DOT-004, IALA system A")
 
     print("coast:")
     save(COAST, "coast_land",

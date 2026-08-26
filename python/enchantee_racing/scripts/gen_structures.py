@@ -1,4 +1,4 @@
-"""Generate config/structures.json: jetties, breakwaters, bridges and lights.
+"""Generate config/structures.json: jetties, breakwaters, marinas and bridges.
 
 Run with QGIS's own Python:
 
@@ -25,8 +25,11 @@ Kinds emitted:
                 intersecting the water from coast.json still leaves 152 because
                 every culvert over a drain counts. So a bridge also has to span at
                 least MIN_BRIDGE_SPAN metres of water.
-    light       man_made=lighthouse plus seamark light_major, light_minor,
-                beacon_lateral, beacon_cardinal, as points.
+
+Lights, beacons and buoys are NOT here. They used to be, as OSM
+`man_made=lighthouse` plus a few seamarks, which yielded 24 for the whole extent.
+The authoritative DoT register has 785. See scripts/gen_navaids.py; this file owns
+the built edge of the river and navaids owns the aid network.
 
 Deliberately NOT included: seamark:type=mooring (183 mooring buoys, clutter, not
 fixed structure), wreck, berth.
@@ -82,14 +85,11 @@ QUERY = """[out:xml][timeout:600];
   way["leisure"="marina"](%(s)f,%(w)f,%(n)f,%(e)f);
   relation["leisure"="marina"](%(s)f,%(w)f,%(n)f,%(e)f);
   way["leisure"="slipway"](%(s)f,%(w)f,%(n)f,%(e)f);
-  node["seamark:type"](%(s)f,%(w)f,%(n)f,%(e)f);
   way["bridge"]["layer"!~"^-"](%(s)f,%(w)f,%(n)f,%(e)f);
 );
 (._;>;);
 out body;
 """
-
-LIGHT_SEAMARKS = ("light_major", "light_minor", "beacon_lateral", "beacon_cardinal")
 
 KINDS = {
     "jetty":      {"color": "#6b5b45", "label": "Jetty / pier"},
@@ -98,7 +98,6 @@ KINDS = {
     "marina":     {"color": "#9aa7b1", "label": "Marina"},
     "slipway":    {"color": "#8a7f6a", "label": "Slipway"},
     "bridge":     {"color": "#3f3f3f", "label": "Bridge"},
-    "light":      {"color": "#c8402c", "label": "Light / beacon"},
 }
 
 
@@ -166,10 +165,6 @@ def collect(osm, water_p, to_proj):
     take("lines", "\"man_made\" = 'groyne'", "groyne")
     take("multipolygons", "\"leisure\" = 'marina'", "marina")
     take("lines", "other_tags LIKE '%\"leisure\"=>\"slipway\"%'", "slipway")
-
-    seam = " OR ".join("other_tags LIKE '%%\"seamark:type\"=>\"%s\"%%'" % s
-                       for s in LIGHT_SEAMARKS)
-    take("points", "\"man_made\" = 'lighthouse' OR " + seam, "light")
 
     dropped = [0]
 
@@ -267,7 +262,8 @@ def write(layers, counts):
         "license": "ODbL 1.0, (c) OpenStreetMap contributors",
         "source_note": (
             "Jetties, breakwaters, groynes, marinas, slipways, water-crossing bridges "
-            "and lights. Bridges must both intersect the water from coast.json and "
+            "and marinas. Lights and beacons live in navaids.json, from the DoT "
+            "register. Bridges must both intersect the water from coast.json and "
             "span at least %d m of it, because the OSM bridge tag alone returns every "
             "freeway overpass in the extent. Jetties are not clipped to the "
             "waterline. Simplified at %d m, unlike coast.json at 10 m, because these "
@@ -299,6 +295,9 @@ def write(layers, counts):
     first = True
     for key, nm in (("lines", "structure_lines"), ("areas", "structure_areas"),
                     ("points", "structure_points")):
+        if layers[key].featureCount() == 0:
+            print("   (skipping empty %s)" % nm)
+            continue
         o = QgsVectorFileWriter.SaveVectorOptions()
         o.driverName = "GPKG"
         o.layerName = nm
