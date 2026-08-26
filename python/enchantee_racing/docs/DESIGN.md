@@ -968,6 +968,29 @@ A third arrived once the map page had joined the navigation, and it is the same 
   script and no external stylesheet, and its nav has been out of the flow since the port
   anyway.
 
+  **The height goes on `#app` as an inline pixel value, not through a custom property**,
+  and the first version did the tidy thing instead: `--app-h` on the root element and
+  `height: var(--app-h, 100dvh)` in the stylesheet. That broke two things on the iPad
+  mini and nothing anywhere else, and they are one thing: **on iOS 12 a var()-derived
+  height is not a definite height.**
+
+  - The course list grew past the bottom of the glass. `#app`'s height is what makes the
+    whole column definite: `.panel` takes a share of it, `#cards` takes a share of that
+    and scrolls inside it, and the grid's `1fr` rows divide what is left. With no definite
+    basis to resolve against, the rows fall back to their content and the column overflows.
+  - The panels went blank a moment after appearing, and toggling day/night brought them
+    back. Re-measuring changed the property on the root, which restyled `#app` without
+    re-laying out its descendants; the navigation stayed because it needs no height of its
+    own. The crew's workaround put a class on the body, which forces a full restyle, and
+    that is what identified the fault.
+
+  An inline pixel height is definite on every browser and an element-level style change is
+  re-laid-out reliably. The two CSS declarations stay for a browser with no JavaScript.
+  `static/layout-check.html` puts the three ways of setting a height in front of the device
+  with a re-measure button and a restyle button, because neither fault can be reproduced on
+  a development machine, which is the same reason `geo-check.html` and `audio-check.html`
+  exist.
+
 And one that is not a missing feature but a wrong axis:
 
 - **A font sized only in `vh` overflows a tall narrow screen.** The countdown at `22vh`

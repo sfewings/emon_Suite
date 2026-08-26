@@ -1276,24 +1276,44 @@ def test_the_app_is_as_tall_as_the_screen_actually_is():
     Safari 15.4; the iPad on the boat is on 12. window.innerHeight is right on every
     version of everything, so viewport.js measures it.
 
-    Three declarations in ascending order of correctness, because a browser takes the last
-    one it understands and ignores the rest. Dropping either of the first two would leave
-    a no-JavaScript browser with nothing.
+    It is written onto #app as an inline pixel height, and the first version of this set a
+    custom property on documentElement instead. That was tidier and broke two things on
+    iOS 12, both reported from the boat, and both because a var()-derived height is not a
+    definite height there: the course list grew past the bottom of the glass, the flex
+    chain below #app having nothing definite to resolve against, and the panels went blank
+    a moment after appearing, a re-measure having restyled #app without re-laying out its
+    descendants. An inline pixel height is definite everywhere and an element-level style
+    change is re-laid-out reliably.
+
+    The stylesheet keeps two declarations in ascending order of correctness for a browser
+    with no JavaScript, and must keep both: a browser takes the last one it understands.
     """
     # Comments stripped: _nav_rules keeps the whole rule body, and #app's carries a long
-    # note that mentions every one of the three heights by name.
+    # note that mentions every height by name.
     css = _bare(ROOT / "static" / "app.css")
     app_rule = _nav_rules(css, "#app")
 
     heights = re.findall(r"height:\s*([^;]+)", app_rule)
-    assert heights == ["100vh", "100dvh", "var(--app-h, 100dvh)"], \
-        "the three heights must all be there, worst first: %r" % (heights,)
+    assert heights == ["100vh", "100dvh"], \
+        "the no-JavaScript fallbacks must both be there, worst first: %r" % (heights,)
+    assert "var(--app-h" not in app_rule, \
+        "the height is back to arriving through var(), which iOS 12 treats as indefinite"
 
     script = (ROOT / "static" / "viewport.js").read_text(encoding="utf-8")
     code = re.sub(r"//[^\n]*", "", script)
     assert "window.innerHeight" in code, "the point of the file is to measure, not assume"
-    assert "--app-h" in code and "documentElement" in code, \
-        "the property has to land on an ancestor of #app"
+    # On the element, in pixels, and not as a custom property on an ancestor.
+    assert 'getElementById("app")' in code, "the height has to land on #app itself"
+    assert re.search(r"\.style\.height = \w+ \+ \"px\"", code), \
+        "the height must be an inline pixel value, which is definite everywhere"
+    assert "setProperty" not in code and "documentElement" not in code, \
+        "a custom property on the root is what broke iOS 12"
+    # #app does not exist when this file runs, being loaded above the body on purpose.
+    assert "DOMContentLoaded" in code, \
+        "nothing sets the height once #app exists, so the first paint has no height"
+    # And a resize that changes nothing writes nothing: iOS fires it during a scroll.
+    assert "=== last" in code or "== last" in code, \
+        "every scroll event would restyle the page"
     # It has to be re-measured, or a rotation or a split-screen leaves a stale height.
     for event in ("resize", "orientationchange", "visibilitychange"):
         assert event in code, "no listener for %s, so the height goes stale" % event
@@ -1658,6 +1678,70 @@ def test_a_leg_type_is_one_short_word():
         for emit in ('return "close hauled"', '= "close hauled"',
                      "return 'close hauled'", 'textContent = "close hauled"'):
             assert emit not in text, "%s still produces the long form" % rel
+
+
+def test_the_layout_probe_can_tell_the_three_heights_apart():
+    """static/layout-check.html, for the two iOS 12 faults that cannot be seen from here.
+
+    The course list ran off the bottom of the iPad and the panels went blank a moment after
+    appearing, both on the iPad mini 3 and nowhere else. The explanation is that a
+    var()-derived height is not a definite height there, and the way to settle it is to put
+    the three ways of setting a height in front of the device rather than reason about it
+    from a machine that cannot show the fault. The same approach as geo-check.html and
+    audio-check.html, and for the same reason.
+
+    Self-contained, so what it measures is only itself, and iOS 12 rules apply to it too:
+    a probe that cannot run on the machine under test proves nothing.
+    """
+    page = (ROOT / "static" / "layout-check.html").read_text(encoding="utf-8")
+
+    # Three heights, one per button, or it cannot separate the hypothesis from the rest.
+    assert "height: 100vh" in page
+    assert "height: var(--probe-h" in page
+    assert re.search(r"app\.style\.height = window\.innerHeight \+ \"px\"", page), \
+        "no inline-pixel mode, which is the one the fix uses"
+    for ident in ("b-vh", "b-var", "b-inline", "b-remeasure", "b-tint", "b-more"):
+        assert 'id="%s"' % ident in page, ident
+
+    # The two probes that matter: re-measuring is what blanked the real page, and a class
+    # on the body is the crew's workaround, so both have to be reachable by hand.
+    assert "classList.toggle(\"tint\")" in page, "no repaint probe"
+    assert "body.tint" in page, "the repaint probe changes nothing visible"
+
+    # It has to reproduce the chain under test, not something like it.
+    for rule in ("flex: 1 1 auto", "min-height: 0", "overflow: hidden",
+                 "grid-auto-rows: minmax(min-content, 1fr)",
+                 "repeat(auto-fit, minmax(9rem, 1fr))"):
+        assert rule in page, "the probe does not reproduce %r" % rule
+
+    # And it reports what the answer turns on.
+    for label in ("#app height", "page scrolls", "nav bottom", "Details buttons",
+                  "cards content"):
+        assert label in page, label
+
+    # Self-contained: nothing external, so a failure to load something cannot be mistaken
+    # for the fault being probed.
+    assert "<script src=" not in page and "<link rel=\"stylesheet\"" not in page
+
+    # iOS 12 or it cannot run where the fault is. No clamp, no flex gap without grid-gap
+    # beside it, and ES5 only.
+    #
+    # Comments stripped first, all three kinds. The page explains at the top which
+    # features it is avoiding, and naming clamp() in order to say it is not used is not
+    # using it.
+    code = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+    code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
+    code = re.sub(r"(?<!:)//[^\n]*", "", code)
+    assert "clamp(" not in code, "clamp() needs Safari 13.1"
+    for banned in (" let ", "=>", " const ", "`"):
+        assert banned not in code, "%r is not ES5" % banned
+    # gap is allowed here only because this is a grid, where Safari 12 supports it, and
+    # grid-gap is written first anyway.
+    assert page.index("grid-gap:") < page.index("gap: .5rem"), \
+        "grid-gap must come first for Safari 12"
+    flex_rules = re.findall(r"\{[^{}]*display: flex[^{}]*\}", page)
+    for rule in flex_rules:
+        assert "gap:" not in rule, "flexbox gap needs Safari 14.1: %s" % rule
 
 
 if __name__ == "__main__":

@@ -32,7 +32,9 @@ their absence.
   (Safari 13.1), no flexbox `gap` (14.1) and no `dvh` (15.4) without a fallback ahead
   of it. `min()` and `env()` are fine, and so is grid gap. Screen height comes from
   `static/viewport.js` as `--app-h`, because `100vh` on iOS is not the visible height.
-  Size the huge readouts by **both** axes: `vh` alone overflows a narrow screen. None of
+  Size the huge readouts by **both** axes: `vh` alone overflows a narrow screen. A
+  height arriving through `var()` is **not a definite height** there, so a flex or grid
+  child cannot resolve against it and a re-measure restyles without re-laying out. None of
   these failures is visible on a development machine, all of them reached the boat once,
   and all are now pinned by tests. See DESIGN 9.8.1.
 
@@ -68,8 +70,8 @@ static/                 app.js and app.css, the race screen
                         theme.js, day and night, shared by index and map
                         viewport.js, the measured screen height, same two
                         flags/*.svg, audio/, wake.mp4, silence.wav, icon*
-                        audio-check.html, and geo-check.html with geo-fixture.json,
-                        which are diagnostics rather than part of the app
+                        audio-check.html, geo-check.html with geo-fixture.json, and
+                        layout-check.html: diagnostics, not part of the app
 scripts/                gen_*.py, which regenerate config/ and parts of static/;
                         all outputs committed. Also extract_courses.py,
                         apply_qgis_styles.py and a vendored shapefile.py

@@ -196,13 +196,20 @@ html, body {
 
 #app {
   display: flex; flex-direction: column;
-  /* Three answers, best last. 100vh is what iOS 12 has and it is not the visible height:
-     in a standalone app with a translucent status bar it includes what the status bar sits
-     over, which showed as the navigation half clipped along the bottom of the iPad. 100dvh
-     is right and needs Safari 15.4. --app-h is window.innerHeight, measured by
-     static/viewport.js, and is right everywhere. A browser with no JavaScript falls back
-     through the list. */
-  height: 100vh; height: 100dvh; height: var(--app-h, 100dvh);
+  /* Two answers here and the real one in JavaScript. 100vh is what iOS 12 has and it is
+     not the visible height: in a standalone app with a translucent status bar it includes
+     what the status bar sits over, which showed as the navigation half clipped along the
+     bottom of the iPad. 100dvh is right and needs Safari 15.4.
+
+     static/viewport.js writes window.innerHeight onto this element as an inline pixel
+     height, which wins over both and is right everywhere. It used to arrive here as
+     var(--app-h) and that broke two things on iOS 12, where a var()-derived height is not
+     a definite height: the flex chain below had nothing to resolve against and the course
+     list grew past the glass, and re-measuring restyled this element without re-laying out
+     its descendants, which left the panels blank. The file records both.
+
+     These two stay for a browser with no JavaScript. */
+  height: 100vh; height: 100dvh;
   /* No bottom inset here. It belongs to the navigation, which is the bottom-most thing on
      the page: applied there, the nav's background reaches the edge of the screen and its
      buttons still sit above the home indicator, where a tap target has to be. Applied here

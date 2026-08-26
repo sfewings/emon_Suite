@@ -1,0 +1,231 @@
+<!doctype html>
+<!--
+  Why the course list ran off the bottom of the iPad and why the panels went blank.
+
+  Two faults were reported from the iPad mini 3, on iOS 12, on the course-selection screen
+  and nowhere else. Both are explained by one thing, and this page is here to prove or
+  disprove it on the device rather than reason about it from a machine that cannot show it.
+
+  The claim: a height arriving through var() is not a DEFINITE height on iOS 12. #app is
+  what makes the whole column definite, .panel taking a share of it and #cards taking a
+  share of that and scrolling inside it, and the grid's 1fr rows dividing what is left.
+  With no definite basis the rows fall back to their content and the column grows past the
+  glass; and re-measuring restyles #app without re-laying out its descendants, which leaves
+  the panels unpainted while the navigation, needing no height of its own, stays.
+
+  Self-contained on purpose: no external stylesheet and no external script, so what it
+  measures is only itself. Same rules as app.css, copied, and the same structure. iOS 12
+  rules apply throughout: no clamp(), no flexbox gap, no let, no arrow functions.
+
+  Served at /race/static/layout-check.html.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Layout check</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #000; color: #fff;
+               font-family: -apple-system, system-ui, sans-serif; }
+
+  /* The chain under test, copied from app.css. The height is set by the buttons below. */
+  #app {
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+  #app.by-vh   { height: 100vh; }
+  #app.by-var  { height: var(--probe-h, 100vh); }
+  /* by-inline sets element.style.height in px and needs no rule. */
+
+  .panel { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column;
+           overflow: hidden; }
+  #series { display: flex; flex: 0 0 auto; padding: .4rem; flex-wrap: wrap; }
+  #series span { border: 2px solid #262626; border-radius: .4rem; padding: .3rem .5rem;
+                 margin: 0 .3rem .3rem 0; font-size: 14px; }
+  #cards {
+    flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: grid; grid-gap: .5rem; gap: .5rem; padding: .4rem;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    grid-auto-rows: minmax(min-content, 1fr);
+  }
+  .card { display: flex; flex-direction: column; background: #0d0d0d;
+          border: 2px solid #262626; border-radius: .5rem; overflow: hidden; }
+  .pick { flex: 1 0 auto; overflow: hidden; padding: .4rem; text-align: left;
+          background: none; border: none; color: #fff; font: inherit; }
+  .pick b { display: block; font-size: 20px; }
+  .det { min-height: 2.75rem; background: #111; color: #fff; border: none;
+         border-top: 2px solid #262626; font: inherit; font-size: 13px;
+         text-transform: uppercase; }
+  .controls { display: flex; flex: 0 0 auto; padding: .4rem; }
+  #nav { display: flex; flex: 0 0 auto; border-top: 2px solid #262626; background: #000; }
+  #nav span { flex: 1 1 0; min-width: 0; min-height: 2.6rem;
+              display: flex; align-items: center; justify-content: center;
+              color: #767676; font-size: 13px; text-transform: uppercase; }
+
+  /* The readout, over the top, so it is legible whatever the chain below does. */
+  #out {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 9;
+    background: rgba(0,0,0,.88); border-bottom: 2px solid #1e90ff;
+    padding: .4rem; font-size: 12px; line-height: 1.45;
+    font-family: ui-monospace, Menlo, monospace;
+    max-height: 52%; overflow: auto;
+  }
+  #out b { color: #1e90ff; }
+  .bad  { color: #e8443a; font-weight: 700; }
+  .good { color: #98fb98; }
+  #buttons { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9;
+             background: rgba(0,0,0,.9); border-top: 2px solid #1e90ff;
+             display: flex; flex-wrap: wrap; padding: .2rem; }
+  #buttons button { flex: 1 1 8rem; min-height: 2.6rem; margin: .15rem;
+                    background: #111; color: #fff; border: 2px solid #1e90ff;
+                    border-radius: .4rem; font: inherit; font-size: 13px; }
+  body.tint .card { background: #111318; }   /* the repaint probe: a class on body */
+</style>
+
+<div id="out">measuring&hellip;</div>
+
+<div id="app" class="by-vh">
+  <section class="panel">
+    <div id="series"></div>
+    <div id="cards"></div>
+    <div class="controls"></div>
+  </section>
+  <nav id="nav"><span>HUD</span><span>Race</span><span>Map</span><span>Night</span></nav>
+</div>
+
+<div id="buttons">
+  <button id="b-vh">1. height: 100vh</button>
+  <button id="b-var">2. height: var()</button>
+  <button id="b-inline">3. height: inline px</button>
+  <button id="b-remeasure">4. re-measure</button>
+  <button id="b-tint">5. class on body</button>
+  <button id="b-more">6. more courses</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var app = document.getElementById("app");
+  var cards = document.getElementById("cards");
+  var series = document.getElementById("series");
+  var nav = document.getElementById("nav");
+  var out = document.getElementById("out");
+  var panel = document.querySelector(".panel");
+  var courses = 4;
+
+  function build() {
+    series.innerHTML = "";
+    ["Frostbite", "Friday", "Sunday Div II", "Twilight"].forEach(function (name) {
+      var s = document.createElement("span");
+      s.textContent = name;
+      series.appendChild(s);
+    });
+    cards.innerHTML = "";
+    for (var i = 1; i <= courses; i++) {
+      var card = document.createElement("div");
+      card.className = "card";
+      var pick = document.createElement("button");
+      pick.className = "pick";
+      pick.innerHTML = "<b>Course " + i + "</b>7.11 nm &middot; South Westerly";
+      var det = document.createElement("button");
+      det.className = "det";
+      det.textContent = "Details";
+      card.appendChild(pick);
+      card.appendChild(det);
+      cards.appendChild(card);
+    }
+  }
+
+  function mode(which) {
+    app.className = which === "vh" ? "by-vh" : which === "var" ? "by-var" : "";
+    if (which === "inline") {
+      app.style.height = window.innerHeight + "px";
+      document.documentElement.style.removeProperty("--probe-h");
+    } else if (which === "var") {
+      app.style.height = "";
+      document.documentElement.style.setProperty("--probe-h",
+                                                 window.innerHeight + "px");
+    } else {
+      app.style.height = "";
+      document.documentElement.style.removeProperty("--probe-h");
+    }
+    report(which);
+  }
+
+  function line(label, value, verdict) {
+    return "<b>" + label + "</b> " + (verdict ? '<span class="' + verdict + '">' +
+           value + "</span>" : value) + "<br>";
+  }
+
+  function report(which) {
+    var dets = cards.querySelectorAll(".det");
+    var offscreen = 0, lowest = 0;
+    for (var i = 0; i < dets.length; i++) {
+      var r = dets[i].getBoundingClientRect();
+      if (r.bottom > lowest) lowest = r.bottom;
+      if (r.bottom > window.innerHeight + 1) offscreen++;
+    }
+    var navBox = nav.getBoundingClientRect();
+    var appH = Math.round(app.getBoundingClientRect().height);
+    var pageScroll = document.documentElement.scrollHeight - window.innerHeight;
+
+    var html = "";
+    html += line("height from", which === "vh" ? "100vh" :
+                 which === "var" ? "var(--probe-h)" : "inline px");
+    html += line("innerHeight", window.innerHeight + "  screen " + screen.height +
+                 "  courses " + courses);
+    html += line("#app height", appH + (appH === window.innerHeight ? "" :
+                 "  (differs from innerHeight by " + (appH - window.innerHeight) + ")"),
+                 appH === window.innerHeight ? "good" : "bad");
+    html += line("panel / cards", Math.round(panel.getBoundingClientRect().height) +
+                 " / " + Math.round(cards.getBoundingClientRect().height));
+    html += line("cards content", cards.scrollHeight + "  scrolls inside itself: " +
+                 (cards.scrollHeight > cards.clientHeight + 1 ? "yes" : "no"));
+    html += line("page scrolls", pageScroll > 1 ? pageScroll + "px  THE PAGE ITSELF SCROLLS"
+                 : "no", pageScroll > 1 ? "bad" : "good");
+    html += line("nav bottom", Math.round(navBox.bottom) + " of " + window.innerHeight +
+                 (navBox.bottom > window.innerHeight + 1 ? "  CLIPPED" : ""),
+                 navBox.bottom > window.innerHeight + 1 ? "bad" : "good");
+    html += line("Details buttons", "lowest at " + Math.round(lowest) + ", " + offscreen +
+                 " of " + dets.length + " past the bottom of the screen",
+                 offscreen ? "bad" : "good");
+    html += line("panels painted?",
+                 "look at the screen: if the cards have vanished, say so");
+    out.innerHTML = html;
+  }
+
+  function bind(id, fn) { document.getElementById(id).addEventListener("click", fn); }
+
+  bind("b-vh", function () { mode("vh"); });
+  bind("b-var", function () { mode("var"); });
+  bind("b-inline", function () { mode("inline"); });
+  // 4 is the one that made the real page go blank: measure again and write the height the
+  // same way it is currently being written.
+  bind("b-remeasure", function () {
+    var which = app.className === "by-vh" ? "vh" : app.className === "by-var" ? "var"
+              : "inline";
+    mode(which);
+  });
+  // 5 is the crew's workaround, a class on the body, which forces a full restyle.
+  bind("b-tint", function () {
+    document.body.classList.toggle("tint");
+    report(app.className === "by-vh" ? "vh" : app.className === "by-var" ? "var"
+           : "inline");
+  });
+  bind("b-more", function () {
+    courses = courses >= 10 ? 4 : courses + 2;
+    build();
+    report(app.className === "by-vh" ? "vh" : app.className === "by-var" ? "var"
+           : "inline");
+  });
+
+  build();
+  mode("vh");
+  window.addEventListener("resize", function () {
+    report(app.className === "by-vh" ? "vh" : app.className === "by-var" ? "var"
+           : "inline");
+  });
+}());
+</script>
