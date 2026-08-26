@@ -2210,13 +2210,22 @@ renamed a property would draw an empty chart and report nothing. That contract i
 asserted against the real `config/depth.json` in `tests/test_map.py`, along with the day
 palette matching the colours the generator writes into the document for QGIS.
 
-**It costs 392 kB on the wire, not 1.9 MB.** nginx gzips `application/json` and the file
-is repetitive coordinate text, so it compresses 4.8:1. All six config documents together
-are 487 kB compressed. On the Pi's own browser the page is ready 0.62 s after the request
-with 2427 paths and 78,174 coordinate pairs, against about 16,000 before. The iPad mini 3
-is the machine that decides whether that is acceptable and it cannot be measured from
-here; the thresholds that already existed do most of the work, the aid register being
-hidden past 25 m per pixel and every mark label past 50.
+**It costs 173 kB on the wire, not 786 kB.** nginx gzips `application/json` and the file
+is repetitive coordinate text, so it compresses 4.5:1. All six config documents together
+are 262 kB compressed. On the Pi's own browser the page is ready 0.60 s after the request
+with 1950 paths and 30,369 coordinate pairs, against about 16,000 for the river alone
+before the region arrived.
+
+These are the second set of figures. The region depths first landed at 1.9 MB, 392 kB
+compressed, 2427 paths and 78,174 coordinate pairs, and then the swath-edge artefacts were
+cleaned out of the survey (above) and about 60 per cent of the file turned out to be
+artefact. So the whole metro coast now costs the page less than half what the region
+version did, and the difference was noise rather than detail. Worth remembering the next
+time a basemap looks expensive: the first question is whether the file is mostly signal.
+
+The iPad mini 3 is the machine that decides whether it is acceptable and it cannot be
+measured from here; the thresholds that already existed do most of the work, the aid
+register being hidden past 25 m per pixel and every mark label past 50.
 
 **The canvas is no longer water, and that is the real change.** `#chart`'s background was
 a grey-blue called `--water`, and the reasoning was sound while the survey covered the
