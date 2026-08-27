@@ -2571,3 +2571,81 @@ everything still outstanding needs either the boat powered up or a device in han
   exactly those gaps plus PFSYC, but its `S3_path` is null so there is no public
   download yet. Worth asking DoT for.
 - Re-surveying the PFSYC inner start mark.
+- **Race recordings with leg analysis.** A recording that starts on the gun and stops at the
+  finish, processed into a report of the race: course sailed, total time, and per leg the
+  time, average speed, wind direction and some measure of how well the leg was sailed. The
+  recording and the report belong to `event_recorder`; what this app owes it is one thing.
+
+  **Put a full course snapshot in the `start` event payload.** `race/event` already carries
+  every transition and `mqtt_client.py` already publishes it for event_recorder to log
+  (section 3), so the channel exists; `_event()` in `engine/race.py` is where the snapshot
+  would go. Marks and their positions, leg bearings, leg lengths, rounding sides. Not a
+  course id. With the snapshot a recording stays analysable after `courses.json` is edited,
+  with this app stopped, on another machine, years later. With an id it is a permanent
+  runtime dependency on this app and a silent misanalysis the first time a mark moves,
+  which has happened once already.
+
+  On the event_recorder side, for whoever picks it up: `record_topics` needs `race/#`, or
+  the events cross the broker and are never logged. Wind is already recorded, since
+  `anemometer/#` covers TWD and TWS. A `race_event` trigger type arms on `start` and closes
+  on `finish`; a `reset` without a finish, or a shutdown mid-race, closes the recording and
+  marks it partial with the legs up to the last `rounded`. Overlapping the ordinary
+  movement recording is fine and wanted, because the manual publish step chooses between
+  them.
+
+  Two notes on the analysis itself, from the discussion that deferred this. The cheap
+  metrics are unambiguous and worth having first: elapsed time, distance sailed against
+  rhumb distance, average speed, VMG toward the mark as the rate of closing on it, mean and
+  spread of TWD, tack count, and the mean TWA on each tack, which is where a helm or trim
+  bias on one tack shows up. The interesting question, whether footing off would have
+  reached the mark sooner, cannot be answered from those: it needs a polar, and there is no
+  published polar for this boat. The answer is to derive an empirical one from the
+  accumulated recordings, binning every fix on (TWA, TWS) and taking a high percentile of
+  observed SOG, then reporting achieved speed against that bin and comparing the VMG
+  actually made against the VMG the polar says was available. That improves by itself as
+  more races are recorded, and it needs a corpus before it is worth anything, which is the
+  reason to ship the timing and geometry first.
+
+- **Waypoints on a leg**, a `via` list of mark ids that a leg passes through without
+  rounding, so the drawn course follows water the boat can sail and the leg distance is
+  the distance sailed. Parked rather than rejected; the case for it is the map and not the
+  arithmetic.
+
+  Scale, measured over all 270 legs in the file: 36 deviate more than 5 per cent from the
+  straight line, 18 more than 10, and 12 more than 20, of which 10 are the same five
+  leg-pairs shared by `parmelia-1` and `parmelia-2`. So the dataset that matters is five
+  to eight pairs. Two dominate, both on the night race:
+
+      +191%  +1.46 nm   bricklanding-b-33b -> blackwall-11   (the Point Walter spit)
+      +157%  +0.25 nm   burnside-spit-58   -> cyc-start-outer-21a
+
+  The first of those is currently drawn straight across the Point Walter spit, over land,
+  on a chart used at night. That is the whole argument for doing it. `friday-1` leg 4 at
+  +41 per cent and `sunday-div-iii-3` leg 8 at +35 mean it would not be a Parmelia-only
+  schema.
+
+  Cost is smaller than it looks. `leg_distances_nm` is the single chokepoint that
+  `course_distance_nm`, `cumulative_nm` and `leg_table` all flow through, and the state
+  machine reads legs only through `leg_target` and `leg_name`, both keyed on `leg["mark"]`,
+  so **`engine/race.py` needs no change**. Roughly 30 lines in `engine/course.py`, 15 in
+  `drawCourse`, a generator of about 80 reusing `scripts/navigable_distance.py`, and the
+  tests. `via` would not trip the `gates-removed` validator, which guards `gate` and
+  `marks`.
+
+  `scripts/extract_courses.py` cannot supply this and should not be asked to. The course
+  sheets print rounding marks only; there is no waypoint column in either the fixtures
+  book or the Parmelia instructions, both of which have been rendered and read. It would
+  need a separate dataset keyed on `from_mark -> to_mark`, merged the way `SERIES` already
+  is, and **generated rather than hand-authored**: the routing in
+  `scripts/navigable_distance.py` already finds the paths, and hand-written waypoints would
+  go stale the next time the marks are redigitized, as they were once already by a median
+  of 15 m.
+
+  Two reasons it is parked. It does not make the printed distance reconcile: with every
+  waypoint in, `parmelia-1` reaches 14.81 nm against a printed 17.5, still 15 per cent
+  under, so the warning in section 7.1 stays either way and is already understood. And
+  `via` has to remain purely geometric, for distance and drawing only. The crew steers to
+  the mark, not to a waypoint (section 9.2), which falls out today because `leg_target`
+  is what race.py asks for; the risk is a later change steering the HUD to a waypoint or
+  auto-advancing on one. If this is picked up, that wants a test and not just good
+  intentions.
