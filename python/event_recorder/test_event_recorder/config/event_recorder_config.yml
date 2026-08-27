@@ -18,6 +18,21 @@ recording:
   max_recording_duration: 86400          # Maximum recording duration (24 hours)
   auto_publish: false                    # Auto-publish to WordPress after recording
 
+# Offline basemap for GPS route maps
+#
+# Fetched from the enchantee_racing app and cached, so route maps draw over the
+# river chart instead of needing OpenStreetMap tiles the boat cannot reach.
+#
+# host.docker.internal, not localhost: localhost inside this container is the
+# container. This points at the racing replay rig published on the host at 5003.
+# Everything degrades, so a wrong or unreachable URL here costs the chart and
+# not the route map.
+charts:
+  enabled: true
+  base_url: "http://host.docker.internal:5003"
+  cache_dir: ""                          # empty puts it beside plots_dir
+  timeout: 5
+
 # Plot generation defaults
 plots:
   dpi: 150                               # Image resolution

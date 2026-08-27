@@ -1,0 +1,71 @@
+# Layer this over docker-compose.yml to run the racing app against a broker that
+# something else owns, instead of the one this rig brings up.
+#
+# The case it exists for is testing enchantee_racing and event_recorder together.
+# They need to see one topic space: the replay publishes gps/* (gps/position/0
+# included) which drives both the race engine and event_recorder's triggers, and
+# the app publishes race/event, which is what event_recorder records to log a
+# race. Two brokers on two ports cannot do that.
+#
+# event_recorder's test stack owns the broker in this arrangement, because it
+# already publishes one on the host's 1883, which is the port everything
+# defaults to, and because it is the stack holding the database and WordPress
+# that a combined session wants left running.
+#
+#   # 1. the event_recorder stack, which brings up the broker on host 1883
+#   cd python/event_recorder/test_event_recorder && docker compose up -d
+#
+#   # 2. the racing app against that same broker, and nothing else from this rig
+#   cd python/enchantee_racing
+#   REPLAY_APP_PORT=5003 SHARED_MQTT_PORT=1883 docker compose \
+#     -f tests/replay/docker-compose.yml \
+#     -f tests/replay/docker-compose.shared.yml \
+#     --profile app up -d racing
+#
+#   # on Windows, with the overlay that file exists for, and THIS FILE LAST:
+#   $env:REPLAY_APP_PORT=5003; $env:SHARED_MQTT_PORT=1883
+#   docker compose -f tests/replay/docker-compose.yml `
+#                  -f tests/replay/docker-compose.windows.yml `
+#                  -f tests/replay/docker-compose.shared.yml `
+#                  --profile app up -d racing
+#
+#   # 3. feed it, into the shared broker rather than this rig's own
+#   python tests/replay/replay.py tests/data/<recording>.TXT -p 1883
+#
+# The order of -f matters and this file has to be last. The Windows overlay sets
+# MQTT_PORT from REPLAY_MQTT_PORT, which is this rig's own broker; layered after
+# it, SHARED_MQTT_PORT wins. MQTT_IP is deliberately not set here, so it stays
+# whatever the platform needs: host.docker.internal under the Windows overlay,
+# localhost under the base file's host networking. Both reach a broker published
+# on the host, which is what event_recorder's stack does with its own.
+#
+# Naming `racing` on that command line is what keeps this rig's own mosquitto out
+# of it, together with the depends_on override below. Without both, compose
+# starts the broker as a dependency and it fails to bind a host port
+# event_recorder's broker already holds.
+#
+# Standalone use of either stack is unchanged. This file is never loaded unless
+# it is named, docker-compose.yml is untouched, and the app still defaults to
+# this rig's own broker.
+#
+# One consequence to expect rather than debug: on a shared broker the replayed
+# gps/* really does reach event_recorder, so its track_recording trigger fires
+# and it opens a recording in the test database. That is the point here, but it
+# is also why the note at the top of docker-compose.yml warns against sharing a
+# broker when replaying is all you want to do.
+
+services:
+  racing:
+    # Cleared so `up -d racing` does not pull this rig's broker in with it.
+    #
+    # `!reset` and not `depends_on: []`: an override merges into the base rather
+    # than replacing it, so the empty list left mosquitto a required dependency
+    # and compose tried to bind a host port event_recorder's broker already had.
+    # Checked with `docker compose config`, which is the only way to be sure what
+    # a layered file actually resolves to.
+    depends_on: !reset null
+    environment:
+      # The shared broker's port on the host. Separate from REPLAY_MQTT_PORT so
+      # that variable keeps meaning "the port this rig publishes its own broker
+      # on" and nothing has to be unset to go back to standalone.
+      MQTT_PORT: ${SHARED_MQTT_PORT:-1883}

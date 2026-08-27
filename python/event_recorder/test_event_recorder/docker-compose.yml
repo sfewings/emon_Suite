@@ -59,6 +59,26 @@ services:
   event_recorder:
     image: sfewings32/emon_event_recorder:latest
     container_name: test_event_recorder
+    # Overrides the image's own CMD, which has --debug --wait-for-debugger baked
+    # in. Those are command-line flags, so they win over DEBUG and
+    # WAIT_FOR_DEBUGGER in .env: the app called debugpy.wait_for_client() and
+    # never started Flask, so localhost:5001 refused every connection while the
+    # container sat there "Up". The bind mount below replaces the Python source
+    # but not the CMD, so this could not be fixed by editing the source.
+    #
+    # With the flags gone, .env is authoritative: DEBUG=1 makes debugpy listen on
+    # 5678 so VSCode can attach whenever, and WAIT_FOR_DEBUGGER=1 is what makes
+    # startup wait for it.
+    command:
+      - python
+      - -m
+      - event_recorder.main
+      - --config
+      - /config/event_recorder_config.yml
+      - --events-dir
+      - /config/events
+      - --data-dir
+      - /data
     ports:
       - "5001:5000"
       - "5678:5678"  # debugpy remote debugging
