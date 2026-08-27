@@ -18,6 +18,29 @@ recording:
   max_recording_duration: 86400          # Maximum recording duration (24 hours)
   auto_publish: false                    # Auto-publish to WordPress after recording
 
+# Offline basemap for GPS route maps
+#
+# This Pi has no internet on the water, so folium's OpenStreetMap tiles are
+# unreachable exactly when a recording is processed. enchantee_racing carries a
+# vector chart of the sailing area and serves it at /api/config/<name>; those
+# documents are fetched, cached under cache_dir, and drawn under the route map,
+# which is then coloured by speed over ground.
+#
+# localhost:5002 because both this container and enchantee_racing run with
+# network_mode: host in docker-compose.yml, so the racing app's SERVICE_PORT is
+# reachable directly. Not the /race/ nginx prefix: that fronts the same app and
+# the API is served at the root of its own port.
+#
+# Everything degrades and nothing here can stop a recording being processed. If
+# enchantee_racing is down the cache is used; with no cache the route map falls
+# back to plain latitude/longitude axes; and a track sailed outside the charted
+# area uses plain axes too, so an ocean passage is still plotted.
+charts:
+  enabled: true
+  base_url: "http://localhost:5002"      # enchantee_racing on this Pi
+  cache_dir: ""                          # empty puts it beside plots_dir: /data/charts
+  timeout: 5                             # per-request timeout (seconds)
+
 # Plot generation defaults
 plots:
   dpi: 150                               # Image resolution
