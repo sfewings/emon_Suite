@@ -73,6 +73,17 @@
       -->
       <g id="layer-structures"></g>
       <g id="layer-navaids"></g>
+      <!--
+        The aid names, in their own layer directly above the dots they belong to and below
+        everything else. Their own layer because they are sized per view the way the mark
+        labels are, by one font-size and one stroke-width written to the group rather than
+        to each label, and because being the lowest priority on the chart they must paint
+        under the marks and the course rather than over them.
+
+        Empty in the markup and mostly empty at runtime: a name is only made when the zoom
+        first makes it eligible, which for most of the 680 aids is never (DESIGN 12.5).
+      -->
+      <g id="layer-navaid-labels"></g>
       <g id="layer-lines"></g>
       <g id="layer-marks"></g>
       <!--

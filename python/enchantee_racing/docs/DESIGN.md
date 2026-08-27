@@ -2276,6 +2276,74 @@ merely written: the test now requires it to name AHD, to say "not chart datum", 
 which direction the error runs, and to not contain the old wording. Naming a datum without
 saying what it costs leaves the crew to work it out, which is not a caveat.
 
+### 12.5 Naming what is on the chart, and when there is a course to draw
+
+Three faults reported together off the boat, and they share a shape: each is a question
+the page was answering with the wrong fact.
+
+**A course id is not a selected course.** The map drew the legs of the last race
+indefinitely, on an idle screen with nothing selected. `race.reset` keeps the course id on
+purpose, `initial()._replace(course_id=state.course_id)`, so the race screen can offer that
+course again, and a finished race keeps it for the same reason. So the id outlives the
+selection by design, and a map that asked "is there a course id" got yes forever.
+
+The question is about the mode. A course belongs on the chart while it is being sailed and
+while it is chosen and waiting for the gun; not before one is picked, and not once the race
+is over. Three other places asked the same wrong question and are fixed with it: the label
+priority reserved for the mark being sailed to, which would otherwise have gone to leg 0 of
+a course nobody selected; the innermost zoom extent, which would have named "Race course"
+and fitted a course it no longer drew; and the refit itself.
+
+The refit is deliberately one-way. A course appearing is worth following, and it is also
+how the map behaves when it is opened mid-race, since the first poll is what says there is
+a course at all. A course going away is not a request to move the chart, and yanking the
+view from under a crew looking at where they just finished would be the same fault as
+refitting under a hand that has just panned.
+
+**With no course, the page is a chart, and a chart names what is on it.** During a race the
+twenty course marks are the subject and the other hundred and eleven are clutter, which is
+why context marks stay gated until the view is close. With no course there is nothing to
+clutter, so every mark becomes eligible wherever labels are on at all, and the aid register
+joins them once the view is close enough for its names to mean anything.
+
+Which of them are *drawn* is still collision's business. That is what "zoomed in enough"
+amounts to on this page and it is the mechanism 12.1 step 6 already describes: a threshold
+decides who may be named and thinning decides who is, so a threshold should be generous
+enough to let the sparse cases through. Measured over the real config at 375 px wide,
+centred on Frostbite 3: at the race-course extent 12 names while racing and 22 with no
+course, and at the river extent 13 and 29.
+
+The aid threshold is set against spacing rather than feel. In the working river 82 aids sit
+at a median nearest-neighbour spacing of 148 m and an upper quartile of 407 m, and a
+typical shortened aid name spans about 138 m on the ground at 1 m/px. At the 2 m/px it is
+set to, a name no longer fits the median gap, so aids packed along a channel lose their
+names to each other, while the sparse quarter that stands more than 400 m clear still gets
+one. Set at the strictly correct 1 m/px it showed almost nothing, a 375 m view being
+narrower than anyone sails with.
+
+Aid names are shortened. The register's are administrative and long, a median of 41
+characters, of the form "Upper Reaches - Lit Mark 9 - Goongoongup Bridge-South 2"; the
+leading components are the region, which is the one thing a chart already shows by where
+the dot is, so the tail identifies the aid and takes the median to 22. Then a cap at 18,
+because thinning is not a sufficient answer on its own: an unusually long name does not
+merely lose its own place, it takes room several shorter ones could have shared, and
+nothing in a collision test prefers three short names to one long one. Their text nodes are
+made on demand, since 680 of them created at load, for a set where a couple of dozen are
+ever eligible at once, is not a thing to ask of the iPad.
+
+**A pan changes where a label can go.** Labels did not appear until something forced a
+redraw: pan a mark into view and it stayed nameless. `setView` skipped `applyScale` on a
+pure pan, which was right for what that function does, 131 circle radii and a font size
+that genuinely do not change when the scale does not. But label layout is not a matter of
+scale. Every placement is tested against the view's own bounds, both for collisions and to
+keep names off the edge of the screen, so a pan changes the answer for every label on the
+page. The fix is to separate the two: resize on a change of scale, lay out on either.
+
+That put the layout on every pan frame, with up to 811 candidates rather than 131, so
+symbols outside the view are now rejected by four comparisons before any placement
+arithmetic. They could never have been placed anyway, every placement being inside the
+view, so the cull costs nothing and is what makes the rest affordable.
+
 ## 13. Build order
 
 1. `engine/nav.py` with unit tests, using the MGA94 grid columns as fixtures.

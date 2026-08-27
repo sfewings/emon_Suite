@@ -117,6 +117,9 @@ body.night {
   --nodata:       #0a0403;
   --boat:         #ff7a68;
   --map-label:    #ff8f7a;
+  /* The aid names, a step down from a mark's. Enough contrast to read against the water,
+     not enough to compete with the marks when both are on the screen. */
+  --aid-label:    #c96b5c;
   /* Bright enough to see. Land and the darkest band are both nearly black at night, so
      without a visible coastline the two are indistinguishable exactly where there is no
      depth band to imply the shore: Perth Water, Matilda Bay, the Canning entrance. The
@@ -176,6 +179,9 @@ body {
      Dark navy reads against all three depth bands, against the land, and against the
      no-data grey, which is every background a label can land on. */
   --map-label: #10334d;
+  /* As at night: a step down from the mark labels, and dark enough to hold against every
+     background a label can land on. */
+  --aid-label: #4a6274;
   /* Own ship. Its own colour rather than borrowing one, because it is the thing the crew
      looks for first and it must not be confused with a leg, a mark or the start line. A
      strong green: pale green vanished against the >4 m band, which is most of the water. */
@@ -854,6 +860,17 @@ body.night #chart .mark-label { fill: var(--map-label); }
 /* Hidden by layoutLabels when a label will not fit, rather than removed: the node stays
    and costs nothing, and the next view change may well find room for it again. */
 #chart .mark-label[hidden] { display: none; }
+
+/* The aid names. Dimmer than a mark's and a size down, set as an attribute on the layer
+   by map.js for the same reasons the mark labels are, so there is no font-size or
+   stroke-width here either. They are the chart's background detail: a crew reading them is
+   working out where they are, not sailing a leg, and when both sets are on the screen the
+   marks have to be the ones that stand out. */
+#chart .aid-label {
+  fill: var(--aid-label); font-weight: 500;
+  paint-order: stroke; stroke: var(--mark-halo);
+}
+#chart .aid-label[hidden] { display: none; }
 
 /* The scope label sits in the controls row with the two buttons, and takes what room is
    left rather than a share of it: the buttons are what a hand reaches for. */

@@ -93,13 +93,19 @@ def test_the_layers_are_in_the_order_design_12_states():
     """
     page = _page()
     wanted = ["layer-bands", "layer-contours", "layer-land",
-              "layer-structures", "layer-navaids",
+              "layer-structures", "layer-navaids", "layer-navaid-labels",
               "layer-lines", "layer-marks", "layer-course", "layer-boat"]
     found = re.findall(r'<g id="(layer-[\w-]+)"', page)
     assert found == wanted, found
     # The course and the boat are last because they are the only things that move and the
     # only ones the crew is looking for once the gun has gone. The boat is above the
     # course: own ship is never hidden by a leg line.
+    #
+    # The aid names go directly above the dots they belong to and below everything else,
+    # which is what being the lowest priority on the chart means: a mark, a leg or the boat
+    # paints over an aid name rather than the other way about.
+    assert found.index("layer-navaid-labels") == found.index("layer-navaids") + 1
+    assert found.index("layer-navaid-labels") < found.index("layer-marks")
 
 
 def test_the_page_references_nothing_off_box_and_nothing_absolutely():
@@ -477,8 +483,12 @@ def test_the_default_view_is_the_course_and_falls_back_to_a_race_sized_region():
     js = _map_js()
     assert "showLevel(0)" in js, "the map does not open on the fitted level"
     assert "function boatRegion" in js, "no fallback when no course is selected"
-    assert "courseExtentNow || boatRegion()" in js, \
+    # The fallback is taken whenever no course is *shown*, which is a different question
+    # from whether a course id exists: race.reset keeps the id, so an idle race still names
+    # one. See test_the_legs_are_drawn_only_while_a_course_is_selected_or_running.
+    assert "showingCourse && courseExtentNow" in js, \
         "the inner extent does not fall back to the boat"
+    assert "boatRegion()" in _function(_map_code(), "innerExtent")
     assert "function fetchCourse" in js
     fetch_course = _function(_map_code(), "fetchCourse")
     assert "return null" in fetch_course
@@ -1363,6 +1373,209 @@ def test_two_fingers_pan_as_well_as_pinch():
     assert "scheduleView(" in pan, "single-finger pan is no longer coalesced to a frame"
     assert "setView(" in zoom and "scheduleView(" not in zoom, \
         "the pinch has to apply at once: it reads the CTM back between the two writes"
+
+
+def test_the_legs_are_drawn_only_while_a_course_is_selected_or_running():
+    """Reported from the boat: the map showed the last race when none was selected.
+
+    The cause is that a course id outlives the selection on purpose. race.reset is
+    `initial()._replace(course_id=state.course_id)`, so that the race screen can offer the
+    course again, and finished keeps it for the same reason. A map that asked "is there a
+    course id" therefore drew the legs of a race nobody had chosen, indefinitely.
+
+    The question it has to ask is about the mode. A course is on the chart while it is
+    being sailed and while it is chosen and waiting for the gun; not before one is picked
+    and not after the race is over.
+    """
+    code = _map_code()
+
+    # The modes it draws for, and only those.
+    modes = re.search(r"var COURSE_MODES = \{([^}]*)\}", code)
+    assert modes, "nothing says which modes put a course on the chart"
+    named = set(re.findall(r"(\w+)\s*:", modes.group(1)))
+    assert named == {"prestart", "racing"}, named
+
+    # And the drawing asks, rather than trusting the id.
+    draw = _function(code, "drawCourse")
+    assert "courseShownIn(state)" in draw, "drawCourse still gates on the course id alone"
+
+    # The engine really does keep the id across a reset, which is the whole reason this is
+    # needed. Asserted against the engine rather than described, so that a change of heart
+    # there fails here rather than quietly putting the legs back.
+    from engine import course as course_module
+    from engine import race as race_module
+
+    chosen = [c for c in CONFIG["courses"]["courses"] if c["id"] == "frostbite-3"][0]
+    context = race_module.Context(course=chosen,
+                                  marks=course_module.index_marks(CONFIG["marks"]),
+                                  lines=CONFIG["lines"],
+                                  config=race_module.Config.from_document(CONFIG["race"]))
+    state = race_module.initial()._replace(course_id="frostbite-3", mode=race_module.RACING)
+    after, _events = race_module.reset(state, context, 1_755_500_000.0)
+    assert after.mode == race_module.IDLE
+    assert after.course_id == "frostbite-3", \
+        "reset no longer keeps the course id, so the map's guard may be unnecessary"
+
+
+def test_nothing_a_course_leaves_behind_outranks_a_label_or_moves_the_view():
+    """The same fault, in the two other places that ask about the course.
+
+    A stale id would have handed the label priority reserved for the mark being sailed to
+    to leg 0 of a course nobody selected, and would have kept the zoom button naming an
+    extent it no longer drew.
+    """
+    code = _map_code()
+    target = _function(code, "targetMarkId")
+    assert "showingCourse" in target, "the target mark ignores whether a course is shown"
+    inner = _function(code, "innerExtent")
+    assert "showingCourse" in inner, "the inner extent ignores whether a course is shown"
+
+
+def test_a_course_appearing_refits_the_view_and_one_going_away_does_not():
+    """Asymmetric on purpose, and both halves have been got wrong before.
+
+    A course appearing is something that just happened and is worth following, and it is
+    also how the map behaves when it is opened mid-race: the first poll is what says there
+    is a course at all, so without this the page settles on the boat region and stays
+    there. A course going away is not a request to move the chart, and yanking the view
+    from under a crew looking at where they just finished is the same fault as refitting
+    under a hand that has just panned.
+    """
+    on_state = _function(_map_code(), "onState")
+    assert "showing !== showingCourse" in on_state, "a change of mode is not noticed"
+    assert re.search(r"if \(showing && level === 0 && !moved\) showLevel\(0\)", on_state), \
+        "either it never refits, or it refits when the course goes away too"
+
+
+def test_a_pan_lays_the_labels_out_again_without_resizing_anything():
+    """Reported from the boat: a mark panned into view kept no name until something else
+    forced a redraw.
+
+    Where a label can go, and whether it fits on the screen at all, is decided against the
+    view's own bounds, so a pan changes the answer for every one of them. The resize is a
+    different question and genuinely does not change on a pan, which is why it was skipped
+    in the first place; the fault was skipping both together.
+    """
+    set_view = _function(_map_code(), "setView")
+    assert "previous.w !== view.w" in set_view, \
+        "applyScale runs on every pan, which is what made the iPad slow"
+    assert "else layoutLabels(" in set_view, \
+        "a pan does not lay the labels out again, so a mark panned into view has no name"
+
+
+def test_with_no_course_every_mark_and_the_aid_register_can_be_named():
+    """The chart names what is on it once it is not showing a race.
+
+    During a race the course marks are what matter and the other hundred and eleven are
+    clutter, so they stay gated until the view is close. With no course there is nothing to
+    clutter: the page is a chart, and a chart names its marks and its aids. Which of them
+    are actually drawn is still collision's business, and that is what "zoomed in enough"
+    means here.
+    """
+    code = _map_code()
+    layout = _function(code, "layoutLabels")
+
+    assert "!showingCourse || mpp <= LABEL_CONTEXT_MPP" in layout, \
+        "context marks are not eligible with no course on the chart"
+    assert "showAids" in layout and "LABEL_AID_MPP" in code, \
+        "the aid register can never be named"
+    assert "!showingCourse" in layout, "aids are named while a race is being sailed"
+
+    # The register is last in priority, so it can never take a name from a mark.
+    rank = _function(code, "rank")
+    assert "sym.aid" in rank and "return 3" in rank
+
+    # And the threshold is a measured one, bounded at both ends. 82 aids sit in the working
+    # river at a median nearest-neighbour spacing of 148 m and an upper quartile of 407 m,
+    # and a typical shortened name spans about 138 m on the ground at 1 m/px. Past 3 m/px
+    # even the sparse quarter cannot fit a name and the register would only ever be
+    # thinned back to nothing; below 1 m/px the crew never sees it, a 375 m view being
+    # narrower than they sail with.
+    aid_mpp = re.search(r"var LABEL_AID_MPP = ([\d.]+)", code)
+    assert aid_mpp, "no threshold for the aid names"
+    assert 1.0 <= float(aid_mpp.group(1)) <= 3.0, \
+        "aid names are eligible at a zoom where they cannot fit, or at none the crew uses"
+
+    # Tighter than the dots themselves, which are already hidden past NAVAID_MAX_MPP: a
+    # name for a dot that is not drawn would be a label pointing at nothing.
+    navaid_mpp = re.search(r"var NAVAID_MAX_MPP = ([\d.]+)", code)
+    assert float(aid_mpp.group(1)) < float(navaid_mpp.group(1))
+
+
+def test_an_aid_name_is_shortened_and_made_only_when_it_is_needed():
+    """680 names, a median of 41 characters, of the form
+    "Upper Reaches - Lit Mark 9 - Goongoongup Bridge-South 2".
+
+    The leading components are the region, which is the one thing a chart already shows by
+    where the dot is, so the tail is what identifies the aid. Then a cap, because an
+    unusually long name does not merely lose its own place in the thinning, it takes room
+    several shorter ones could have shared.
+
+    And the node is made on demand: 680 text nodes created at load, for a set where a
+    couple of dozen are ever eligible at once, is not something to ask of the iPad.
+    """
+    code = _map_code()
+    assert "function shortAidName" in code
+    short = _function(code, "shortAidName")
+    assert '" - "' in short, "the region prefix is not dropped"
+    assert "AID_LABEL_MAX_CHARS" in short, "a long name is not capped"
+
+    ensure = _function(code, "ensureLabel")
+    assert "if (sym.label) return sym.label" in ensure, "the node is remade every time"
+    layout = _function(code, "layoutLabels")
+    assert "if (sym.aid) ensureLabel(sym)" in layout
+
+    draw = _function(code, "drawNavaids")
+    assert "aids.push" in draw
+    assert "add(el.navaidLabels" not in draw, \
+        "the names are made at load after all, which is what lazily was meant to avoid"
+
+    # The shortening, run over the real register: every label short enough to sit beside a
+    # dot, and none of them empty.
+    navaids = json.loads((ROOT / "config" / "navaids.json").read_text(encoding="utf-8"))
+    cap = int(re.search(r"var AID_LABEL_MAX_CHARS = (\d+)", code).group(1))
+    for feature in navaids["features"]:
+        if feature["properties"].get("dup_mark"):
+            continue
+        name = feature["properties"]["name"]
+        tail = name.split(" - ")[-1].strip() or name.strip()
+        shown = tail if len(tail) <= cap else tail[:cap - 1] + "…"
+        assert 0 < len(shown) <= cap, (name, shown)
+
+
+def test_the_labels_off_the_screen_are_rejected_before_any_arithmetic():
+    """What keeps the layout affordable now that it runs on every pan frame and has up to
+    811 candidates rather than 131. Every placement is inside the view anyway, so a symbol
+    outside it could never have been given one."""
+    layout = _function(_map_code(), "layoutLabels")
+    cull = re.search(r"if \(sym\.x < bounds\.left \|\| sym\.x > bounds\.right \|\|\s*"
+                     r"sym\.y < bounds\.top \|\| sym\.y > bounds\.bottom\)", layout)
+    assert cull, "off-screen symbols are put through the placement loop"
+    # before the placement options are built, or it saves nothing
+    assert layout.index("bounds.bottom)") < layout.index("var options")
+
+
+def test_the_aid_names_are_a_size_down_and_their_own_colour():
+    """Both sets on the screen at once, and the marks have to be the ones that stand out:
+    a crew reading aid names is working out where they are, not sailing a leg."""
+    code = _map_code()
+    assert re.search(r"aidLabel:\s*\d", code), "aid names are not sized separately"
+    scale = _function(code, "applyScale")
+    assert "SYMBOL_PX.aidLabel" in scale, "the aid layer is never given a font size"
+
+    layout = _function(code, "layoutLabels")
+    assert "sym.aid ? aidFontH : markFontH" in layout, \
+        "aid boxes are measured at the mark font size, so the layout reserves room the "\
+        "glyphs do not use"
+
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    assert "--aid-label" in css
+    # In both themes, or one of them falls back to nothing.
+    night = css.index("body.night")
+    assert "--aid-label" in css[:night] or "--aid-label" in css[night:]
+    assert css.count("--aid-label:") == 2, "the aid label colour is not set in both themes"
+    assert re.search(r"#chart \.aid-label\[hidden\] \{ display: none; \}", css), \
+        "a thinned aid name still takes up the screen"
 
 
 if __name__ == "__main__":

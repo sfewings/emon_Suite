@@ -32,6 +32,7 @@
     land: document.getElementById("layer-land"),
     structures: document.getElementById("layer-structures"),
     navaids: document.getElementById("layer-navaids"),
+    navaidLabels: document.getElementById("layer-navaid-labels"),
     lines: document.getElementById("layer-lines"),
     marks: document.getElementById("layer-marks"),
     course: document.getElementById("layer-course"),
@@ -67,7 +68,11 @@
   // The alternative was to leave them in metres, which is what the first draft did: at the
   // racing extent a 25 m radius came out at 1.7 px and the marks were invisible specks.
   var symbols = [];          // {circle, label, usedInCourses}
-  var SYMBOL_PX = { used: 4.5, context: 2.5, label: 11, labelGap: 6 };
+  // The aid dots have no symbol to resize, only a possible name. Kept apart from symbols
+  // so that the per-view resize loop stays 131 circles and never learns to skip 680 things
+  // that have none.
+  var aids = [];             // {x, y, label, name, chars}
+  var SYMBOL_PX = { used: 4.5, context: 2.5, label: 11, aidLabel: 9, labelGap: 6 };
 
   // --- the view ----------------------------------------------------------------------
   //
@@ -227,12 +232,20 @@
     el.chart.setAttribute("viewBox",
       view.x.toFixed(1) + " " + view.y.toFixed(1) + " " +
       view.w.toFixed(1) + " " + view.h.toFixed(1));
-    // Only when the scale actually changed. applyScale writes an attribute to all 131
-    // circles and 20 labels, and a pan does not change the scale at all, so doing it on
+    // Resizing only when the scale actually changed. applyScale writes an attribute to all
+    // 131 circles and 20 labels, and a pan does not change the scale at all, so doing it on
     // every touchmove was 151 pointless attribute writes per event. Reported from the
     // boat as pan and pinch being slower on the iPad than the iPhone, which is the
     // machine that would notice.
+    //
+    // Laying the labels out, though, is not a matter of scale. Where a name can go, and
+    // whether it fits on the screen at all, is decided against the view's own bounds, so a
+    // pan changes the answer for every one of them. Skipping it on a pan meant a mark
+    // dragged into view kept the hidden it was given while it was outside, until some
+    // later zoom or poll happened to call applyScale: reported as labels not appearing
+    // until the map was forced to redraw, and it was this line.
     if (!previous || previous.w !== view.w) applyScale();
+    else layoutLabels(targetMarkId());
   }
 
   // Gesture updates are coalesced to one per frame. iOS delivers touchmove faster than it
@@ -273,8 +286,11 @@
   // sailed if there is one, else a race-sized region around the boat, recomputed each time
   // it is asked for so it is centred on where the boat is now rather than where it was at
   // load.
+  //
+  // "If there is one" is the same question drawCourse asks, and has to be, or the button
+  // would say "Race course" and fit the extent of a course that is not drawn.
   function innerExtent() {
-    return courseExtentNow || boatRegion();
+    return (showingCourse && courseExtentNow) ? courseExtentNow : boatRegion();
   }
 
   function showLevel(i) {
@@ -475,6 +491,28 @@
   // that is never dropped.
   var LABEL_MAX_MPP = 50;       // beyond this nothing is labelled: the coast extent
   var LABEL_CONTEXT_MPP = 1.0;  // below this the 111 context marks are eligible too
+
+  // With no course on the chart the page stops being a race display and becomes a chart,
+  // and a chart names what is on it. So every mark is eligible wherever labels are on at
+  // all, and the aid register joins them once the view is close enough for its names to
+  // mean anything. Which of them are actually drawn is still collision's business, and
+  // that is what "sufficiently zoomed in" amounts to here: at the river extent a handful
+  // fit and the rest are thinned, and zooming in is what makes room for more.
+  //
+  // The aid threshold is measured, not felt, and the measurement is of spacing against
+  // label width. In the working river 82 aids sit at a median nearest-neighbour spacing of
+  // 148 m, an upper-quartile spacing of 407 m, and a typical shortened aid name spans
+  // about 138 m on the ground at one metre per pixel.
+  //
+  // So at 2 m/px a name spans 275 m: it no longer fits the median gap, and the aids packed
+  // along a channel lose their names to each other, but the quarter of the register that
+  // stands more than 400 m from its neighbour still gets one. That is the right trade for
+  // this page, and it is the same argument the block above makes for the marks: a
+  // threshold decides who may be named, and collision decides who is, so the threshold
+  // should be generous enough to let the sparse cases through and let thinning deal with
+  // the crowded ones. Set at 1 m/px it was strictly correct and showed the crew almost
+  // nothing, since a 375 m view is narrower than they ever sail with.
+  var LABEL_AID_MPP = 2.0;
   // Estimated label width: characters, plus the halo, plus a little air.
   //
   // Measured rather than guessed, and the first guess was wrong. 0.58 of the font size per
@@ -497,27 +535,45 @@
     var mpp = metresPerPixel();
     if (!isFinite(mpp) || mpp <= 0 || !view) return;
 
-    var showContext = mpp <= LABEL_CONTEXT_MPP;
     var showAny = mpp <= LABEL_MAX_MPP;
+    // Every mark once the chart is not showing a race, otherwise only the course's until
+    // the view is close enough for the other hundred and eleven to be readable.
+    var showContext = !showingCourse || mpp <= LABEL_CONTEXT_MPP;
+    var showAids = showAny && !showingCourse && mpp <= LABEL_AID_MPP;
 
     // Priority order, and a stable one: the target, then the course, then the rest. Array
     // order is the tie-break, which is marks.json order, so the same marks win the same
     // collisions every time and labels do not flicker between two poll ticks.
     var order = symbols.slice();
+    if (showAids) order = order.concat(aids);
     order.sort(function (a, b) {
       return rank(a, targetId) - rank(b, targetId);
     });
 
     var gap = (SYMBOL_PX.used + SYMBOL_PX.labelGap) * mpp;
-    var fontH = SYMBOL_PX.label * mpp;
+    var markFontH = SYMBOL_PX.label * mpp;
+    var aidFontH = SYMBOL_PX.aidLabel * mpp;
     var placed = [];
     var bounds = { left: view.x, right: view.x + view.w,
                    top: view.y, bottom: view.y + view.h };
 
     for (var i = 0; i < order.length; i++) {
       var sym = order[i];
-      var eligible = showAny && (sym.used || showContext);
+      var eligible = sym.aid ? showAids : (showAny && (sym.used || showContext));
       if (!eligible) { hide(sym.label); continue; }
+
+      // Off the screen, cheaply, before any placement arithmetic. Four comparisons against
+      // the view rejects most of the register at the zooms where the register is eligible,
+      // which is what keeps this affordable now that it runs on every pan frame and has up
+      // to 811 candidates rather than 131. Every placement is inside the view anyway, so
+      // a symbol outside it could never have been given one.
+      if (sym.x < bounds.left || sym.x > bounds.right ||
+          sym.y < bounds.top || sym.y > bounds.bottom) { hide(sym.label); continue; }
+
+      if (sym.aid) ensureLabel(sym);
+      // Aid names are set a size down, so their boxes have to be measured at that size or
+      // the layout reserves room the glyphs do not use.
+      var fontH = sym.aid ? aidFontH : markFontH;
 
       // The label's width is estimated from its character count rather than measured with
       // getBBox. Measuring 131 text nodes would force a layout on every view change, and
@@ -566,6 +622,7 @@
 
   function rank(sym, targetId) {
     if (targetId && sym.id === targetId) return 0;
+    if (sym.aid) return 3;     // the register is the last thing to get a name
     return sym.used ? 1 : 2;
   }
 
@@ -574,10 +631,12 @@
   }
 
   // The mark the race is steering to, so its label is the one that never loses a
-  // collision. Null before the gun and after the finish, which is correct: there is no
-  // mark being sailed to then.
+  // collision. Null when no course is on the chart, which is correct: there is no mark
+  // being sailed to then, and without this an idle race whose course id had outlived it
+  // would hand top priority to leg 0 of a course nobody had selected.
   function targetMarkId() {
-    if (!lastState || !lastState.race || !courseNow || !courseNow.legs) return null;
+    if (!showingCourse || !lastState || !lastState.race) return null;
+    if (!courseNow || !courseNow.legs) return null;
     var leg = courseNow.legs[lastState.race.leg];
     return leg ? leg.mark : null;
   }
@@ -586,6 +645,14 @@
     var mpp = metresPerPixel();
     if (!isFinite(mpp) || mpp <= 0) return;
     el.marks.setAttribute("font-size", (SYMBOL_PX.label * mpp).toFixed(2));
+    // The aid names, on their own layer and a size down: they are the chart's background
+    // detail, not its subject, and the two sets have to be told apart at a glance when
+    // both are on the screen. Sized here for the same reason the marks are, and by one
+    // write to the group rather than one per label.
+    if (el.navaidLabels) {
+      el.navaidLabels.setAttribute("font-size", (SYMBOL_PX.aidLabel * mpp).toFixed(2));
+      el.navaidLabels.setAttribute("stroke-width", (LABEL_HALO_PX * mpp).toFixed(2));
+    }
     // The halo, in user units, for the same reason as the font size: a stroke-width given
     // in CSS px inside an svg is user units, so a fixed one is a halo of fixed size on the
     // ground that grows on screen as you zoom in until it swallows the glyphs. Inherited
@@ -703,7 +770,48 @@
         x2: xy[0].toFixed(1), y2: xy[1].toFixed(1),
         class: "navaid navaid-" + f.properties.kind + (f.properties.lit ? " navaid-lit" : "")
       });
+      // A candidate for a name, but not a name yet. The text node is made the first time
+      // the zoom makes it eligible, which for most of these is never: see ensureLabel.
+      var name = shortAidName(f.properties.name);
+      aids.push({
+        x: xy[0], y: xy[1], label: null, name: name, chars: name.length,
+        used: false, aid: true, id: null
+      });
     });
+  }
+
+  // What an aid is called, shortened to something that fits beside a dot.
+  //
+  // The register's names are administrative and long: a median of 41 characters and a
+  // maximum of 68, of the form "Upper Reaches - Lit Mark 9 - Goongoongup Bridge-South 2".
+  // The leading components are the region, which on a chart is the one thing already
+  // obvious from where the dot is, so the tail after the last separator is the part that
+  // identifies the aid. That takes the median to 22.
+  //
+  // Then a cap, because collision thinning is not a good enough answer on its own: an
+  // unusually long name does not merely lose its own place, it takes room four candidates
+  // could have shared, and the thinning has no way to prefer three short names over one
+  // long one. Truncating is the lesser fault, and 18 characters is where the median aid
+  // label stops being wider than the median gap between aids (DESIGN 12.5).
+  var AID_LABEL_MAX_CHARS = 18;
+
+  function shortAidName(name) {
+    var parts = String(name || "").split(" - ");
+    var tail = parts[parts.length - 1].trim();
+    if (!tail) tail = String(name || "").trim();
+    if (tail.length <= AID_LABEL_MAX_CHARS) return tail;
+    return tail.slice(0, AID_LABEL_MAX_CHARS - 1) + "…";
+  }
+
+  // The text node for an aid, made on demand. 680 of them created at load would be 680
+  // nodes the iPad has to keep and style, for a set where a couple of dozen are ever
+  // eligible at once; made lazily, most are never made at all.
+  function ensureLabel(sym) {
+    if (sym.label) return sym.label;
+    sym.label = add(el.navaidLabels, "text",
+                    { x: sym.x.toFixed(1), y: sym.y.toFixed(1), class: "aid-label" });
+    sym.label.textContent = sym.name;
+    return sym.label;
   }
 
   function segment(parent, a, b, cls) {
@@ -781,6 +889,25 @@
   var boatShape = null;        // {hull, vector}
   var lastState = null;        // the last /api/state, so a zoom can redraw the overlay
 
+  // Whether the legs belong on the chart at all, which is a question about the *mode* and
+  // not about whether a course id exists.
+  //
+  // The two come apart, and that was the bug. race.reset() keeps the course id
+  // deliberately, `initial()._replace(course_id=state.course_id)`, so that the race screen
+  // can offer the course again; so after a reset the mode is idle while /api/state still
+  // names a course, and a map that gated on the id alone went on drawing the legs of a
+  // race nobody had selected. Finished does the same for the same reason.
+  //
+  // A course is on the chart while it is being sailed, and while it is chosen and waiting
+  // for the gun. Not once the race is over and not before one is picked (DESIGN 12.5).
+  var COURSE_MODES = { prestart: true, racing: true };
+  var showingCourse = false;
+
+  function courseShownIn(state) {
+    var mode = state && state.race ? state.race.mode : null;
+    return !!(mode && COURSE_MODES[mode]);
+  }
+
   function clear(node) {
     while (node.firstChild) node.removeChild(node.firstChild);
   }
@@ -792,6 +919,9 @@
   function drawCourse(state) {
     clear(el.course);
     if (!courseNow || !courseNow.legs || !linesNow) return;
+    // Nothing while the race is idle or finished, whatever course id the payload still
+    // carries. See COURSE_MODES for why the id outlives the selection.
+    if (!courseShownIn(state)) return;
 
     var startMid = midOfLine(linesNow);
     var previous = startMid;
@@ -1013,6 +1143,25 @@
   function onState(state) {
     var id = state && state.race ? state.race.course : null;
     var have = courseNow ? courseNow.id : null;
+
+    // Whether the legs are drawn can change without the course id changing at all: the gun
+    // goes, or the race is reset or finished and the id stays behind. Both change what is
+    // on the chart and which names are eligible, so both have to be noticed.
+    //
+    // Refitting is deliberately one-way. A course appearing is something that just
+    // happened and is worth following, and it is also how the map behaves when it is
+    // opened during a race: the first poll is what says there is a course, so without this
+    // the page would settle on the boat region and stay there. A course going away is not
+    // a request to move the chart, and yanking the view out from under a crew looking at
+    // where they just finished would be the same fault as refitting under a hand that has
+    // just panned. Both respect level 0 and moved, as everything here does.
+    var showing = courseShownIn(state);
+    if (showing !== showingCourse) {
+      showingCourse = showing;
+      if (showing && level === 0 && !moved) showLevel(0);
+      layoutLabels(targetMarkId());
+    }
+
     if (id !== have) {
       // The crew has chosen a different course, or abandoned one. Refetch it and refit the
       // view: a course change is a deliberate act that just happened, so following it is
