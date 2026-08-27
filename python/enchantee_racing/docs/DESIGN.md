@@ -588,10 +588,52 @@ register under any spelling. It is read as `point-resolution-port-beacon`, the D
 Transport lit port beacon off Point Resolution and the only mark of any kind within 400 m.
 The note on both courses says so and a test asserts the admission is still there.
 
-**The printed distances do not reconcile, by far more than anything in the fixtures book.**
-17.5 nm printed against 12.54 summed, and 15.0 against 11.51: 28 and 23 per cent, where the
-worst of the twenty-three fixtures courses is 9.9 per cent and most are inside 1. What was
-checked, and what it rules out:
+**The printed distance is the distance sailed, not the sum of straight lines.** This is the
+one course in the file where the difference matters, and it is what makes the reconciliation
+check in section 7 read as a 28 per cent failure: 17.5 nm printed against 12.54 summed, and
+15.0 against 11.51, where the worst of the twenty-three fixtures courses is 9.9 per cent and
+most are inside 1.
+
+The fixtures courses are sailed in open Melville Water, where the straight line between two
+marks *is* the route, so summing them reproduces the club's figure. This one threads
+Blackwall Reach, rounds the Point Walter spit, crosses the Claremont shallows and works
+around SoPYC. A boat cannot sail those straight lines.
+
+`scripts/navigable_distance.py` measures the difference. It rasterises the coastline and the
+depth bands, cuts a standoff disc around every mark the register calls a SPIT, and runs
+Dijkstra between consecutive course marks over what is left. With a 40 m grid, 2 m of draft
+and a 150 m standoff:
+
+| | printed | straight | sailed | straight err | sailed err |
+|---|---|---|---|---|---|
+| 23 fixtures courses (mean abs) | | | | 3.4% | **3.3%** |
+| `parmelia-1` | 17.50 | 12.54 | 14.81 | -28.3% | **-15.4%** |
+| `parmelia-2` | 15.00 | 11.51 | 13.80 | -23.3% | **-8.0%** |
+
+The fixtures row is the control and it is the reason to believe the rest: the model leaves
+the open-water courses exactly where straight lines already had them, so it is measuring a
+real detour rather than inflating everything. Roughly half the Division I/II gap and two
+thirds of the III/IV gap is explained, and `parmelia-2` lands inside the range of mismatches
+the fixtures book already carries.
+
+What is still open is narrow rather than mysterious. The two printed distances differ by
+2.5 nm, and the only difference in their legs is Squadron Buoy against Armstrong Spit, which
+this model makes worth about 1 nm. The remaining 2.7 nm of `parmelia-1` is on that leg.
+
+Three measurement traps, each of which gave a wrong answer first and is worth not falling
+into again:
+
+- Eight-connected Dijkstra turns only in 45 degree steps and measured every open-water
+  course 3 to 12 per cent long. Read without the control that would have looked like a
+  finding about the club's method. Sixteen neighbours bring it under 2 per cent, and the
+  knight moves must check the cells they cross or they sail through a one-cell spit.
+- The depth bands are ranges. `shallow` is 0-2 m and can be a hand's depth anywhere inside
+  it, so keying on the deepest value in each band left the Claremont shallows navigable and
+  changed nothing at all.
+- A spit mark sits in the shoal it marks, so its own cell is not navigable and the route
+  has to snap to the nearest cell that is.
+
+Other things checked, and what they rule out:
 
 - Every row on both sheets is present and in the printed order, confirmed against the
   rendered pages.
@@ -599,14 +641,16 @@ checked, and what it rules out:
   an exact name match with a differently named mark, Deepwater Spit 37 for Squadron Buoy 37
   together with Roe 16 for Inner Dolphin 16. That is fitting the number rather than reading
   the sheet, and it is rejected.
-- Only one leg crosses land, Bricklanding B to Blackwall over the Point Walter spit, so the
-  water route is longer than the straight-line sum but by well under a mile.
 - The geography matches the narrative in the instructions exactly: downriver to Blackwall
   Reach, around Freshwater Bay, back to Matilda Bay, South of Perth, home.
 
-The sheets say "Approx.". The transcription is recorded as printed, the printed figure is
-treated as the suspect value, and both courses are pinned in `tests/test_courses.py` with
-the gap asserted in both directions so that a change in either is noticed.
+The legs are recorded as printed. `validate()` still compares straight lines, still warns,
+and that warning is now understood rather than merely pinned: for a course of this shape it
+is the expected result and not a fault in either number. Both are held in
+`tests/test_courses.py` with the gap asserted in both directions, so a change in either is
+noticed. The navigable measurement is deliberately not wired into `validate()`: `engine/`
+holds no I/O and knows only marks and geometry, and a check that needed the bathymetry to
+run would be a much larger change than the problem justifies.
 
 **Six legs round against the register and all six are correct.** Blackwall (11) and Crawley
 (45) are changed from port to starboard by the instructions in writing, for this race only,

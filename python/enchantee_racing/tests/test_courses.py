@@ -47,15 +47,20 @@ INDEX = course.index_marks(MARKS)
 #   twilight-1         +2.6%
 #   twilight-3         -2.6%
 #   parmelia-1        -28.3%   and parmelia-2 -23.3%, which are a different kind of
-#                              mismatch from the six above and much larger. Those come off
-#                              the fixtures sheets and are tenths of a mile; these come off
-#                              the Parmelia night race instructions, which print "Approx."
-#                              and are five miles over a straight-line sum. Every row is
-#                              present and in order and every mark resolves by name and
-#                              number, so the printed figure is the suspect value. See the
-#                              note on each course, and test_the_parmelia_gap_is_still_the
-#                              _size_it_was below, which is the reminder to unpin if the
-#                              club ever restates the distance.
+#                              mismatch from the six above and are explained rather than
+#                              open. The club prints the distance sailed. Those six are
+#                              open-water courses where the straight line between two marks
+#                              is the route, so summing them reproduces the printed figure;
+#                              the night race threads Blackwall Reach, rounds the Point
+#                              Walter spit and crosses the Claremont shallows, and a boat
+#                              cannot sail those straight lines.
+#                              scripts/navigable_distance.py measures the route around land,
+#                              water under 2 m and a standoff from every spit mark: 14.81
+#                              and 13.80 nm, so -15.4% and -8.0%, while leaving these
+#                              twenty-three at a mean 3.3% against 3.4% for straight lines.
+#                              So the warning here is the expected result for a course of
+#                              that shape and not a transcription fault. See DESIGN 7.1 and
+#                              test_the_parmelia_gap_is_still_the_size_it_was below.
 KNOWN_DISTANCE_MISMATCHES = {
     "frostbite-1", "sunday-div-ii-2", "sunday-div-iv-1", "sunday-div-iv-2",
     "twilight-1", "twilight-3",
@@ -85,12 +90,14 @@ def test_the_known_mismatch_is_still_the_size_it_was():
 
 
 def test_the_parmelia_gap_is_still_the_size_it_was():
-    """The same reminder for the night race, whose gap is an order larger.
+    """The same reminder for the night race, whose gap is an order larger and is a
+    property of the course rather than of the transcription: the club prints the distance
+    sailed, and this course cannot be sailed in straight lines. See DESIGN 7.1 and
+    scripts/navigable_distance.py, which measures the difference.
 
     Pinned in both directions. If it shrinks, someone has restated the printed distance or
-    found the leg this transcription is missing, and the note on both courses should be
-    rewritten rather than left claiming a mystery. If it grows, a mark has moved or a leg
-    has been edited.
+    corrected a leg, and the note on both courses needs rewriting to match. If it grows, a
+    mark has moved or a leg has been edited.
     """
     for course_id, low, high in (("parmelia-1", -30.0, -26.0),
                                  ("parmelia-2", -25.0, -21.0)):
