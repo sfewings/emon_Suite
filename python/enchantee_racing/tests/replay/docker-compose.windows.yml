@@ -1,0 +1,43 @@
+# Windows overlay for docker-compose.yml. Linux and the Pi need none of this.
+#
+#   docker compose -f tests/replay/docker-compose.yml `
+#                  -f tests/replay/docker-compose.windows.yml `
+#                  --profile app up -d
+#
+# One thing changes and everything else follows from it: the app service in the base file
+# uses host networking, and Docker Desktop for Windows has no host network to join. A
+# Linux container there runs inside a WSL2 VM, so "the host" is that VM and not the
+# machine, which is why the setting is a recent opt-in rather than the default. Without
+# this overlay the app comes up and is reachable from nowhere.
+#
+# Enabling Docker Desktop's own host networking (Settings, Resources, Network) is the other
+# way and needs no file at all. This exists because it works on any Docker Desktop, whereas
+# that setting has to be found, is per-machine rather than per-checkout, and leaves the
+# repository unable to say how the thing is run.
+#
+# The image must be a local amd64 build. The published one is arm64, for the Pi:
+#
+#   build.cmd -m local -c enchantee_racing
+#
+services:
+  racing:
+    # Replaces host networking rather than adding to it: `ports` and `networks` are both
+    # rejected while network_mode is host, so the mode itself is what has to change.
+    network_mode: bridge
+
+    # On the plain bridge network there is no DNS for service names, so the broker cannot
+    # be reached as `mosquitto` the way it could on a compose network. host.docker.internal
+    # is Docker Desktop's name for the machine the Desktop runs on, and the broker is
+    # published there by the base file, so the app reaches it the same way a browser does.
+    #
+    # This is also why MQTT_PORT is the *host* port here and the container port in the base
+    # file: on host networking those are the same number and here they are not.
+    environment:
+      MQTT_IP: host.docker.internal
+      MQTT_PORT: ${REPLAY_MQTT_PORT:-1883}
+
+    # Published explicitly, which host networking did implicitly. Same number on both
+    # sides so the URL is the same whichever way the rig is brought up, and BIND_HOST is
+    # already 0.0.0.0 in the base file, without which a published port reaches nothing.
+    ports:
+      - "${REPLAY_APP_PORT:-5002}:${REPLAY_APP_PORT:-5002}"

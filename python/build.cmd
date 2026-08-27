@@ -127,7 +127,10 @@ if /i "%BUILD_CONTAINERS%"=="all" (
 REM Setup buildx builder if needed
 set NEEDS_BUILDX=0
 if /i "%MODE%"=="push" set NEEDS_BUILDX=1
-if not /i "%RESOLVED_PLATFORMS%"=="local" set NEEDS_BUILDX=1
+REM `if /i not`, not `if not /i`: /i is a switch to IF and has to come before NOT.
+REM The other order is a parse error, "was unexpected at this time", and it fired on
+REM every invocation of this script whatever was being built.
+if /i not "%RESOLVED_PLATFORMS%"=="local" set NEEDS_BUILDX=1
 
 if "%NEEDS_BUILDX%"=="1" (
     docker buildx version >nul 2>&1
@@ -332,11 +335,15 @@ goto :eof
 :resolve_platform
 set PLATFORMS_ARG_IN=%~1
 set RESOLVED_PLATFORMS=
-if /i "%PLATFORMS_ARG_IN%"=="local"  ( set RESOLVED_PLATFORMS=local                               & goto :eof )
-if /i "%PLATFORMS_ARG_IN%"=="amd64"  ( set RESOLVED_PLATFORMS=linux/amd64                         & goto :eof )
-if /i "%PLATFORMS_ARG_IN%"=="arm64"  ( set RESOLVED_PLATFORMS=linux/arm64                         & goto :eof )
-if /i "%PLATFORMS_ARG_IN%"=="arm32"  ( set RESOLVED_PLATFORMS=linux/arm/v7                        & goto :eof )
-if /i "%PLATFORMS_ARG_IN%"=="all"    ( set RESOLVED_PLATFORMS=linux/amd64,linux/arm64,linux/arm/v7 & goto :eof )
+REM set "VAR=value", quoted. Without the quotes everything between the value and the &
+REM is part of the value, so the alignment below put RESOLVED_PLATFORMS at
+REM "local                    " and it then matched none of the comparisons against
+REM "local". The local build was sent down the buildx path with that as a --platform.
+if /i "%PLATFORMS_ARG_IN%"=="local"  ( set "RESOLVED_PLATFORMS=local"                               & goto :eof )
+if /i "%PLATFORMS_ARG_IN%"=="amd64"  ( set "RESOLVED_PLATFORMS=linux/amd64"                         & goto :eof )
+if /i "%PLATFORMS_ARG_IN%"=="arm64"  ( set "RESOLVED_PLATFORMS=linux/arm64"                         & goto :eof )
+if /i "%PLATFORMS_ARG_IN%"=="arm32"  ( set "RESOLVED_PLATFORMS=linux/arm/v7"                        & goto :eof )
+if /i "%PLATFORMS_ARG_IN%"=="all"    ( set "RESOLVED_PLATFORMS=linux/amd64,linux/arm64,linux/arm/v7" & goto :eof )
 echo Unknown platform: %PLATFORMS_ARG_IN%
 echo Valid values: local, amd64, arm64, arm32, all
 echo Note: For combined platforms (e.g. arm64,arm32) use build.sh via WSL.
