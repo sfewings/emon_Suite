@@ -55,6 +55,43 @@ PENDING_EVENTS_MAX = 200
 """How many unpublished race events to hold. A race produces a couple of dozen, so this is
 only a bound against nothing ever draining them."""
 
+# --- the trail (DESIGN 12.6) -----------------------------------------------------------
+#
+# Everything sailed since local midnight, held here rather than in the browser because the
+# map page is one of three documents and the crew walks between them: a trail accumulated
+# client-side would start empty every time the page was opened, which is most of the
+# reason for looking at it. It is deliberately NOT persisted to disk. Losing it on a
+# restart or a power cycle is acceptable and was specified as such; losing it on a page
+# refresh is not, and holding it server-side is what tells those two cases apart.
+
+TRAIL_MIN_MOVE_M = 3.0
+"""Keep a fix only once the boat has moved this far from the last one kept. At 5 kt that
+is a point every 1.2 s, which is finer than the trail can be seen at any zoom this page
+offers, and it collapses a fleet of fixes taken at anchor into one."""
+
+TRAIL_MIN_INTERVAL_S = 60.0
+"""...or this long has passed, whichever comes first. This rule only ever fires while the
+boat is stationary: under way the distance rule above fires every second or two and this
+one never gets a chance. So it is not a sample rate, it is the heartbeat that records
+"still here" through a lunch stop, and 60 s rather than a few seconds is the difference
+between 60 stacked points in an hour and 720 of them."""
+
+TRAIL_MAX_POINTS = 25000
+"""A bound, not a working limit. A long day decimated as above is 15,000 to 20,000 points,
+so this is only insurance against a fix source that jitters several metres while moored
+and defeats the distance rule. The oldest go first: the near past is what the crew is
+looking at."""
+
+TRAIL_DAY_OFFSET_S = 8 * 3600
+"""Seconds east of UTC, for deciding which day a fix belongs to.
+
+An explicit offset rather than the process timezone, for two reasons. The Dockerfile sets
+TZ=UTC, so localtime() in the deployed container would roll the trail over at 08:00 Perth
+time, which is the middle of a morning sail. And zoneinfo on python:*-slim has no tzdata
+to read, so naming the zone properly would mean a new runtime dependency for a single
+integer. Western Australia has observed no daylight saving since the 2009 referendum, so
+a fixed +8 is not an approximation here, it is exact."""
+
 FIELDS = ("sog", "cog", "hdg", "tws", "twd", "aws", "twa", "awa", "rpm", "cur", "ctrl", "mot")
 """Every key the payload carries, in the order the Node-RED flow emitted them. twa and
 awa are derived; the rest arrive on their own topic."""
@@ -114,7 +151,8 @@ class Store:
     it for the next one under the lock.
     """
 
-    def __init__(self, clock: Callable[[], float] = time.time) -> None:
+    def __init__(self, clock: Callable[[], float] = time.time,
+                 day_offset_s: float = TRAIL_DAY_OFFSET_S) -> None:
         self._lock = threading.Lock()
         self._values: dict = {}
         self._motor_last = 0.0
@@ -122,6 +160,13 @@ class Store:
         self._race = race.initial()
         self._context: Optional[race.Context] = None
         self._pending: list = []
+        # The trail: (seq, lat, lon, sog, t) per kept fix, oldest first. seq is contiguous
+        # and only ever increases, which is what lets a caller ask for "everything after
+        # n" and be answered by index arithmetic rather than a scan.
+        self._trail: list = []
+        self._trail_seq = 0
+        self._trail_day: Optional[int] = None
+        self._day_offset_s = day_offset_s
         # The theme, which is server state for the reason DESIGN 9.9 gives about all the
         # rest of it: every device renders the same state and any device can drive it. The
         # sun sets on the whole boat at once, so a theme held per browser would have to be
@@ -258,6 +303,14 @@ class Store:
         with self._lock:
             now = self._clock() if ts is None else ts
             self._values[POSITION_KEY] = Reading(position, now)
+
+            # Before the context check below, deliberately. The trail is a record of where
+            # the boat has been, which is a fact about the day and not about a race, and
+            # the crew wants it on a cruise with no course selected at all. Putting it
+            # after that early return is the obvious mistake and it would leave the trail
+            # empty exactly when it is the only thing on the chart.
+            self._append_trail(position, now)
+
             if self._context is None:
                 return []
 
@@ -275,6 +328,85 @@ class Store:
             self._race = state
             self._queue(events + more)
             return events + more
+
+    # --- the trail ---------------------------------------------------------
+
+    def _append_trail(self, position: Any, now: float) -> None:
+        """Record this fix on the day's trail, if it is far enough from the last one kept.
+
+        Call with the lock held. Reads sog out of the cache rather than taking it as an
+        argument, for the same reason on_position reads cog and sog there: this is the one
+        moment when the speed in the cache is known to belong to the fix being recorded.
+
+        A fix with no usable speed is still kept, with sog None. The alternative, dropping
+        it, would put a straight line across the chart between the fixes either side, which
+        claims the boat sailed a course it did not.
+        """
+        if not isinstance(position, dict):
+            return
+        lat, lon = position.get("lat"), position.get("lon")
+        if not isinstance(lat, (int, float)) or isinstance(lat, bool):
+            return
+        if not isinstance(lon, (int, float)) or isinstance(lon, bool):
+            return
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            return
+
+        # Which day this fix belongs to, in local terms. See TRAIL_DAY_OFFSET_S for why
+        # the offset is a constant and not the process timezone.
+        day = int((now + self._day_offset_s) // 86400)
+        if day != self._trail_day:
+            self._trail_day = day
+            del self._trail[:]
+
+        if self._trail:
+            last = self._trail[-1]
+            moved = nav.distance_m({"lat": last[1], "lon": last[2]},
+                                   {"lat": lat, "lon": lon})
+            if moved < TRAIL_MIN_MOVE_M and (now - last[4]) < TRAIL_MIN_INTERVAL_S:
+                return
+
+        sog = self._values.get("sog")
+        speed = sog.v if sog and isinstance(sog.v, (int, float)) and not isinstance(sog.v, bool) else None
+        self._trail_seq += 1
+        self._trail.append((self._trail_seq, float(lat), float(lon), speed, now))
+        if len(self._trail) > TRAIL_MAX_POINTS:
+            del self._trail[:len(self._trail) - TRAIL_MAX_POINTS]
+
+    def trail(self, since: Optional[int] = None) -> dict:
+        """The day's trail, or the part of it the caller has not already got.
+
+        `since` is the `next` from the caller's previous response. The reply says
+        `replace` when what comes back is the whole trail and the caller must drop what it
+        holds, rather than the tail it can append. Three things cause that, and the map
+        page cannot tell them apart and does not need to: a first load, local midnight
+        emptying the trail, and a restart of this process putting the sequence back to
+        zero under a browser still holding a high `since`. That last one is the reason for
+        the `since > newest` test, without which a page left open across a restart would
+        ask for points beyond the end for ever and silently never draw another metre.
+
+        Coordinates are rounded to six decimal places, about 0.1 m, and speed to one. The
+        full repr of a float is 17 significant figures of which the last ten are noise
+        here, and this payload is the largest thing the app sends: a whole day is some
+        20,000 points, so the rounding is worth about 300 kB on a first load.
+        """
+        with self._lock:
+            newest = self._trail_seq
+            oldest = self._trail[0][0] if self._trail else None
+            # Contiguous by construction, so the tail the caller is missing starts at a
+            # known index and needs no scan. A `since` older than what is still held would
+            # leave a gap in the drawn line, so that is a replace too.
+            replace = (since is None or oldest is None
+                       or since < oldest - 1 or since > newest)
+            points = self._trail if replace else self._trail[since - oldest + 1:]
+            return {
+                "day": self._trail_day,
+                "next": newest,
+                "replace": replace,
+                "points": [[round(p[1], 6), round(p[2], 6),
+                            None if p[3] is None else round(p[3], 1)]
+                           for p in points],
+            }
 
     def _fix_now(self, now: float) -> Optional[race.Fix]:
         """The current fix as the engine wants it, or None if there is not a usable one.

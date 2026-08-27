@@ -35,6 +35,7 @@
     navaidLabels: document.getElementById("layer-navaid-labels"),
     lines: document.getElementById("layer-lines"),
     marks: document.getElementById("layer-marks"),
+    trail: document.getElementById("layer-trail"),
     course: document.getElementById("layer-course"),
     boat: document.getElementById("layer-boat"),
     zoom: document.getElementById("map-zoom"),
@@ -1021,6 +1022,149 @@
     }
   }
 
+  // --- the trail: everywhere the boat has been today (DESIGN 12.6) ---------------------
+  //
+  // The day's track, coloured by speed over ground on the fixed 0 to 8 kt viridis scale in
+  // static/palette.js, which is generated from the same colormap event_recorder colours a
+  // processed recording with. The server holds the points, decimated to 3 m or 60 s, and
+  // hands over only the tail this page has not got; see Store.trail().
+  //
+  // Two decisions carry this whole section, and both are about the boat's iPad mini 3.
+  //
+  // One path per speed band, not one per segment. A day is some 20,000 points and a colour
+  // that changes along the line means the line cannot be one element, which is how these
+  // things are usually drawn: 20,000 <path> nodes would not survive the device, and would
+  // be rebuilt on every poll. Sixteen paths, plus one for fixes that arrived with no
+  // speed, is a constant seventeen nodes no matter how long the day.
+  //
+  // Runs are merged. A new segment in the same band as the one before it appends one "L"
+  // to that band's path rather than a fresh "M..L..", so a long steady reach is one
+  // subpath rather than a thousand two-point ones. Speed changes slowly, so this is the
+  // difference between about 40,000 coordinate pairs in the layer and about 20,000, and
+  // the chart underneath it is only 16,000.
+  //
+  // Appended to, never rebuilt, which is the same principle the chart is built on: the
+  // only work per poll is the handful of points that arrived since the last one.
+
+  var TRAIL_POLL_MS = 2000;
+  // Slower than the 500 ms state poll on purpose. The trail is history, it grows by one
+  // or two points a second, and it is the largest payload this app serves. The boat
+  // triangle stays live at 2 Hz, so what this interval costs is that the coloured line
+  // stops a few metres astern of the boat, which at the width the boat is drawn cannot be
+  // seen.
+  var trailPaths = [];      // one per slot, index as slotFor() returns
+  var trailD = [];          // each path's data string, parallel to trailPaths
+  var trailDirty = [];      // slots whose string changed this tick
+  var trailAt = null;       // the last point appended, projected, or null
+  var trailSog = null;      // its speed, for colouring the next segment
+  var trailSlot = -1;       // the slot the last segment went to, for merging runs
+  var trailSince = null;    // the server's `next` from the last response
+  var trailBusy = false;    // one request at a time; the first is a whole day
+
+  // Bands, plus one slot on the end for "no speed reading". The unknown path is created
+  // first so it sits at the bottom of the layer: where the trail crosses itself, a real
+  // speed should be what shows.
+  function buildTrailPaths() {
+    if (!el.trail || !window.Palette) return;
+    var n = Palette.BANDS.length;
+    trailPaths = new Array(n + 1);
+    trailD = new Array(n + 1);
+    trailDirty = new Array(n + 1);
+    var order = [n];
+    for (var b = 0; b < n; b++) order.push(b);
+    order.forEach(function (slot) {
+      trailPaths[slot] = add(el.trail, "path", {
+        class: "trail",
+        stroke: slot === n ? Palette.UNKNOWN : Palette.BANDS[slot],
+        d: ""
+      });
+      trailD[slot] = "";
+      trailDirty[slot] = false;
+    });
+  }
+
+  // Which slot a segment between two fixes belongs to. The mean of the two speeds when
+  // both are known, which halves the visible stepping at a band edge compared with taking
+  // the arriving fix's speed alone; whichever one is known when only one is; and the
+  // unknown slot when neither is.
+  function slotFor(a, b) {
+    var n = Palette.BANDS.length;
+    var known = [];
+    if (typeof a === "number" && isFinite(a)) known.push(a);
+    if (typeof b === "number" && isFinite(b)) known.push(b);
+    if (!known.length) return n;
+    var mean = known.length === 2 ? (known[0] + known[1]) / 2 : known[0];
+    var slot = Palette.band(mean);
+    return slot < 0 ? n : slot;
+  }
+
+  // Points are [lat, lon, sog], oldest first, as /api/trail sends them. `replace` means
+  // the server has handed over the whole trail and whatever is drawn is not part of it:
+  // a first load, local midnight, or this process restarting under an open page.
+  function addTrail(points, replace) {
+    if (!trailPaths.length) return;
+    if (replace) {
+      for (var i = 0; i < trailD.length; i++) {
+        if (trailD[i] !== "") { trailD[i] = ""; trailDirty[i] = true; }
+      }
+      trailAt = null;
+      trailSog = null;
+      trailSlot = -1;
+    }
+    for (var p = 0; p < points.length; p++) {
+      var pt = points[p];
+      // GeoJSON order is [lon, lat] and project() takes that; the trail arrives the other
+      // way round, because a fix is a {lat, lon} everywhere else in this app.
+      var xy = project([pt[1], pt[0]]);
+      var sog = pt[2];
+      if (trailAt) {
+        var slot = slotFor(trailSog, sog);
+        var here = xy[0].toFixed(1) + " " + xy[1].toFixed(1);
+        if (slot === trailSlot) {
+          // Same band as the segment before it, and it starts where that one ended, so
+          // the run continues with one more point rather than a new subpath.
+          trailD[slot] += "L" + here;
+        } else {
+          trailD[slot] += "M" + trailAt[0].toFixed(1) + " " + trailAt[1].toFixed(1) +
+                          "L" + here;
+        }
+        trailDirty[slot] = true;
+        trailSlot = slot;
+      }
+      trailAt = xy;
+      trailSog = sog;
+    }
+    // One attribute write per band that actually changed, which on an ordinary poll is
+    // one. Writing all seventeen would re-parse the whole day's geometry every two
+    // seconds for the sake of the two points that arrived.
+    for (var s = 0; s < trailPaths.length; s++) {
+      if (trailDirty[s]) {
+        trailPaths[s].setAttribute("d", trailD[s]);
+        trailDirty[s] = false;
+      }
+    }
+  }
+
+  function pollTrail() {
+    if (trailBusy || !trailPaths.length) return;
+    trailBusy = true;
+    var url = base + "/api/trail" +
+              (trailSince === null ? "" : "?since=" + encodeURIComponent(trailSince));
+    fetch(url, { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        trailBusy = false;
+        if (!data || !data.points) return;
+        trailSince = data.next;
+        addTrail(data.points, !!data.replace);
+      })
+      .catch(function () {
+        // Leave trailSince alone: the next poll asks for the same tail again, and a
+        // dropout costs a couple of seconds of line rather than a hole in it (DESIGN 2).
+        trailBusy = false;
+      });
+  }
+
   // --- the four readings under the chart -----------------------------------------------
   //
   // The strip DESIGN 12.2 settled, in the space the caveat used to take. Which four
@@ -1294,6 +1438,10 @@
       drawNavaids(navaids);
       drawLines(lines, markIndex);
       drawMarks(marks);
+      // The trail's seventeen paths, empty. Built here rather than on the first response
+      // so the layer's contents never change after load, and so a page that opens before
+      // any fix has arrived has the same DOM as one that opens mid-race.
+      buildTrailPaths();
 
       // The three named extents, outermost last (DESIGN 12.2). Index 0 is a placeholder:
       // showLevel recomputes it every time it is selected, because with no course it is a
@@ -1325,6 +1473,12 @@
       drawCourse(null);
       poll();
       setInterval(poll, POLL_MS);
+
+      // The trail, on its own slower interval and its own endpoint (DESIGN 12.6). Started
+      // after the chart is drawn, because its first response can be a whole day of points
+      // and the chart is what the crew is waiting for.
+      pollTrail();
+      setInterval(pollTrail, TRAIL_POLL_MS);
 
       // The symbols are sized against the element's pixel size, so a rotation or a split
       // view changes them. orientationchange as well as resize, because iOS fires the

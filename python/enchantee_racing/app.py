@@ -13,6 +13,7 @@ Serving:
     GET  /api/state     HUD fields, position and race state in one payload
     GET  /api/courses   the course list for the selection screen
     GET  /api/config/<name>  one config document verbatim, for the map (DESIGN 12.1)
+    GET  /api/trail     the day's sailed track, coloured by speed on the map (DESIGN 12.6)
     POST /api/select    {course: "frostbite-3"}
     POST /api/timer     {hooter: 10 | 5 | 1 | null} or {nudge: seconds}
     POST /api/advance   {dir: +1 | -1}
@@ -188,6 +189,23 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
             return jsonify({"error": "no such config document", "name": name}), 404
         return send_from_directory(CONFIG_DIR, name + ".json",
                                    mimetype="application/json")
+
+    @app.get("/api/trail")
+    def api_trail():
+        """The day's sailed track, for the snail trail on the map (DESIGN 12.6).
+
+        Its own endpoint rather than a field on /api/state, which is the obvious place and
+        the wrong one. That payload is deliberately one small document served to every
+        device twice a second, and the trail is the largest thing this app sends: bolting a
+        growing array onto it would charge the HUD and the race screen, neither of which
+        draws a trail, for a whole day of fixes on every poll. Here, only the page that
+        wants it asks, and it asks for the tail it does not have.
+
+        `since` is the previous response's `next`. A missing or unusable value is not an
+        error, it just means the whole trail comes back with `replace` set; see
+        Store.trail() for the three ways that happens.
+        """
+        return jsonify(store.trail(request.args.get("since", type=int)))
 
     @app.get("/api/state")
     def api_state():

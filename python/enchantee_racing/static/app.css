@@ -832,6 +832,34 @@ body.night #chart .band-deepest   { fill: var(--band-deepest); }
 #chart .boat-vector { stroke: var(--boat); stroke-width: 2.5; fill: none; }
 #layer-boat[hidden] { display: none; }
 
+/* The snail trail: everywhere the boat has been since local midnight, coloured by speed
+   over ground (DESIGN 12.6).
+
+   No stroke here, deliberately, and no colour anywhere in this stylesheet. Each of the
+   sixteen paths carries its band's colour as an attribute, written once at load from
+   static/palette.js, which is generated from the same matplotlib colormap event_recorder
+   colours its route maps with. A copy of the scale here would be a second source of truth
+   for what a colour means, and the two would drift.
+
+   Full opacity rather than a wash. The point of the trail is that a colour is a speed, and
+   a translucent line takes its colour partly from whichever depth band happens to be
+   under it, which would make the same speed look like two different ones over the width of
+   the river.
+
+   Width is in screen pixels, courtesy of the non-scaling-stroke rule at the top of the
+   chart block, so the trail is a line of constant weight at every zoom rather than a
+   corridor a few metres wide on the ground. */
+#chart .trail {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* A touch heavier at night. The bottom of viridis is a dark purple and the night chart is
+   nearly black, so the slowest bands are carried by the line's own edge more than by its
+   colour, and a thin one disappears. */
+body.night #chart .trail { stroke-width: 3; }
+
 #chart .mark circle {
   fill: var(--mark-context);
   stroke: var(--mark-halo); stroke-width: 1;

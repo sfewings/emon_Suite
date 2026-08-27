@@ -94,9 +94,16 @@ def test_the_layers_are_in_the_order_design_12_states():
     page = _page()
     wanted = ["layer-bands", "layer-contours", "layer-land",
               "layer-structures", "layer-navaids", "layer-navaid-labels",
-              "layer-lines", "layer-marks", "layer-course", "layer-boat"]
+              "layer-lines", "layer-marks", "layer-trail",
+              "layer-course", "layer-boat"]
     found = re.findall(r'<g id="(layer-[\w-]+)"', page)
     assert found == wanted, found
+    # The trail is history and the course and the boat are now, so it goes under both. A
+    # day of track can be a dense mat of line over the racing area, and the leg being
+    # sailed and the ring round the target mark are what the crew steers by: those must
+    # never be the things underneath (DESIGN 12.6).
+    assert found.index("layer-trail") < found.index("layer-course")
+    assert found.index("layer-trail") < found.index("layer-boat")
     # The course and the boat are last because they are the only things that move and the
     # only ones the crew is looking for once the gun has gone. The boat is above the
     # course: own ship is never hidden by a leg line.

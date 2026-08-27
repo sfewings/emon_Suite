@@ -2344,6 +2344,80 @@ symbols outside the view are now rejected by four comparisons before any placeme
 arithmetic. They could never have been placed anyway, every placement being inside the
 view, so the cull costs nothing and is what makes the rest affordable.
 
+### 12.6 The snail trail
+
+Everywhere the boat has been since local midnight, drawn on the chart and coloured by
+speed over ground. The crew asked for the whole day rather than the race: a Saturday is
+often a cruise, and what they want to see when they open the map is what they have sailed
+today, whether or not a gun went.
+
+**Since midnight, and whose midnight.** The container sets `TZ=UTC`, so anything that
+asked the process what day it was would have emptied the trail at 08:00 Perth time, on the
+way out to the start line. `zoneinfo` cannot answer instead, because `python:*-slim` ships
+no tzdata and naming the zone properly would mean a runtime dependency for one integer.
+Western Australia has observed no daylight saving since the 2009 referendum, so the day
+boundary is a fixed +8 offset in `store.py`, which is not an approximation here but exact.
+The test uses a real Perth midnight, not the constant checked against itself.
+
+**The trail is server state, like everything the crew sets** (section 9.9). Held in
+`store.py`, in memory, never written to disk. That is exactly the requirement: losing it
+on a restart or a power cycle is acceptable, and losing it on a page refresh is not.
+Accumulating it in the browser would have inverted both, because this is one of three
+documents and the crew walks between them, so a client-side trail would start empty every
+time the map was opened, which is most of the reason for looking at it.
+
+**Decimated on the way in, to 3 m or 60 s.** A day at 1 Hz is 86,400 fixes and nothing on
+this page can show that many. 3 m is finer than the line can be read at any zoom the page
+offers; at 5 kt it is a point every 1.2 s. The 60 s rule looks like a sample rate and is
+not one: under way the distance rule fires first every time, so the interval only ever
+applies to a boat sitting still, and it is the heartbeat that records "still here" through
+a lunch stop. At 5 s that would have been 720 stacked points an hour on a mooring, for no
+information. A decimated day is 15,000 to 20,000 points.
+
+**One path per speed band, not one per segment.** A line whose colour changes cannot be a
+single element, which is the reason a track like this is usually drawn as one node per
+segment; 20,000 nodes, rebuilt on every poll, would not survive the iPad mini 3. Sixteen
+bands plus one for fixes that arrived with no speed is a constant seventeen paths however
+long the day, and runs are merged: a segment in the same band as the one before it appends
+one `L` to that band's path rather than a fresh `M..L..`. Speed changes slowly, so that is
+the difference between about 40,000 coordinate pairs in the layer and about 20,000, against
+16,000 for the whole chart underneath. Appended to, never rebuilt, which is the principle
+the chart is already built on.
+
+**Under the course and the boat.** The trail is the only thing on this chart that is
+history. A day of track is a dense mat of line over the racing area, and the leg being
+sailed and the ring round the target mark are what the crew steers by, so those are never
+the things underneath.
+
+**Its own endpoint, and its own slower poll.** `/api/trail` rather than a field on
+`/api/state`, which is the obvious place and the wrong one: that payload is deliberately
+one small document served to every device twice a second, and two of the three pages draw
+no trail. `since` is a cursor, and the response says `replace` when the caller must drop
+what it holds rather than append. Three things cause that and the page cannot tell them
+apart: a first load, local midnight, and a restart of this process putting the sequence
+back to zero under a browser still holding a high `since`. That last is why the server
+tests `since > newest`; without it a page left open across a restart asks for points past
+the end for ever and silently never draws another metre. The poll is 2 s rather than 500
+ms because the trail is history and the largest payload the app sends; the boat triangle
+stays live at 2 Hz, so the cost is that the coloured line stops a few metres astern of a
+boat drawn nine pixels long.
+
+**The palette is generated, not chosen here.** `static/palette.js` comes from
+`scripts/gen_palette.py`, which samples matplotlib's viridis at band centres over a fixed
+0 to 8 kt domain. Fixed, so a colour means a speed rather than a rank: a scale stretched to
+the day's fastest reading would repaint the whole trail when a gust arrived and would not
+compare with last Saturday. Generated, because `event_recorder` colours a processed
+recording with the same colormap directly, and the two must not drift; this is the same
+arrangement, for the same reason, as `static/geo.js` being a transcription of
+`engine/nav.py` rather than a second projection.
+
+**Open, to be looked at on the boat.** The bottom of viridis is a dark purple and the night
+chart is nearly black, so the slowest bands are carried more by the line's edge than by its
+colour. The night theme takes the stroke from 2.5 px to 3 for that reason, which is a guess
+until someone sails at night with it. The heavier answer, a grey casing under the whole
+trail, doubles the geometry in the layer and is not worth paying for a problem that has not
+been seen yet.
+
 ## 13. Build order
 
 1. `engine/nav.py` with unit tests, using the MGA94 grid columns as fixtures.
