@@ -125,7 +125,8 @@ class EventRecorderService:
             wordpress_publisher=self.wordpress_publisher,
             plots_dir=str(self.data_dir / "plots"),
             uploads_dir=str(self.data_dir / "uploads"),
-            port=5000
+            port=5000,
+            charts_config=self.config.get('charts', {})
         )
         self.web_thread = None
 
@@ -325,7 +326,8 @@ class EventRecorderService:
         try:
             logger.info(f"Auto-processing recording {recording_id}")
             from .data_processor import DataProcessor
-            processor = DataProcessor(self.database, str(self.data_dir / "plots"))
+            processor = DataProcessor(self.database, str(self.data_dir / "plots"),
+                                      self.config.get('charts', {}))
             processor.process_recording(recording_id)
             logger.info(f"Auto-processing complete for recording {recording_id}")
         except Exception as e:

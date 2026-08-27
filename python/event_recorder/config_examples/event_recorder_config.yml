@@ -20,6 +20,21 @@ recording:
   max_recording_duration: 86400          # Maximum recording duration (24 hours)
   auto_publish: false                    # Auto-publish to WordPress after recording
 
+# Offline basemap for GPS route maps
+#
+# The boat has no internet, so folium's OpenStreetMap tiles cannot be reached
+# when a recording is processed on the water. enchantee_racing serves a vector
+# chart of the sailing area at /api/config/<name>; these documents are fetched,
+# cached on disk, and drawn under the route map. Everything degrades: an
+# unreachable app uses the cache, no cache uses plain lat/lon axes, and a track
+# outside the charted area uses plain axes too.
+charts:
+  enabled: true                          # false draws plain lat/lon axes always
+  base_url: "${ENCHANTEE_URL}"           # enchantee_racing app, e.g. http://localhost:5002
+                                         # empty falls back to http://localhost:5002
+  cache_dir: ""                          # empty puts it beside plots_dir, i.e. /data/charts
+  timeout: 5                             # per-request timeout (seconds)
+
 # Plot generation defaults
 plots:
   dpi: 150                               # Image resolution

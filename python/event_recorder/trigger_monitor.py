@@ -5,6 +5,7 @@ Monitors GPS position via MQTT and detects vessel movement using Haversine
 distance formula. Implements state machine for trigger conditions.
 """
 
+import json
 import logging
 import math
 import time
@@ -108,28 +109,70 @@ class GPSTriggerMonitor:
         """
         MQTT message callback for GPS updates.
 
-        Expects GPS messages in numeric format (e.g., "-31.9505" for latitude).
+        Two payload shapes are accepted:
+
+        gps/position/<n> carries one JSON object per fix,
+        {"lat":.., "lon":.., "ts":..}. This is the one to configure. Both halves
+        of the fix were sampled together by the publisher, so the position this
+        monitor holds is always a place the vessel actually was.
+
+        gps/latitude/<n> and gps/longitude/<n> carry a bare number each, and are
+        still accepted for installations whose publisher has not been updated.
+        They are strictly worse here and not merely more verbose: the two
+        messages are sampled either side of a fix, so a position assembled from
+        them can pair a latitude from one moment with a longitude from another.
+        Movement is detected by Haversine distance, so that pairing reads as a
+        jump the vessel never made, and a jump is a false trigger.
         """
         topic = msg.topic
-        try:
-            value = float(msg.payload.decode('utf-8'))
-        except (ValueError, UnicodeDecodeError):
-            logger.warning(f"Invalid GPS value from {topic}: {msg.payload}")
-            return
-
         timestamp = datetime.utcnow()
+        lowered = topic.lower()
 
-        # Update position based on topic
-        if 'latitude' in topic.lower():
-            self._update_latitude(value, timestamp)
-        elif 'longitude' in topic.lower():
-            self._update_longitude(value, timestamp)
+        if 'position' in lowered:
+            if not self._update_position(msg.payload, timestamp, topic):
+                return
+        else:
+            try:
+                value = float(msg.payload.decode('utf-8'))
+            except (ValueError, UnicodeDecodeError):
+                logger.warning(f"Invalid GPS value from {topic}: {msg.payload}")
+                return
+            if 'latitude' in lowered:
+                self._update_latitude(value, timestamp)
+            elif 'longitude' in lowered:
+                self._update_longitude(value, timestamp)
 
         # Check all monitor conditions
         self._check_triggers()
 
+    def _update_position(self, payload, timestamp: datetime, topic: str) -> bool:
+        """
+        Set the current position from a gps/position JSON payload.
+
+        Returns:
+            True when a usable fix was stored
+        """
+        try:
+            if isinstance(payload, (bytes, bytearray)):
+                payload = payload.decode('utf-8')
+            fix = json.loads(payload)
+            latitude = float(fix['lat'])
+            longitude = float(fix['lon'])
+        except (ValueError, TypeError, KeyError, UnicodeDecodeError,
+                json.JSONDecodeError):
+            logger.warning(f"Invalid GPS position from {topic}: {payload}")
+            return False
+
+        if not (math.isfinite(latitude) and math.isfinite(longitude)):
+            logger.warning(f"Non-finite GPS position from {topic}: {payload}")
+            return False
+
+        with self.position_lock:
+            self.current_position = (latitude, longitude, timestamp)
+        return True
+
     def _update_latitude(self, latitude: float, timestamp: datetime):
-        """Update current latitude."""
+        """Update current latitude. Legacy split-topic path; see _on_message."""
         with self.position_lock:
             if self.current_position:
                 lat, lon, ts = self.current_position
@@ -138,7 +181,7 @@ class GPSTriggerMonitor:
                 self.current_position = (latitude, None, timestamp)
 
     def _update_longitude(self, longitude: float, timestamp: datetime):
-        """Update current longitude."""
+        """Update current longitude. Legacy split-topic path; see _on_message."""
         with self.position_lock:
             if self.current_position:
                 lat, lon, ts = self.current_position
@@ -649,7 +692,7 @@ def main():
         logger.info(f"Broker: {args.broker}:{args.port}")
 
         test_config = {
-            'monitor_topics': ['gps/latitude/0', 'gps/longitude/0'],
+            'monitor_topics': ['gps/position/0'],
             'start_condition': {
                 'type': 'gps_movement',
                 'distance_threshold': 20,
@@ -670,8 +713,8 @@ def main():
 
             logger.info("Monitoring GPS topics. Press Ctrl+C to stop.")
             logger.info("Publish test messages:")
-            logger.info("  mosquitto_pub -h localhost -t 'gps/latitude/0' -m '-31.9505'")
-            logger.info("  mosquitto_pub -h localhost -t 'gps/longitude/0' -m '115.8605'")
+            logger.info("  mosquitto_pub -h localhost -t 'gps/position/0' "
+                        "-m '{\"lat\":-31.9505,\"lon\":115.8605,\"ts\":1787932800}'")
 
             while True:
                 time.sleep(1)

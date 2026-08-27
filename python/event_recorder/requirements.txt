@@ -19,10 +19,18 @@ python-dotenv>=1.0.0,<2.0.0
 matplotlib>=3.8.0,<4.0.0
 numpy>=1.24.3,<2.0.0
 
-# GPS route maps (optional - matplotlib fallback available)
+# GPS route maps
+#
+# The route map PNG is matplotlib over the offline vector chart fetched from
+# enchantee_racing (chart_map.py), because the boat has no internet and
+# OpenStreetMap tiles are unreachable there. folium is optional and only writes
+# the interactive OSM view embedded in the WordPress post; without it the chart
+# map is still produced.
+#
+# selenium is gone, along with the chromium/chromium-driver apt packages in the
+# Dockerfile. It existed solely to screenshot the folium HTML into a PNG, and
+# nothing screenshots a browser now.
 folium>=0.15.0,<1.0.0
-selenium>=4.15.0,<5.0.0  # For converting folium HTML to PNG
-# Note: Also requires ChromeDriver or GeckoDriver installed on system
 
 # === Phase 3: Web Interface ===
 Flask>=2.3.3,<3.0.0

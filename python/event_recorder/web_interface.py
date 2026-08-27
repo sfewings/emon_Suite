@@ -11,7 +11,7 @@ import logging
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
@@ -29,7 +29,8 @@ class WebInterface:
                  wordpress_publisher: Optional[WordPressPublisher] = None,
                  plots_dir: str = "/data/plots",
                  uploads_dir: str = "/data/uploads",
-                 host: str = "0.0.0.0", port: int = 5000):
+                 host: str = "0.0.0.0", port: int = 5000,
+                 charts_config: Optional[Dict] = None):
         """
         Initialize web interface.
 
@@ -41,12 +42,15 @@ class WebInterface:
             uploads_dir: User uploads directory
             host: Listen host
             port: Listen port
+            charts_config: The `charts` service config section, passed to the
+                data processor for the offline route-map basemap
         """
         self.database = database
         self.service_manager = service_manager
         self.wordpress_publisher = wordpress_publisher
         self.plots_dir = Path(plots_dir)
         self.uploads_dir = Path(uploads_dir)
+        self.charts_config = charts_config
         self.host = host
         self.port = port
 
@@ -361,11 +365,12 @@ class WebInterface:
                 if self.database.get_setting('auto_process_on_stop', 'false') == 'true':
                     plots_dir = str(self.plots_dir)
                     database = self.database
+                    charts_config = self.charts_config
 
                     def _auto_process():
                         try:
                             from .data_processor import DataProcessor
-                            processor = DataProcessor(database, plots_dir)
+                            processor = DataProcessor(database, plots_dir, charts_config)
                             processor.process_recording(recording_id)
                             logger.info(f"Auto-processing complete for recording {recording_id}")
                         except Exception as e:
@@ -422,7 +427,8 @@ class WebInterface:
                 # Import here to avoid circular dependency
                 from .data_processor import DataProcessor
 
-                processor = DataProcessor(self.database, str(self.plots_dir))
+                processor = DataProcessor(self.database, str(self.plots_dir),
+                                          self.charts_config)
                 results = processor.process_recording(recording_id, plot_config, export_config)
 
                 if results['status'] == 'success':

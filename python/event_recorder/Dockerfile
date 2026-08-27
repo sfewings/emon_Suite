@@ -13,12 +13,14 @@ LABEL version="0.1.0"
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-# chromium + chromium-driver: headless browser for folium map → PNG export
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
-    && rm -rf /var/lib/apt/lists/*
+# No system dependencies.
+#
+# chromium + chromium-driver used to be installed here to screenshot the folium
+# map into a PNG. Route maps are now drawn by matplotlib over the offline chart
+# from enchantee_racing, which is the map the boat can actually use with no
+# internet, so nothing screenshots a browser any more. folium still writes the
+# interactive OpenStreetMap view for the WordPress post, and generating that
+# needs no browser. That takes several hundred megabytes off the image.
 
 # Create directories
 RUN mkdir -p /data /config /data/plots /data/uploads

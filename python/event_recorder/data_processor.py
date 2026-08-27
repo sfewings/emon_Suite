@@ -1,7 +1,10 @@
 """
 Data processor for generating plots and statistics from recorded data.
 
-Uses matplotlib for time-series plots and folium for GPS route maps.
+Uses matplotlib for time-series plots and for GPS route maps, which are drawn
+over the offline vector chart fetched from enchantee_racing (see chart_map.py)
+and coloured by speed over ground. folium still writes an interactive
+OpenStreetMap view alongside, for the WordPress post.
 Calculates statistics including distance, speed, energy consumption.
 """
 
@@ -10,12 +13,11 @@ import csv
 import logging
 import math
 import os
-import time
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 from xml.dom import minidom
 import json
 
@@ -27,9 +29,41 @@ import matplotlib.dates as mdates
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 
+from . import chart_map
 from .models import Database, RecordingStatus, ImageType
 
 logger = logging.getLogger(__name__)
+
+
+class GpsStream(NamedTuple):
+    """One GPS unit's topics in a recording.
+
+    `position` is gps/position/<key> and is preferred: it carries lat, lon and
+    the fix time in one payload. `latitude`/`longitude` are the older pair, kept
+    because recordings already in the database have only those.
+    """
+
+    key: str                      # the subnode, '0' or '1', which names outputs
+    position: Optional[str]
+    latitude: Optional[str]
+    longitude: Optional[str]
+    speed: Optional[str]
+
+
+class TrackFix(NamedTuple):
+    """One position, and the speed that belongs to it.
+
+    `ts` is when the reading arrived here and is what other topics are matched
+    against, since they are stamped on arrival too. `fix_ts` is the time the
+    receiver put on the fix, which only gps/position carries, and is the better
+    one to write into an exported track.
+    """
+
+    ts: datetime
+    fix_ts: Optional[datetime]
+    lat: float
+    lon: float
+    sog: Optional[float]
 
 
 class DataProcessor:
@@ -39,7 +73,7 @@ class DataProcessor:
     Handles:
     - Time-series line plots
     - Multi-metric comparison plots
-    - GPS route maps (folium)
+    - GPS route maps over the offline chart, coloured by speed over ground
     - Statistics calculation
     - Statistics summary tables
     """
@@ -104,17 +138,25 @@ class DataProcessor:
 
     # ─────────────────────────────────────────────────────────────────────────
 
-    def __init__(self, database: Database, plots_dir: str = "/data/plots"):
+    def __init__(self, database: Database, plots_dir: str = "/data/plots",
+                 charts_config: Dict = None):
         """
         Initialize data processor.
 
         Args:
             database: Database instance
             plots_dir: Directory for plot output
+            charts_config: The `charts` service config section, for the offline
+                basemap fetched from enchantee_racing. None uses defaults.
         """
         self.database = database
         self.plots_dir = Path(plots_dir)
         self.plots_dir.mkdir(parents=True, exist_ok=True)
+
+        # How far apart two readings may be and still belong to the same fix.
+        # Only used for the topics that genuinely arrive separately: speed, and
+        # latitude/longitude in recordings made before gps/position existed.
+        self.GPS_MATCH_TOLERANCE = timedelta(seconds=5)
 
         # Plot defaults
         self.default_dpi = 150
@@ -122,7 +164,36 @@ class DataProcessor:
         self.default_height = 6
         self.default_style = 'seaborn-v0_8'
 
+        # Offline basemap for route maps. Refreshed and loaded at most once per
+        # processor, on first use, so a run that plots no track does no HTTP.
+        self.chart_cache = chart_map.ChartCache.from_config(charts_config, self.plots_dir)
+        self._charts = None
+        self._charts_loaded = False
+
         logger.info(f"DataProcessor initialized (plots_dir={plots_dir})")
+
+    def _load_charts(self) -> Optional[Dict]:
+        """
+        Load the offline chart, refreshing it from enchantee_racing first.
+
+        Refreshed here rather than only at startup so a regenerated chart is
+        picked up without restarting this service, and processing that happens
+        days after a recording still gets the current one. Every failure path
+        ends in a cached copy or in None, never an exception: a recording must
+        process whether or not enchantee_racing is running.
+
+        Returns:
+            Chart documents, or None when there is no usable chart
+        """
+        if not self._charts_loaded:
+            self._charts_loaded = True
+            try:
+                self.chart_cache.refresh()
+                self._charts = self.chart_cache.load()
+            except Exception as e:
+                logger.warning(f"Offline chart unavailable: {e}")
+                self._charts = None
+        return self._charts
 
     def _auto_generate_plot_config(self, recording_id: int) -> List[Dict]:
         """
@@ -155,26 +226,26 @@ class DataProcessor:
         plot_config = []
         skip_topics: set = set()
 
-        # ── 1. GPS lat/lon pairs → route maps ─────────────────────────────
-        lat_topics = [t for t in topics if 'latitude' in t.lower()]
-        lon_topics = [t for t in topics if 'longitude' in t.lower()]
-
-        for i, lat_topic in enumerate(lat_topics):
-            expected_lon = lat_topic.replace('latitude', 'longitude')
-            matching_lon = [t for t in lon_topics if t == expected_lon]
-            if not matching_lon:
-                suffix = lat_topic.split('latitude')[-1]
-                if suffix:
-                    matching_lon = [t for t in lon_topics if t.endswith(suffix)]
-            if matching_lon:
-                title = 'Route Map' if len(lat_topics) == 1 else f'Route Map {i}'
-                plot_config.append({
-                    'type': 'map',
-                    'title': title,
-                    'topics': [lat_topic, matching_lon[0]],
-                })
-                skip_topics.add(lat_topic)
-                skip_topics.add(matching_lon[0])
+        # ── 1. GPS position streams → route maps ──────────────────────────
+        # One map per GPS unit. gps/position/<n> is preferred and needs no
+        # pairing; the latitude/longitude topics are used for recordings made
+        # before it existed. Whichever a stream uses, its topics are taken off
+        # the list below: a latitude plotted against time is not a chart anyone
+        # asked for.
+        streams = self._find_gps_streams(recording_id)
+        for i, stream in enumerate(streams):
+            title = 'Route Map' if len(streams) == 1 else f'Route Map {i}'
+            if stream.position:
+                map_topics = [stream.position]
+            else:
+                map_topics = [stream.latitude, stream.longitude]
+            plot_config.append({
+                'type': 'map',
+                'title': title,
+                'topics': map_topics,
+            })
+            skip_topics.update(t for t in (stream.position, stream.latitude,
+                                           stream.longitude) if t)
 
         # ── 2. Group remaining topics by structural prefix ─────────────────
         remaining = [t for t in topics if t not in skip_topics]
@@ -644,7 +715,14 @@ class DataProcessor:
 
     def _generate_route_map(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
         """
-        Generate GPS route map using folium.
+        Generate GPS route map, coloured by speed over ground.
+
+        The returned PNG is drawn with matplotlib over the offline vector chart
+        fetched from enchantee_racing, because the host has no internet on the
+        water and OpenStreetMap tiles are unreachable there. An interactive
+        folium map is written alongside it, on a different filename stem, so the
+        WordPress post still carries the OpenStreetMap view for anyone reading it
+        ashore.
 
         Args:
             recording_id: Recording ID
@@ -654,137 +732,147 @@ class DataProcessor:
         Returns:
             Path to generated map image
         """
-        try:
-            import folium
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
-        except ImportError:
-            logger.warning("folium or selenium not installed, skipping route map")
-            # Fallback: generate matplotlib map
-            return self._generate_matplotlib_route_map(recording_id, plot_spec, output_dir)
-
         title = plot_spec.get('title', 'Route Map')
         topics = plot_spec.get('topics', ['gps/latitude/0', 'gps/longitude/0'])
 
-        # Get GPS coordinates
-        coords = self._get_gps_coordinates(recording_id, topics)
+        coords, speeds = self._get_gps_track(recording_id, topics)
         if not coords or len(coords) < 2:
             raise ValueError("Insufficient GPS data for route map")
 
-        # Create folium map centered on route
-        center_lat = sum(lat for lat, lon in coords) / len(coords)
-        center_lon = sum(lon for lat, lon in coords) / len(coords)
+        output_path = self._generate_chart_route_map(title, coords, speeds, output_dir)
+        self._generate_osm_map_html(title, coords, output_dir)
+        return output_path
 
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
-
-        # Add route polyline
-        folium.PolyLine(
-            coords,
-            color='#667eea',
-            weight=4,
-            opacity=0.8
-        ).add_to(m)
-
-        # Add start marker (green)
-        folium.Marker(
-            coords[0],
-            popup='Start',
-            icon=folium.Icon(color='green', icon='play')
-        ).add_to(m)
-
-        # Add end marker (red)
-        folium.Marker(
-            coords[-1],
-            popup='End',
-            icon=folium.Icon(color='red', icon='stop')
-        ).add_to(m)
-
-        # Fit bounds to show entire route
-        m.fit_bounds(coords)
-
-        # Save as HTML
-        html_path = output_dir / f"{title.replace(' ', '_').lower()}.html"
-        m.save(str(html_path))
-
-        # Convert to PNG using selenium + system Chromium
-        png_path = output_dir / f"{title.replace(' ', '_').lower()}.png"
-        try:
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            # Use the system-installed Chromium binary (installed via apt chromium/chromium-driver)
-            # rather than the selenium-manager auto-downloaded Chrome which requires the
-            # matching Chrome browser binary to also be present.
-            chrome_options.binary_location = '/usr/bin/chromium'
-
-            from selenium.webdriver.chrome.service import Service
-            driver = webdriver.Chrome(options=chrome_options, service=Service('/usr/bin/chromedriver'))
-            driver.set_window_size(1200, 800)
-            driver.get(f"file://{html_path.absolute()}")
-            time.sleep(2)  # Wait for map to render
-            driver.save_screenshot(str(png_path))
-            driver.quit()
-
-            logger.info(f"Generated route map: {png_path.name}")
-            return png_path
-
-        except Exception as e:
-            logger.warning(f"Failed to convert map to PNG (ChromeDriver unavailable): {e}, falling back to matplotlib")
-            return self._generate_matplotlib_route_map(recording_id, plot_spec, output_dir)
-
-    def _generate_matplotlib_route_map(self, recording_id: int, plot_spec: Dict, output_dir: Path) -> Path:
+    def _generate_chart_route_map(self, title: str,
+                                  coords: List[Tuple[float, float]],
+                                  speeds: List[Optional[float]],
+                                  output_dir: Path) -> Path:
         """
-        Generate simple GPS route map using matplotlib (fallback).
+        Draw the route over the offline chart, coloured by speed over ground.
+
+        Falls back to plain latitude/longitude axes when there is no cached
+        chart or when the track leaves the charted area, so a track sailed
+        somewhere else is still plotted rather than lost.
 
         Args:
-            recording_id: Recording ID
-            plot_spec: Plot specification
+            title: Plot title
+            coords: List of (latitude, longitude)
+            speeds: Speed in knots per coordinate, None where unknown
             output_dir: Output directory
 
         Returns:
             Path to generated plot
         """
-        title = plot_spec.get('title', 'Route Map')
-        topics = plot_spec.get('topics', ['gps/latitude/0', 'gps/longitude/0'])
-
-        # Get GPS coordinates
-        coords = self._get_gps_coordinates(recording_id, topics)
-        if not coords or len(coords) < 2:
-            raise ValueError("Insufficient GPS data for route map")
-
         lats = [lat for lat, lon in coords]
         lons = [lon for lat, lon in coords]
 
-        # Create plot
         fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
 
-        # Plot route
-        ax.plot(lons, lats, linewidth=2, color='#667eea', marker='o', markersize=2)
+        charts = self._load_charts()
+        on_chart = bool(charts) and chart_map.track_on_chart(coords, charts)
+        if on_chart:
+            chart_map.draw_basemap(ax, charts)
+        elif charts:
+            logger.info("Track is outside the charted area; using plain axes")
 
-        # Mark start (green) and end (red)
-        ax.plot(lons[0], lats[0], 'go', markersize=12, label='Start')
-        ax.plot(lons[-1], lats[-1], 'ro', markersize=12, label='End')
+        mappable = chart_map.draw_speed_track(ax, coords, speeds)
 
-        ax.set_title(title, fontsize=16, fontweight='bold')
+        ax.plot(lons[0], lats[0], 'o', markersize=10, markerfacecolor='#2e9e4f',
+                markeredgecolor='#ffffff', markeredgewidth=1.2, label='Start',
+                zorder=10)
+        ax.plot(lons[-1], lats[-1], 'o', markersize=10, markerfacecolor='#d64545',
+                markeredgecolor='#ffffff', markeredgewidth=1.2, label='End',
+                zorder=10)
+
+        # Limits come from the track, not from the chart: the coastline is
+        # generated far wider than the sailing area for the ocean races, and
+        # letting it autoscale would draw the track as a speck.
+        margin_lat = max((max(lats) - min(lats)) * 0.08, 0.0005)
+        margin_lon = max((max(lons) - min(lons)) * 0.08, 0.0005)
+        ax.set_xlim(min(lons) - margin_lon, max(lons) + margin_lon)
+        ax.set_ylim(min(lats) - margin_lat, max(lats) + margin_lat)
+
+        if mappable is not None:
+            bar = fig.colorbar(mappable, ax=ax, pad=0.02)
+            bar.set_label('Speed over ground (kt)', fontsize=11)
+
+        ax.set_title(title, fontsize=16, fontweight='bold', pad=26)
         ax.set_xlabel('Longitude', fontsize=12)
         ax.set_ylabel('Latitude', fontsize=12)
-        ax.grid(True, alpha=0.3)
-        ax.legend()
+        if not on_chart:
+            ax.grid(True, alpha=0.3)
+        # Above the axes rather than inside them. The aspect is fixed to correct
+        # for latitude, so a tall narrow track leaves a narrow axes box, and an
+        # in-axes legend either covers the track or is clipped by the spine.
+        ax.legend(loc='lower left', bbox_to_anchor=(0.0, 1.0), ncol=2,
+                  frameon=False, fontsize=10, handletextpad=0.4,
+                  columnspacing=1.4)
 
-        # Equal aspect ratio for accurate map representation
-        ax.set_aspect('equal', adjustable='box')
+        # A degree of longitude is shorter than a degree of latitude. Equal
+        # units squash the track east to west by about 15 per cent at 32 South,
+        # which is enough to read a wrong bearing off the picture.
+        ax.set_aspect(chart_map.latitude_aspect(coords), adjustable='box')
 
         plt.tight_layout()
 
-        # Save
         filename = f"{title.replace(' ', '_').lower()}.png"
         output_path = output_dir / filename
         plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
         plt.close()
 
-        logger.info(f"Generated matplotlib route map: {filename}")
+        logger.info(
+            f"Generated route map: {filename} "
+            f"(chart={'yes' if on_chart else 'no'}, "
+            f"speed={'yes' if mappable is not None else 'no'})"
+        )
         return output_path
+
+    def _generate_osm_map_html(self, title: str,
+                               coords: List[Tuple[float, float]],
+                               output_dir: Path) -> Optional[Path]:
+        """
+        Write the interactive OpenStreetMap view for the WordPress post.
+
+        Generating this needs no internet; only viewing it does, which is the
+        WordPress reader's situation and not the boat's. Written with an `_osm`
+        suffix so it does not share a filename stem with the chart PNG: the
+        publisher drops any image whose stem matches a map HTML, and the chart
+        map is the one that must reach the post.
+
+        Args:
+            title: Plot title
+            coords: List of (latitude, longitude)
+            output_dir: Output directory
+
+        Returns:
+            Path to the HTML file, or None if folium is unavailable
+        """
+        try:
+            import folium
+        except ImportError:
+            logger.info("folium not installed; no interactive map for WordPress")
+            return None
+
+        try:
+            center_lat = sum(lat for lat, lon in coords) / len(coords)
+            center_lon = sum(lon for lat, lon in coords) / len(coords)
+
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
+            folium.PolyLine(coords, color='#667eea', weight=4, opacity=0.8).add_to(m)
+            folium.Marker(coords[0], popup='Start',
+                          icon=folium.Icon(color='green', icon='play')).add_to(m)
+            folium.Marker(coords[-1], popup='End',
+                          icon=folium.Icon(color='red', icon='stop')).add_to(m)
+            m.fit_bounds(coords)
+
+            stem = f"{title.replace(' ', '_').lower()}_osm"
+            html_path = output_dir / f"{stem}.html"
+            m.save(str(html_path))
+            logger.info(f"Generated interactive OSM map: {html_path.name}")
+            return html_path
+        except Exception as e:
+            logger.warning(f"Could not generate interactive OSM map: {e}")
+            return None
 
     def _generate_statistics_table(self, recording_id: int, statistics: Dict, output_dir: Path) -> Optional[Path]:
         """
@@ -907,94 +995,292 @@ class DataProcessor:
 
         return (timestamps, values)
 
-    def _get_gps_coordinates(self, recording_id: int, topics: List[str]) -> List[Tuple[float, float]]:
+    # === GPS Track Reading ===
+    #
+    # One place builds a track, and everything that needs one uses it: route
+    # maps, KML, GPX and the distance statistic. There used to be four separate
+    # joins of the latitude and longitude topics, two of them duplicated
+    # forward-fill loops, and they did not agree with each other.
+    #
+    # gps/position/<n> is the preferred source and needs no join at all: it
+    # carries lat, lon and the fix time in one JSON payload precisely so the two
+    # halves of a fix cannot be sampled either side of it. The separate
+    # gps/latitude/<n> and gps/longitude/<n> topics are still read, because every
+    # recording made before the publisher was changed has only those, and a
+    # recording already in the database must stay processable.
+
+    @staticmethod
+    def _nearest_index(sorted_times: List[datetime], target: datetime,
+                       tolerance: timedelta) -> Optional[int]:
+        """Index of the closest timestamp within tolerance, or None."""
+        idx = bisect.bisect_left(sorted_times, target)
+        best = None
+        for candidate_idx in [idx - 1, idx]:
+            if 0 <= candidate_idx < len(sorted_times):
+                diff = abs(sorted_times[candidate_idx] - target)
+                if diff <= tolerance:
+                    if best is None or diff < abs(sorted_times[best] - target):
+                        best = candidate_idx
+        return best
+
+    def _find_gps_streams(self, recording_id: int) -> List['GpsStream']:
         """
-        Get GPS coordinates from recording.
+        Find each GPS unit's topics in a recording.
+
+        A unit is identified by the subnode on the end of its topics, so a
+        recording from two receivers yields two streams. gps/position/<n> wins
+        over the latitude/longitude pair for the same subnode.
 
         Args:
             recording_id: Recording ID
-            topics: List of [latitude_topic, longitude_topic]
+
+        Returns:
+            List of GpsStream, ordered by subnode
+        """
+        topics = self.database.get_recording_topics(recording_id)
+
+        positions, latitudes, longitudes, speeds = {}, {}, {}, {}
+        for topic in topics:
+            lowered = topic.lower()
+            key = topic.rsplit('/', 1)[-1]
+            if 'position' in lowered:
+                positions[key] = topic
+            elif 'latitude' in lowered:
+                latitudes[key] = topic
+            elif 'longitude' in lowered:
+                longitudes[key] = topic
+            elif 'speed' in lowered:
+                speeds[key] = topic
+
+        streams = []
+        for key in sorted(set(positions) | set(latitudes)):
+            position = positions.get(key)
+            latitude = latitudes.get(key)
+            longitude = longitudes.get(key)
+            if not position and not (latitude and longitude):
+                # A latitude with no longitude and no position is not a track.
+                continue
+            streams.append(GpsStream(key=key, position=position,
+                                     latitude=latitude, longitude=longitude,
+                                     speed=speeds.get(key)))
+        return streams
+
+    def _stream_for_topics(self, recording_id: int,
+                           topics: List[str]) -> Optional['GpsStream']:
+        """
+        Resolve a plot spec's topic list to a GPS stream.
+
+        A spec may name a position topic, or a latitude/longitude pair, because
+        an event config written by hand can say either and older configs say the
+        pair. Matched on the subnode so a spec naming the legacy pair still gets
+        the position topic when the recording has one.
+
+        Args:
+            recording_id: Recording ID
+            topics: Topics from the plot spec
+
+        Returns:
+            The matching GpsStream, or None
+        """
+        streams = self._find_gps_streams(recording_id)
+        if not streams:
+            return None
+        wanted = {t.rsplit('/', 1)[-1] for t in topics if t}
+        for stream in streams:
+            if stream.key in wanted:
+                return stream
+        return streams[0]
+
+    def _get_track(self, recording_id: int, stream: 'GpsStream') -> List['TrackFix']:
+        """
+        Read one GPS stream as a list of fixes, oldest first.
+
+        Args:
+            recording_id: Recording ID
+            stream: The stream to read
+
+        Returns:
+            List of TrackFix. Speed is None where no reading matched.
+        """
+        if stream.position:
+            fixes = self._read_position_topic(recording_id, stream.position)
+        else:
+            fixes = self._read_latlon_topics(recording_id, stream)
+
+        if not fixes:
+            return []
+        return self._attach_speeds(recording_id, stream, fixes)
+
+    def _read_position_topic(self, recording_id: int,
+                             topic: str) -> List['TrackFix']:
+        """
+        Read fixes from a gps/position/<n> topic.
+
+        The payload is one JSON object per fix, {"lat":.., "lon":.., "ts":..},
+        so there is nothing to join: both halves of the fix were sampled
+        together by the publisher. `ts` is the fix time in epoch seconds; the
+        row's own timestamp is when it arrived here, and is what speed readings
+        are matched against, since those are stamped on arrival too.
+
+        A payload that is not an object with two finite numbers is skipped
+        rather than raising. There is no sentinel for "no fix": the publisher
+        omits the topic entirely.
+
+        Args:
+            recording_id: Recording ID
+            topic: The position topic
+
+        Returns:
+            List of TrackFix without speeds
+        """
+        rows = self.database.get_recording_data(recording_id, topic_filter=topic)
+        fixes = []
+        skipped = 0
+        for record in rows or []:
+            try:
+                payload = record['payload']
+                if isinstance(payload, (bytes, bytearray)):
+                    payload = payload.decode('utf-8', 'replace')
+                fix = json.loads(payload) if isinstance(payload, str) else payload
+                lat = float(fix['lat'])
+                lon = float(fix['lon'])
+                if not (math.isfinite(lat) and math.isfinite(lon)):
+                    raise ValueError('non-finite position')
+
+                arrived = record['timestamp']
+                if isinstance(arrived, str):
+                    arrived = datetime.fromisoformat(arrived)
+
+                fix_time = None
+                raw_ts = fix.get('ts')
+                if isinstance(raw_ts, (int, float)) and math.isfinite(raw_ts):
+                    try:
+                        fix_time = datetime.fromtimestamp(float(raw_ts))
+                    except (OverflowError, OSError, ValueError):
+                        fix_time = None
+
+                fixes.append(TrackFix(ts=arrived, fix_ts=fix_time,
+                                      lat=lat, lon=lon, sog=None))
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                skipped += 1
+                continue
+
+        if skipped:
+            logger.warning(f"{topic}: skipped {skipped} unreadable position payload(s)")
+        fixes.sort(key=lambda f: f.ts)
+        return fixes
+
+    def _read_latlon_topics(self, recording_id: int,
+                            stream: 'GpsStream') -> List['TrackFix']:
+        """
+        Read fixes by joining the separate latitude and longitude topics.
+
+        For recordings made before gps/position/<n> existed. Latitude and
+        longitude arrive as two messages whose timestamps differ by
+        milliseconds, so they are matched nearest-neighbour within a tolerance;
+        exact equality almost never matches. A latitude with no longitude inside
+        the window is dropped, which is why this returns whole fixes rather than
+        two lists a caller might zip together and misalign.
+
+        Args:
+            recording_id: Recording ID
+            stream: The stream to read
+
+        Returns:
+            List of TrackFix without speeds
+        """
+        lat_data = self._get_topic_data(recording_id, stream.latitude)
+        lon_data = self._get_topic_data(recording_id, stream.longitude)
+        if not lat_data or not lon_data:
+            return []
+
+        lat_pairs = sorted(zip(*lat_data), key=lambda p: p[0])
+        lon_pairs = sorted(zip(*lon_data), key=lambda p: p[0])
+        lon_times = [p[0] for p in lon_pairs]
+
+        fixes = []
+        for lat_ts, lat_value in lat_pairs:
+            idx = self._nearest_index(lon_times, lat_ts, self.GPS_MATCH_TOLERANCE)
+            if idx is None:
+                continue
+            fixes.append(TrackFix(ts=lat_ts, fix_ts=None, lat=lat_value,
+                                  lon=lon_pairs[idx][1], sog=None))
+        return fixes
+
+    def _attach_speeds(self, recording_id: int, stream: 'GpsStream',
+                       fixes: List['TrackFix']) -> List['TrackFix']:
+        """
+        Match speed over ground onto each fix.
+
+        Speed is its own topic whichever way position arrives, so this is the
+        one join that remains. Matched against the arrival timestamp, because
+        that is what the speed rows carry.
+
+        Args:
+            recording_id: Recording ID
+            stream: The stream being read
+            fixes: Fixes without speeds
+
+        Returns:
+            The same fixes, with speeds where one matched
+        """
+        if not stream.speed:
+            logger.info(f"No speed topic for GPS {stream.key}; "
+                        "track will not be coloured")
+            return fixes
+
+        speed_data = self._get_topic_data(recording_id, stream.speed)
+        if not speed_data:
+            return fixes
+
+        speed_pairs = sorted(zip(*speed_data), key=lambda p: p[0])
+        speed_times = [p[0] for p in speed_pairs]
+
+        out = []
+        for fix in fixes:
+            idx = self._nearest_index(speed_times, fix.ts, self.GPS_MATCH_TOLERANCE)
+            out.append(fix._replace(
+                sog=speed_pairs[idx][1] if idx is not None else None))
+        return out
+
+    def _get_gps_track(self, recording_id: int, topics: List[str]
+                       ) -> Tuple[List[Tuple[float, float]], List[Optional[float]]]:
+        """
+        Get coordinates and the speed at each of them, for a plot spec.
+
+        Args:
+            recording_id: Recording ID
+            topics: Topics from the plot spec, position or latitude/longitude
+
+        Returns:
+            Tuple of (coordinates, speeds in knots with None where unknown),
+            the two the same length
+        """
+        stream = self._stream_for_topics(recording_id, topics)
+        if stream is None:
+            return [], []
+        fixes = self._get_track(recording_id, stream)
+        return ([(f.lat, f.lon) for f in fixes], [f.sog for f in fixes])
+
+    def _get_gps_coordinates(self, recording_id: int,
+                             topics: List[str]) -> List[Tuple[float, float]]:
+        """
+        Get GPS coordinates from a recording.
+
+        Args:
+            recording_id: Recording ID
+            topics: Topics from the plot spec, position or latitude/longitude
 
         Returns:
             List of (latitude, longitude) tuples
         """
-        if len(topics) < 2:
-            return []
-
-        lat_topic = topics[0]
-        lon_topic = topics[1]
-
-        # Get latitude and longitude data
-        lat_data = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
-        lon_data = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
-
-        if not lat_data or not lon_data:
-            return []
-
-        # Build coordinate pairs by timestamp
-        lat_dict = {}
-        for record in lat_data:
-            try:
-                timestamp = record['timestamp']
-                if isinstance(timestamp, str):
-                    timestamp = datetime.fromisoformat(timestamp)
-                lat_dict[timestamp] = float(record['payload'])
-            except (ValueError, KeyError):
-                continue
-
-        lon_dict = {}
-        for record in lon_data:
-            try:
-                timestamp = record['timestamp']
-                if isinstance(timestamp, str):
-                    timestamp = datetime.fromisoformat(timestamp)
-                lon_dict[timestamp] = float(record['payload'])
-            except (ValueError, KeyError):
-                continue
-
-        # Match timestamps using nearest-neighbour within a tolerance window.
-        # Lat and lon arrive as separate MQTT topics so their timestamps differ
-        # by milliseconds — exact equality almost never matches.
-        TOLERANCE = timedelta(seconds=5)
-        sorted_lon_times = sorted(lon_dict.keys())
-        coords = []
-        for lat_ts in sorted(lat_dict.keys()):
-            # Binary-search for the closest lon timestamp
-            idx = bisect.bisect_left(sorted_lon_times, lat_ts)
-            best = None
-            for candidate_idx in [idx - 1, idx]:
-                if 0 <= candidate_idx < len(sorted_lon_times):
-                    diff = abs(sorted_lon_times[candidate_idx] - lat_ts)
-                    if diff <= TOLERANCE:
-                        if best is None or diff < abs(sorted_lon_times[best] - lat_ts):
-                            best = candidate_idx
-            if best is not None:
-                coords.append((lat_dict[lat_ts], lon_dict[sorted_lon_times[best]]))
-
-        return coords
+        return self._get_gps_track(recording_id, topics)[0]
 
     # === Export File Generation ===
 
-    def _find_gps_pairs(self, recording_id: int) -> List[Tuple[str, str]]:
-        """Return list of (lat_topic, lon_topic) pairs for the recording."""
-        topics = self.database.get_recording_topics(recording_id)
-        lat_topics = [t for t in topics if 'latitude' in t.lower()]
-        lon_topics = [t for t in topics if 'longitude' in t.lower()]
-        pairs = []
-        for lat_topic in lat_topics:
-            expected_lon = lat_topic.replace('latitude', 'longitude')
-            matching = [t for t in lon_topics if t == expected_lon]
-            if not matching:
-                suffix = lat_topic.split('latitude')[-1]
-                if suffix:
-                    matching = [t for t in lon_topics if t.endswith(suffix)]
-            if matching:
-                pairs.append((lat_topic, matching[0]))
-        return pairs
-
     def _auto_generate_export_config(self, recording_id: int) -> Dict:
-        """Auto-generate export config: CSV always; KML/GPX when GPS pairs exist."""
-        has_gps = bool(self._find_gps_pairs(recording_id))
+        """Auto-generate export config: CSV always; KML/GPX when a track exists."""
+        has_gps = bool(self._find_gps_streams(recording_id))
         return {'csv': True, 'kml': has_gps, 'gpx': has_gps}
 
     def generate_csv_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
@@ -1037,28 +1323,14 @@ class DataProcessor:
             return None
 
     def generate_kml_exports(self, recording_id: int, output_dir: Path) -> List[Path]:
-        """Generate one KML file per GPS lat/lon stream pair."""
-        pairs = self._find_gps_pairs(recording_id)
+        """Generate one KML file per GPS stream."""
+        streams = self._find_gps_streams(recording_id)
         output_paths = []
 
-        for i, (lat_topic, lon_topic) in enumerate(pairs):
+        for i, stream in enumerate(streams):
             try:
-                lat_rows = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
-                lon_rows = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
-                if not lat_rows or not lon_rows:
-                    continue
-
-                lat_by_ts = {r['timestamp']: float(r['payload']) for r in lat_rows}
-                lon_series = sorted((r['timestamp'], float(r['payload'])) for r in lon_rows)
-
-                # Forward-fill lon against lat timestamps
-                lon_idx = 0
-                coords = []
-                for ts, lat in sorted(lat_by_ts.items()):
-                    while lon_idx + 1 < len(lon_series) and lon_series[lon_idx + 1][0] <= ts:
-                        lon_idx += 1
-                    if lon_series:
-                        coords.append((lon_series[lon_idx][1], lat))  # (lon, lat) for KML
+                fixes = self._get_track(recording_id, stream)
+                coords = [(f.lon, f.lat) for f in fixes]   # (lon, lat) for KML
 
                 if len(coords) < 2:
                     continue
@@ -1066,9 +1338,9 @@ class DataProcessor:
                 kml = ET.Element('kml', xmlns='http://www.opengis.net/kml/2.2')
                 doc = ET.SubElement(kml, 'Document')
                 name_el = ET.SubElement(doc, 'name')
-                name_el.text = 'Route Map' if len(pairs) == 1 else f'Route Map {i}'
+                name_el.text = 'Route Map' if len(streams) == 1 else f'Route Map {i}'
                 pm = ET.SubElement(doc, 'Placemark')
-                ET.SubElement(pm, 'name').text = f'Track {i}' if len(pairs) > 1 else 'Track'
+                ET.SubElement(pm, 'name').text = f'Track {i}' if len(streams) > 1 else 'Track'
                 ls = ET.SubElement(pm, 'LineString')
                 ET.SubElement(ls, 'tessellate').text = '1'
                 ET.SubElement(ls, 'coordinates').text = '\n'.join(
@@ -1076,14 +1348,14 @@ class DataProcessor:
                 )
 
                 pretty = minidom.parseString(ET.tostring(kml, encoding='unicode')).toprettyxml(indent='  ')
-                filename = 'route_map.kml' if len(pairs) == 1 else f'route_map_{i}.kml'
+                filename = 'route_map.kml' if len(streams) == 1 else f'route_map_{i}.kml'
                 output_path = output_dir / filename
                 output_path.write_text(pretty, encoding='utf-8')
                 output_paths.append(output_path)
                 logger.info(f"KML export: {output_path} ({len(coords)} points)")
 
             except Exception as e:
-                logger.error(f"KML export failed for pair {i}: {e}")
+                logger.error(f"KML export failed for stream {stream.key}: {e}")
 
         return output_paths
 
@@ -1093,8 +1365,8 @@ class DataProcessor:
 
         Speed and other gps/* extension topics are included in <extensions>.
         """
-        pairs = self._find_gps_pairs(recording_id)
-        if not pairs:
+        streams = self._find_gps_streams(recording_id)
+        if not streams:
             return None
 
         all_topics = self.database.get_recording_topics(recording_id)
@@ -1103,12 +1375,27 @@ class DataProcessor:
             if t.lower().startswith('gps/')
             and 'latitude' not in t.lower()
             and 'longitude' not in t.lower()
+            and 'position' not in t.lower()
         ]
+        # Timestamps parsed to datetimes, not left as the strings the database
+        # returns. They are forward-filled against a fix's arrival time below,
+        # and that is a datetime; comparing it with a string would either raise
+        # or, if both were stringified, compare "09:00:00" against
+        # "09:00:00.123" lexicographically and pick the wrong reading.
         ext_data = {}
         for topic in ext_topics:
             rows = self.database.get_recording_data(recording_id, topic_filter=topic)
-            if rows:
-                ext_data[topic] = sorted((r['timestamp'], r['payload']) for r in rows)
+            series = []
+            for record in rows or []:
+                stamp = record['timestamp']
+                if isinstance(stamp, str):
+                    try:
+                        stamp = datetime.fromisoformat(stamp)
+                    except ValueError:
+                        continue
+                series.append((stamp, record['payload']))
+            if series:
+                ext_data[topic] = sorted(series, key=lambda p: p[0])
 
         gpx = ET.Element('gpx', {
             'version': '1.1',
@@ -1121,33 +1408,29 @@ class DataProcessor:
         ET.SubElement(meta, 'name').text = recording.get('name', f'Recording {recording_id}')
         ET.SubElement(meta, 'time').text = str(recording.get('start_time', ''))
 
-        for i, (lat_topic, lon_topic) in enumerate(pairs):
-            lat_rows = self.database.get_recording_data(recording_id, topic_filter=lat_topic)
-            lon_rows = self.database.get_recording_data(recording_id, topic_filter=lon_topic)
-            if not lat_rows or not lon_rows:
+        for i, stream in enumerate(streams):
+            fixes = self._get_track(recording_id, stream)
+            if not fixes:
                 continue
 
-            lat_by_ts = {r['timestamp']: float(r['payload']) for r in lat_rows}
-            lon_series = sorted((r['timestamp'], float(r['payload'])) for r in lon_rows)
             ext_series = {topic: list(series) for topic, series in ext_data.items()}
             ext_indices = {topic: 0 for topic in ext_series}
-            lon_idx = 0
 
             trk = ET.SubElement(gpx, 'trk')
-            ET.SubElement(trk, 'name').text = f'Track {i}' if len(pairs) > 1 else 'Track'
+            ET.SubElement(trk, 'name').text = f'Track {i}' if len(streams) > 1 else 'Track'
             trkseg = ET.SubElement(trk, 'trkseg')
 
-            for ts, lat in sorted(lat_by_ts.items()):
-                while lon_idx + 1 < len(lon_series) and lon_series[lon_idx + 1][0] <= ts:
-                    lon_idx += 1
-                if not lon_series:
-                    continue
-                lon = lon_series[lon_idx][1]
-
+            for fix in fixes:
+                # The extension topics are stamped on arrival, so they are
+                # forward-filled against that and not against the fix time.
+                ts = fix.ts
                 trkpt = ET.SubElement(trkseg, 'trkpt',
-                                      lat=f'{lat:.8f}', lon=f'{lon:.8f}')
-                time_str = ts.replace(' ', 'T') + 'Z' if 'T' not in ts else ts
-                ET.SubElement(trkpt, 'time').text = time_str
+                                      lat=f'{fix.lat:.8f}', lon=f'{fix.lon:.8f}')
+                # The receiver's own fix time when there is one, which is more
+                # accurate than when the message reached this service.
+                stamped = fix.fix_ts or fix.ts
+                ET.SubElement(trkpt, 'time').text = \
+                    stamped.isoformat(sep='T', timespec='seconds') + 'Z'
 
                 # Elevation if available
                 for topic, series in ext_series.items():
@@ -1245,8 +1528,13 @@ class DataProcessor:
         """Calculate GPS-based statistics (distance, speed)."""
         stats = {}
 
-        # Get GPS coordinates
-        coords = self._get_gps_coordinates(recording_id, ['gps/latitude/0', 'gps/longitude/0'])
+        # The first GPS stream in the recording, whichever topics it uses. Not a
+        # hardcoded gps/latitude/0, which found nothing in a recording that has
+        # only gps/position/0 and so silently reported no distance travelled.
+        streams = self._find_gps_streams(recording_id)
+        if not streams:
+            return stats
+        coords = [(f.lat, f.lon) for f in self._get_track(recording_id, streams[0])]
 
         if len(coords) < 2:
             return stats

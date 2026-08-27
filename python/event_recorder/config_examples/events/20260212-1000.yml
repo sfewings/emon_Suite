@@ -11,8 +11,12 @@ events:
 
     # GPS position monitoring topics
     monitor_topics:
-      - "gps/latitude/0"
-      - "gps/longitude/0"
+      # One JSON message per fix, {"lat":.., "lon":.., "ts":..}. Preferred over
+      # the separate gps/latitude/0 + gps/longitude/0 topics, which are sampled
+      # either side of a fix: a position assembled from those can pair a
+      # latitude from one moment with a longitude from another, and movement is
+      # detected by distance, so that reads as a jump and a false trigger.
+      - "gps/position/0"
 
     # Start condition: Vessel moving (GPS position changing)
     start_condition:
@@ -66,7 +70,7 @@ events:
       # GPS route map
       - type: "map"
         title: "Track Route"
-        topics: ["gps/latitude/0", "gps/longitude/0"]
+        topics: ["gps/position/0"]
         map_style: "OpenStreetMap"
         markers: ["start", "end"]
 
@@ -119,8 +123,12 @@ events:
     description: "Record when vessel departs from home anchor and stop when it returns"
 
     monitor_topics:
-      - "gps/latitude/0"
-      - "gps/longitude/0"
+      # One JSON message per fix, {"lat":.., "lon":.., "ts":..}. Preferred over
+      # the separate gps/latitude/0 + gps/longitude/0 topics, which are sampled
+      # either side of a fix: a position assembled from those can pair a
+      # latitude from one moment with a longitude from another, and movement is
+      # detected by distance, so that reads as a jump and a false trigger.
+      - "gps/position/0"
 
     # Start condition: Vessel has moved outside the anchor zone
     start_condition:
@@ -145,7 +153,7 @@ events:
     plots:
       - type: "map"
         title: "Route Map"
-        topics: ["gps/latitude/0", "gps/longitude/0"]
+        topics: ["gps/position/0"]
 
     wordpress:
       site: "default_site"

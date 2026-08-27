@@ -241,29 +241,54 @@ CREATE TABLE configurations (
 ### FR-6: GPS Route Map
 
 **Priority:** Must Have
-**Status:** ✅ Implemented (2026-02-17, bug fixes 2026-02-20, interactive embed 2026-03-05)
-**Description:** Generate map visualisation showing GPS route with start/end markers
+**Status:** ✅ Implemented (2026-02-17, bug fixes 2026-02-20, interactive embed 2026-03-05, offline chart + speed colouring 2026-08-27)
+**Description:** Generate map visualisation showing GPS route with start/end markers, over a basemap that works without internet, coloured by speed over ground
 
 **Acceptance Criteria:**
 
-- [x] Use folium library for map generation
-- [x] Plot route as polyline on OpenStreetMap tiles
+- [x] Plot route over the offline vector chart from enchantee_racing
+- [x] Colour the track by speed over ground on a fixed 0–8 kt scale, with a colourbar
 - [x] Add start marker (green) and end marker (red)
-- [x] Export map as PNG (headless Chromium via Selenium)
 - [x] Auto-zoom to fit route bounds
-- [x] Embed interactive Leaflet/Folium map HTML directly in WordPress post
+- [x] Fall back to plain lat/lon axes when there is no chart, or the track leaves it
+- [x] Embed interactive Leaflet/Folium OpenStreetMap map HTML in the WordPress post
 
 **Implementation Notes:**
 
-- folium generates an interactive HTML map; Selenium with headless Chromium captures it as PNG for the recordings modal in the web UI
-- Chromium installed in Docker image via `apt-get install chromium` (not chromium-driver from pip) — resolved "Chromium not found" error in container
 - GPS coordinates extracted using nearest-neighbour timestamp lookup (`bisect` module) rather than exact-match join — resolves dropped points when latitude and longitude timestamps don't align perfectly
 - Duplicate route map bug fixed: when multiple GPS streams exist (e.g., two GPS units), each stream now generates its own named route map file rather than overwriting
-- `selenium.webdriver.ChromeOptions` configured with `--headless`, `--no-sandbox`, `--disable-dev-shm-usage` for Docker compatibility
 - **Interactive WordPress embed (2026-03-05):** `wordpress_publisher._extract_folium_embed()` extracts CDN stylesheet/script tags from the folium HTML `<head>`, the map `<div>` with a fixed pixel height (replacing folium's `height: 100%`), and the initialisation `<script>` block from after `</body>`. This produces a self-contained embeddable snippet. WordPress admin users retain the `unfiltered_html` capability required to preserve `<script>` tags. The folium `.html` file is scanned from the plots directory alongside PNGs; any PNG matching the same stem is excluded from the image upload list.
-- Implemented in `data_processor.py → _generate_route_map()` and `wordpress_publisher.py → _extract_folium_embed()`
+- Implemented in `data_processor.py → _generate_route_map()`, `chart_map.py`, and `wordpress_publisher.py → _extract_folium_embed()`
 
-**Pending question resolved:** Headless Chromium/Selenium accepted over matplotlib basemap — better map quality, no API key required.
+**Offline chart and speed colouring (2026-08-27):**
+
+- **Why:** the host has no internet on the water, so folium's OpenStreetMap tiles are unreachable exactly when a recording is processed on the boat. `enchantee_racing` already carries a vector chart of the sailing area as GeoJSON and serves it at `/api/config/<name>`.
+- The PNG in the recordings modal and the WordPress post is now matplotlib over that chart, coloured by speed over ground. The interactive folium map is still generated for the post, so a reader ashore gets the OpenStreetMap view as well; it is written with an `_osm` filename suffix so it does not share a stem with the chart PNG and therefore does not exclude it from the upload list.
+- **Selenium and Chromium removed.** They existed only to screenshot the folium HTML into a PNG. Nothing screenshots a browser now, so `selenium` is out of `requirements.txt` and the `chromium` / `chromium-driver` apt packages are out of the Dockerfile — several hundred MB off the image. Generating folium HTML needs no browser.
+- **Dependency direction:** read-only HTTP from event_recorder to one enchantee_racing endpoint, cached on disk in `charts.cache_dir` (default `/data/charts`). Refreshed before each processing run with `If-Modified-Since`, so a regenerated chart is picked up without a restart and an unchanged one costs a 304. Every failure degrades: unreachable app → cached copy; no cache → plain axes; schema mismatch → that layer is skipped. A recording always processes, whether or not enchantee_racing is running.
+- Documents fetched and their pinned schemas are in `chart_map.CHART_DOCUMENTS`. The schema check is deliberate: these are generated files, `depth` is already on its second version, and a renamed property would silently draw a blank layer.
+- **Fixed 0–8 kt colour scale**, viridis, matching `enchantee_racing/static/palette.js`, which is generated from the same colormap by `scripts/gen_palette.py`. Fixed rather than per-recording so a colour means a speed and two sails can be compared; speeds above 8 kt clamp to the top colour rather than rescaling.
+- Speeds come from the `gps/speed/<n>` topic belonging to the latitude topic. Coordinates and speeds are matched in one pass by `_get_gps_track()`: building them separately is wrong, because a latitude with no longitude inside the tolerance is dropped from the track and shifts every later coordinate away from its speed.
+- Track colour has a white casing under it, and the axes aspect is corrected by `1/cos(latitude)`. Equal axis units squash the track east–west by about 15% at 32°S, which is enough to read a wrong bearing off the plot.
+- Mark and aid *names* are deliberately not drawn: at track scale they cover the track, which is the subject. Symbols only.
+- Chart layer draw order follows enchantee_racing's map page: depth bands, contours, land, structures, navaids, racing marks.
+- Configured by the `charts` section of `event_recorder_config.yml`. `base_url` accepts `${ENCHANTEE_URL}`; empty falls back to `http://localhost:5002`.
+- Tests: `tests/test_chart_map.py`, which needs no broker and no network.
+
+**Single-message GPS position (2026-08-27):**
+
+- **Why:** `pyemonlib.emon_mqtt.gpsMessage` now publishes `gps/position/<n>` carrying `{"lat":.., "lon":.., "ts":..}` as one payload. The point of the single message is that both halves of a fix are sampled together, so there is nothing to join.
+- There were **four** separate joins of the latitude and longitude topics: the route map's nearest-neighbour match, and two duplicated forward-fill loops in the KML and GPX exports. They did not agree with each other. All of it is now one reader.
+- `_find_gps_streams()` returns a `GpsStream` per GPS unit, keyed on the topic subnode, preferring `gps/position/<n>`. `_get_track()` returns `List[TrackFix]`, and the route map, KML, GPX and the distance statistic all consume that. Nothing else joins topics.
+- `TrackFix` carries both `ts` (arrival, what other topics are matched against, since they are stamped on arrival too) and `fix_ts` (the receiver's own fix time, only `gps/position` has it). GPX `<time>` uses `fix_ts` when present, which is more accurate than when the message reached this service.
+- **The split topics are still read.** Every recording already in the database has only those; the sample data has 44,513 `gps/latitude/0` rows and no `gps/position` at all. Deleting the legacy path would lose the route map, exports and distance for every existing recording. It is confined to `_read_latlon_topics()` and used only when a stream has no position topic.
+- **Fixed while here:** `_calculate_gps_statistics()` asked for `gps/latitude/0` by name, so a recording carrying only `gps/position/0` reported no distance travelled at all. It now uses the first stream whatever its topics.
+- **Fixed while here:** the GPX extension topics were keyed on raw database timestamp *strings* and forward-filled by string comparison. Now parsed to datetimes; comparing `"09:00:00"` against `"09:00:00.123"` lexicographically picks the wrong reading.
+- `trigger_monitor` accepts both shapes too, and the example configs now monitor `gps/position/0`. This is a correctness fix and not only tidying: the monitor detects movement by Haversine distance, and between the two split messages it holds a latitude from one fix and a longitude from another. That pairing is a jump the vessel never made, which is a false trigger.
+- The position topic is excluded from time-series plot groups: its payload is a JSON object, and a JSON object plotted against time is not a chart.
+- Tests: `tests/test_gps_position.py`, covering both payload shapes, malformed payloads, two receivers, and the legacy path. Verified against the real 44,513-row sample database.
+
+**Pending question resolved (2026-08-27):** the offline chart replaces headless Chromium as the source of the route map PNG. The earlier decision preferred Chromium for map quality; it was made before the no-internet case was the normal one, and a tile server the boat cannot reach produces no map at all.
 
 ---
 
