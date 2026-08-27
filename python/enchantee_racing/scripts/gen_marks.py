@@ -79,6 +79,31 @@ COURSE_MARKS = {
  "99 Sanders Starboard":         ("sanders-99","99","Sanders",["Sanders Buoy","Sanders (99)"]),
  "35a Smith Port":               ("smith-35a","35A","Smith",["Smith Buoy"]),
  "37 Squadron Port":             ("squadron-37","37","Squadron",["Squadron Buoy"]),
+ # The Parmelia Night Race, from its own sailing instructions rather than the fixtures
+ # sheet. Thirteen more marks, most of them fixed river navigation marks rather than club
+ # racing buoys, which is why they were not in this table before.
+ #
+ # They are here for one visible reason: used_in_courses below is what makes a mark draw at
+ # course size with a priority label instead of as a context speck, and a night race down
+ # to Blackwall Reach is precisely when the crew needs to find them. The ids are the ones
+ # the register already generated, so config/courses.json keeps working unchanged.
+ "11 Blackwall Port":            ("blackwall-11","11","Blackwall",["Blackwall Buoy"]),
+ "58 BURNSIDE SPIT Starboard":   ("burnside-spit-58","58","Burnside Spit",["Burnside"]),
+ "21A CYC Start Outer Start":    ("cyc-start-outer-21a","21A","CYC Start Outer",
+                                  ["CYC Outer Start Buoy","CYC Outer"]),
+ "Point Resolution Port Beacon": ("point-resolution-port-beacon",None,"Point Resolution",
+                                  ["Point Resolution Spit","Pt Resolution"]),
+ "17 OUTER DOLPHIN Port":        ("outer-dolphin-17","17","Outer Dolphin",["Outer Dolphin"]),
+ "16 INNER DOLPHIN":             ("inner-dolphin-16","16","Inner Dolphin",["Inner Dolphin"]),
+ "45 Crawley Port":              ("crawley-45","45","Crawley",["Crawley Buoy"]),
+ "14 KNOT SPIT Starboard":       ("knot-spit-14","14","Knot Spit",["Knot"]),
+ "15 CONCRETE SPIT Starboard":   ("concrete-spit-15","15","Concrete Spit",["Concrete"]),
+ "18 FOAM Starboard":            ("foam-18","18","Foam Spit",["Foam Spit (18)"]),
+ "22 HEATHCOTE SPIT":            ("heathcote-spit-22","22","Heathcote Spit",["Heathcote"]),
+ "# SoPYC Start Outer Start":    ("sopyc-start-outer",None,"SoPYC Start Outer",
+                                  ["SOPYC Outer Start Buoy","SoPYC Outer"]),
+ "36 ARMSTRONG SPIT Starboard":  ("armstrong-spit-36","36","Armstrong Spit",
+                                  ["Armstrong Spit (36)"]),
 }
 
 # The PFSYC inner start mark, which the register itself has no row for. DESIGN 6 recorded
@@ -152,8 +177,20 @@ def main():
             continue
 
         known = COURSE_MARKS.get(label)
+        course_mark = known is not None
+        if known is None and nav_name:
+            # Fall back to the Department of Transport name. The register's YWA_NAME column
+            # is the club's own numbering and is empty for a DoT navigation mark, so a
+            # course that rounds one cannot be keyed the usual way: the Parmelia night race
+            # rounds the Point Resolution port beacon, which has no YWA_NAME at all.
+            # Narrow by construction, since it only matches when a COURSE_MARKS key is
+            # spelled exactly like a NAV_NAME, and no club buoy is.
+            known = COURSE_MARKS.get(nav_name)
+            course_mark = known is not None
         if label == START_INNER[0]:
+            # Supplied, not a course mark: it is the inner end of the start line.
             known = START_INNER[1]
+            course_mark = False
         if known:
             mark_id, number, name, aliases = known
         else:
@@ -182,7 +219,11 @@ def main():
             "type": (row.get("NAV_TYPE") or "").strip() or None,
             "mark_class": (row.get("MARK_CLS") or "").strip() or None,
             "nav_name": nav_name or None,
-            "used_in_courses": bool(known) and label in COURSE_MARKS,
+            # Whether COURSE_MARKS claimed this mark, by either key. This used to test
+            # `label in COURSE_MARKS`, which silently excluded anything matched on its DoT
+            # name instead: the Point Resolution beacon took its curated name and aliases
+            # and still drew as a context speck.
+            "used_in_courses": course_mark,
             "source": SOURCE_ID,
             "source_label": label or nav_name,
         }

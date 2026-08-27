@@ -78,8 +78,10 @@
     {
       "id": "armstrong-spit-36",
       "number": "36",
-      "name": "ARMSTRONG SPIT",
-      "aliases": [],
+      "name": "Armstrong Spit",
+      "aliases": [
+        "Armstrong Spit (36)"
+      ],
       "lat": -32.00463,
       "lon": 115.8077,
       "rounding": "starboard",
@@ -87,7 +89,7 @@
       "type": "Beacon Port Lit",
       "mark_class": "port",
       "nav_name": "Armstrong Spit 36 Port Beacon",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "36 ARMSTRONG SPIT Starboard"
     },
@@ -177,7 +179,9 @@
       "id": "blackwall-11",
       "number": "11",
       "name": "Blackwall",
-      "aliases": [],
+      "aliases": [
+        "Blackwall Buoy"
+      ],
       "lat": -32.0163252,
       "lon": 115.784432,
       "rounding": "port",
@@ -185,7 +189,7 @@
       "type": "Spar Buoy",
       "mark_class": "racing",
       "nav_name": null,
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "11 Blackwall Port"
     },
@@ -280,8 +284,10 @@
     {
       "id": "burnside-spit-58",
       "number": "58",
-      "name": "BURNSIDE SPIT",
-      "aliases": [],
+      "name": "Burnside Spit",
+      "aliases": [
+        "Burnside"
+      ],
       "lat": -31.991754,
       "lon": 115.776795,
       "rounding": "starboard",
@@ -289,7 +295,7 @@
       "type": "Beacon Starboard Lit",
       "mark_class": "starboard",
       "nav_name": "Lower Reaches, Marker 58 Burnside, Freshwater",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "58 BURNSIDE SPIT Starboard"
     },
@@ -412,8 +418,10 @@
     {
       "id": "concrete-spit-15",
       "number": "15",
-      "name": "CONCRETE SPIT",
-      "aliases": [],
+      "name": "Concrete Spit",
+      "aliases": [
+        "Concrete"
+      ],
       "lat": -31.986419,
       "lon": 115.834122,
       "rounding": "starboard",
@@ -421,7 +429,7 @@
       "type": "Beacon Starboard Lit",
       "mark_class": "starboard",
       "nav_name": "Lower Reaches, Starboard Marker 15 - Concrete",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "15 CONCRETE SPIT Starboard"
     },
@@ -445,7 +453,9 @@
       "id": "crawley-45",
       "number": "45",
       "name": "Crawley",
-      "aliases": [],
+      "aliases": [
+        "Crawley Buoy"
+      ],
       "lat": -31.9799487,
       "lon": 115.8246313,
       "rounding": "port",
@@ -453,7 +463,7 @@
       "type": "Spar Buoy",
       "mark_class": "racing",
       "nav_name": null,
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "45 Crawley Port"
     },
@@ -461,7 +471,10 @@
       "id": "cyc-start-outer-21a",
       "number": "21A",
       "name": "CYC Start Outer",
-      "aliases": [],
+      "aliases": [
+        "CYC Outer Start Buoy",
+        "CYC Outer"
+      ],
       "lat": -31.9909015,
       "lon": 115.7797606,
       "rounding": null,
@@ -469,7 +482,7 @@
       "type": "Spar Buoy",
       "mark_class": "racing",
       "nav_name": null,
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "21A CYC Start Outer Start"
     },
@@ -632,8 +645,10 @@
     {
       "id": "foam-18",
       "number": "18",
-      "name": "FOAM",
-      "aliases": [],
+      "name": "Foam Spit",
+      "aliases": [
+        "Foam Spit (18)"
+      ],
       "lat": -31.992718,
       "lon": 115.838287,
       "rounding": "starboard",
@@ -641,7 +656,7 @@
       "type": "Beacon Starboard Lit",
       "mark_class": "starboard",
       "nav_name": "Foam Spit Starboard Beacon 18 - Foam",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "18 FOAM Starboard"
     },
@@ -765,8 +780,10 @@
     {
       "id": "heathcote-spit-22",
       "number": "22",
-      "name": "HEATHCOTE SPIT",
-      "aliases": [],
+      "name": "Heathcote Spit",
+      "aliases": [
+        "Heathcote"
+      ],
       "lat": -31.997065,
       "lon": 115.8480069,
       "rounding": null,
@@ -774,7 +791,7 @@
       "type": "Beacon Starboard Lit",
       "mark_class": "starboard",
       "nav_name": "Heathcote Starboard Beacon 22 - Heathcote",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "22 HEATHCOTE SPIT"
     },
@@ -797,8 +814,10 @@
     {
       "id": "inner-dolphin-16",
       "number": "16",
-      "name": "INNER DOLPHIN",
-      "aliases": [],
+      "name": "Inner Dolphin",
+      "aliases": [
+        "Inner Dolphin"
+      ],
       "lat": -31.988866,
       "lon": 115.831392,
       "rounding": null,
@@ -806,7 +825,7 @@
       "type": "Beacon Port Lit",
       "mark_class": "port",
       "nav_name": "Inner Dolphin Port Beacon16 - Inner",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "16 INNER DOLPHIN"
     },
@@ -861,8 +880,10 @@
     {
       "id": "knot-spit-14",
       "number": "14",
-      "name": "KNOT SPIT",
-      "aliases": [],
+      "name": "Knot Spit",
+      "aliases": [
+        "Knot"
+      ],
       "lat": -31.98372,
       "lon": 115.831023,
       "rounding": "starboard",
@@ -870,7 +891,7 @@
       "type": "Beacon Starboard Lit",
       "mark_class": "starboard",
       "nav_name": "Knot Spit Starboard Marker 14 - Knot Beacon",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "14 KNOT SPIT Starboard"
     },
@@ -1464,8 +1485,10 @@
     {
       "id": "outer-dolphin-17",
       "number": "17",
-      "name": "OUTER DOLPHIN",
-      "aliases": [],
+      "name": "Outer Dolphin",
+      "aliases": [
+        "Outer Dolphin"
+      ],
       "lat": -31.99546,
       "lon": 115.832399,
       "rounding": "port",
@@ -1473,7 +1496,7 @@
       "type": "Beacon Lit",
       "mark_class": "beacon",
       "nav_name": "Outer Dolphin Port Marker 17 - Outer",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "17 OUTER DOLPHIN Port"
     },
@@ -1595,8 +1618,11 @@
     {
       "id": "point-resolution-port-beacon",
       "number": null,
-      "name": "Point Resolution Port Beacon",
-      "aliases": [],
+      "name": "Point Resolution",
+      "aliases": [
+        "Point Resolution Spit",
+        "Pt Resolution"
+      ],
       "lat": -32.005447,
       "lon": 115.790695,
       "rounding": null,
@@ -1604,7 +1630,7 @@
       "type": "Beacon Port Lit",
       "mark_class": "port",
       "nav_name": "Point Resolution Port Beacon",
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "Point Resolution Port Beacon"
     },
@@ -1956,7 +1982,10 @@
       "id": "sopyc-start-outer",
       "number": null,
       "name": "SoPYC Start Outer",
-      "aliases": [],
+      "aliases": [
+        "SOPYC Outer Start Buoy",
+        "SoPYC Outer"
+      ],
       "lat": -32.0007716,
       "lon": 115.8499644,
       "rounding": null,
@@ -1964,7 +1993,7 @@
       "type": "Spar Buoy",
       "mark_class": "racing",
       "nav_name": null,
-      "used_in_courses": false,
+      "used_in_courses": true,
       "source": "ywa-srrc-2019-qgis",
       "source_label": "# SoPYC Start Outer Start"
     },

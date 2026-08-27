@@ -94,13 +94,22 @@ def test_the_geometry_agrees_with_the_register_columns_where_nothing_moved():
 
 def test_the_marks_used_by_courses_are_all_in_the_layer():
     """gen_marks.py refuses to write without these, so a rename is caught at generation
-    time. This catches it at test time instead, which is cheaper."""
+    time. This catches it at test time instead, which is cheaper.
+
+    Either column resolves a key. YWA_NAME is the club's own numbering and is what nearly
+    every course mark is keyed on, but it is empty for a Department of Transport navigation
+    mark, and the Parmelia night race rounds one: the Point Resolution port beacon, which
+    has no YWA_NAME row at all and can only be named by NAV_NAME.
+    """
     import gen_marks  # noqa: E402
 
-    labels = {row["YWA_NAME"] for _point, row in shapefile.read_layer(LAYER) if row["YWA_NAME"]}
+    rows = [row for _point, row in shapefile.read_layer(LAYER)]
+    ywa = {row["YWA_NAME"] for row in rows if row["YWA_NAME"]}
+    nav = {row["NAV_NAME"] for row in rows if row.get("NAV_NAME")}
     for label in gen_marks.COURSE_MARKS:
-        assert label in labels, label
-    assert gen_marks.START_INNER[0] in labels
+        assert label in ywa or label in nav, label
+    # The start inner is supplied by hand and must still be the club's own row.
+    assert gen_marks.START_INNER[0] in ywa
 
 
 def test_a_file_that_is_not_a_shapefile_raises():

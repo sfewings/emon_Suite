@@ -566,6 +566,76 @@ earns its keep by being tight enough to catch a wrong mark.
 
 The same arithmetic solves for `shortened_at`, as described in section 11.6.
 
+### 7.1 The Parmelia Night Race
+
+The first course in this file that does not come from the fixtures book. It has its own
+sailing instructions document, `docs/reference/Parmelia Night Race Sailing Instructions
+2026.pdf`, and its two courses, `parmelia-1` for Divisions I and II and `parmelia-2` for
+III and IV, were transcribed by hand from pages 6 and 7. Both pages were also rendered and
+read as images, which is the check that matters for a two-column sheet: the text layer
+gives the marks and the roundings as two separate runs of lines, and pairing them by order
+is an assumption until you have looked at the page.
+
+**Sixteen of the seventeen marks resolve exactly**, by name and by number, against the
+register. Every number on the sheet is ambiguous in the register, most of them shared by
+two marks, so they are resolved on name: 11 is Blackwall and not Rocks Spit, 14 is Knot
+Spit and not Mosman A, 16 is Inner Dolphin and not Roe, 17 is Outer Dolphin and not Parker,
+36 is Armstrong Spit and not Dunn Mark or the Armstrong numbered 32, 37 is Squadron and not
+Deepwater Spit, 45 is Crawley and not Attadale Spit.
+
+**The seventeenth is an inference.** "POINT RESOLUTION SPIT" has no entry in the SRRC
+register under any spelling. It is read as `point-resolution-port-beacon`, the Department of
+Transport lit port beacon off Point Resolution and the only mark of any kind within 400 m.
+The note on both courses says so and a test asserts the admission is still there.
+
+**The printed distances do not reconcile, by far more than anything in the fixtures book.**
+17.5 nm printed against 12.54 summed, and 15.0 against 11.51: 28 and 23 per cent, where the
+worst of the twenty-three fixtures courses is 9.9 per cent and most are inside 1. What was
+checked, and what it rules out:
+
+- Every row on both sheets is present and in the printed order, confirmed against the
+  rendered pages.
+- Substituting same-numbered alternatives gets within 1 per cent of 17.5 only by replacing
+  an exact name match with a differently named mark, Deepwater Spit 37 for Squadron Buoy 37
+  together with Roe 16 for Inner Dolphin 16. That is fitting the number rather than reading
+  the sheet, and it is rejected.
+- Only one leg crosses land, Bricklanding B to Blackwall over the Point Walter spit, so the
+  water route is longer than the straight-line sum but by well under a mile.
+- The geography matches the narrative in the instructions exactly: downriver to Blackwall
+  Reach, around Freshwater Bay, back to Matilda Bay, South of Perth, home.
+
+The sheets say "Approx.". The transcription is recorded as printed, the printed figure is
+treated as the suspect value, and both courses are pinned in `tests/test_courses.py` with
+the gap asserted in both directions so that a change in either is noticed.
+
+**Six legs round against the register and all six are correct.** Blackwall (11) and Crawley
+(45) are changed from port to starboard by the instructions in writing, for this race only,
+which is also the sentence that confirms those two identifications. The other four, Knot
+Spit (14), Concrete Spit (15), Foam (18) and Armstrong Spit (36), are fixed river
+navigation marks rather than club buoys; the instructions require those to be passed on the
+deep-water side, which is the opposite hand depending on whether the leg runs up or down
+the river, and `marks.json` holds one standard rounding per mark and cannot express it.
+
+**No course numeral pendant is flown.** The division decides which course is sailed rather
+than a number, so `flags.numeral` is null on both and the selection card shows the course
+number and distance without a flag image. The naval numeral flags identify the division at
+the start, both flags of each pair: 3 and 4 at 18:50, 1 and 2 at 19:00.
+
+**Shortening is a point, not a distance.** The instructions shorten at the first passing of
+the PFSYC outer start mark, which is leg 7 and a pass of the line, so `shortened_at` is set
+directly instead of being solved from a printed figure as section 11.6 describes. There is
+no `shortened_distance_nm` key at all, because a null would claim the sheet printed a
+figure that could not be resolved. The instructions also allow shortening at any mark from
+a checkpoint boat, which has no fixed leg and cannot be pre-computed.
+
+Two consequences for the tooling. `scripts/extract_courses.py` now carries through any
+course whose series it does not build; it used to replace the whole list, which deleted
+these two silently and still validated. And `scripts/gen_marks.py` gained thirteen entries
+in `COURSE_MARKS`, so the marks this race rounds draw at course size with a priority label
+rather than as context specks, which on a night race down to Blackwall Reach is the
+difference between finding a mark and not. One of the thirteen had to be keyed on its DoT
+name, because the register's own numbering column is empty for a navigation mark.
+
 ## 8. Flags
 
 Courses are signalled from the start box by a naval numeral flag for the division

@@ -406,14 +406,40 @@ def main(argv=None) -> int:
     doc_out = dict(existing)
     doc_out["series"] = dict(existing.get("series", {}))
     doc_out["series"].update(SERIES)
-    doc_out["courses"] = built
+
+    # Courses from series this script does not produce are carried through untouched.
+    #
+    # This used to be a plain `doc_out["courses"] = built`, which was right while the
+    # fixtures PDF was the only source of courses and silently destructive the moment it
+    # was not. The Parmelia Night Race has its own sailing instructions document and its
+    # two courses are transcribed by hand into config/courses.json; re-running this script
+    # deleted them, and nothing said so, because the result still validated and still
+    # listed twenty-three courses.
+    #
+    # Keyed on the series actually built, not on the SERIES table above, and that
+    # distinction is the whole correctness of it: `frostbite` is not in SERIES, because its
+    # four courses were transcribed by hand and their series entry is merged in from the
+    # existing document, yet this script does rebuild those four from the PDF as its
+    # control. Testing against SERIES therefore kept the hand-written Frostbite courses
+    # and rebuilt them as well, and the result failed to validate with four duplicate ids.
+    #
+    # Series rather than ids, so a course added to a hand-maintained series later is kept
+    # without editing this file, and so a course dropped from a sheet this script does
+    # parse still disappears from the output.
+    built_series = {c["series"] for c in built}
+    kept = [c for c in existing.get("courses", []) if c.get("series") not in built_series]
+    if kept:
+        print("\nkeeping %d course(s) from series this script does not produce: %s"
+              % (len(kept), ", ".join(sorted(c["id"] for c in kept))))
+    doc_out["courses"] = built + kept
     doc_out["source"] = ("docs/reference/Sailing Fixtures & Courses 2026 - 2027.pdf, "
                          "pages 15-20 (course sheets)")
     doc_out["note"] = existing["note"]
 
     problems = course_module.validate(marks_doc, doc_out, lines_doc)
     errors = course_module.errors(problems)
-    print("\n%d courses, %d series" % (len(built), len(doc_out["series"])))
+    print("\n%d courses (%d built here, %d kept), %d series"
+          % (len(doc_out["courses"]), len(built), len(kept), len(doc_out["series"])))
     for problem in course_module.warnings(problems):
         print("  warning: %s" % (problem,))
     for problem in errors:

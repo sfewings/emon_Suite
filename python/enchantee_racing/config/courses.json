@@ -1,7 +1,7 @@
 {
   "schema": "pfsyc-courses/1",
   "source": "docs/reference/Sailing Fixtures & Courses 2026 - 2027.pdf, pages 15-20 (course sheets)",
-  "note": "The Frostbite four were transcribed by hand from the course sheet; the rest were extracted from the same PDF by scripts/extract_courses.py, which parses the Frostbite page as a control and refuses to write unless it reproduces the hand transcription leg for leg. Mark ids key into config/marks.json, line ids into config/lines.json. Every leg targets exactly one mark and carries \"mark\" plus \"rounding\", except the last, which carries \"finish\": true and \"line\". There are no gates and no leg has two marks: Bricklanding 33A+33B and Smith+Lucky Bay 35A+35B are consecutive legs, each mark rounded on its own, and crossing between either pair while racing is a rule breach (DESIGN 6). Rounding is per leg, never taken from the mark default, because course 2 rounds club-32a to starboard on one pass and to port on another. Legs are ordered and repeat freely: course position is a leg index, never a mark identity. Where a sheet prints a shortened distance, shortened_at is the leg it resolves to, which can only be a leg returning to the line; where it resolves to none, shortened_at is absent and shortened_note says why (DESIGN 11.6).",
+  "note": "The Frostbite four were transcribed by hand from the course sheet; the rest were extracted from the same PDF by scripts/extract_courses.py, which parses the Frostbite page as a control and refuses to write unless it reproduces the hand transcription leg for leg. Mark ids key into config/marks.json, line ids into config/lines.json. Every leg targets exactly one mark and carries \"mark\" plus \"rounding\", except the last, which carries \"finish\": true and \"line\". There are no gates and no leg has two marks: Bricklanding 33A+33B and Smith+Lucky Bay 35A+35B are consecutive legs, each mark rounded on its own, and crossing between either pair while racing is a rule breach (DESIGN 6). Rounding is per leg, never taken from the mark default, because course 2 rounds club-32a to starboard on one pass and to port on another. Legs are ordered and repeat freely: course position is a leg index, never a mark identity. Where a sheet prints a shortened distance, shortened_at is the leg it resolves to, which can only be a leg returning to the line; where it resolves to none, shortened_at is absent and shortened_note says why (DESIGN 11.6). The two parmelia-* courses are not from this book at all. They are the Parmelia Night Race, Friday 6 February 2026, transcribed by hand from docs/reference/Parmelia Night Race Sailing Instructions  2026.pdf, pages 6 and 7, and verified against a render of both pages. extract_courses.py carries through any course whose series it does not build, so re-running it keeps them; before that it replaced the whole list and deleted them silently.",
   "series": {
     "frostbite": {
       "name": "Frostbite Invitation Series",
@@ -159,6 +159,44 @@
       "time_limit_note": "None printed, and a cruise is not a race with a limit.",
       "shortened_signal": null,
       "flag_note": "Combined division and a flying start, so no naval numeral flag is printed. Each course carries only its numeral pendant."
+    },
+    "parmelia": {
+      "name": "Parmelia Night Race",
+      "note": "A single night race, Friday 6 February 2026, not a series. Starts and finishes at PFSYC and is sailed on Melville Water: downriver to Blackwall Reach, around Freshwater Bay to Matilda Bay, South of Perth, and back. Regulation navigation lights must be lit for the whole race and no luffing rights exist after the start. CAT 7 Plus applies, with two red hand-held flares and two waterproof torches aboard, and all crew in a PFD while racing. Radio is VHF channel 68.",
+      "starts": [
+        {
+          "divisions": [
+            "III"
+          ],
+          "time": "18:50",
+          "flag": "naval-3"
+        },
+        {
+          "divisions": [
+            "IV"
+          ],
+          "time": "18:50",
+          "flag": "naval-4"
+        },
+        {
+          "divisions": [
+            "I"
+          ],
+          "time": "19:00",
+          "flag": "naval-1"
+        },
+        {
+          "divisions": [
+            "II"
+          ],
+          "time": "19:00",
+          "flag": "naval-2"
+        }
+      ],
+      "time_limit": "6h",
+      "time_limit_note": "Six hours, extended by sixty minutes to seven if the first boat completes the course within six.",
+      "shortened_signal": "The shortened course flag over the division flags of the division being shortened, with a sound signal, either at the first passing of the PFSYC outer start mark or from a checkpoint boat stationed at any mark, which also shows a strobe light.",
+      "flag_note": "The naval numeral flag identifies the division, not the course, and both flags of a combined start are flown: 3 and 4 at 18:50, 1 and 2 at 19:00. No course numeral pendant is flown, because the division decides the course rather than a number: I and II sail parmelia-1, III and IV sail parmelia-2."
     }
   },
   "courses": [
@@ -1487,6 +1525,178 @@
           "rounding": "starboard"
         }
       ]
+    },
+    {
+      "id": "parmelia-1",
+      "series": "parmelia",
+      "division": "I/II",
+      "course_no": 1,
+      "distance_nm": 17.5,
+      "wind_note": null,
+      "flags": {
+        "division": null,
+        "numeral": null
+      },
+      "shortened_at": 7,
+      "shortened_note": "The sailing instructions name the shortening point rather than a distance: the course may be shortened at the first passing of the PFSYC outer start mark, which is leg 7 here, signalled by the shortened course flag over the division flags with a sound signal. It may also be shortened at any mark by a checkpoint boat flying the same flags, with a strobe light to draw attention, after which boats sail directly to the finish. That second case has no fixed leg and cannot be pre-computed. Times are taken at the mid race passing of the outer start mark and may be used for the result if the time limit is exceeded.",
+      "legs": [
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "blackwall-11",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "burnside-spit-58",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "cyc-start-outer-21a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "point-resolution-port-beacon",
+          "rounding": "port"
+        },
+        {
+          "mark": "squadron-37",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "outer-dolphin-17",
+          "rounding": "port"
+        },
+        {
+          "mark": "inner-dolphin-16",
+          "rounding": "port"
+        },
+        {
+          "mark": "crawley-45",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "knot-spit-14",
+          "rounding": "port"
+        },
+        {
+          "mark": "concrete-spit-15",
+          "rounding": "port"
+        },
+        {
+          "mark": "foam-18",
+          "rounding": "port"
+        },
+        {
+          "mark": "heathcote-spit-22",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sopyc-start-outer",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "note": "Transcribed by hand from docs/reference/Parmelia Night Race Sailing Instructions  2026.pdf. This race is not on the fixtures sheet, so scripts/extract_courses.py does not produce it and must not delete it. Six legs round a mark on the opposite hand to the register standard, and validate() will say so for each. Two are stated by the sailing instructions: Blackwall (11) and Crawley (45) are changed from the standard port rounding to starboard for this race, which is also what confirms those two identifications. The other four, Knot Spit (14), Concrete Spit (15), Foam (18) and Armstrong Spit (36), are fixed river navigation marks rather than club racing buoys. The instructions require those to be passed on the deep-water side, which is the opposite hand depending on whether the leg runs up or down the river, and marks.json records one standard rounding per mark and cannot express that. The warning is expected here and is not a transcription error. POINT RESOLUTION SPIT is the one mark on the sheet with no matching entry in the SRRC register. It is read here as point-resolution-port-beacon, the Department of Transport lit port beacon off Point Resolution and the only mark of any kind there. That is an inference and is worth a second pair of eyes. The floating lit navigation marks between Point Resolution and Point Walter, and Point Walter and Blackwall Reach (Court, Pilbara, Hobbs and Tasker), are not part of the course. For this event Deepwater Spit and the large green markers around Point Resolution and Point Walter are not treated as navigation marks. The printed \"Approx. 17.5 n.m.\" does not reconcile: these legs sum to 12.54 nm mark to mark, -28 per cent, where the twenty-three fixtures courses land within 10 per cent and mostly within 1. Every row on the sheet is present and in the printed order, and every mark resolves against the register by name and number. Combinations that come closer to the printed figure do so only by replacing an exact name match with a different mark carrying the same number, Deepwater Spit 37 for Squadron Buoy 37 or Roe 16 for Inner Dolphin 16, which is chasing the number instead of reading the sheet. One leg, Bricklanding B to Blackwall, crosses the Point Walter spit, so the water route is longer than the straight line, but that is worth well under a mile. The sheet says \"Approx.\" and the printed figure is the suspect value. Do not solve a shortened distance from it."
+    },
+    {
+      "id": "parmelia-2",
+      "series": "parmelia",
+      "division": "III/IV",
+      "course_no": 2,
+      "distance_nm": 15.0,
+      "wind_note": null,
+      "flags": {
+        "division": null,
+        "numeral": null
+      },
+      "shortened_at": 7,
+      "shortened_note": "The sailing instructions name the shortening point rather than a distance: the course may be shortened at the first passing of the PFSYC outer start mark, which is leg 7 here, signalled by the shortened course flag over the division flags with a sound signal. It may also be shortened at any mark by a checkpoint boat flying the same flags, with a strobe light to draw attention, after which boats sail directly to the finish. That second case has no fixed leg and cannot be pre-computed. Times are taken at the mid race passing of the outer start mark and may be used for the result if the time limit is exceeded.",
+      "legs": [
+        {
+          "mark": "bricklanding-a-33a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "bricklanding-b-33b",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "blackwall-11",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "burnside-spit-58",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "cyc-start-outer-21a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "point-resolution-port-beacon",
+          "rounding": "port"
+        },
+        {
+          "mark": "armstrong-spit-36",
+          "rounding": "port"
+        },
+        {
+          "mark": "club-32a",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "outer-dolphin-17",
+          "rounding": "port"
+        },
+        {
+          "mark": "inner-dolphin-16",
+          "rounding": "port"
+        },
+        {
+          "mark": "crawley-45",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "knot-spit-14",
+          "rounding": "port"
+        },
+        {
+          "mark": "concrete-spit-15",
+          "rounding": "port"
+        },
+        {
+          "mark": "foam-18",
+          "rounding": "port"
+        },
+        {
+          "mark": "heathcote-spit-22",
+          "rounding": "starboard"
+        },
+        {
+          "mark": "sopyc-start-outer",
+          "rounding": "starboard"
+        },
+        {
+          "finish": true,
+          "line": "pfsyc-start-finish",
+          "rounding": "port"
+        }
+      ],
+      "note": "Transcribed by hand from docs/reference/Parmelia Night Race Sailing Instructions  2026.pdf. This race is not on the fixtures sheet, so scripts/extract_courses.py does not produce it and must not delete it. Six legs round a mark on the opposite hand to the register standard, and validate() will say so for each. Two are stated by the sailing instructions: Blackwall (11) and Crawley (45) are changed from the standard port rounding to starboard for this race, which is also what confirms those two identifications. The other four, Knot Spit (14), Concrete Spit (15), Foam (18) and Armstrong Spit (36), are fixed river navigation marks rather than club racing buoys. The instructions require those to be passed on the deep-water side, which is the opposite hand depending on whether the leg runs up or down the river, and marks.json records one standard rounding per mark and cannot express that. The warning is expected here and is not a transcription error. POINT RESOLUTION SPIT is the one mark on the sheet with no matching entry in the SRRC register. It is read here as point-resolution-port-beacon, the Department of Transport lit port beacon off Point Resolution and the only mark of any kind there. That is an inference and is worth a second pair of eyes. The floating lit navigation marks between Point Resolution and Point Walter, and Point Walter and Blackwall Reach (Court, Pilbara, Hobbs and Tasker), are not part of the course. For this event Deepwater Spit and the large green markers around Point Resolution and Point Walter are not treated as navigation marks. The printed \"Approx. 15.0 n.m.\" does not reconcile: these legs sum to 11.51 nm mark to mark, -23 per cent, where the twenty-three fixtures courses land within 10 per cent and mostly within 1. Every row on the sheet is present and in the printed order, and every mark resolves against the register by name and number. Combinations that come closer to the printed figure do so only by replacing an exact name match with a different mark carrying the same number, Deepwater Spit 37 for Squadron Buoy 37 or Roe 16 for Inner Dolphin 16, which is chasing the number instead of reading the sheet. One leg, Bricklanding B to Blackwall, crosses the Point Walter spit, so the water route is longer than the straight line, but that is worth well under a mile. The sheet says \"Approx.\" and the printed figure is the suspect value. Do not solve a shortened distance from it."
     }
   ]
 }

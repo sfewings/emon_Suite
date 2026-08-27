@@ -46,9 +46,20 @@ INDEX = course.index_marks(MARKS)
 #   sunday-div-iv-2    +4.2%
 #   twilight-1         +2.6%
 #   twilight-3         -2.6%
+#   parmelia-1        -28.3%   and parmelia-2 -23.3%, which are a different kind of
+#                              mismatch from the six above and much larger. Those come off
+#                              the fixtures sheets and are tenths of a mile; these come off
+#                              the Parmelia night race instructions, which print "Approx."
+#                              and are five miles over a straight-line sum. Every row is
+#                              present and in order and every mark resolves by name and
+#                              number, so the printed figure is the suspect value. See the
+#                              note on each course, and test_the_parmelia_gap_is_still_the
+#                              _size_it_was below, which is the reminder to unpin if the
+#                              club ever restates the distance.
 KNOWN_DISTANCE_MISMATCHES = {
     "frostbite-1", "sunday-div-ii-2", "sunday-div-iv-1", "sunday-div-iv-2",
     "twilight-1", "twilight-3",
+    "parmelia-1", "parmelia-2",
 }
 
 
@@ -73,9 +84,60 @@ def test_the_known_mismatch_is_still_the_size_it_was():
     assert 2.0 < error_pct < 3.0, error_pct
 
 
-def test_rounding_lint_is_clean():
-    """The register agreed with the sheets on all twenty marks, so this stays empty."""
-    found = [p for p in PROBLEMS if p.code == "rounding-mismatch"]
+def test_the_parmelia_gap_is_still_the_size_it_was():
+    """The same reminder for the night race, whose gap is an order larger.
+
+    Pinned in both directions. If it shrinks, someone has restated the printed distance or
+    found the leg this transcription is missing, and the note on both courses should be
+    rewritten rather than left claiming a mystery. If it grows, a mark has moved or a leg
+    has been edited.
+    """
+    for course_id, low, high in (("parmelia-1", -30.0, -26.0),
+                                 ("parmelia-2", -25.0, -21.0)):
+        c = _course(course_id)
+        summed = course.course_distance_nm(c, INDEX, LINES)
+        error_pct = (summed - c["distance_nm"]) / c["distance_nm"] * 100.0
+        assert low < error_pct < high, (course_id, summed, c["distance_nm"], error_pct)
+
+
+# Legs whose rounding differs from the register, as (course, leg index). Every one is on
+# the Parmelia night race and every one has a reason:
+#
+#   blackwall-11, crawley-45   the instructions change both from the register's standard
+#                              port rounding to starboard, in writing, for this race only.
+#                              That sentence is also what confirms those two mark ids.
+#   knot-spit-14, concrete-spit-15, foam-18, armstrong-spit-36
+#                              fixed river navigation marks, not club racing buoys. The
+#                              instructions require those to be passed on the deep-water
+#                              side, which is the opposite hand depending on whether the
+#                              leg runs up or down the river, and marks.json holds one
+#                              standard rounding per mark and cannot express that.
+#
+# Pinned as an exact set rather than filtered by series, so a rounding that flips on any
+# other course, or a new one appearing on these, still fails.
+KNOWN_ROUNDING_MISMATCHES = {
+    ("parmelia-1", 2), ("parmelia-1", 10), ("parmelia-1", 11),
+    ("parmelia-1", 12), ("parmelia-1", 13),
+    ("parmelia-2", 2), ("parmelia-2", 6), ("parmelia-2", 10),
+    ("parmelia-2", 11), ("parmelia-2", 12), ("parmelia-2", 13),
+}
+
+
+def test_the_only_rounding_mismatches_are_the_documented_ones():
+    """The register agreed with the fixtures sheets on all twenty marks, so the only
+    mismatches are the Parmelia ones above, each for a stated reason."""
+    found = {(p.course, p.leg) for p in PROBLEMS if p.code == "rounding-mismatch"}
+    assert found == KNOWN_ROUNDING_MISMATCHES, (
+        "unexpected: %s\nmissing: %s"
+        % (sorted(found - KNOWN_ROUNDING_MISMATCHES),
+           sorted(KNOWN_ROUNDING_MISMATCHES - found)))
+
+
+def test_no_fixtures_course_has_a_rounding_mismatch():
+    """The narrower claim the old test made, kept as its own assertion: everything read out
+    of the fixtures book still agrees with the register, mark for mark."""
+    found = [p for p in PROBLEMS
+             if p.code == "rounding-mismatch" and not str(p.course).startswith("parmelia")]
     assert found == [], "\n".join(str(p) for p in found)
 
 
@@ -193,6 +255,128 @@ def test_every_printed_shortened_distance_is_recorded_even_when_unresolved():
         if c.get("shortened_at") is None:
             assert "not resolved" in c["shortened_note"] or "no leg" in c["shortened_note"], \
                 c["shortened_note"]
+
+
+# --- the Parmelia night race ----------------------------------------------------------
+#
+# The mark sequence exactly as page 6 and page 7 of the sailing instructions print it, top
+# to bottom. This is the transcription itself, written out a second time and independently
+# of config/courses.json, so an edit to the data that does not match the sheet fails here.
+# Bricklanding A and B are two rows on the sheet and two legs, never one gate (DESIGN 6).
+PARMELIA_SHEET = [
+    ("bricklanding-a-33a", "starboard"),
+    ("bricklanding-b-33b", "starboard"),
+    ("blackwall-11", "starboard"),
+    ("burnside-spit-58", "starboard"),
+    ("cyc-start-outer-21a", "starboard"),
+    ("point-resolution-port-beacon", "port"),
+    (None, None),                              # the one leg that differs by division
+    ("club-32a", "starboard"),
+    ("outer-dolphin-17", "port"),
+    ("inner-dolphin-16", "port"),
+    ("crawley-45", "starboard"),
+    ("knot-spit-14", "port"),
+    ("concrete-spit-15", "port"),
+    ("foam-18", "port"),
+    ("heathcote-spit-22", "starboard"),
+    ("sopyc-start-outer", "starboard"),
+]
+
+PARMELIA_PIVOT = {"parmelia-1": ("squadron-37", "port"),
+                  "parmelia-2": ("armstrong-spit-36", "port")}
+
+
+def test_the_parmelia_courses_match_the_sailing_instructions():
+    for course_id, pivot in PARMELIA_PIVOT.items():
+        legs = _course(course_id)["legs"]
+        expected = [pivot if m is None else (m, r) for m, r in PARMELIA_SHEET]
+        got = [(leg.get("mark"), leg.get("rounding")) for leg in legs[:-1]]
+        assert got == expected, (course_id, got)
+        # and one finish leg on the end, targeting the line rather than a mark
+        assert legs[-1].get("finish") is True and legs[-1].get("mark") is None, course_id
+
+
+def test_the_two_parmelia_courses_differ_by_exactly_one_mark():
+    """Division III and IV turn at Armstrong Spit where I and II carry on to Squadron. That
+    single substitution is the whole difference between the two sheets."""
+    one = [(l.get("mark"), l.get("rounding")) for l in _course("parmelia-1")["legs"]]
+    two = [(l.get("mark"), l.get("rounding")) for l in _course("parmelia-2")["legs"]]
+    assert len(one) == len(two)
+    differ = [i for i, (a, b) in enumerate(zip(one, two)) if a != b]
+    assert differ == [6], differ
+    assert one[6] == ("squadron-37", "port")
+    assert two[6] == ("armstrong-spit-36", "port")
+
+
+def test_bricklanding_is_two_legs_on_the_night_race_too():
+    """The sheet prints "BRICKLANDING A & B (33A, 33B)" on one row with one rounding, which
+    is exactly the wording that produced the gate model DESIGN 6 threw out."""
+    for course_id in PARMELIA_PIVOT:
+        legs = _course(course_id)["legs"]
+        assert legs[0]["mark"] == "bricklanding-a-33a"
+        assert legs[1]["mark"] == "bricklanding-b-33b"
+        for leg in legs:
+            assert "gate" not in leg and "marks" not in leg, course_id
+
+
+def test_the_parmelia_shortening_point_is_a_pass_of_the_line():
+    """The instructions shorten at the first passing of the PFSYC outer start mark, not at a
+    distance. Only a leg that returns to the line is a candidate (DESIGN 11.6), and that
+    mark is the outer end of the line itself."""
+    for course_id in PARMELIA_PIVOT:
+        c = _course(course_id)
+        at = c["shortened_at"]
+        assert c["legs"][at]["mark"] == "club-32a", (course_id, at)
+        # No printed shortened distance exists, so the key must be absent rather than null:
+        # a null would claim the sheet printed a figure that could not be resolved.
+        assert "shortened_distance_nm" not in c, course_id
+        assert "shortened_note" in c, course_id
+
+
+def test_the_parmelia_finish_is_westerly():
+    """The instructions require the line to be crossed in a westerly direction. Independent
+    of the leg list: it falls out of where the last mark is, so it checks the geometry."""
+    for course_id in PARMELIA_PIVOT:
+        legs = course.leg_table(_course(course_id), INDEX, LINES)
+        bearing = legs[-1]["bearing"]
+        assert 225.0 < bearing < 315.0, (course_id, bearing)
+
+
+def test_the_parmelia_open_question_is_recorded_in_the_data():
+    """POINT RESOLUTION SPIT has no entry in the SRRC register and is read as the DoT lit
+    port beacon off Point Resolution. That is an inference, and the note is where it is
+    admitted; this test is what stops the admission being quietly dropped."""
+    for course_id in PARMELIA_PIVOT:
+        note = _course(course_id)["note"]
+        assert "POINT RESOLUTION SPIT" in note, course_id
+        assert "point-resolution-port-beacon" in note, course_id
+        assert "inference" in note.lower(), course_id
+
+
+def test_the_parmelia_series_carries_both_starts_and_their_flags():
+    series = COURSES["series"]["parmelia"]
+    starts = {tuple(s["divisions"]): (s["time"], s["flag"]) for s in series["starts"]}
+    assert starts[("III",)] == ("18:50", "naval-3")
+    assert starts[("IV",)] == ("18:50", "naval-4")
+    assert starts[("I",)] == ("19:00", "naval-1")
+    assert starts[("II",)] == ("19:00", "naval-2")
+    assert series["time_limit"] == "6h"
+    assert "seven" in series["time_limit_note"]
+
+
+def test_the_parmelia_courses_are_not_produced_by_the_extractor():
+    """They come from their own instructions document, so extract_courses.py must carry them
+    through rather than rebuild them. It keys that on the series, so the series must not be
+    one the extractor owns."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "extract_courses", ROOT / "scripts" / "extract_courses.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert "parmelia" not in module.SERIES
+    for course_id in PARMELIA_PIVOT:
+        assert _course(course_id)["series"] == "parmelia"
 
 
 def test_rounding_is_taken_from_the_leg_not_the_mark():

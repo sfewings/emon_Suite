@@ -69,12 +69,13 @@ def test_the_course_list_is_served_for_the_selection_screen():
     client, _store, _ticker, _published = _client()
     body = json.loads(client.get("/api/courses").get_data(as_text=True))
     assert set(body) == {"series", "courses"}
-    # every series on a course sheet in the fixtures book, not just the first one built
+    # every series on a course sheet in the fixtures book, plus the Parmelia night race,
+    # which has its own sailing instructions document rather than a page in that book
     assert set(body["series"]) == {"frostbite", "friday", "sunday-div-ii", "sunday-div-iii",
-                                   "sunday-div-iv", "twilight"}
+                                   "sunday-div-iv", "twilight", "parmelia"}
     # the endpoint offers the whole file rather than a subset of it
     shipped = app_module.load_config()["courses"]["courses"]
-    assert len(body["courses"]) == len(shipped) == 23
+    assert len(body["courses"]) == len(shipped) == 25
     assert {c["id"] for c in body["courses"]} == {c["id"] for c in shipped}
 
     first = body["courses"][0]
@@ -82,9 +83,17 @@ def test_the_course_list_is_served_for_the_selection_screen():
     assert first["raceable"] is True
     assert first["legs"] == 10
 
+    # The two Parmelia courses fly no course numeral pendant, because the division decides
+    # which of them is sailed rather than a number: naval 1 and 2 start parmelia-1 at 19:00,
+    # 3 and 4 start parmelia-2 at 18:50. Their cards carry the course number and distance
+    # and no flag image. Named explicitly rather than skipped by series, so a fixtures
+    # course that quietly loses its pendant still fails here.
+    NO_PENDANT = {"parmelia-1", "parmelia-2"}
+
     # a card needs the numeral to show and a leg count to size the race, for every course
     for c in body["courses"]:
-        assert c["flags"]["numeral"], c["id"]
+        if c["id"] not in NO_PENDANT:
+            assert c["flags"]["numeral"], c["id"]
         assert c["legs"] >= 5, c["id"]
         assert c["distance_nm"] > 0, c["id"]
         assert c["raceable"] is True, c["id"]
