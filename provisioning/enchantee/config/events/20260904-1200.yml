@@ -1,0 +1,332 @@
+# Event Configurations
+# Time-based config file following emon_Suite pattern
+# Active from: 2026-02-12 10:00
+
+events:
+  # Vessel track recording - automatic logging when vessel moves
+  track_recording:
+    enabled: true
+    name: "Vessel Track Recording"
+    description: "Automatic logging of track sessions with battery, GPS, temperature, and motor data"
+
+    # GPS position monitoring topics
+    monitor_topics:
+      # One JSON message per fix, {"lat":.., "lon":.., "ts":..}, published by
+      # pyemonlib.emon_mqtt.gpsMessage. Preferred over the separate
+      # gps/latitude/0 + gps/longitude/0 topics, which are sampled either side of
+      # a fix: a position assembled from those pairs a latitude from one moment
+      # with a longitude from another, and movement is detected by distance, so
+      # that reads as a jump the vessel never made and triggers a recording that
+      # never happened. The split topics are still accepted if this one stops
+      # being published.
+      - "gps/position/0"
+
+    # Start condition: Vessel moving (GPS position changing)
+    start_condition:
+      type: "gps_movement"
+      distance_threshold: 20             # meters - movement required to trigger
+      duration: 5                       # seconds - must move continuously
+
+    # Stop condition: Vessel stopped (GPS position stationary)
+    stop_condition:
+      type: "gps_stopped"
+      distance_threshold: 20              # meters - max movement while "stopped"
+      duration: 180                       # seconds - must be stationary continuously
+
+    # MQTT topics to record during session
+    record_topics:
+      - "gps/#"                          # All GPS data
+      - "battery/power/+/+"              # Battery power (all banks)
+      - "battery/voltage/+/+"            # Battery voltages
+      - "temperature/#"                  # temperatures (# not *: * is not an MQTT wildcard)
+      - "sevCon/#"                       # Motor controller data
+      - "imu/0/mag/+"                    # Inertial measurement unit data
+      - "imu/0/acc/+"                    # Inertial measurement unit data
+      - "imu/0/gyro/+"                   # Inertial measurement unit data
+      - "imu/0/heading"                  # Inertial measurement unit data
+      - "anemometer/#"                   # Wind speed/direction data
+      - "bms/batterySoC/#"               # Battery management system
+      - "bms/power/#"                    # Battery management system
+      - "bms/resCapacity/#"              # Battery management system
+      - "bms/+"                          # Battery management system
+      - "pth/#"                          # Pressure, temperature, humidity data
+      - "rssi/#"                         # Signal strength data
+
+    # Plot generation configuration
+    plots:
+      # Speed over time
+      - type: "line"
+        title: "Speed Over Time"
+        topics: ["gps/speed/0"]
+        ylabel: "Speed (km/h)"
+        color: "#667eea"
+
+      # Battery power comparison (multiple banks)
+      - type: "multi_line"
+        title: "Battery Power (All Banks)"
+        topics:
+          - "battery/power/0/0"
+          - "battery/power/0/1"
+        ylabel: "Power (W)"
+        labels: ["Bank 1", "Bank 2"]
+        legend: true
+        colors: ["#667eea", "#764ba2"]
+
+      # Battery voltage
+      - type: "line"
+        title: "Battery Voltage"
+        topics: ["battery/voltage/0/0"]
+        ylabel: "Voltage (V)"
+        color: "#667eea"
+
+      # GPS route map
+      # Drawn over the offline chart fetched from enchantee_racing and coloured
+      # by speed over ground; see the charts section of
+      # event_recorder_config.yml. The boat has no internet, so OpenStreetMap
+      # tiles are unreachable on the water. An interactive OSM map is still
+      # written alongside for the WordPress post, which is read ashore.
+      - type: "map"
+        title: "Track Route"
+        topics: ["gps/position/0"]
+        markers: ["start", "end"]
+
+      # Statistics summary table
+      - type: "statistics_table"
+        title: "Track Summary"
+        metrics:
+          - topic: "gps/speed/0"
+            stats: ["max", "mean"]
+            labels: ["Max Speed (km/h)", "Avg Speed (km/h)"]
+          - topic: "battery/power/0/0"
+            stats: ["min", "max", "mean", "total_energy"]
+            labels: ["Min Power (W)", "Max Power (W)", "Avg Power (W)", "Energy Used (Wh)"]
+          - topic: "gps/distance"
+            stats: ["total"]
+            labels: ["Distance (km)"]
+
+    # Export files generated during processing and attached to the WordPress post
+    exports:
+      csv: true
+      kml: true
+      gpx: true
+
+    # WordPress publishing settings
+    wordpress:
+      site: "default_site"               # Reference to wordpress.default_site in main config
+      category: "Track Logs"
+      auto_publish: true                # Manual review before publish
+      template: |
+        <h2>Track Summary</h2>
+        <p><strong>Date:</strong> {start_time}</p>
+        <p><strong>Duration:</strong> {duration}</p>
+        <p><strong>Distance:</strong> {distance} km</p>
+        <p><strong>Max Speed:</strong> {max_speed} km/h</p>
+        <p><strong>Average Speed:</strong> {avg_speed} km/h</p>
+        <p><strong>Energy Used:</strong> {energy_used} Wh</p>
+        <p><strong>Efficiency:</strong> {efficiency} Wh/km</p>
+
+        <h3>Performance Plots</h3>
+        {plots}
+
+
+ # Example: Anchor-based track recording (disabled by default)
+  # Records when vessel leaves a fixed home location and stops when it returns.
+  # Useful for a fixed base (garage, depot, marina) where departures/arrivals
+  # define the start and end of an activity rather than movement detection.
+  anchor_track_recording:
+    enabled: true
+    name: "Anchor-Based Recording"
+    description: "Record when vessel departs from home anchor and stop when it returns"
+
+    monitor_topics:
+      # One JSON message per fix, {"lat":.., "lon":.., "ts":..}, published by
+      # pyemonlib.emon_mqtt.gpsMessage. Preferred over the separate
+      # gps/latitude/0 + gps/longitude/0 topics, which are sampled either side of
+      # a fix: a position assembled from those pairs a latitude from one moment
+      # with a longitude from another, and movement is detected by distance, so
+      # that reads as a jump the vessel never made and triggers a recording that
+      # never happened. The split topics are still accepted if this one stops
+      # being published.
+      - "gps/position/0"
+
+    # Start condition: Vessel has moved outside the anchor zone
+    start_condition:
+      type: "anchor_departure"
+      anchor_lat: -32.001378                # Home latitude
+      anchor_lon: 115.809363                # Home longitude
+      radius: 50                            # meters - zone radius around anchor
+      duration: 5                           # seconds outside zone before triggering
+
+    # Stop condition: Vessel has returned inside the anchor zone
+    stop_condition:
+      type: "anchor_return"
+      anchor_lat: -32.001378                # Home latitude
+      anchor_lon: 115.809363                # Home longitude
+      radius: 50                            # meters - zone radius around anchor
+      duration: 15                          # seconds inside zone before triggering
+
+    record_topics:
+      - "gps/#"                          # All GPS data
+      - "battery/power/+/+"              # Battery power (all banks)
+      - "battery/voltage/+/+"            # Battery voltages
+      - "temperature/#"                  # temperatures (# not *: * is not an MQTT wildcard)
+      - "sevCon/#"                       # Motor controller data
+      - "imu/#"                          # Inertial measurement unit data
+      - "anemometer/#"                   # Wind speed/direction data
+      - "bms/batterySoC/#"               # Battery management system
+      - "bms/power/#"                    # Battery management system
+      - "bms/resCapacity/#"              # Battery management system
+      - "bms/+"                          # Battery management system
+      - "pth/#"                          # Pressure, temperature, humidity data
+      - "rssi/#"                         # Signal strength data
+
+    # Plot generation configuration
+    plots:
+      # Speed over time
+      - type: "line"
+        title: "Speed Over Time"
+        topics: ["gps/speed/0"]
+        ylabel: "Speed (km/h)"
+        color: "#667eea"
+
+      # Battery power comparison (multiple banks)
+      - type: "multi_line"
+        title: "Battery Power (All Banks)"
+        topics:
+          - "battery/power/0/0"
+          - "battery/power/0/1"
+        ylabel: "Power (W)"
+        labels: ["Bank 1", "Bank 2"]
+        legend: true
+        colors: ["#667eea", "#764ba2"]
+
+      # Battery voltage
+      - type: "line"
+        title: "Battery Voltage"
+        topics: ["battery/voltage/0/0"]
+        ylabel: "Voltage (V)"
+        color: "#667eea"
+
+      # GPS route map
+      # Drawn over the offline chart fetched from enchantee_racing and coloured
+      # by speed over ground; see the charts section of
+      # event_recorder_config.yml. The boat has no internet, so OpenStreetMap
+      # tiles are unreachable on the water. An interactive OSM map is still
+      # written alongside for the WordPress post, which is read ashore.
+      - type: "map"
+        title: "Track Route"
+        topics: ["gps/position/0"]
+        markers: ["start", "end"]
+
+      # Statistics summary table
+      - type: "statistics_table"
+        title: "Track Summary"
+        metrics:
+          - topic: "gps/speed/0"
+            stats: ["max", "mean"]
+            labels: ["Max Speed (km/h)", "Avg Speed (km/h)"]
+          - topic: "battery/power/0/0"
+            stats: ["min", "max", "mean", "total_energy"]
+            labels: ["Min Power (W)", "Max Power (W)", "Avg Power (W)", "Energy Used (Wh)"]
+          - topic: "gps/distance"
+            stats: ["total"]
+            labels: ["Distance (km)"]
+
+    # WordPress publishing settings
+    wordpress:
+      site: "default_site"               # Reference to wordpress.default_site in main config
+      category: "Anchor Logs"
+      auto_publish: true                # Manual review before publish
+      template: |
+        <h2>Track Summary</h2>
+        <p><strong>Date:</strong> {start_time}</p>
+        <p><strong>Duration:</strong> {duration}</p>
+        <p><strong>Distance:</strong> {distance} km</p>
+        <p><strong>Max Speed:</strong> {max_speed} km/h</p>
+        <p><strong>Average Speed:</strong> {avg_speed} km/h</p>
+        <p><strong>Energy Used:</strong> {energy_used} Wh</p>
+        <p><strong>Efficiency:</strong> {efficiency} Wh/km</p>
+
+        <h3>Performance Plots</h3>
+        {plots}
+
+  # Example: Solar high production event (disabled by default)
+  solar_high_production:
+    enabled: false
+    name: "High Solar Production Event"
+    description: "Record when solar production exceeds 2kW"
+
+    monitor_topics:
+      - "inverter/pvInputPower/0"
+
+    start_condition:
+      type: "threshold"
+      topic: "inverter/pvInputPower/0"
+      operator: ">"
+      value: 2000                        # 2kW production
+
+    stop_condition:
+      type: "duration"
+      duration: 3600                     # Record for 1 hour
+
+    record_topics:
+      - "inverter/#"
+      - "battery/#"
+      - "temperature/+/+"
+
+    plots:
+      - type: "line"
+        title: "Solar Production"
+        topics: ["inverter/pvInputPower/0"]
+        ylabel: "Power (W)"
+        color: "#FFD700"
+
+    wordpress:
+      site: "default_site"
+      category: "Solar Production"
+      auto_publish: false
+
+  # Example: Battery charge cycle (disabled by default)
+  battery_charge_cycle:
+    enabled: false
+    name: "Battery Charge Cycle"
+    description: "Record battery charging sessions"
+
+    monitor_topics:
+      - "battery/power/0/0"
+
+    start_condition:
+      type: "threshold"
+      topic: "battery/power/0/0"
+      operator: ">"
+      value: 100                         # Charging > 100W
+      duration: 5                        # For 5 seconds
+
+    stop_condition:
+      type: "threshold"
+      topic: "battery/power/0/0"
+      operator: "<"
+      value: 10                          # Charge complete < 10W
+      duration: 60                       # For 60 seconds
+
+    record_topics:
+      - "battery/#"
+      - "inverter/#"
+
+    plots:
+      - type: "line"
+        title: "Battery Power During Charge"
+        topics: ["battery/power/0/0"]
+        ylabel: "Power (W)"
+        color: "#667eea"
+
+      - type: "line"
+        title: "Battery Voltage During Charge"
+        topics: ["battery/voltage/0/0"]
+        ylabel: "Voltage (V)"
+        color: "#764ba2"
+
+    wordpress:
+      site: "default_site"
+      category: "Battery Performance"
+      auto_publish: false
