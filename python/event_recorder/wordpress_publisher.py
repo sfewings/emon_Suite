@@ -93,7 +93,7 @@ class WordPressPublisher:
                 timeout=self.timeout
             )
 
-            if response.status_code == 200:
+            if response.status_code == 200 and not response.text.lstrip().lower().startswith('error'):
                 logger.info("Whitelist endpoint called successfully")
                 self._whitelist_called = True
                 return True
