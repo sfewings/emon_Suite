@@ -953,5 +953,6 @@ history** and reachable from the GitHub remote. Untracking it stops further
 exposure but does not remove what is already committed. Anything that was in it
 should be treated as compromised and rotated: the InfluxDB and Grafana admin
 passwords, the MySQL passwords, the WordPress application password, and the
-credentials embedded in `WP_WHITELIST_ENDPOINT`. The same applies to the other
-provisions, whose `.env` files are still tracked.
+mike.fewings.org whitelist-script credentials that were once embedded there
+(the whitelist script itself has since been removed server-side). The same
+applies to the other provisions, whose `.env` files are still tracked.

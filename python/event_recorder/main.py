@@ -113,7 +113,6 @@ class EventRecorderService:
                 site_url=wp_config.get('site_url'),
                 username=wp_config.get('username'),
                 app_password=wp_config.get('app_password'),
-                whitelist_endpoint=wp_config.get('whitelist_endpoint') or None,
             )
         else:
             self.wordpress_publisher = None

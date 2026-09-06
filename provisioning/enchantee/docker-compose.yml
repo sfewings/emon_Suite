@@ -193,7 +193,6 @@ services:
       - WP_SITE_URL=${WP_SITE_URL}
       - WP_USERNAME=${WP_USERNAME}
       - WP_APP_PASSWORD=${WP_APP_PASSWORD}
-      - WP_WHITELIST_ENDPOINT=${WP_WHITELIST_ENDPOINT}
       - TZ=${TIMEZONE}
       #- DEBUG=1  # Set DEBUG=1 to enable debugpy
       #- WAIT_FOR_DEBUGGER=1  # Set WAIT_FOR_DEBUGGER=1 to wait for debugger

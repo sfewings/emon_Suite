@@ -30,7 +30,6 @@ class WordPressPublisher:
         site_url: str,
         username: str,
         app_password: str,
-        whitelist_endpoint: str = None,
         timeout: int = 30,
         max_retries: int = 3
     ):
@@ -41,25 +40,16 @@ class WordPressPublisher:
             site_url: WordPress site URL (e.g., https://example.com)
             username: WordPress username
             app_password: Application password (24-char with spaces)
-            whitelist_endpoint: Optional URL to call before first API request.
-                This allows the server to whitelist the calling IP.
-                (e.g., https://example.com/whitelist.php?token=xyz)
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts for failed requests
         """
         self.site_url = site_url.rstrip('/')
         self.username = username
         self.auth = HTTPBasicAuth(username, app_password)
-        self.whitelist_endpoint = whitelist_endpoint
-        self._whitelist_called = False  # Track whether we've called the whitelist endpoint
         self.timeout = timeout
         self.max_retries = max_retries
 
         logger.info(f"WordPressPublisher initialized for {self.site_url}, {self.username}, {app_password})")
-        if self.whitelist_endpoint:
-            logger.info(f"Whitelist endpoint configured: {self.whitelist_endpoint}")
-        else:
-            logger.info(f"No whitelist endpoint")
 
     def _api_url(self, endpoint: str) -> str:
         """
@@ -76,40 +66,6 @@ class WordPressPublisher:
         """
         return f"{self.site_url}/?rest_route=/wp/v2/{endpoint}"
 
-    def _call_whitelist_endpoint(self) -> bool:
-        """
-        Call whitelist endpoint to register calling IP before API access.
-
-        Returns:
-            True if successful or endpoint not configured, False if failed
-        """
-        if not self.whitelist_endpoint or self._whitelist_called:
-            return True
-
-        try:
-            logger.info(f"Calling whitelist endpoint: {self.whitelist_endpoint}")
-            response = requests.get(
-                self.whitelist_endpoint,
-                timeout=self.timeout
-            )
-
-            if response.status_code == 200 and not response.text.lstrip().lower().startswith('error'):
-                logger.info("Whitelist endpoint called successfully")
-                self._whitelist_called = True
-                return True
-            else:
-                logger.error(
-                    f"Whitelist endpoint returned {response.status_code}: {response.text}"
-                )
-                return False
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to call whitelist endpoint: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error calling whitelist endpoint: {e}")
-            return False
-
     def test_connection(self) -> Tuple[bool, str]:
         """
         Test WordPress API connection and authentication.
@@ -117,11 +73,6 @@ class WordPressPublisher:
         Returns:
             Tuple of (success: bool, message: str)
         """
-        # Call whitelist endpoint first if configured
-        if self.whitelist_endpoint and not self._whitelist_called:
-            if not self._call_whitelist_endpoint():
-                return False, "Whitelist endpoint call failed"
-
         try:
             # Test basic API access using WP Application Password credentials
             response = requests.get(
@@ -136,7 +87,6 @@ class WordPressPublisher:
                 return True, f"Connected as {user_data.get('name')} ({user_data.get('roles')})"
             elif response.status_code == 401:
                 www_auth = response.headers.get('WWW-Authenticate', '')
-                self._whitelist_called = False  # Allow whitelist to be re-called on next attempt
                 logger.error(
                     f"WordPress 401. WWW-Authenticate: {www_auth!r}. "
                     f"Response body: {response.text[:500]!r}"
@@ -173,14 +123,6 @@ class WordPressPublisher:
         Raises:
             requests.exceptions.RequestException: If all retries fail
         """
-        # Call whitelist endpoint before first request if configured
-        if not self._whitelist_called:
-            if not self._call_whitelist_endpoint():
-                logger.error("Whitelist endpoint call failed, aborting request")
-                raise requests.exceptions.RequestException(
-                    "Whitelist endpoint call failed"
-                )
-
         for attempt in range(self.max_retries):
             try:
                 # Send request with WP Application Password (required by WordPress REST API)
@@ -193,8 +135,6 @@ class WordPressPublisher:
                 )
 
                 # Check for success or client error (don't retry client errors)
-                if response.status_code == 401:
-                    self._whitelist_called = False  # Allow whitelist re-call on next request
                 if response.status_code < 500:
                     return response
 
