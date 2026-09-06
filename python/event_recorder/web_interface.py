@@ -253,7 +253,9 @@ class WebInterface:
             """Manually create/start a recording."""
             try:
                 data = request.get_json()
-                name = data.get('name', f"Manual Recording - {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}")
+                # Local time: the name is read by the crew and becomes the blog
+                # post title. Stored timestamps stay UTC.
+                name = data.get('name', f"Manual Recording - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 description = data.get('description', '')
                 topics = data.get('topics', ['gps/#', 'battery/#'])
 
@@ -600,7 +602,8 @@ class WebInterface:
                     logger.info(f"Recording published: {post['link']}")
                     return jsonify({
                         'success': True,
-                        'post': post
+                        'post': post,
+                        'failed_uploads': post.get('failed_uploads', [])
                     })
                 else:
                     # Mark as failed

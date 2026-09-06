@@ -16,7 +16,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
 from xml.dom import minidom
@@ -655,6 +655,7 @@ class DataProcessor:
             raise ValueError(f"No data found for topic {topics[0]}")
 
         timestamps, values = data
+        timestamps = [self._utc_to_local(t) for t in timestamps]
 
         # Create plot
         fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
@@ -712,6 +713,7 @@ class DataProcessor:
             data = self._get_topic_data(recording_id, topic)
             if data:
                 timestamps, values = data
+                timestamps = [self._utc_to_local(t) for t in timestamps]
                 label = labels[i] if i < len(labels) else topic
                 color = colors[i % len(colors)]
                 ax.plot(timestamps, values, linewidth=2, label=label, color=color)
@@ -852,6 +854,33 @@ class DataProcessor:
             f"speed={'yes' if mappable is not None else 'no'})"
         )
         return output_path
+
+    @staticmethod
+    def _utc_to_local(stamp: Optional[datetime]) -> Optional[datetime]:
+        """
+        Reinterpret a stored timestamp in the container's timezone.
+
+        Everything is recorded with datetime.utcnow(), which is the right thing
+        to store but the wrong thing to show: a chart of an afternoon sail was
+        labelled with the morning's UTC hours. Anything a reader sees goes
+        through here first. Exports do not: GPX and KML timestamps are UTC by
+        specification.
+
+        Returns a naive datetime, matching what the rest of the module passes
+        around, so a converted value can be compared with an unconverted one
+        without TypeError.
+
+        Args:
+            stamp: Naive UTC datetime, or None
+
+        Returns:
+            Naive local datetime, or None
+        """
+        if stamp is None:
+            return None
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.astimezone().replace(tzinfo=None)
 
     @staticmethod
     def _title_to_stem(title: str) -> str:
@@ -1232,7 +1261,10 @@ class DataProcessor:
                 raw_ts = fix.get('ts')
                 if isinstance(raw_ts, (int, float)) and math.isfinite(raw_ts):
                     try:
-                        fix_time = datetime.fromtimestamp(float(raw_ts))
+                        # utcfromtimestamp, not fromtimestamp: the exports label
+                        # this time 'Z', so it has to actually be UTC and not
+                        # whatever the container's timezone renders it as.
+                        fix_time = datetime.utcfromtimestamp(float(raw_ts))
                     except (OverflowError, OSError, ValueError):
                         fix_time = None
 
@@ -1580,8 +1612,10 @@ class DataProcessor:
         if end_time and isinstance(end_time, str):
             end_time = datetime.fromisoformat(end_time)
 
-        stats['start_time'] = start_time.strftime('%Y-%m-%d %H:%M:%S') if start_time else ''
-        stats['end_time'] = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else ''
+        local_start = self._utc_to_local(start_time)
+        local_end = self._utc_to_local(end_time)
+        stats['start_time'] = local_start.strftime('%Y-%m-%d %H:%M:%S') if local_start else ''
+        stats['end_time'] = local_end.strftime('%Y-%m-%d %H:%M:%S') if local_end else ''
 
         if end_time:
             duration = end_time - start_time

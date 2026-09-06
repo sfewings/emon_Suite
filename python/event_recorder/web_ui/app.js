@@ -603,7 +603,12 @@ async function publishRecording(recordingId) {
         const data = await response.json();
 
         if (data.success) {
-            showToast('Published to WordPress successfully', 'success');
+            const failed = data.failed_uploads || [];
+            if (failed.length) {
+                showToast(`Published, but ${failed.length} file(s) did not upload: ${failed.join(', ')}`, 'error');
+            } else {
+                showToast('Published to WordPress successfully', 'success');
+            }
             if (data.post && data.post.link) {
                 showToast(`Post URL: ${data.post.link}`, 'info');
             }

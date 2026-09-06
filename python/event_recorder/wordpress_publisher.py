@@ -8,7 +8,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -25,6 +25,10 @@ class WordPressPublisher:
     Uses Application Passwords for authentication (WordPress 5.6+).
     """
 
+    # How a time is written in the post: seconds are as fine as a reader needs,
+    # and the database's microseconds only made the date line hard to read.
+    DISPLAY_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
     def __init__(
         self,
         site_url: str,
@@ -40,7 +44,11 @@ class WordPressPublisher:
             site_url: WordPress site URL (e.g., https://example.com)
             username: WordPress username
             app_password: Application password (24-char with spaces)
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds. Applies to uploads too: a
+                longer one was tried for the sake of the large CSV export and
+                only made the failure slower, since the server stops reading a
+                body it will not accept and the write blocks until the timeout
+                expires either way.
             max_retries: Maximum retry attempts for failed requests
         """
         self.site_url = site_url.rstrip('/')
@@ -138,6 +146,12 @@ class WordPressPublisher:
                 if response.status_code < 500:
                     return response
 
+                if self._is_permanent_error(response):
+                    logger.warning(
+                        f"WordPress refused the request ({response.status_code}); not retrying"
+                    )
+                    return response
+
                 # Server error - retry with backoff
                 logger.warning(f"Server error {response.status_code}, attempt {attempt + 1}/{self.max_retries}")
 
@@ -152,6 +166,63 @@ class WordPressPublisher:
                 time.sleep(2 ** attempt)
 
         return response
+
+    @staticmethod
+    def _local_time(value) -> Optional[datetime]:
+        """
+        Read a recorded timestamp and return it in the boat's timezone.
+
+        Recordings are stored with datetime.utcnow(). Left alone, the post
+        carried UTC throughout: an afternoon sail dated to that morning, and a
+        WordPress date field that reads whatever it is given as site-local.
+
+        Args:
+            value: Stored timestamp, as a string or datetime
+
+        Returns:
+            Naive local datetime, or None when there is nothing to read
+        """
+        if not value:
+            return None
+
+        if isinstance(value, datetime):
+            stamp = value
+        else:
+            from dateutil import parser as _dateutil_parser
+            try:
+                stamp = _dateutil_parser.parse(str(value))
+            except (ValueError, OverflowError, TypeError):
+                return None
+
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.astimezone().replace(tzinfo=None)
+
+    @staticmethod
+    def _is_permanent_error(response: requests.Response) -> bool:
+        """
+        Report whether WordPress has refused this request for good.
+
+        A blocked file type comes back as a 500, which the retry loop would
+        otherwise read as a server hiccup and send the whole file twice more.
+        The refusal is permanent, and the files it applies to are the large
+        ones.
+
+        Args:
+            response: Response to classify
+
+        Returns:
+            True when retrying cannot succeed
+        """
+        permanent_codes = {
+            'rest_upload_sideload_error',    # file type not permitted
+            'rest_upload_unknown_error',
+            'rest_upload_file_too_big',
+        }
+        try:
+            return response.json().get('code') in permanent_codes
+        except ValueError:
+            return False
 
     def upload_media(self, file_path: str, caption: str = None) -> Optional[Dict]:
         """
@@ -202,7 +273,10 @@ class WordPressPublisher:
                 logger.info(f"Media uploaded successfully: ID={media_id}")
                 return {'id': media_id, 'url': media_url}
             else:
-                logger.error(f"Media upload failed: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Media upload failed for {file_path.name}: "
+                    f"{response.status_code} - {response.text}"
+                )
                 return None
 
         except Exception as e:
@@ -275,7 +349,12 @@ class WordPressPublisher:
                 logger.info(f"Export file uploaded: ID={media_id}")
                 return {'id': media_id, 'url': media_url}
             else:
-                logger.error(f"Export upload failed: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Export upload failed for {file_path.name} "
+                    f"(type {headers['Content-Type']}, "
+                    f"{file_path.stat().st_size} bytes): "
+                    f"{response.status_code} - {response.text}"
+                )
                 return None
 
         except Exception as e:
@@ -444,6 +523,11 @@ class WordPressPublisher:
         logger.info(f"Publishing recording: {recording_data.get('name')}")
 
         try:
+            # Files that did not make it. A post is still worth publishing
+            # without them, but the caller has to be told: a silently missing
+            # Downloads section looks like a successful publish.
+            failed_uploads = []
+
             # Upload images to WordPress
             media_ids = []
             for image in images:
@@ -459,6 +543,8 @@ class WordPressPublisher:
                         'image_type': image.get('image_type', 'plot'),
                         'path': image['path']
                     })
+                else:
+                    failed_uploads.append(Path(image['path']).name)
 
             if not media_ids and not statistics and not map_htmls:
                 logger.error("No images uploaded successfully")
@@ -474,6 +560,8 @@ class WordPressPublisher:
                         'label': exp.get('label', exp['export_type'].upper()),
                         'export_type': exp['export_type'],
                     })
+                else:
+                    failed_uploads.append(Path(exp['path']).name)
 
             # Build HTML content
             content = self._build_post_content(
@@ -491,12 +579,16 @@ class WordPressPublisher:
             # Create excerpt
             excerpt = recording_data.get('description', '')
             if not excerpt:
-                start_time = recording_data.get('start_time', '')
+                shown_start = self._local_time(recording_data.get('start_time'))
                 duration = self._format_duration(
                     recording_data.get('start_time'),
                     recording_data.get('end_time')
                 )
-                excerpt = f"Track recording from {start_time}. Duration: {duration}"
+                excerpt = (
+                    f"Track recording from "
+                    f"{shown_start.strftime(self.DISPLAY_TIME_FORMAT) if shown_start else 'N/A'}. "
+                    f"Duration: {duration}"
+                )
 
             # Featured image priority:
             #   1. Last user-uploaded photo (most recent/relevant shot of the trip)
@@ -514,14 +606,10 @@ class WordPressPublisher:
                 featured_id = None
 
             # Format recording start time as ISO 8601 for WordPress date field
-            post_date = None
-            raw_start = recording_data.get('start_time')
-            if raw_start:
-                try:
-                    from dateutil import parser as _dateutil_parser
-                    post_date = _dateutil_parser.parse(str(raw_start)).strftime('%Y-%m-%dT%H:%M:%S')
-                except Exception:
-                    pass  # Leave post_date as None; WordPress will use current time
+            # WordPress reads this field as the site's local time, so it has to
+            # be given local time and not the stored UTC.
+            local_start = self._local_time(recording_data.get('start_time'))
+            post_date = local_start.strftime('%Y-%m-%dT%H:%M:%S') if local_start else None
 
             # Create post
             post_status = 'publish' if auto_publish else 'draft'
@@ -534,6 +622,13 @@ class WordPressPublisher:
                 excerpt=excerpt,
                 date=post_date
             )
+
+            if post and failed_uploads:
+                logger.warning(
+                    f"Post created without {len(failed_uploads)} file(s) that "
+                    f"failed to upload: {', '.join(failed_uploads)}"
+                )
+                post['failed_uploads'] = failed_uploads
 
             return post
 
@@ -569,8 +664,12 @@ class WordPressPublisher:
             content = self._apply_template(recording_data, template)
         else:
             # Default template
+            local_start = self._local_time(recording_data.get('start_time'))
+            shown_date = (local_start.strftime(self.DISPLAY_TIME_FORMAT)
+                          if local_start else 'N/A')
+
             content = f"<h2>Track Summary</h2>\n"
-            content += f"<p><strong>Date:</strong> {recording_data.get('start_time', 'N/A')}</p>\n"
+            content += f"<p><strong>Date:</strong> {shown_date}</p>\n"
 
             duration = self._format_duration(
                 recording_data.get('start_time'),
@@ -585,11 +684,28 @@ class WordPressPublisher:
         if statistics:
             content += self._build_statistics_table_html(statistics)
 
+        # Split images: user-uploaded photos go in their own section before plots
+        user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
+        plots = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
+
+        # The drawn track goes above the fold, with the summary: it is the one
+        # picture that says what the day was, and the homepage shows nothing
+        # below the break. Taken out of `plots` so it is not repeated further
+        # down among the charts.
+        route_map = self._pop_primary_route_map(plots)
+        if route_map:
+            content += self._build_figure_html(route_map.get('url', ''),
+                                               route_map.get('caption', ''))
+
         # Everything below is the body of the post. The red-shadow theme on
         # enchantee.org renders the homepage with the_content(), so without this
         # break the listing carries the whole post — map JS included — and the
         # layout collapses under it.
-        content += "\n<!-- more -->\n"
+        #
+        # The inner tag has no spaces: the_content() looks for <!--more-->, and
+        # <!-- more --> is just a comment to it. The wp:more wrapper is what the
+        # block editor writes around it, and keeps the break editable there.
+        content += "\n<!-- wp:more -->\n<!--more-->\n<!-- /wp:more -->\n"
 
         # Interactive route map(s) — embedded folium HTML
         # Wrapped in Gutenberg <!-- wp:html --> blocks so WordPress does NOT
@@ -603,34 +719,21 @@ class WordPressPublisher:
                 if embed:
                     content += '<!-- wp:html -->\n' + embed + '\n<!-- /wp:html -->\n\n'
 
-        # Split images: user-uploaded photos go in their own section before plots
-        user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
-        plots = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
-
         # Photos section — user uploads with by-line captions
         if user_photos:
             content += "\n<h2>Photos</h2>\n"
             for media in user_photos:
-                caption = media.get('caption', '')
-                img_url = media.get('url', '')
-                alt_text = html_module.escape(caption) if caption else 'Photo'
-                content += f'<figure class="wp-block-image">\n'
-                content += f'  <img src="{img_url}" alt="{alt_text}" />\n'
-                if caption:
-                    content += f'  <figcaption><em>{html_module.escape(caption)}</em></figcaption>\n'
-                content += f'</figure>\n\n'
+                content += self._build_figure_html(media.get('url', ''),
+                                                   media.get('caption', ''),
+                                                   italic_caption=True,
+                                                   default_alt='Photo')
 
         # Data Visualizations section — generated plots
         if plots:
             content += "\n<h2>Data Visualizations</h2>\n"
             for media in plots:
-                caption = media.get('caption', '')
-                img_url = media.get('url', '')
-                content += f'<figure class="wp-block-image">\n'
-                content += f'  <img src="{img_url}" alt="{html_module.escape(caption)}" />\n'
-                if caption:
-                    content += f'  <figcaption>{html_module.escape(caption)}</figcaption>\n'
-                content += f'</figure>\n\n'
+                content += self._build_figure_html(media.get('url', ''),
+                                                   media.get('caption', ''))
 
         # Add Downloads section if export files were uploaded
         if download_links:
@@ -643,6 +746,63 @@ class WordPressPublisher:
             content += "</ul>\n"
 
         return content
+
+    @staticmethod
+    def _pop_primary_route_map(plots: List[Dict]) -> Optional[Dict]:
+        """
+        Remove the first route map from a list of plots and return it.
+
+        Titles are 'Route Map' for a single GPS unit and 'Route Map 0',
+        'Route Map 1' when the boat carries more than one; sorting picks the
+        lowest, which is the primary unit. The remaining units' maps stay with
+        the other charts.
+
+        Args:
+            plots: Generated-plot media dicts. The chosen entry is removed.
+
+        Returns:
+            The route map's media dict, or None when no map was uploaded
+        """
+        def is_route_map(media: Dict) -> bool:
+            caption = (media.get('caption') or '').strip().lower()
+            stem = Path(media.get('path', '')).stem.lower()
+            return caption.startswith('route map') or stem.startswith('route_map')
+
+        candidates = [m for m in plots if is_route_map(m)]
+        if not candidates:
+            return None
+
+        primary = min(candidates,
+                      key=lambda m: (m.get('caption') or Path(m.get('path', '')).stem))
+        plots.remove(primary)
+        return primary
+
+    @staticmethod
+    def _build_figure_html(img_url: str, caption: str,
+                           italic_caption: bool = False,
+                           default_alt: str = '') -> str:
+        """
+        Render one image as a WordPress figure block.
+
+        Args:
+            img_url: Uploaded image URL
+            caption: Caption text, used for the alt text as well
+            italic_caption: Wrap the caption in <em>, as photo by-lines are
+            default_alt: Alt text to fall back on when there is no caption
+
+        Returns:
+            HTML string
+        """
+        safe_caption = html_module.escape(caption) if caption else ''
+        alt_text = safe_caption or html_module.escape(default_alt)
+
+        html = '<figure class="wp-block-image">\n'
+        html += f'  <img src="{img_url}" alt="{alt_text}" />\n'
+        if caption:
+            body = f'<em>{safe_caption}</em>' if italic_caption else safe_caption
+            html += f'  <figcaption>{body}</figcaption>\n'
+        html += '</figure>\n\n'
+        return html
 
     def _extract_folium_embed(self, html_path: str, height: int = 500) -> str:
         """

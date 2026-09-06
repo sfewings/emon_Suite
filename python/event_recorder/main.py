@@ -257,7 +257,10 @@ class EventRecorderService:
         logger.info(f"START TRIGGER: {event_name}")
 
         # Create recording
-        recording_name = f"{event_name} - {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+        # Local time, not UTC: this name is what the crew reads in the web UI
+        # and what becomes the blog post's title. The timestamps stored against
+        # the recording stay UTC.
+        recording_name = f"{event_name} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         recording_description = config.get('description', '')
 
         recording_id = self.database.create_recording(
