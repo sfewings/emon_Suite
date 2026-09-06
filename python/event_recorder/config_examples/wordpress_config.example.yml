@@ -106,6 +106,14 @@ wordpress_template: |
 # → Enable HTTPS or add define('WP_ENVIRONMENT_TYPE', 'local') to wp-config.php
 # → Check if disabled by plugin/security settings
 #
+# ERROR: "Access blocked (401) — see logs for detail"
+# → The WordPress site is behind Apache HTTP Basic Auth (.htaccess)
+# → Apache intercepts the Application Password and rejects it before
+#   WordPress can validate it
+# → See: docs/APACHE_HTACCESS_AUTH_FIX.md for the .htaccess fix that
+#   lets REST API requests with an Authorization header pass through
+#   to WordPress
+#
 # ==============================================================================
 # SECURITY NOTES
 # ==============================================================================
