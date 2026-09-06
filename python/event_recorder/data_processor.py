@@ -13,6 +13,7 @@ import csv
 import logging
 import math
 import os
+import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -77,6 +78,12 @@ class DataProcessor:
     - Statistics calculation
     - Statistics summary tables
     """
+
+    # Cap on the points folium writes into the interactive map's inline JS. A
+    # long recording carries far more fixes than a browser needs to draw a
+    # recognisable track, and every one of them is embedded verbatim in the
+    # WordPress post.
+    OSM_MAX_POLYLINE_POINTS = 2000
 
     # ── Automatic plot grouping / labelling tables ────────────────────────────
 
@@ -340,19 +347,25 @@ class DataProcessor:
         """
         Derive a chart title from the group of topics.
 
-        Finds the longest common MQTT path prefix (ignoring numeric components)
-        and converts it to a readable title.  When topics come from entirely
-        different topic families (semantic merge), the distinct roots are
-        joined with ' / '.
+        Finds the longest common MQTT path prefix and converts it to a readable
+        title.  When topics come from entirely different topic families
+        (semantic merge), the distinct roots are joined with ' / '.
+
+        A numeric component is kept only when named components follow it. An
+        interior number identifies the instance — imu/0 and imu/2 are different
+        sensors — and dropping it titled every unit's acceleration, gyroscope
+        and magnetometer chart 'IMU', so all nine wrote one file and only the
+        last survived. A trailing number is the channel or axis index, which is
+        already drawn as a separate series, so it stays out of the title.
         """
         split_topics = [t.split('/') for t in topics]
         common: List[str] = []
         for components in zip(*split_topics):
-            unique = set(components)
-            if len(unique) == 1 and not list(unique)[0].isdigit():
-                common.append(list(unique)[0])
-            else:
+            if len(set(components)) != 1:
                 break
+            common.append(components[0])
+        while common and common[-1].isdigit():
+            common.pop()
 
         if common:
             return ' '.join(self._readable_component(p) for p in common)
@@ -476,6 +489,19 @@ class DataProcessor:
             # Create output directory for this recording
             output_dir = self.plots_dir / str(recording_id)
             output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Clear the previous run's generated artefacts so re-processing
+            # replaces them rather than adding to them. Plot rows would
+            # otherwise accumulate a duplicate set per run, and the publisher
+            # globs *.html, so a map left behind under an old filename would be
+            # embedded in the post alongside the new one. Exports are already
+            # idempotent (INSERT OR IGNORE on a unique path) and user uploads
+            # live outside this directory, so neither is touched here.
+            cleared = self.database.delete_plot_images(recording_id)
+            for stale_map in output_dir.glob('*.html'):
+                stale_map.unlink()
+            if cleared:
+                logger.info(f"Cleared {cleared} plot image record(s) from previous run")
 
             results = {
                 'plots': [],
@@ -649,7 +675,7 @@ class DataProcessor:
         plt.tight_layout()
 
         # Save
-        filename = f"{title.replace(' ', '_').lower()}.png"
+        filename = f"{self._title_to_stem(title)}.png"
         output_path = output_dir / filename
         plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
         plt.close()
@@ -705,7 +731,7 @@ class DataProcessor:
         plt.tight_layout()
 
         # Save
-        filename = f"{title.replace(' ', '_').lower()}.png"
+        filename = f"{self._title_to_stem(title)}.png"
         output_path = output_dir / filename
         plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
         plt.close()
@@ -815,7 +841,7 @@ class DataProcessor:
 
         plt.tight_layout()
 
-        filename = f"{title.replace(' ', '_').lower()}.png"
+        filename = f"{self._title_to_stem(title)}.png"
         output_path = output_dir / filename
         plt.savefig(output_path, dpi=self.default_dpi, bbox_inches='tight')
         plt.close()
@@ -826,6 +852,49 @@ class DataProcessor:
             f"speed={'yes' if mappable is not None else 'no'})"
         )
         return output_path
+
+    @staticmethod
+    def _title_to_stem(title: str) -> str:
+        """
+        Convert a plot title to a filename stem.
+
+        A semantically merged group is titled 'GPS / IMU', and the separator is
+        a path separator: writing that straight into a filename sent the plot to
+        a directory that does not exist, and it was silently lost. Titles can
+        also arrive in a plot_config from the API, so anything outside
+        [a-z0-9-] collapses to an underscore rather than being trusted.
+
+        Args:
+            title: Plot title
+
+        Returns:
+            Filename stem, without extension
+        """
+        return re.sub(r'[^a-z0-9-]+', '_', title.lower()).strip('_') or 'plot'
+
+    @staticmethod
+    def _downsample_coords(coords: List[Tuple[float, float]],
+                           max_points: int) -> List[Tuple[float, float]]:
+        """
+        Thin a coordinate list to at most max_points, keeping the last fix.
+
+        Args:
+            coords: List of (latitude, longitude)
+            max_points: Maximum number of points to keep
+
+        Returns:
+            The thinned list, or coords unchanged if it is already short enough
+        """
+        if len(coords) <= max_points:
+            return coords
+
+        stride = math.ceil(len(coords) / max_points)
+        thinned = coords[::stride]
+        # Striding lands on the end only when the length divides exactly; append
+        # it otherwise so the drawn track still reaches the End marker.
+        if thinned[-1] != coords[-1]:
+            thinned.append(coords[-1])
+        return thinned
 
     def _generate_osm_map_html(self, title: str,
                                coords: List[Tuple[float, float]],
@@ -857,15 +926,23 @@ class DataProcessor:
             center_lat = sum(lat for lat, lon in coords) / len(coords)
             center_lon = sum(lon for lat, lon in coords) / len(coords)
 
+            track = self._downsample_coords(coords, self.OSM_MAX_POLYLINE_POINTS)
+
             m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
-            folium.PolyLine(coords, color='#667eea', weight=4, opacity=0.8).add_to(m)
+            folium.PolyLine(track, color='#667eea', weight=4, opacity=0.8).add_to(m)
             folium.Marker(coords[0], popup='Start',
                           icon=folium.Icon(color='green', icon='play')).add_to(m)
             folium.Marker(coords[-1], popup='End',
                           icon=folium.Icon(color='red', icon='stop')).add_to(m)
-            m.fit_bounds(coords)
+            # Two corner points, not the track: folium serialises whatever it is
+            # given straight into the JS, so passing the coordinate list here
+            # would write the whole track into the file a second time.
+            m.fit_bounds([
+                [min(lat for lat, _ in coords), min(lon for _, lon in coords)],
+                [max(lat for lat, _ in coords), max(lon for _, lon in coords)],
+            ])
 
-            stem = f"{title.replace(' ', '_').lower()}_osm"
+            stem = f"{self._title_to_stem(title)}_osm"
             html_path = output_dir / f"{stem}.html"
             m.save(str(html_path))
             logger.info(f"Generated interactive OSM map: {html_path.name}")

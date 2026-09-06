@@ -585,6 +585,12 @@ class WordPressPublisher:
         if statistics:
             content += self._build_statistics_table_html(statistics)
 
+        # Everything below is the body of the post. The red-shadow theme on
+        # enchantee.org renders the homepage with the_content(), so without this
+        # break the listing carries the whole post — map JS included — and the
+        # layout collapses under it.
+        content += "\n<!-- more -->\n"
+
         # Interactive route map(s) — embedded folium HTML
         # Wrapped in Gutenberg <!-- wp:html --> blocks so WordPress does NOT
         # run wpautop() on the content (wpautop mangles <script> tags by

@@ -554,6 +554,26 @@ class Database:
         with self.get_connection() as conn:
             conn.execute("DELETE FROM recording_images WHERE id = ?", (image_id,))
 
+    def delete_plot_images(self, recording_id: int) -> int:
+        """
+        Delete the generated-plot image records for a recording.
+
+        User uploads are left alone: they are the crew's photos, not something
+        processing can recreate.
+
+        Args:
+            recording_id: Recording ID
+
+        Returns:
+            int: Number of rows deleted
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                DELETE FROM recording_images
+                WHERE recording_id = ? AND image_type = ?
+            """, (recording_id, ImageType.PLOT))
+            return cursor.rowcount
+
     # === Export Operations ===
 
     def add_export(self, recording_id: int, export_type: str,

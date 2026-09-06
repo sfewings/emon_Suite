@@ -530,6 +530,34 @@ async function processRecording(recordingId) {
     }
 }
 
+async function reprocessRecording(recordingId) {
+    if (!confirm(`Reprocess recording ${recordingId}? Plots, statistics and exports will be regenerated from the raw data, replacing the current ones. Uploaded photos are kept.`)) {
+        return;
+    }
+
+    showToast('Reprocessing recording... This may take a minute', 'info');
+
+    try {
+        const response = await fetch(`api/recordings/${recordingId}/process`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast(`Recording reprocessed: ${data.results.plots.length} plots generated`, 'success');
+            loadRecordings();
+        } else {
+            showToast(`Reprocessing failed: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Failed to reprocess recording:', error);
+        showToast('Failed to reprocess recording', 'error');
+    }
+}
+
 async function deleteRecording(recordingId) {
     if (!confirm(`Delete recording ${recordingId}? This cannot be undone.`)) {
         return;
@@ -820,6 +848,14 @@ async function viewRecording(recordingId) {
             modalContent += `
                 <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
                     ${Icons.process} Process
+                </button>
+            `;
+        }
+
+        if (rec.status === 'processed') {
+            modalContent += `
+                <button class="btn btn-success" onclick="closeModal(); reprocessRecording(${rec.id})">
+                    ${Icons.process} Reprocess
                 </button>
             `;
         }
