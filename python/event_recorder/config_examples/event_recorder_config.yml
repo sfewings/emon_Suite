@@ -41,6 +41,13 @@ plots:
   default_width: 12                      # Plot width (inches)
   default_height: 6                      # Plot height (inches)
   style: "seaborn-v0_8"                  # Matplotlib style
+  linewidth: 0.9                         # Trace width in points (1 point = 1/72
+                                         # inch, so this is independent of dpi:
+                                         # raising dpi enlarges the line too).
+                                         # 0.9 is about 1.9 px at 150 dpi. Wider
+                                         # traces hide detail on busy topics,
+                                         # which can carry several readings per
+                                         # pixel column.
 
 # WordPress configuration
 wordpress:

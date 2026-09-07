@@ -30,7 +30,8 @@ class WebInterface:
                  plots_dir: str = "/data/plots",
                  uploads_dir: str = "/data/uploads",
                  host: str = "0.0.0.0", port: int = 5000,
-                 charts_config: Optional[Dict] = None):
+                 charts_config: Optional[Dict] = None,
+                 plot_defaults: Optional[Dict] = None):
         """
         Initialize web interface.
 
@@ -44,6 +45,10 @@ class WebInterface:
             port: Listen port
             charts_config: The `charts` service config section, passed to the
                 data processor for the offline route-map basemap
+            plot_defaults: The `plots` service config section, passed to the
+                data processor so a reprocess from here draws the same as one
+                the service starts itself. Not to be confused with the
+                per-request plot_config, which lists the plots to draw.
         """
         self.database = database
         self.service_manager = service_manager
@@ -51,6 +56,7 @@ class WebInterface:
         self.plots_dir = Path(plots_dir)
         self.uploads_dir = Path(uploads_dir)
         self.charts_config = charts_config
+        self.plot_defaults = plot_defaults
         self.host = host
         self.port = port
 
@@ -368,11 +374,13 @@ class WebInterface:
                     plots_dir = str(self.plots_dir)
                     database = self.database
                     charts_config = self.charts_config
+                    plot_defaults = self.plot_defaults
 
                     def _auto_process():
                         try:
                             from .data_processor import DataProcessor
-                            processor = DataProcessor(database, plots_dir, charts_config)
+                            processor = DataProcessor(database, plots_dir,
+                                                      charts_config, plot_defaults)
                             processor.process_recording(recording_id)
                             logger.info(f"Auto-processing complete for recording {recording_id}")
                         except Exception as e:
@@ -430,7 +438,7 @@ class WebInterface:
                 from .data_processor import DataProcessor
 
                 processor = DataProcessor(self.database, str(self.plots_dir),
-                                          self.charts_config)
+                                          self.charts_config, self.plot_defaults)
                 results = processor.process_recording(recording_id, plot_config, export_config)
 
                 if results['status'] == 'success':

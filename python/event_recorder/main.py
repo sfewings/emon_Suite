@@ -125,7 +125,8 @@ class EventRecorderService:
             plots_dir=str(self.data_dir / "plots"),
             uploads_dir=str(self.data_dir / "uploads"),
             port=5000,
-            charts_config=self.config.get('charts', {})
+            charts_config=self.config.get('charts', {}),
+            plot_defaults=self.config.get_plot_config()
         )
         self.web_thread = None
 
@@ -329,7 +330,8 @@ class EventRecorderService:
             logger.info(f"Auto-processing recording {recording_id}")
             from .data_processor import DataProcessor
             processor = DataProcessor(self.database, str(self.data_dir / "plots"),
-                                      self.config.get('charts', {}))
+                                      self.config.get('charts', {}),
+                                      self.config.get_plot_config())
             processor.process_recording(recording_id)
             logger.info(f"Auto-processing complete for recording {recording_id}")
         except Exception as e:

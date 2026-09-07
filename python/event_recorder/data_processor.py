@@ -146,7 +146,7 @@ class DataProcessor:
     # ─────────────────────────────────────────────────────────────────────────
 
     def __init__(self, database: Database, plots_dir: str = "/data/plots",
-                 charts_config: Dict = None):
+                 charts_config: Dict = None, plot_defaults: Dict = None):
         """
         Initialize data processor.
 
@@ -155,6 +155,8 @@ class DataProcessor:
             plots_dir: Directory for plot output
             charts_config: The `charts` service config section, for the offline
                 basemap fetched from enchantee_racing. None uses defaults.
+            plot_defaults: The `plots` service config section, giving dpi,
+                figure size, style and line width. None uses defaults.
         """
         self.database = database
         self.plots_dir = Path(plots_dir)
@@ -166,10 +168,18 @@ class DataProcessor:
         self.GPS_MATCH_TOLERANCE = timedelta(seconds=5)
 
         # Plot defaults
-        self.default_dpi = 150
-        self.default_width = 12
-        self.default_height = 6
-        self.default_style = 'seaborn-v0_8'
+        plot_defaults = plot_defaults or {}
+        self.default_dpi = plot_defaults.get('dpi', 150)
+        self.default_width = plot_defaults.get('default_width', 12)
+        self.default_height = plot_defaults.get('default_height', 6)
+        self.default_style = plot_defaults.get('style', 'seaborn-v0_8')
+
+        # Line width in points, so 1 is 1/72 inch however high the dpi is: a
+        # bigger image does not draw a finer line, it draws the same line on a
+        # bigger canvas. At the old width of 2 the trace was over four pixels
+        # across while a busy topic puts nine readings in every pixel column,
+        # and the detail underneath was lost to the thickness of the line.
+        self.default_linewidth = plot_defaults.get('linewidth', 0.9)
 
         # Offline basemap for route maps. Refreshed and loaded at most once per
         # processor, on first use, so a run that plots no track does no HTTP.
@@ -660,7 +670,7 @@ class DataProcessor:
         # Create plot
         fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
 
-        ax.plot(timestamps, values, linewidth=2, color=color)
+        ax.plot(timestamps, values, linewidth=self.default_linewidth, color=color)
         ax.set_title(title, fontsize=16, fontweight='bold')
         ax.set_xlabel('Time', fontsize=12)
         ax.set_ylabel(ylabel, fontsize=12)
@@ -716,7 +726,8 @@ class DataProcessor:
                 timestamps = [self._utc_to_local(t) for t in timestamps]
                 label = labels[i] if i < len(labels) else topic
                 color = colors[i % len(colors)]
-                ax.plot(timestamps, values, linewidth=2, label=label, color=color)
+                ax.plot(timestamps, values, linewidth=self.default_linewidth,
+                        label=label, color=color)
 
         ax.set_title(title, fontsize=16, fontweight='bold')
         ax.set_xlabel('Time', fontsize=12)
