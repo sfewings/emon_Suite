@@ -29,13 +29,25 @@ class WordPressPublisher:
     # and the database's microseconds only made the date line hard to read.
     DISPLAY_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 
+    # The stylesheets an embedded map may bring into the page with it. Every
+    # rule in these is scoped to the map's own classes. Anything else folium
+    # links, Bootstrap above all, styles the elements of the page itself and
+    # cannot be let near a post.
+    _MAP_STYLESHEETS = (
+        'leaflet.css',
+        'awesome-markers',
+        'awesome.rotate',
+        'fontawesome',
+    )
+
     def __init__(
         self,
         site_url: str,
         username: str,
         app_password: str,
         timeout: int = 30,
-        max_retries: int = 3
+        max_retries: int = 3,
+        max_upload_mb: int = 25
     ):
         """
         Initialize WordPress publisher.
@@ -50,12 +62,18 @@ class WordPressPublisher:
                 body it will not accept and the write blocks until the timeout
                 expires either way.
             max_retries: Maximum retry attempts for failed requests
+            max_upload_mb: Largest file worth sending. What can be uploaded is
+                set by the link, not by the server: a quarter-gigabyte CSV
+                cannot cross a marina uplink inside the timeout, and the
+                attempt leaves a truncated attachment behind each time. 0
+                removes the limit.
         """
         self.site_url = site_url.rstrip('/')
         self.username = username
         self.auth = HTTPBasicAuth(username, app_password)
         self.timeout = timeout
         self.max_retries = max_retries
+        self.max_upload_bytes = max_upload_mb * 1048576 if max_upload_mb else 0
 
         logger.info(f"WordPressPublisher initialized for {self.site_url}, {self.username}, {app_password})")
 
@@ -116,13 +134,19 @@ class WordPressPublisher:
             logger.error(f"WordPress connection test failed: {e}")
             return False, f"Connection test failed: {str(e)}"
 
-    def _retry_request(self, method: str, url: str, **kwargs) -> requests.Response:
+    def _retry_request(self, method: str, url: str,
+                       retry_timeouts: bool = True, **kwargs) -> requests.Response:
         """
         Execute HTTP request with exponential backoff retry.
 
         Args:
             method: HTTP method (GET, POST, etc.)
             url: Request URL
+            retry_timeouts: Whether a timeout is worth another attempt. False
+                for uploads: the server keeps the bytes it received before the
+                connection dropped and makes an attachment out of them, so
+                each retry of an upload too slow to finish leaves behind
+                another truncated copy of the file.
             **kwargs: Additional arguments for requests
 
         Returns:
@@ -156,6 +180,10 @@ class WordPressPublisher:
                 logger.warning(f"Server error {response.status_code}, attempt {attempt + 1}/{self.max_retries}")
 
             except requests.exceptions.RequestException as e:
+                if not retry_timeouts and self._is_timeout(e):
+                    logger.error(f"Upload did not finish in {self.timeout}s: {e}")
+                    raise
+
                 logger.warning(f"Request failed: {e}, attempt {attempt + 1}/{self.max_retries}")
 
                 if attempt == self.max_retries - 1:
@@ -199,6 +227,120 @@ class WordPressPublisher:
         return stamp.astimezone().replace(tzinfo=None)
 
     @staticmethod
+    def _is_timeout(error: Exception) -> bool:
+        """
+        Report whether a request failed for want of time.
+
+        A write that runs out of time surfaces as a bare ConnectionError
+        wrapping TimeoutError rather than as requests' own Timeout, so the
+        message has to be read as well as the type.
+
+        Args:
+            error: The exception raised by requests
+
+        Returns:
+            True when the request ran out of time
+        """
+        if isinstance(error, requests.exceptions.Timeout):
+            return True
+        return 'timed out' in str(error).lower()
+
+    def _remove_partial_upload(self, upload_name: str, expected: int):
+        """
+        Delete a truncated attachment left behind by an upload that timed out.
+
+        Nothing comes back from a request that times out mid-body, so the
+        attachment WordPress made from the bytes it did receive has to be
+        found by name afterwards. Only a copy whose size is wrong is removed,
+        so an upload that in fact completed is left alone.
+
+        Args:
+            upload_name: Name the file was being uploaded under
+            expected: Size the whole file should be
+        """
+        try:
+            response = self._retry_request(
+                'GET', self._api_url('media'),
+                params={'search': upload_name, 'per_page': 100}
+            )
+            if response.status_code != 200:
+                return
+
+            for item in response.json():
+                if os.path.basename(item.get('source_url', '')) != upload_name:
+                    continue
+                stored = (item.get('media_details') or {}).get('filesize')
+                if stored is not None and int(stored) != expected:
+                    if self._delete_media(item['id']):
+                        logger.info(
+                            f"Removed the truncated {upload_name} "
+                            f"({int(stored)} of {expected} bytes) left by the timeout"
+                        )
+
+        except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+            logger.warning(f"Could not clear a partial {upload_name}: {e}")
+
+    def _uploaded_whole(self, media_data: Dict, expected: int, name: str) -> bool:
+        """
+        Check that the file WordPress stored is the file that was sent.
+
+        WordPress builds an attachment from whatever reached it, so an upload
+        cut short by the timeout becomes a valid-looking media item holding a
+        truncated file. Three of those, at 34MB each, stood in the library
+        against a 255MB export. Anything short of the whole file is no use to
+        a reader and has to go.
+
+        Args:
+            media_data: The created attachment, as WordPress returned it
+            expected: Local file size in bytes
+            name: Upload name, for the log
+
+        Returns:
+            True when the stored size matches
+        """
+        stored = (media_data.get('media_details') or {}).get('filesize')
+
+        if stored is None:
+            url = media_data.get('source_url', '')
+            try:
+                head = requests.head(url, auth=self.auth, timeout=self.timeout)
+                stored = head.headers.get('Content-Length')
+            except requests.exceptions.RequestException:
+                stored = None
+
+        if stored is None:
+            logger.warning(f"Could not confirm the stored size of {name}; keeping it")
+            return True
+
+        if int(stored) != expected:
+            logger.error(
+                f"{name} arrived truncated: {int(stored)} of {expected} bytes. "
+                f"Removing the partial upload."
+            )
+            return False
+
+        return True
+
+    def _delete_media(self, media_id: int) -> bool:
+        """
+        Delete a media item, discarding it entirely rather than trashing it.
+
+        Args:
+            media_id: Attachment ID
+
+        Returns:
+            True if WordPress reported it gone
+        """
+        try:
+            response = self._retry_request(
+                'DELETE', self._api_url(f'media/{media_id}'), params={'force': True}
+            )
+            return response.status_code == 200
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Could not delete media {media_id}: {e}")
+            return False
+
+    @staticmethod
     def _is_permanent_error(response: requests.Response) -> bool:
         """
         Report whether WordPress has refused this request for good.
@@ -224,7 +366,52 @@ class WordPressPublisher:
         except ValueError:
             return False
 
-    def upload_media(self, file_path: str, caption: str = None) -> Optional[Dict]:
+    def _find_existing_media(self, filename: str, size: int) -> Optional[Dict]:
+        """
+        Find a media item already holding this exact file.
+
+        Publishing uploads every image before it creates the post, so each
+        attempt that failed afterwards left a full set behind: the library had
+        forty copies of the CSV against four posts. A file is only reused when
+        its name and its length both match, so a reprocessed chart is uploaded
+        again rather than the stale one being shown.
+
+        Args:
+            filename: Name the file is uploaded under
+            size: Local file size in bytes
+
+        Returns:
+            Dict with 'id' and 'url' of the match, or None
+        """
+        try:
+            response = self._retry_request(
+                'GET', self._api_url('media'),
+                params={'search': filename, 'per_page': 100}
+            )
+            if response.status_code != 200:
+                return None
+
+            for item in response.json():
+                url = item.get('source_url', '')
+                if os.path.basename(url) != filename:
+                    continue
+
+                remote_size = (item.get('media_details') or {}).get('filesize')
+                if remote_size is None:
+                    head = requests.head(url, auth=self.auth, timeout=self.timeout)
+                    remote_size = head.headers.get('Content-Length')
+                if remote_size is None or int(remote_size) != size:
+                    continue
+
+                return {'id': item['id'], 'url': url}
+
+        except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+            logger.debug(f"Could not check for an existing {filename}: {e}")
+
+        return None
+
+    def upload_media(self, file_path: str, caption: str = None,
+                     upload_name: str = None) -> Optional[Dict]:
         """
         Upload image to WordPress media library.
 
@@ -241,6 +428,14 @@ class WordPressPublisher:
             logger.error(f"Image file not found: {file_path}")
             return None
 
+        upload_name = upload_name or file_path.name
+        size = file_path.stat().st_size
+
+        existing = self._find_existing_media(upload_name, size)
+        if existing:
+            logger.info(f"Reusing media already uploaded: {upload_name} (ID={existing['id']})")
+            return existing
+
         try:
             # Read file
             with open(file_path, 'rb') as f:
@@ -248,23 +443,28 @@ class WordPressPublisher:
 
             # Prepare headers
             headers = {
-                'Content-Disposition': f'attachment; filename="{file_path.name}"',
+                'Content-Disposition': f'attachment; filename="{upload_name}"',
                 'Content-Type': self._get_mime_type(file_path)
             }
 
             # Upload
-            logger.info(f"Uploading media: {file_path.name}")
+            logger.info(f"Uploading media: {upload_name}")
             response = self._retry_request(
                 'POST',
                 self._api_url('media'),
                 headers=headers,
-                data=file_data
+                data=file_data,
+                retry_timeouts=False
             )
 
             if response.status_code == 201:
                 media_data = response.json()
                 media_id = media_data['id']
                 media_url = media_data.get('source_url', media_data.get('link', ''))
+
+                if not self._uploaded_whole(media_data, size, upload_name):
+                    self._delete_media(media_id)
+                    return None
 
                 # Update caption if provided
                 if caption:
@@ -281,6 +481,8 @@ class WordPressPublisher:
 
         except Exception as e:
             logger.error(f"Failed to upload media {file_path}: {e}")
+            if self._is_timeout(e):
+                self._remove_partial_upload(upload_name, size)
             return None
 
     def _update_media_caption(self, media_id: int, caption: str):
@@ -311,13 +513,15 @@ class WordPressPublisher:
         }
         return mime_types.get(ext, 'application/octet-stream')
 
-    def upload_export_file(self, file_path: str, label: str = None) -> Optional[Dict]:
+    def upload_export_file(self, file_path: str, label: str = None,
+                           upload_name: str = None) -> Optional[Dict]:
         """
         Upload an export file (CSV, KML, GPX) to the WordPress media library.
 
         Args:
             file_path: Path to the export file
             label: Optional description for the media item
+            upload_name: Name to store it under. Defaults to the file's own.
 
         Returns:
             Dict with 'id' and 'url' if successful, None otherwise
@@ -327,38 +531,60 @@ class WordPressPublisher:
             logger.error(f"Export file not found: {file_path}")
             return None
 
+        upload_name = upload_name or file_path.name
+        size = file_path.stat().st_size
+
+        if self.max_upload_bytes and size > self.max_upload_bytes:
+            logger.error(
+                f"Not uploading {upload_name}: {size / 1048576:.0f} MB is over the "
+                f"{self.max_upload_bytes / 1048576:.0f} MB limit. It would not finish "
+                f"inside the {self.timeout}s timeout, and the part that did arrive "
+                f"would be kept as a truncated file."
+            )
+            return None
+
+        existing = self._find_existing_media(upload_name, size)
+        if existing:
+            logger.info(f"Reusing export already uploaded: {upload_name} (ID={existing['id']})")
+            return existing
+
         try:
             with open(file_path, 'rb') as f:
                 file_data = f.read()
 
             headers = {
-                'Content-Disposition': f'attachment; filename="{file_path.name}"',
+                'Content-Disposition': f'attachment; filename="{upload_name}"',
                 'Content-Type': self._get_mime_type(file_path),
             }
 
-            logger.info(f"Uploading export file: {file_path.name}")
+            logger.info(f"Uploading export file: {upload_name}")
             response = self._retry_request('POST', self._api_url('media'),
-                                            headers=headers, data=file_data)
+                                            headers=headers, data=file_data,
+                                            retry_timeouts=False)
 
             if response.status_code == 201:
                 media_data = response.json()
                 media_id = media_data['id']
                 media_url = media_data.get('source_url', media_data.get('link', ''))
+                if not self._uploaded_whole(media_data, size, upload_name):
+                    self._delete_media(media_id)
+                    return None
                 if label:
                     self._update_media_caption(media_id, label)
                 logger.info(f"Export file uploaded: ID={media_id}")
                 return {'id': media_id, 'url': media_url}
             else:
                 logger.error(
-                    f"Export upload failed for {file_path.name} "
-                    f"(type {headers['Content-Type']}, "
-                    f"{file_path.stat().st_size} bytes): "
+                    f"Export upload failed for {upload_name} "
+                    f"(type {headers['Content-Type']}, {size} bytes): "
                     f"{response.status_code} - {response.text}"
                 )
                 return None
 
         except Exception as e:
             logger.error(f"Failed to upload export {file_path}: {e}")
+            if self._is_timeout(e):
+                self._remove_partial_upload(upload_name, size)
             return None
 
     def get_category_id(self, category_name: str, create: bool = True) -> Optional[int]:
@@ -528,12 +754,19 @@ class WordPressPublisher:
             # Downloads section looks like a successful publish.
             failed_uploads = []
 
+            # Every recording generates the same filenames — gps_speed.png,
+            # route_map_0.png — so without this they all land in one library as
+            # gps_speed-1 through -14 and no upload can ever be matched to the
+            # recording that made it, or reused on a second attempt.
+            prefix = f"rec{recording_data['id']}_" if recording_data.get('id') else ''
+
             # Upload images to WordPress
             media_ids = []
             for image in images:
                 media_result = self.upload_media(
                     image['path'],
-                    caption=image.get('caption', '')
+                    caption=image.get('caption', ''),
+                    upload_name=f"{prefix}{Path(image['path']).name}"
                 )
                 if media_result:
                     media_ids.append({
@@ -553,7 +786,10 @@ class WordPressPublisher:
             # Upload export files and collect download links
             download_links = []
             for exp in (exports or []):
-                result = self.upload_export_file(exp['path'], label=exp.get('label', ''))
+                result = self.upload_export_file(
+                    exp['path'], label=exp.get('label', ''),
+                    upload_name=f"{prefix}{Path(exp['path']).name}"
+                )
                 if result:
                     download_links.append({
                         'url': result['url'],
@@ -831,12 +1067,22 @@ class WordPressPublisher:
 
             parts = []
 
-            # CDN stylesheets
+            # CDN stylesheets, but only the map's own. folium also links the
+            # whole Bootstrap framework and Bootstrap 3's glyphicons, and both
+            # carry a CSS reset: html{font-size:62.5%}, body{margin:0} and
+            # rules for figure and img. Copied into a post they restyle the
+            # page around the map, which is what pushed the blog off centre,
+            # changed its type size and dropped the banner.
             for m in re.finditer(
                 r'<link\b[^>]*\brel=["\']stylesheet["\'][^>]*>',
                 content, re.IGNORECASE
             ):
-                parts.append(m.group(0))
+                href_m = re.search(r'href=["\']([^"\']+)["\']', m.group(0))
+                href = href_m.group(1) if href_m else ''
+                if any(part in href for part in self._MAP_STYLESHEETS):
+                    parts.append(m.group(0))
+                else:
+                    logger.debug(f"Skipping page-wide stylesheet in map embed: {href}")
 
             # CDN JS scripts (external src only, not inline)
             seen_srcs = set()
@@ -906,8 +1152,11 @@ class WordPressPublisher:
             'end_time':          ('End Time',          ''),
             'duration':          ('Duration',          ''),
             'distance_km':       ('Distance',          'km'),
-            'max_speed':         ('Max Speed',         'km/h'),
-            'avg_speed':         ('Average Speed',     'km/h'),
+            # knots, not km/h: these come straight off gps/speed, which the
+            # charts label knots too. Labelled km/h they disagreed with the
+            # distance and duration beside them by a factor of 1.9.
+            'max_speed':         ('Max Speed',         'knots'),
+            'avg_speed':         ('Average Speed',     'knots'),
             'total_energy_wh':   ('Total Energy',      'Wh'),
             'avg_power_w':       ('Average Power',     'W'),
             'max_power_w':       ('Max Power',         'W'),

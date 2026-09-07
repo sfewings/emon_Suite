@@ -113,6 +113,7 @@ class EventRecorderService:
                 site_url=wp_config.get('site_url'),
                 username=wp_config.get('username'),
                 app_password=wp_config.get('app_password'),
+                max_upload_mb=wp_config.get('max_upload_mb', 25),
             )
         else:
             self.wordpress_publisher = None

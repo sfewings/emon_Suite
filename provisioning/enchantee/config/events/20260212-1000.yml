@@ -103,7 +103,9 @@ events:
 
     # Export files generated during processing and attached to the WordPress post
     exports:
-      csv: true
+      # csv off: a full-day recording writes a quarter-gigabyte of it, which is
+      # more than the uplink can publish and more than the Pi wants to keep.
+      csv: false
       kml: true
       gpx: true
 

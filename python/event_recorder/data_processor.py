@@ -970,10 +970,16 @@ class DataProcessor:
 
             m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
             folium.PolyLine(track, color='#667eea', weight=4, opacity=0.8).add_to(m)
+            # prefix='fa' so the markers draw from Font Awesome. folium's
+            # default is Bootstrap 3's glyphicons, whose stylesheet also resets
+            # html and body, so the publisher leaves it out of the post and
+            # those icons would have come through blank.
             folium.Marker(coords[0], popup='Start',
-                          icon=folium.Icon(color='green', icon='play')).add_to(m)
+                          icon=folium.Icon(color='green', icon='play',
+                                           prefix='fa')).add_to(m)
             folium.Marker(coords[-1], popup='End',
-                          icon=folium.Icon(color='red', icon='stop')).add_to(m)
+                          icon=folium.Icon(color='red', icon='stop',
+                                           prefix='fa')).add_to(m)
             # Two corner points, not the track: folium serialises whatever it is
             # given straight into the JS, so passing the coordinate list here
             # would write the whole track into the file a second time.
@@ -1023,9 +1029,9 @@ class DataProcessor:
         if 'distance_km' in statistics:
             table_data.append(['Distance', f"{statistics['distance_km']:.2f} km"])
         if 'max_speed' in statistics:
-            table_data.append(['Max Speed', f"{statistics['max_speed']:.1f} km/h"])
+            table_data.append(['Max Speed', f"{statistics['max_speed']:.1f} knots"])
         if 'avg_speed' in statistics:
-            table_data.append(['Avg Speed', f"{statistics['avg_speed']:.1f} km/h"])
+            table_data.append(['Avg Speed', f"{statistics['avg_speed']:.1f} knots"])
 
         # Add energy stats
         if 'energy_used_wh' in statistics:
