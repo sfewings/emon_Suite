@@ -12,7 +12,6 @@
       "Bash(bash build.sh:*)",
       "Bash(docker-compose down:*)",
       "Bash(docker-compose up:*)",
-      "Bash(docker exec:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(docker ps:*)",
