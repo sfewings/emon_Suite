@@ -121,6 +121,21 @@ class ConfigManager:
             default_config = self.events_dir / 'events_config.yml'
             if default_config.exists():
                 config_file = default_config
+            elif timestamped_files:
+                # Every config is dated later than the clock says it is now,
+                # which means the clock is wrong rather than that the boat has
+                # no configuration. Returning nothing here started no monitors
+                # at all: on 2026-09-27 the Pi booted with a dead RTC and no
+                # internet, fell back to January, and sailed for two hours
+                # recording nothing, while the data it needed went past on MQTT.
+                # The newest config is the most recent intent, so use it. A
+                # wrong clock should cost a wrong timestamp, not the recording.
+                file_time, config_file = timestamped_files[0]
+                logger.warning(
+                    f"System time {current_time:%Y-%m-%d %H:%M} is earlier than every "
+                    f"event config. The clock is probably wrong. Falling back to the "
+                    f"newest, {config_file.name}, so recording still happens."
+                )
             else:
                 self.event_configs = {}
                 return
