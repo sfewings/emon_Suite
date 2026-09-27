@@ -16,7 +16,7 @@ import sys
 import time
 import argparse
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import paho.mqtt.client as mqtt
@@ -133,6 +133,14 @@ class EventRecorderService:
 
         # Active recordings tracking: {monitor_id: recording_id}
         self.active_recordings = {}
+
+        # Recordings this run started, and a pair of readings to measure the
+        # clock against. Only recordings made since the service started can
+        # have been written on a wrong clock, so only these are ever moved;
+        # everything already in the database was written on some other run and
+        # is not ours to correct.
+        self._recordings_this_run = set()
+        self._clock_reference = (time.time(), time.monotonic())
 
         # Running flag
         self.running = False
@@ -279,6 +287,7 @@ class EventRecorderService:
 
         # Track active recording
         self.active_recordings[monitor_id] = recording_id
+        self._recordings_this_run.add(recording_id)
 
         return recording_id
 
@@ -424,6 +433,49 @@ class EventRecorderService:
         except Exception as e:
             logger.warning(f"Could not publish status for recording {recording_id}: {e}")
 
+    # A correction worth repairing a recording for. Ordinary discipline moves
+    # the clock by milliseconds; the step this exists for was 244 days.
+    CLOCK_STEP_THRESHOLD_SECONDS = 60
+
+    def _check_for_clock_step(self):
+        """
+        Notice the clock being corrected, and repair what was recorded before.
+
+        The Pi has no reliable time of its own at sea: a flat RTC backup leaves
+        it booting into the past, and the GPS this would otherwise be set from
+        has an internal aerial that often sees nothing until well into a
+        passage. So a recording can begin hours before the clock becomes
+        truthful, and would otherwise be stored half in one year and half in
+        another, with a start time that never happened.
+
+        The step is measured against the monotonic clock, which a correction
+        does not touch, so the difference between the two is the size of the
+        correction and exactly what the earlier rows are wrong by.
+        """
+        was_wall, was_mono = self._clock_reference
+        now_wall, now_mono = time.time(), time.monotonic()
+        self._clock_reference = (now_wall, now_mono)
+
+        step = (now_wall - was_wall) - (now_mono - was_mono)
+        if abs(step) < self.CLOCK_STEP_THRESHOLD_SECONDS:
+            return
+
+        logger.warning(
+            f"Clock stepped by {timedelta(seconds=round(step))} "
+            f"(now {datetime.now():%Y-%m-%d %H:%M:%S}). "
+            f"Recordings started before this were written on the old clock."
+        )
+
+        for recording_id in sorted(self._recordings_this_run):
+            try:
+                moved = self.database.shift_recording_times(recording_id, step)
+                logger.warning(
+                    f"Recording {recording_id}: moved its start, end and "
+                    f"{moved} data rows onto the corrected clock"
+                )
+            except Exception as e:
+                logger.error(f"Could not correct recording {recording_id}: {e}")
+
     def _run_main_loop(self):
         """Main service loop."""
         check_interval = 60  # Check every 60 seconds
@@ -431,6 +483,9 @@ class EventRecorderService:
         while self.running:
             try:
                 time.sleep(check_interval)
+
+                # Check whether the clock has been corrected under us
+                self._check_for_clock_step()
 
                 # Check for configuration changes
                 self.config.check_and_reload()

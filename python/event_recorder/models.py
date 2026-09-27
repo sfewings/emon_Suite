@@ -8,7 +8,7 @@ with power-outage resilience via WAL mode.
 import sqlite3
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from contextlib import contextmanager
@@ -553,6 +553,59 @@ class Database:
         """
         with self.get_connection() as conn:
             conn.execute("DELETE FROM recording_images WHERE id = ?", (image_id,))
+
+    def shift_recording_times(self, recording_id: int, delta_seconds: float) -> int:
+        """
+        Move every timestamp of one recording by a fixed amount.
+
+        For repairing a recording made while the clock was wrong. The boat can
+        be under way before the GPS gets its first fix, so a recording can
+        start on a clock that is months out and still be running when the fix
+        arrives and the clock steps to the truth. Shifting what was already
+        written by the size of that step leaves the whole recording on one
+        timescale, rather than half in each.
+
+        The shift is done here rather than in SQL because SQLite's date
+        functions round to milliseconds, and these timestamps carry
+        microseconds.
+
+        Args:
+            recording_id: Recording to move
+            delta_seconds: Seconds to add, as measured by the clock step
+
+        Returns:
+            int: Number of data rows moved
+        """
+        delta = timedelta(seconds=delta_seconds)
+
+        def shifted(value):
+            if not value:
+                return value
+            return (datetime.fromisoformat(str(value)) + delta).isoformat(sep=' ')
+
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT start_time, end_time FROM recordings WHERE id = ?",
+                (recording_id,)
+            ).fetchone()
+            if row is None:
+                return 0
+
+            conn.execute(
+                "UPDATE recordings SET start_time = ?, end_time = ? WHERE id = ?",
+                (shifted(row['start_time']), shifted(row['end_time']), recording_id)
+            )
+
+            data = conn.execute(
+                "SELECT id, timestamp FROM recording_data WHERE recording_id = ?",
+                (recording_id,)
+            ).fetchall()
+            conn.executemany(
+                "UPDATE recording_data SET timestamp = ? WHERE id = ?",
+                [(shifted(r['timestamp']), r['id']) for r in data]
+            )
+
+            return len(data)
 
     def delete_plot_images(self, recording_id: int) -> int:
         """
