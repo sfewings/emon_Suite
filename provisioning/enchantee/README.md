@@ -609,6 +609,51 @@ handle it is deliberate: `org.freedesktop.NetworkManager.wifi.share.protected`,
 which a WPA-protected shared connection needs, is denied to ordinary users on
 this image, so an unprivileged `nmcli connection up enchantee` fails.
 
+### 7.10.1 DNS on whatever network the boat is on
+
+The boat reaches the internet by a different path each time: home wifi, a phone
+hotspot, marina wifi, later a 4G modem. On 2026-09-13 a publish from a hotspot
+failed every request with `Temporary failure in name resolution`. The link was
+up with a default route and an address of `172.20.10.2`, but the only nameserver
+listed was `192.168.1.1`, the home router, unreachable from that network. The
+recording was marked failed after seven minutes of retries and not one request
+left the Pi.
+
+Two pieces guard against that, because the Pi and the containers resolve names
+by different files.
+
+**The Pi** appends public resolvers to whatever the network supplied, on every
+connection, through a dispatcher script:
+
+```bash
+cd /share/emon_Suite/provisioning/enchantee
+sudo install -o root -g root -m 755 \
+  etc/NetworkManager/dispatcher.d/99-dns-fallback \
+  /etc/NetworkManager/dispatcher.d/99-dns-fallback
+```
+
+It runs for any device type, including a network the Pi has never seen, which
+is why it is not a per-connection setting. NetworkManager offers nothing better
+here: `ipv4.dns` is rejected as a connection default in `conf.d` (it logs
+`unknown key`), and `[global-dns]` replaces the network's own resolver rather
+than adding to it, which would break local names and captive portals. The
+script appends, so the network's resolver is still tried first. It also sets
+`options timeout:1 attempts:1`, without which a listed-but-unreachable resolver
+costs five seconds a lookup, which is what makes a publish look like it has
+hung.
+
+**The containers** do not read `/etc/resolv.conf`. Docker copies it when the
+container starts and does not refresh it when the boat changes network, so
+`event_recorder` kept asking the home router long after the Pi had moved on.
+It is given its own resolvers in
+[`docker-compose.yml`](docker-compose.yml) instead. Bind-mounting the host file
+would look tidier but breaks silently the moment NetworkManager replaces that
+file rather than editing it, and a stale resolver that looks fine is the bug
+being fixed.
+
+Neither helps behind a captive portal, which marina wifi often uses: until you
+authenticate in a browser, nothing resolves and nothing publishes.
+
 ### 7.11 Surviving a reboot
 
 The mode is not something NetworkManager remembers by itself, so two mechanisms
@@ -804,6 +849,7 @@ Copy each to the path its directory mirrors.
 | [`etc/nginx/conf.d/upgrade-map.conf`](etc/nginx/conf.d/upgrade-map.conf) | `/etc/nginx/conf.d/upgrade-map.conf` | `$connection_upgrade` map |
 | [`etc/avahi/avahi-daemon.conf`](etc/avahi/avahi-daemon.conf) | `/etc/avahi/avahi-daemon.conf` | adds `allow-interfaces=wlan0` |
 | [`etc/NetworkManager/dnsmasq-shared.d/enchantee.conf`](etc/NetworkManager/dnsmasq-shared.d/enchantee.conf) | `/etc/NetworkManager/dnsmasq-shared.d/enchantee.conf` | hotspot DNS |
+| [`etc/NetworkManager/dispatcher.d/99-dns-fallback`](etc/NetworkManager/dispatcher.d/99-dns-fallback) | `/etc/NetworkManager/dispatcher.d/99-dns-fallback` | `root:root` `755`; fallback resolvers, see section 7.10.1 |
 | [`etc/NetworkManager/system-connections/enchantee.nmconnection.example`](etc/NetworkManager/system-connections/enchantee.nmconnection.example) | `/etc/NetworkManager/system-connections/enchantee.nmconnection` | reference only, PSK removed, `root:root` `600` |
 | [`etc/hosts.append`](etc/hosts.append) | append to `/etc/hosts` | on-Pi resolution of `enchantee.local` |
 | [`usr/local/bin/enchantee-mode`](usr/local/bin/enchantee-mode) | `/usr/local/bin/enchantee-mode` | mode 755 |

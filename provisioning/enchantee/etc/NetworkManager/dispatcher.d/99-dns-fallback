@@ -1,0 +1,41 @@
+#!/bin/sh
+# Add public resolvers to whatever the current network supplied.
+#
+# The boat reaches the internet by a different path each time: home wifi, a
+# phone hotspot, marina wifi, later a 4G modem. This runs on every connection
+# regardless of type, including a network the Pi has never seen, which is why
+# it lives here rather than in any one connection profile. NetworkManager has
+# no setting for this: ipv4.dns cannot be given a default in conf.d, and
+# [global-dns] would replace the network's own resolver instead of adding to
+# it, breaking local names and captive portals.
+#
+# Why: on 2026-09-13 a publish from an iPhone hotspot failed every request with
+# "Temporary failure in name resolution". The link was up and had a default
+# route, but the only nameserver listed was the home router, unreachable from
+# that network, so nothing resolved and nothing was published.
+#
+# Appended, not prepended: the network's own resolver is tried first, so local
+# names keep working, and these answer only when it does not. glibc reads at
+# most three nameservers, which leaves room for the network's own plus these.
+
+RESOLV=/etc/resolv.conf
+FALLBACK_NS="1.1.1.1 8.8.8.8"
+
+case "$2" in
+    up|dhcp4-change|dhcp6-change)
+        [ -w "$RESOLV" ] || exit 0
+
+        # A resolver that is listed but unreachable costs five seconds a
+        # lookup at the default settings, which is what turns a stale entry
+        # into a publish that appears to hang.
+        grep -q '^options .*timeout:' "$RESOLV" 2>/dev/null \
+            || echo 'options timeout:1 attempts:1' >> "$RESOLV"
+
+        for ns in $FALLBACK_NS; do
+            grep -q "^nameserver[[:space:]]\+$ns\$" "$RESOLV" 2>/dev/null \
+                || echo "nameserver $ns" >> "$RESOLV"
+        done
+        ;;
+esac
+
+exit 0

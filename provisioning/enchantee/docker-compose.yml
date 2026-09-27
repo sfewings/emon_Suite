@@ -182,6 +182,19 @@ services:
     # the web interface on the host's port 5000, which is where nginx proxies
     # http://enchantee.local/events/ to; no published port is needed.
     network_mode: "host"
+    # Resolvers of its own, rather than the copy of the host's that Docker
+    # takes when the container starts. That copy is not refreshed when the boat
+    # changes network, so on 2026-09-13 a publish from a phone hotspot asked the
+    # home router for every name and resolved none of them; the recording was
+    # marked failed after seven minutes of retries without one request leaving
+    # the Pi. Public resolvers are reachable from home wifi, a hotspot or a 4G
+    # modem alike, and cannot go stale. The host itself keeps using the
+    # network's own resolver first - see dispatcher.d/99-dns-fallback - but
+    # bind-mounting that file here would break the moment NetworkManager
+    # replaced it rather than edited it.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     #ports:
     #  - "5001:5000"
     volumes:

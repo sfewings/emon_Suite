@@ -6,6 +6,7 @@
 !**/dnsmasq.d/
 !**/dnsmasq-shared.d/
 !**/conf.d/
+!**/dispatcher.d/
 *.hex
 *.elf
 *.db
