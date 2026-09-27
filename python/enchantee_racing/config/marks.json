@@ -254,16 +254,16 @@
       "aliases": [
         "Bricklanding B Buoy"
       ],
-      "lat": -32.0112503,
-      "lon": 115.7981091,
+      "lat": -32.0112054,
+      "lon": 115.7982659,
       "rounding": "starboard",
       "owner": "RFBYC",
       "type": "Spar Buoy",
       "mark_class": "racing",
       "nav_name": null,
       "used_in_courses": true,
-      "source": "ywa-srrc-2019-qgis",
-      "source_label": "33b Bricklanding B Starboard"
+      "source": "ywa-srrc-2019-qgis-corrected",
+      "source_label": "33b Bricklanding B Starboard (position NOT the register's: the 2019 layer puts this buoy 15.6 m at 251 deg from where we rounded it. Corrected from our own GPS on 13-Sep-2026 13:45 and 27-Sep-2026 16:10, plus the aborted 27-Sep 15:55 approach; see POSITION_OVERRIDES in scripts/gen_marks.py)"
     },
     {
       "id": "bricklanding-spit-52",

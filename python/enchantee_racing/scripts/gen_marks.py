@@ -56,6 +56,22 @@ SOURCE_NOTE = ("Positions are from the September 2019 YWA SRRC register redigiti
 
 BBOX = dict(south=-32.030346, west=115.748, north=-31.959052, east=115.856573)
 
+# Marks the layer places wrong, and what we replace them with. The redigitized 2019
+# register is the truth for position everywhere else; a mark only lands here once our own
+# GPS says the buoy is somewhere the layer is not, and the note records how we know.
+#
+# Applied AFTER the course-mark check below, which keys on the register's own label: an
+# override must not be able to make a course mark look missing from the layer.
+POSITION_OVERRIDES = {
+    "bricklanding-b-33b": (
+        -32.0112054, 115.7982659,
+        "position NOT the register's: the 2019 layer puts this buoy 15.6 m at 251 deg "
+        "from where we rounded it. Corrected from our own GPS on 13-Sep-2026 13:45 and "
+        "27-Sep-2026 16:10, plus the aborted 27-Sep 15:55 approach; see "
+        "POSITION_OVERRIDES in scripts/gen_marks.py",
+    ),
+}
+
 # Marks used by PFSYC 2026-27 course sheets.
 # key = exact YWA_NAME value ; value = (id, number, display name, aliases)
 COURSE_MARKS = {
@@ -238,6 +254,16 @@ def main():
     if START_INNER[1][0] not in marks:
         raise SystemExit("%r is not in the layer, so there is no PFSYC inner start mark"
                          % START_INNER[0])
+
+    for mark_id, (lat, lon, why) in POSITION_OVERRIDES.items():
+        if mark_id not in marks:
+            raise SystemExit("POSITION_OVERRIDES has %r, which is not in the layer: an "
+                             "override for a mark that no longer exists is a stale fix, "
+                             "not a no-op" % mark_id)
+        mark = marks[mark_id]
+        mark["lat"], mark["lon"] = round(lat, 7), round(lon, 7)
+        mark["source"] = SOURCE_ID + "-corrected"
+        mark["source_label"] = "%s (%s)" % (mark["source_label"], why)
 
     document = {
         "schema": "pfsyc-marks/2",
