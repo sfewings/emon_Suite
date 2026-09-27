@@ -495,6 +495,24 @@ class WebInterface:
                 if not recording:
                     return jsonify({'success': False, 'error': 'Recording not found'}), 404
 
+                # One request to see whether the site can be reached at all,
+                # before sending it a few dozen files. Publishing from a phone
+                # hotspot with a stale resolver spent seven minutes failing
+                # every upload in turn, each with its own retries, and said
+                # only that publishing had failed. The status is left alone
+                # here: the boat being off the air is not a fault in the
+                # recording, and it should publish on the next attempt without
+                # having to be reset first.
+                reachable, detail = self.wordpress_publisher.test_connection()
+                if not reachable:
+                    logger.error(
+                        f"Not publishing recording {recording_id}: {detail}"
+                    )
+                    return jsonify({
+                        'success': False,
+                        'error': f'Cannot reach WordPress: {detail}'
+                    }), 503
+
                 # Get images
                 images = self.database.get_recording_images(recording_id)
                 if not images:
