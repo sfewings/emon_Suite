@@ -1585,6 +1585,194 @@ def test_the_aid_names_are_a_size_down_and_their_own_colour():
         "a thinned aid name still takes up the screen"
 
 
+# --- the scale bar and boat tracking (DESIGN 12.7) -------------------------------------
+
+
+def _scale_ladder():
+    """The two literal arrays behind SCALE_STEPS, as numbers.
+
+    Read out of map.js rather than restated here. The 500 m rule below is a property of
+    the ladder and not of the code that walks it, so the ladder is what the test has to
+    get hold of; restating it would leave the assertions passing after someone edits the
+    real one.
+    """
+    code = _map_code()
+    metres = re.search(r"var metres = \[([^\]]*)\]", code)
+    miles = re.search(r"var miles = \[([^\]]*)\]", code)
+    assert metres and miles, "the scale ladder is not where the test can read it"
+    return ([float(v) for v in metres.group(1).split(",")],
+            [float(v) for v in miles.group(1).split(",")])
+
+
+def test_the_scale_bar_is_over_the_chart_and_takes_no_height_from_it():
+    """DESIGN 12.2 settled that the chart is the flexible thing on this page.
+
+    A scale bar in the flow would take a third row of height for four characters, so it
+    goes in a wrapper around the svg and is positioned over it. pointer-events: none
+    because the gestures underneath belong to the chart: a bar that swallowed a pinch
+    would be a control the crew never asked for, in the corner their thumb rests on.
+    """
+    page = _page()
+    wrap = page.index('<div class="chart-wrap">')
+    assert wrap < page.index('<svg id="chart"'), "the wrapper does not contain the chart"
+    assert page.index('id="map-scale"') > page.index("</svg>"), \
+        "the scale bar is inside the svg, where it would be drawn in projected metres"
+    assert page.index('id="map-scale"') < page.index('<div class="controls">'), \
+        "the scale bar is outside the chart wrapper, so it cannot be placed over the chart"
+    for part in ("scale-text", "scale-bar"):
+        assert part in page, "the scale bar has no %s" % part
+
+    css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
+    assert re.search(r"\.chart-wrap \{[^}]*position: relative", css), \
+        "the wrapper is not a containing block, so the bar would position off the panel"
+    scale = re.search(r"#map-scale \{([^}]*)\}", css)
+    assert scale, "#map-scale is not styled"
+    assert "position: absolute" in scale.group(1), "the scale bar takes height from the chart"
+    assert "pointer-events: none" in scale.group(1), "the scale bar can swallow a gesture"
+    # The chart keeps an explicit height now that it is no longer a flex item of the panel.
+    # A viewBox without a size is resolved as 300 px wide on iOS 12 (CLAUDE.md).
+    chart = re.search(r"#chart \{([^}]*)\}", css)
+    assert "height: 100%" in chart.group(1), "the chart has a ratio but no height"
+
+
+def test_the_scale_bar_never_labels_a_distance_from_the_wrong_side_of_500_m():
+    """Metres below 500 m and nautical miles above, the app's rule for every distance.
+
+    The ladder enforces it by having no step between 400 m and 0.3 NM, which is 556 m.
+    That gap is the rule made geometric: there is no step in the band where the honest
+    round numbers in the two units do not meet, so none can be chosen. This is the test
+    that fails if someone adds a tidy-looking 500 m or 0.25 NM to either list.
+    """
+    metres, miles = _scale_ladder()
+    m_per_nm = int(re.search(r"var M_PER_NM = (\d+);", _map_code()).group(1))
+    assert m_per_nm == 1852
+
+    assert max(metres) < 500, "a step labelled in metres stands for 500 m or more"
+    assert min(miles) * m_per_nm >= 500, "a step labelled in NM stands for less than 500 m"
+    assert metres == sorted(metres) and miles == sorted(miles), "the ladder is out of order"
+
+    # No step more than 1.67x its neighbour, or the bar collapses to a stub as the zoom
+    # crosses a boundary: the width is the step over the metres per pixel, so the ratio
+    # between steps is exactly the range the bar's width swings through.
+    rungs = metres + [v * m_per_nm for v in miles]
+    ratios = [b / a for a, b in zip(rungs, rungs[1:])]
+    assert max(ratios) <= 1.67, "the bar would shrink to %.0f%% at a boundary" % (100 / max(ratios))
+
+
+def test_the_scale_bar_picks_the_longest_round_distance_that_fits():
+    """A round distance, not a round number of pixels.
+
+    A scale bar is read by comparing something on the chart against it, so the number has
+    to be one that divides in the head. Checked at both zoom limits and at the three named
+    extents, on the narrowest screen this app is used on and on the boat's iPad.
+    """
+    code = _map_code()
+    metres, miles = _scale_ladder()
+    m_per_nm = int(re.search(r"var M_PER_NM = (\d+);", code).group(1))
+    max_px = int(re.search(r"var SCALE_MAX_PX = (\d+);", code).group(1))
+    rungs = sorted(metres + [v * m_per_nm for v in miles])
+
+    def chosen(mpp):
+        fits = [r for r in rungs if r / mpp <= max_px]
+        return max(fits) if fits else min(rungs)
+
+    # 100 m is the zoom-in limit, 71 km the coast extent with its 1.25 slack.
+    for width_px in (320, 375, 768):
+        for span_m in (100, 500, 3000, 10300, 57000, 71000):
+            step = chosen(span_m / float(width_px))
+            bar = step / (span_m / float(width_px))
+            assert bar <= max_px, "%.0f px bar at %d m on %d px" % (bar, span_m, width_px)
+            assert bar >= max_px / 1.67, \
+                "%.0f px bar at %d m on %d px is a stub" % (bar, span_m, width_px)
+
+    # The fallback is the shortest step, not a hidden bar: a bar slightly too wide is
+    # still a true one, and this needs a view narrower than the zoom limit allows anyway.
+    assert "SCALE_STEPS[0]" in _function(code, "scaleStepFor"), \
+        "nothing is chosen when no step fits"
+
+
+def test_the_scale_bar_is_redrawn_on_a_zoom_and_not_on_a_pan():
+    """It changes with the metres per pixel, which is a zoom or a resize and not a pan.
+
+    applyScale is the function both of those already call, and setView deliberately skips
+    it when only the position changed. Drawing the bar from setView instead would redraw
+    it on every frame of a drag for a number that cannot have changed, which is the same
+    cost DESIGN 12.2 records for not resizing 131 symbols on every touchmove.
+    """
+    code = _map_code()
+    assert "drawScale(mpp)" in _function(code, "applyScale"), \
+        "the scale bar is not drawn where the scale is applied"
+    assert "drawScale" not in _function(code, "setView"), \
+        "the scale bar is redrawn on a pan"
+    assert 'window.addEventListener("resize", applyScale)' in code, \
+        "a rotation or a split view would leave the bar at the old scale"
+
+    draw = _function(code, "drawScale")
+    assert "el.scale.style.width" in draw, \
+        "the width is not on the container, so the text cannot centre over the bar"
+
+
+def test_the_chart_follows_the_boat_off_the_edge_but_only_once_it_has_left():
+    """DESIGN 12.7. Not a follow: one move, when the boat crosses out of the view.
+
+    The test is a transition and never a state. `boatInView && !inside` is the whole of
+    it, and it is what separates this from the self-recentring view 12.1 and 12.2 both
+    refused.
+    """
+    code = _map_code()
+    keep = _function(code, "keepBoatInView")
+    assert "boatInView && !inside" in keep, \
+        "the recentre is on a state and not a transition, so it fights a pan"
+    assert "setView(" in keep, "nothing moves the view"
+    # "poll", not "pollTrail": _function matches the name as a prefix, and the trail
+    # poll is a different function that must not be what this is asserted against.
+    assert "keepBoatInView();" in _function(code, "poll()"), "the check never runs"
+
+    # The margin is the boat symbol's own size, so the move happens as the triangle
+    # reaches the edge rather than once it has been cut in half by it.
+    assert "BOAT_PX.hull * metresPerPixel()" in _function(code, "inView"), \
+        "the boat is allowed to be clipped by the edge before the chart moves"
+
+
+def test_a_pan_that_carries_the_boat_off_the_screen_does_not_snap_back():
+    """The one thing this page must never do (DESIGN 12.1, 12.2, 12.7).
+
+    setView re-baselining the flag is the entire mechanism: a pan ends with the boat
+    already outside and the flag already false, so the next poll sees no transition. It
+    also means a zoom keeps tracking alive, which is the case the crew asked for, and that
+    is why none of this reads `moved`: a pinch sets `moved`, so gating on it would fail
+    exactly the crew who zoomed in to watch the boat.
+    """
+    code = _map_code()
+    assert "boatInView = inView(boatAt, view);" in _function(code, "setView"), \
+        "a hand-moved view is not re-baselined, so panning the boat away snaps it back"
+    assert "moved" not in _function(code, "keepBoatInView"), \
+        "tracking is gated on the pan flag, which a pinch also sets"
+    assert "moved" not in _function(code, "inView")
+
+
+def test_a_recentre_moves_the_window_and_never_the_zoom():
+    """The crew chose the scale; a recentre is not an invitation to choose another."""
+    keep = _function(_map_code(), "keepBoatInView")
+    assert "w: view.w, h: view.h" in keep, "the recentre resizes the view"
+    assert "view.w / 2" in keep and "view.h / 2" in keep, "the boat is not centred"
+
+
+def test_a_lost_fix_clears_the_tracking_state():
+    """A boat that is not on the chart is not being tracked either.
+
+    Cleared rather than left behind, so a fix returning after a dropout is a fresh
+    baseline and not a transition measured against where the boat was five minutes ago.
+    Position goes stale at 5 s and the boat is hidden outright, not dimmed (DESIGN 9.5).
+    """
+    draw = _function(_map_code(), "drawBoat")
+    hidden = draw.index('setAttribute("hidden"')
+    assert "boatAt = null" in draw[hidden:hidden + 400], \
+        "a stale fix leaves the last position behind for the tracker to measure against"
+    assert "boatInView = false" in draw[hidden:hidden + 400]
+    assert "boatAt = at;" in draw, "the tracker is never told where the boat is"
+
+
 if __name__ == "__main__":
     import traceback
 

@@ -57,54 +57,73 @@
       the two numeric comparisons that settled it against what the survey metadata appeared
       to say. Corrected here in the strongest words that fit.
     -->
-    <svg id="chart" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"
-         aria-label="Course map" aria-describedby="map-caveat">
-      <desc id="map-caveat">Orientation only, not for navigation. Depths are on AHD, near
-        mean sea level, NOT chart datum: at low water there is less water than shown, by up
-        to 0.76 m. Soundings from the 2010 river multibeam and the Department of Transport
-        regional surveys; banks from OpenStreetMap. Nothing here shows sandbanks.</desc>
-      <g id="layer-bands"></g>
-      <g id="layer-contours"></g>
-      <g id="layer-land"></g>
-      <!--
-        Structures then navaids, between the land and the marks, which is the draw order
-        DESIGN 12 states. Jetties are what the crew actually steers by, being big, fixed
-        and lit, so they go over the land they stand on; the aid network goes over them.
-      -->
-      <g id="layer-structures"></g>
-      <g id="layer-navaids"></g>
-      <!--
-        The aid names, in their own layer directly above the dots they belong to and below
-        everything else. Their own layer because they are sized per view the way the mark
-        labels are, by one font-size and one stroke-width written to the group rather than
-        to each label, and because being the lowest priority on the chart they must paint
-        under the marks and the course rather than over them.
+    <!--
+      The chart and the scale bar share a wrapper so the bar can be placed over the
+      chart's bottom right corner and take no height from it. The chart is the flexible
+      thing on this page (DESIGN 12.2) and nothing may shrink it.
+    -->
+    <div class="chart-wrap">
+      <svg id="chart" viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"
+           aria-label="Course map" aria-describedby="map-caveat">
+        <desc id="map-caveat">Orientation only, not for navigation. Depths are on AHD, near
+          mean sea level, NOT chart datum: at low water there is less water than shown, by up
+          to 0.76 m. Soundings from the 2010 river multibeam and the Department of Transport
+          regional surveys; banks from OpenStreetMap. Nothing here shows sandbanks.</desc>
+        <g id="layer-bands"></g>
+        <g id="layer-contours"></g>
+        <g id="layer-land"></g>
+        <!--
+          Structures then navaids, between the land and the marks, which is the draw order
+          DESIGN 12 states. Jetties are what the crew actually steers by, being big, fixed
+          and lit, so they go over the land they stand on; the aid network goes over them.
+        -->
+        <g id="layer-structures"></g>
+        <g id="layer-navaids"></g>
+        <!--
+          The aid names, in their own layer directly above the dots they belong to and below
+          everything else. Their own layer because they are sized per view the way the mark
+          labels are, by one font-size and one stroke-width written to the group rather than
+          to each label, and because being the lowest priority on the chart they must paint
+          under the marks and the course rather than over them.
 
-        Empty in the markup and mostly empty at runtime: a name is only made when the zoom
-        first makes it eligible, which for most of the 680 aids is never (DESIGN 12.5).
-      -->
-      <g id="layer-navaid-labels"></g>
-      <g id="layer-lines"></g>
-      <g id="layer-marks"></g>
-      <!--
-        Where the boat has been today, under the course and the boat rather than over
-        them: it is the only thing on this chart that is history, and the leg being sailed
-        and the target ring are what the crew steers by. A dense trail must never be able
-        to hide them (DESIGN 12.6).
+          Empty in the markup and mostly empty at runtime: a name is only made when the zoom
+          first makes it eligible, which for most of the 680 aids is never (DESIGN 12.5).
+        -->
+        <g id="layer-navaid-labels"></g>
+        <g id="layer-lines"></g>
+        <g id="layer-marks"></g>
+        <!--
+          Where the boat has been today, under the course and the boat rather than over
+          them: it is the only thing on this chart that is history, and the leg being sailed
+          and the target ring are what the crew steers by. A dense trail must never be able
+          to hide them (DESIGN 12.6).
 
-        Sixteen paths, one per speed band, built by map.js and appended to rather than
-        rebuilt. Empty in the markup because their number and their colours come from
-        static/palette.js, which is generated.
-      -->
-      <g id="layer-trail"></g>
+          Sixteen paths, one per speed band, built by map.js and appended to rather than
+          rebuilt. Empty in the markup because their number and their colours come from
+          static/palette.js, which is generated.
+        -->
+        <g id="layer-trail"></g>
+        <!--
+          The course being sailed and the boat, over everything, because they are the only
+          things on this page that change and the only ones the crew is looking for. Empty
+          until /api/state says there is a race and a fix (DESIGN 12.1 step 5).
+        -->
+        <g id="layer-course"></g>
+        <g id="layer-boat"></g>
+      </svg>
       <!--
-        The course being sailed and the boat, over everything, because they are the only
-        things on this page that change and the only ones the crew is looking for. Empty
-        until /api/state says there is a race and a fix (DESIGN 12.1 step 5).
+        The scale bar (DESIGN 12.7). Bottom right, over the chart, because the three extent
+        names on the button say which view this is but not how big anything on it is, and a
+        chart without a scale cannot be used to judge a distance off.
+
+        Empty in the markup: both the width of the bar and the distance it stands for come
+        from the current metres-per-pixel, and only map.js knows that.
       -->
-      <g id="layer-course"></g>
-      <g id="layer-boat"></g>
-    </svg>
+      <div id="map-scale">
+        <div class="scale-text"></div>
+        <div class="scale-bar"></div>
+      </div>
+    </div>
 
     <!--
       One control (CLAUDE.md: minimum interaction). It names the extent that is on the

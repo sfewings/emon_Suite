@@ -708,8 +708,13 @@ button.warn { border-color: var(--warn); color: var(--warn); }
    marked non-scaling so it stays the same width on the screen at every zoom. Without
    that the contours would be metres wide zoomed out and invisible zoomed in. */
 #panel-map { display: flex; flex-direction: column; min-height: 0; }
+/* The chart and its scale bar. position: relative so the bar can be placed over the
+   chart's corner; block rather than flex so the svg below gets an explicit height from
+   height: 100% and not from a flex item's cross-axis guess, which on iOS 12 is where a
+   viewBox without a size becomes 300 px wide (CLAUDE.md). */
+.chart-wrap { position: relative; flex: 1 1 0; min-height: 0; }
 #chart {
-  flex: 1 1 0; min-height: 0; width: 100%;
+  display: block; height: 100%; width: 100%;
   /* The canvas is "no data", not water. Everything is drawn over it: the depth bands
      where there are soundings, the land on top of those. What is left showing through is
      off the chart, and the map now extends past its own data far enough for that to be a
@@ -718,6 +723,37 @@ button.warn { border-color: var(--warn); color: var(--warn); }
   touch-action: none;   /* the pan and zoom gestures are ours, not the browser's */
 }
 #chart path, #chart line, #chart circle { vector-effect: non-scaling-stroke; }
+
+/* The scale bar, bottom right over the chart (DESIGN 12.7).
+   Out of the flow entirely, so it cannot take a pixel of height from the chart, and
+   pointer-events: none so it is never the thing a pinch lands on. Its width is the bar's
+   width in pixels and is written by map.js; the text is centred over it.
+   Coloured as the chart's own labels rather than as the page: --ink is white, which is
+   right on the black race screen and a smear on this pale chart, and the same halo that
+   carries a mark name over land, water and no-data carries this (see --map-label). */
+#map-scale {
+  position: absolute; right: .55rem; bottom: .45rem;
+  pointer-events: none;
+  text-align: center;
+  color: var(--map-label);
+  text-shadow: 0 0 3px var(--mark-halo), 0 0 3px var(--mark-halo),
+               0 0 2px var(--mark-halo);
+}
+#map-scale .scale-text {
+  /* Plain fallback first: iOS 12 has no clamp() and drops the declaration it cannot
+     parse, so the one before it is what that machine uses. */
+  font-size: 1.5vh;
+  font-size: clamp(9px, min(1.7vh, 3.4vw), 14px);
+  font-weight: 600; line-height: 1.1; white-space: nowrap;
+  font-variant-numeric: tabular-nums; -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+}
+/* A staple opening upward: the ends are ticks, the bottom is the measured length. */
+#map-scale .scale-bar {
+  height: 6px; margin-top: 1px;
+  border: 2px solid var(--map-label); border-top: 0;
+  box-shadow: 0 0 0 1px var(--mark-halo);
+}
 
 /* Bands: filled from the data, so no fill here. The night theme replaces the fill by
    band, which is why each carries its own class as well as the shared one. */

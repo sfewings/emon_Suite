@@ -39,7 +39,10 @@
     course: document.getElementById("layer-course"),
     boat: document.getElementById("layer-boat"),
     zoom: document.getElementById("map-zoom"),
-    readout: document.getElementById("map-readout")
+    readout: document.getElementById("map-readout"),
+    scale: document.getElementById("map-scale"),
+    scaleBar: document.querySelector("#map-scale .scale-bar"),
+    scaleText: document.querySelector("#map-scale .scale-text")
   };
 
   // The four cells of the strip, left to right. Their contents change with what the boat
@@ -92,6 +95,11 @@
   var level = 0;
   var moved = false;         // the view has been panned or pinched off levels[level]
 
+  // Boat tracking (DESIGN 12.7). boatAt is the boat projected, from the last poll, or null
+  // with no fix; boatInView is whether it was inside the view as the view was last set.
+  var boatAt = null;
+  var boatInView = false;
+
   var LEVEL_NAMES = ["Race course", "River", "Everything"];
 
   // The span of the innermost extent when there is no course to fit: a region the size of
@@ -109,6 +117,56 @@
   // The zoom past which the aid register is more clutter than information. Their size is
   // in the stylesheet, where non-scaling-stroke already holds it constant on screen.
   var NAVAID_MAX_MPP = 25;
+
+  // --- the scale bar (DESIGN 12.7) ----------------------------------------------------
+  //
+  // The widest the bar may be. A scale bar is read by comparing something on the chart
+  // against it, so it wants to be a usable fraction of the screen without becoming
+  // furniture: 110 px is about a third of the narrowest screen this app is used on.
+  var SCALE_MAX_PX = 110;
+
+  var M_PER_NM = 1852;
+
+  // The distances the bar may stand for, shortest first, each with the text that goes over
+  // it. Metres below 500 m and nautical miles at or above it, which is not a decision made
+  // here: it is the app's rule for every distance it shows (CLAUDE.md), and the strip on
+  // this very page switches its own unit at the same place.
+  //
+  // The ladder steps straight from 400 m to 0.3 NM, which is 556 m. That gap is the rule
+  // made geometric: there is no step between them, so no bar can ever be labelled in the
+  // unit from the wrong side of 500 m. The steps are never more than 1.67x apart, so the
+  // bar is always between about 66 and 110 px and never collapses to a stub.
+  var SCALE_STEPS = (function () {
+    var steps = [];
+    var metres = [10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250, 300, 400];
+    var miles = [0.3, 0.5, 0.75, 1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 30];
+    var i;
+    for (i = 0; i < metres.length; i++) steps.push({ m: metres[i], text: metres[i] + " m" });
+    for (i = 0; i < miles.length; i++) steps.push({ m: miles[i] * M_PER_NM, text: miles[i] + " NM" });
+    return steps;
+  }());
+
+  // The longest step whose bar still fits, which is what makes the bar a round number of
+  // metres or miles rather than a round number of pixels. Falling back to the shortest
+  // when nothing fits rather than hiding the bar: that needs a view under about 70 m
+  // across, which the 100 m zoom limit does not allow, and a bar slightly too wide is
+  // still a true one.
+  function scaleStepFor(mpp) {
+    var step = SCALE_STEPS[0];
+    for (var i = 0; i < SCALE_STEPS.length; i++) {
+      if (SCALE_STEPS[i].m / mpp <= SCALE_MAX_PX) step = SCALE_STEPS[i];
+    }
+    return step;
+  }
+
+  function drawScale(mpp) {
+    if (!el.scale || !el.scaleBar || !el.scaleText) return;
+    var step = scaleStepFor(mpp);
+    // The width goes on the container, not the bar, so the text centres over the bar
+    // rather than over whatever width the text itself happens to want.
+    el.scale.style.width = Math.round(step.m / mpp) + "px";
+    el.scaleText.textContent = step.text;
+  }
 
   function project(lonLat) {
     // GeoJSON is [lon, lat]; geo.js takes {lat, lon}. Being the only place the two
@@ -247,6 +305,10 @@
     // until the map was forced to redraw, and it was this line.
     if (!previous || previous.w !== view.w) applyScale();
     else layoutLabels(targetMarkId());
+    // Every view change re-baselines the boat-tracking test, so it is always judged from
+    // where the view was last left. This is the line that makes a pan carrying the boat
+    // off the screen different from the boat sailing off it (DESIGN 12.7).
+    boatInView = inView(boatAt, view);
   }
 
   // Gesture updates are coalesced to one per frame. iOS delivers touchmove faster than it
@@ -281,6 +343,48 @@
             ? lastState.position.v : null;
     if (fix && origin) at = project([fix.lon, fix.lat]);
     return { x: at[0] - half, y: at[1] - half, w: COURSE_SPAN_M, h: COURSE_SPAN_M };
+  }
+
+  // --- keeping the boat on the chart (DESIGN 12.7) -------------------------------------
+  //
+  // 12.1 and 12.2 both record that following the boat was considered and dropped, because
+  // a view that recentres itself fights the hand that just panned it. What is here is not
+  // a follow. The view is left exactly where it is until the boat crosses out of it, and
+  // then the window is moved once, at the same scale, to put the boat back in the middle.
+  //
+  // The rule that makes that safe is the crew's own, and it is about the boat rather than
+  // about the gesture: a boat that is on the chart is being watched, so when it leaves,
+  // the chart goes with it. A boat that is already off the chart is not, because the only
+  // way it got there is a hand that panned somewhere else deliberately, and that view is
+  // left alone until the crew brings the boat back into it or taps Fit.
+  //
+  // So the test is a transition, inside to outside, and never a state. That is why
+  // setView re-baselines: a pan that carries the boat off the screen ends with the flag
+  // already false, and the next poll sees no transition and does nothing. Nothing here
+  // reads `moved`, and it does not need to.
+
+  function inView(at, v) {
+    if (!at || !v) return false;
+    // The margin is the boat symbol's own size, so a recentre happens as the triangle
+    // reaches the edge rather than once it has already been cut in half by it.
+    var margin = BOAT_PX.hull * metresPerPixel();
+    return at[0] >= v.x + margin && at[0] <= v.x + v.w - margin &&
+           at[1] >= v.y + margin && at[1] <= v.y + v.h - margin;
+  }
+
+  function keepBoatInView() {
+    if (!view || !boatAt) return;
+    var inside = inView(boatAt, view);
+    if (boatInView && !inside) {
+      // Width and height untouched: this moves the window, it does not resize it. The
+      // crew chose the zoom and a recentre is not an invitation to choose another.
+      // setView re-baselines boatInView, so a clamp at the edge of the outer extent that
+      // leaves the boat outside anyway does not retry on every poll.
+      setView({ x: boatAt[0] - view.w / 2, y: boatAt[1] - view.h / 2,
+                w: view.w, h: view.h });
+      return;
+    }
+    boatInView = inside;
   }
 
   // levels[0] is whichever of the two the boat is in a position to want: the course being
@@ -645,6 +749,10 @@
   function applyScale() {
     var mpp = metresPerPixel();
     if (!isFinite(mpp) || mpp <= 0) return;
+    // The scale bar belongs here and not in setView: it changes when the metres per pixel
+    // change, which is a zoom or a resize, and this is the function both of those already
+    // call. A pan does not change it and must not pay for it.
+    drawScale(mpp);
     el.marks.setAttribute("font-size", (SYMBOL_PX.label * mpp).toFixed(2));
     // The aid names, on their own layer and a size down: they are the chart's background
     // detail, not its subject, and the two sets have to be told apart at a glance when
@@ -969,11 +1077,17 @@
     // already applied the cutoff, so this is one flag rather than a second opinion.
     if (!fix || !fix.v || fix.stale) {
       el.boat.setAttribute("hidden", "hidden");
+      // A boat that is not on the chart is not being tracked either. Cleared rather than
+      // left behind, so that a fix returning after a dropout is a fresh baseline and not a
+      // transition measured against wherever the boat was five minutes ago (DESIGN 12.7).
+      boatAt = null;
+      boatInView = false;
       return;
     }
     el.boat.removeAttribute("hidden");
 
     var at = project([fix.v.lon, fix.v.lat]);
+    boatAt = at;
     var mpp = metresPerPixel();
     // Course over ground, because that is where the boat is going, and it is what the HUD
     // shows beside a bearing for the same reason (DESIGN 9.10). Heading is the fallback
@@ -1342,6 +1456,9 @@
         lastState = state;
         onState(state);
         drawBoat(state);
+        // After drawBoat, which is what works out where the boat now is, and before the
+        // readout, which does not care about the view (DESIGN 12.7).
+        keepBoatInView();
         renderReadout(state);
         // Day or night, from the same poll, so this page is in whatever the boat is in
         // however it was arrived at (static/theme.js).

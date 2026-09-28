@@ -1831,7 +1831,9 @@ than something that happens to them.
 
    **The map does not follow the boat**, and that was decided rather than overlooked. Fit
    returns to the course, and a chart that re-centres itself under a finger mid-pinch is
-   worse than one that stays where it was put.
+   worse than one that stays where it was put. Still true as written: 12.7 later added a
+   single recentre when the boat sails off the edge, which is not a follow and is armed
+   only while the boat is on the chart.
 6. **Legibility.** Caveats in the document rather than only in a loader comment:
    crowd-sourced banks, nothing about sandbanks, the datum and which way its error runs,
    orientation only and not for navigation. On the page at first and now the chart's own
@@ -2306,6 +2308,11 @@ was considered and dropped, as it was in 12.1: a view that recentres itself figh
 hand that just panned it. For the same reason, a course change refits the view only when
 the view is on the inner extent **and** has not been dragged by hand.
 
+12.7 revisits the first of those and leaves it standing. The chart still does not follow
+the boat; it moves once, at the same scale, when the boat crosses off the edge, and only
+while the boat was on the chart to begin with. A view the crew panned the boat out of is
+still left exactly where they put it.
+
 ### 12.3 Two fingers pan as well as pinch
 
 Asked for from the boat. A two-finger drag did nothing at all, so moving the chart meant
@@ -2544,6 +2551,83 @@ colour. The night theme takes the stroke from 2.5 px to 3 for that reason, which
 until someone sails at night with it. The heavier answer, a grey casing under the whole
 trail, doubles the geometry in the layer and is not worth paying for a problem that has not
 been seen yet.
+
+### 12.7 The scale bar, and letting the boat pull the chart along
+
+Two changes asked for from the boat, in the same breath. They are unrelated except that
+both are about the view rather than about what is drawn in it.
+
+**A scale bar, bottom right.** The one button names the extent, and a name is not a
+distance: `River` does not tell the crew whether that gap between the bank and the leg
+line is 50 m or 300. Nothing else on the page carries the chart's scale, and the readout
+strip's distance is to the next mark, which is a different question.
+
+It is placed over the chart, not under it, in a wrapper around the svg. 12.2 settled that
+the chart is the flexible thing on this page and the strip takes nothing from it; a scale
+bar in the flow would take a third row of height for four characters. So it is
+`position: absolute` and `pointer-events: none`, and it can never be the thing a pinch
+lands on.
+
+The bar is a round distance, not a round number of pixels, which is the only way a scale
+bar is read: the crew compares something on the chart against it, so the number has to be
+one that can be divided in the head. The ladder is 10, 15, 20, 25, 30, 40, 50, 75, 100, 150,
+200, 250, 300, 400 m and then 0.3, 0.5, 0.75, 1, 1.5, 2, 3, 5, 7.5, 10, 15, 20, 30 NM, and
+the longest step whose bar fits in 110 px wins.
+
+Metres below 500 m and nautical miles above is not a decision taken here. It is the app's
+rule for every distance it shows, the same one the readout strip on this page already
+applies to the distance-to-mark cell. What is worth recording is how the ladder enforces
+it: **there is no step between 400 m and 0.3 NM**, which is 556 m. The gap is the rule made
+geometric. A bar cannot be labelled in the unit from the wrong side of 500 m because no
+such step exists to be chosen. The alternative, a nice-number search in metres followed by
+a conversion, has to special-case the band between 500 and 556 m, where the honest nice
+numbers in the two units do not meet.
+
+No step is more than 1.67x its neighbour, so the bar is always between about 66 and 110 px
+and never collapses to a stub as the zoom crosses a boundary.
+
+It is drawn from `applyScale` and not from `setView`. The bar changes when the metres per
+pixel change, which is a zoom or a resize, and `applyScale` is the function both of those
+already call. A pan does not change the scale and must not pay for redrawing it, which is
+the same reasoning 12.2 records for not resizing 131 symbols on every touchmove.
+
+**The chart follows the boat off the edge, once.** 12.1 and 12.2 both record that
+following the boat was considered and dropped, because a view that recentres itself fights
+the hand that just panned it. That decision stands and this does not reverse it. What is
+here is not a follow: the view is left exactly where it is until the boat crosses out of
+it, and then the window is moved once, at the same scale, to put the boat back in the
+middle. At 5 kt on the 3000 m inner extent that is about one move every ten minutes, and
+between moves the chart is as still as it ever was.
+
+The rule that makes it safe is the crew's, and the useful thing about it is that it is
+about the boat and not about the gesture:
+
+> If the boat is on the chart, the chart goes with it when it leaves. If the boat is
+> already off the chart, it is because a hand put it there, and that view is left alone.
+
+So the test is a **transition**, inside to outside, and never a state. `setView`
+re-baselines the flag on every view change, which is the whole mechanism: a pan that
+carries the boat off the screen ends with the flag already false, so the next poll sees no
+transition and does nothing. Bringing the boat back into view re-arms it, because that is
+a view the boat is in again. A zoom keeps tracking alive for the same reason, which is
+what the crew wanted: zooming in to watch a mark approach is not a request to stop
+watching the boat.
+
+Two alternatives were rejected. Recentring whenever the boat is outside, rather than on
+the transition, snaps the chart back the moment the crew pans away, which is exactly the
+fault 12.1 refused. Gating on `moved`, the flag the Fit button already keeps, looks
+tempting and is wrong in the case that matters: a pinch sets `moved`, so the crew who
+zooms in to follow the boat would be the one crew the feature never helps. Nothing in this
+section reads `moved`, and it does not need to.
+
+The margin is the boat symbol's own size, so the move happens as the triangle reaches the
+edge rather than once it has been cut in half by it. Width and height are untouched: the
+crew chose the zoom, and a recentre is not an invitation to choose another. A stale or
+missing fix clears the tracking state rather than leaving it behind, so a fix returning
+after a dropout is a fresh baseline and not a transition measured against where the boat
+was five minutes ago. And because `setView` re-baselines, a recentre that `clampView`
+pulls back at the edge of the outer extent, leaving the boat outside anyway, does not
+retry on every poll.
 
 ## 13. Build order
 
