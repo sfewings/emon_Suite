@@ -773,9 +773,16 @@ def test_the_course_detail_endpoint_carries_the_shortened_figures():
 
 def test_the_course_detail_endpoint_reports_a_distance_that_does_not_reconcile():
     """So the page can say the printed total is in doubt rather than leaving the crew to
-    notice two numbers that disagree (DESIGN 7)."""
+    notice two numbers that disagree (DESIGN 7).
+
+    sunday-div-ii-2, at +2.8 per cent and 0.33 nm, rather than frostbite-1, which this
+    used to ask for. Correcting Bricklanding B took frostbite-1 inside the tolerance and
+    it no longer carries a note; see test_courses.py. This one is chosen for the margin,
+    being the widest of the five that are left and so the least likely to be taken out by
+    the next mark that moves.
+    """
     client, _store, _ticker, _published = _client()
-    body = json.loads(client.get("/api/course/frostbite-1").get_data(as_text=True))
+    body = json.loads(client.get("/api/course/sunday-div-ii-2").get_data(as_text=True))
     assert body["notes"], "the known mismatch should be reported"
     assert any("per cent" in note for note in body["notes"])
     assert abs(body["summed_nm"] - body["distance_nm"]) > 0.1

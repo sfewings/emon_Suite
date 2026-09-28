@@ -36,8 +36,6 @@ INDEX = course.index_marks(MARKS)
 # off the sheet and the parse checked leg by leg; what is in doubt is which side is wrong,
 # and DESIGN 7 keeps that open.
 #
-#   frostbite-1        +2.1%  no single substitution or deletion from its twenty course
-#                             marks lands within 1 per cent of the printed figure
 #   sunday-div-ii-2    +2.8%
 #   sunday-div-iv-1    -9.9%  the largest, and the parse is not the suspect: legs 1-9 are
 #                             identical to sunday-div-iii-1, which reconciles to +0.3%, and
@@ -45,9 +43,9 @@ INDEX = course.index_marks(MARKS)
 #                             about them. Its printed shortened figure does not resolve either.
 #   sunday-div-iv-2    +4.2%
 #   twilight-1         +2.6%
-#   twilight-3         -2.6%
-#   parmelia-1        -28.3%   and parmelia-2 -23.3%, which are a different kind of
-#                              mismatch from the six above and are explained rather than
+#   twilight-3         -3.0%
+#   parmelia-1        -28.3%   and parmelia-2 -23.2%, which are a different kind of
+#                              mismatch from the five above and are explained rather than
 #                              open. The club prints the distance sailed. Those six are
 #                              open-water courses where the straight line between two marks
 #                              is the route, so summing them reproduces the printed figure;
@@ -61,8 +59,14 @@ INDEX = course.index_marks(MARKS)
 #                              So the warning here is the expected result for a course of
 #                              that shape and not a transcription fault. See DESIGN 7.1 and
 #                              test_the_parmelia_gap_is_still_the_size_it_was below.
+#
+# frostbite-1 used to be on this list at +2.1% and is not any more. Nobody re-read the
+# sheet: Bricklanding B was corrected by 15.6 m from our own GPS, which shortened leg 2
+# and took the course to +1.97%, inside the 2 per cent tolerance. That is the check doing
+# what DESIGN 7 says it is for, in the direction nobody expects, so it is recorded rather
+# than quietly deleted. See test_frostbite_1_reconciled_when_bricklanding_b_was_corrected.
 KNOWN_DISTANCE_MISMATCHES = {
-    "frostbite-1", "sunday-div-ii-2", "sunday-div-iv-1", "sunday-div-iv-2",
+    "sunday-div-ii-2", "sunday-div-iv-1", "sunday-div-iv-2",
     "twilight-1", "twilight-3",
     "parmelia-1", "parmelia-2",
 }
@@ -81,12 +85,28 @@ def test_the_only_distance_mismatch_is_the_known_one():
     assert mismatched == KNOWN_DISTANCE_MISMATCHES, mismatched
 
 
-def test_the_known_mismatch_is_still_the_size_it_was():
-    """If someone re-reads the sheet and fixes it, this test is the reminder to unpin."""
+def test_frostbite_1_reconciled_when_bricklanding_b_was_corrected():
+    """This test used to pin frostbite-1's gap at 2 to 3 per cent. It no longer has one.
+
+    Bricklanding B was 15.6 m from where three of our own recordings put it, and moving
+    it shortened leg 2 enough to take the course from +2.15 to +1.97 per cent, inside the
+    tolerance. Worth keeping as a test rather than deleting, for two reasons.
+
+    It is the one case where the reconciliation check in DESIGN 7 was right about the
+    marks rather than about the sheet, which is the opposite of what section 7 assumes
+    throughout: there the printed total is always the value in doubt. Here the printed
+    7.11 was closer to the truth than the config was.
+
+    And the band is tight on both sides on purpose. Below 1.5 per cent means something
+    else has moved as well and the Bricklanding correction is no longer the whole story;
+    back above 2.0 means a mark has moved again and frostbite-1 belongs on
+    KNOWN_DISTANCE_MISMATCHES once more, where the comment above explains why it left.
+    """
     c = _course("frostbite-1")
     summed = course.course_distance_nm(c, INDEX, LINES)
     error_pct = (summed - c["distance_nm"]) / c["distance_nm"] * 100.0
-    assert 2.0 < error_pct < 3.0, error_pct
+    assert 1.5 < error_pct < 2.0, error_pct
+    assert "frostbite-1" not in {p.course for p in PROBLEMS if p.code == "distance-mismatch"}
 
 
 def test_the_parmelia_gap_is_still_the_size_it_was():

@@ -537,14 +537,10 @@ the wrong mark. This single check catches most transcription errors without anyo
 reading the PDF twice, and it should run in CI over every course. It is also what
 disproved the gate model in section 6, so it earns its keep twice over.
 
-Six of the twenty-three do not reconcile inside the 2 per cent tolerance. In every
+Five of the twenty-three do not reconcile inside the 2 per cent tolerance. In every
 one the legs have been checked against the sheet row by row, and the printed total is
 the value in doubt:
 
-- **Frostbite Course 1**: legs sum to 7.26 nm against a printed 7.11, 2.1 per cent
-  over. No single substitution or deletion from the twenty course marks lands
-  within 1 per cent of 7.11. Through the pair midpoints it gives 7.14, which
-  suggests whoever totalled this one course did it that way.
 - **Sunday Div II Course 2**: 12.25 nm against a printed 11.92, 2.8 per cent over.
   This section predicted 12.21 and 2.4 per cent before the series was transcribed,
   from a route read off the sheet by eye; the extracted legs put it slightly further
@@ -557,12 +553,29 @@ the value in doubt:
   consistent with the full figure being the thing that is wrong.
 - **Sunday Div IV Course 2**: 9.49 nm against a printed 9.11, 4.2 per cent over.
 - **Twilight Course 1**: 5.79 nm against a printed 5.64, 2.6 per cent over.
-- **Twilight Course 3**: 5.68 nm against a printed 5.83, 2.6 per cent under.
+- **Twilight Course 3**: 5.65 nm against a printed 5.83, 3.0 per cent under.
 
 They are pinned in `tests/test_courses.py`, so a *new* mismatch fails the build while
-these do not. Both Twilight ones sit just outside a 2 per cent tolerance and would
-pass a 3 per cent one; that is not a reason to move the tolerance, because the check
-earns its keep by being tight enough to catch a wrong mark.
+these do not. Twilight Course 1 sits just outside a 2 per cent tolerance and would pass
+a 3 per cent one; that is not a reason to move the tolerance, because the check earns its
+keep by being tight enough to catch a wrong mark.
+
+**Frostbite Course 1 was the sixth and is not any more, and how it left is the useful
+part.** It summed to 7.26 nm against a printed 7.11, 2.1 per cent over, and this section
+said what it says about all the others: the legs had been checked row by row and the
+printed total was the value in doubt. It was not. Bricklanding B was 15.6 m from where
+three of our own recordings put the buoy (12.7), correcting it shortened leg 2, and the
+course came to 7.25 nm and +1.97 per cent, inside the tolerance and with nothing else
+touched. Twilight Course 3 moved from -2.6 to -3.0 per cent in the same change and stayed
+where it was.
+
+So the reconciliation check found a wrong mark rather than a wrong sheet, which is the
+one outcome this section did not allow for and the reason it is worth writing down. The
+assumption above, that the printed figure is always the suspect, is an inference from
+having checked the legs, not from having checked the marks. The marks came from a
+redigitized 2019 register that this document already records as having moved 61 of 142
+positions by a median of 15 m when it was compared against its own spreadsheet, which is
+the same order as the error found here.
 
 The same arithmetic solves for `shortened_at`, as described in section 11.6.
 
