@@ -160,7 +160,8 @@ services:
     volumes:
       - /share/emon-node-red:/data
       - /share:/share
-      - /media:/containermedia
+      # rslave: USB drives mounted under /media after container start are visible inside
+      - /media:/containermedia:rslave
     depends_on:
       - mosquitto
     restart: always
@@ -192,17 +193,17 @@ services:
       - 9000:9000
       - 9443:9443
 
-  onedrive:
-    image: driveone/onedrive:edge
-    restart: unless-stopped
-    environment:
-      - ONEDRIVE_UID=${PUID}
-      - ONEDRIVE_GID=${PGID}
-      - ONEDRIVE_SINGLE_DIRECTORY= RaspPi/shannstainable
-      - ONEDRIVE_UPLOADONLY=1
-    volumes: 
-      - onedrive_conf:/onedrive/conf
-      - ${ONEDRIVE_DATA_DIR}:/onedrive/data      
+#  onedrive:
+#    image: driveone/onedrive:edge
+#    restart: unless-stopped
+#    environment:
+#      - ONEDRIVE_UID=${PUID}
+#      - ONEDRIVE_GID=${PGID}
+#      - ONEDRIVE_SINGLE_DIRECTORY= RaspPi/shannstainable
+#      - ONEDRIVE_UPLOADONLY=1
+#    volumes: 
+#      - onedrive_conf:/onedrive/conf
+#      - ${ONEDRIVE_DATA_DIR}:/onedrive/data      
 
   emon_settings_web:
     image: sfewings32/emon_settings_web:latest
@@ -258,4 +259,4 @@ volumes:
   mosquitto-logs:
   mosquitto-conf:
   portainer-data:
-  onedrive_conf:
+#  onedrive_conf:

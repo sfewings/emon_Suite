@@ -102,6 +102,25 @@ If using NodeRed
             // To enable the Projects feature, set this value to true
             enabled: true
 
+24.	Mount the USB backup drive for the NodeRed daily log backup
+	NodeRed copies yesterday's /share/Input/yyyymmdd.TXT to /containermedia/pi/HOMEMONITOR/backup/Input/ each night
+	(/containermedia in the node_red container is /media on the host).
+	Do NOT rely on the desktop automount. If NodeRed starts before the drive is mounted it creates
+	/media/pi/HOMEMONITOR on the SD card, the drive then automounts as HOMEMONITOR1, and backups silently fill the SD card.
+	a. Find the drive UUID
+		lsblk -f
+	b. Create the mount point and make it immutable so nothing can be written to it while the drive is unmounted
+		sudo mkdir -p /media/pi/HOMEMONITOR
+		sudo chattr +i /media/pi/HOMEMONITOR
+	c. Add to /etc/fstab (NTFS drive; nofail lets the Pi boot without the drive)
+		UUID=<uuid>  /media/pi/HOMEMONITOR  ntfs-3g  defaults,nofail,uid=1000,gid=1000,umask=000,x-systemd.device-timeout=10s  0  0
+	d. Mount and check
+		sudo systemctl daemon-reload
+		sudo mount /media/pi/HOMEMONITOR
+		ls /media/pi/HOMEMONITOR/backup/Input
+	e. In docker-compose.yml the node-red /media volume must use rslave so the drive is visible even if mounted after the container starts
+		- /media:/containermedia:rslave
+
 
 //////////////////////////////////////////////////
 If hosting on *.fewings.org subdomain
