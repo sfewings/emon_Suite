@@ -940,13 +940,21 @@ class WordPressPublisher:
             if recording_data.get('description'):
                 content += f"<p>{recording_data['description']}</p>\n"
 
-        # Statistics table (HTML, not image)
-        if statistics:
-            content += self._build_statistics_table_html(statistics)
-
         # Split images: user-uploaded photos go in their own section before plots
         user_photos = [m for m in media_ids if m.get('image_type') == 'user_upload']
         plots = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
+
+        # Photos straight after the summary, with no heading: the crew's
+        # pictures introduce the day better than a table of numbers does.
+        for media in user_photos:
+            content += self._build_figure_html(media.get('url', ''),
+                                               media.get('caption', ''),
+                                               italic_caption=True,
+                                               default_alt='Photo')
+
+        # Statistics table (HTML, not image)
+        if statistics:
+            content += self._build_statistics_table_html(statistics)
 
         # The drawn track goes above the fold, with the summary: it is the one
         # picture that says what the day was, and the homepage shows nothing
@@ -978,15 +986,6 @@ class WordPressPublisher:
                 embed = self._extract_folium_embed(html_path)
                 if embed:
                     content += '<!-- wp:html -->\n' + embed + '\n<!-- /wp:html -->\n\n'
-
-        # Photos section — user uploads with by-line captions
-        if user_photos:
-            content += "\n<h2>Photos</h2>\n"
-            for media in user_photos:
-                content += self._build_figure_html(media.get('url', ''),
-                                                   media.get('caption', ''),
-                                                   italic_caption=True,
-                                                   default_alt='Photo')
 
         # Data Visualizations section — generated plots
         if plots:
