@@ -280,6 +280,32 @@ class WordPressPublisher:
         except (requests.exceptions.RequestException, ValueError, KeyError) as e:
             logger.warning(f"Could not clear a partial {upload_name}: {e}")
 
+    @staticmethod
+    def _uploaded_file(media_data: Dict) -> Tuple[str, Optional[int]]:
+        """
+        Find the file WordPress kept from an upload, and its size if known.
+
+        A photo wider than 2560 px is shrunk into a "-scaled" copy, and from
+        then on source_url and filesize both describe that copy. The file that
+        was sent is kept beside it under original_image, with no size given.
+        Checking the copy against the phone's photo called every whole upload
+        truncated and deleted it, so no photo reached a post.
+
+        Args:
+            media_data: An attachment, as WordPress returns it
+
+        Returns:
+            (URL of the uploaded file, its stored size or None)
+        """
+        details = media_data.get('media_details') or {}
+        url = media_data.get('source_url', '')
+
+        original = details.get('original_image')
+        if original:
+            return f"{url.rsplit('/', 1)[0]}/{original}", None
+
+        return url, details.get('filesize')
+
     def _uploaded_whole(self, media_data: Dict, expected: int, name: str) -> bool:
         """
         Check that the file WordPress stored is the file that was sent.
@@ -298,10 +324,9 @@ class WordPressPublisher:
         Returns:
             True when the stored size matches
         """
-        stored = (media_data.get('media_details') or {}).get('filesize')
+        url, stored = self._uploaded_file(media_data)
 
         if stored is None:
-            url = media_data.get('source_url', '')
             try:
                 head = requests.head(url, auth=self.auth, timeout=self.timeout)
                 stored = head.headers.get('Content-Length')
@@ -392,11 +417,10 @@ class WordPressPublisher:
                 return None
 
             for item in response.json():
-                url = item.get('source_url', '')
+                url, remote_size = self._uploaded_file(item)
                 if os.path.basename(url) != filename:
                     continue
 
-                remote_size = (item.get('media_details') or {}).get('filesize')
                 if remote_size is None:
                     head = requests.head(url, auth=self.auth, timeout=self.timeout)
                     remote_size = head.headers.get('Content-Length')
