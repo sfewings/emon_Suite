@@ -653,6 +653,23 @@ class Database:
             """, (recording_id, export_type, file_path, label))
             return cursor.lastrowid
 
+    def delete_recording_exports(self, recording_id: int) -> int:
+        """
+        Delete the export records for a recording (the files on disk are left).
+
+        Args:
+            recording_id: Recording ID
+
+        Returns:
+            int: Number of rows deleted
+        """
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM recording_exports WHERE recording_id = ?",
+                (recording_id,)
+            )
+            return cursor.rowcount
+
     def get_recording_exports(self, recording_id: int) -> List[Dict]:
         """
         Get all export files for a recording.

@@ -504,14 +504,18 @@ class DataProcessor:
             # replaces them rather than adding to them. Plot rows would
             # otherwise accumulate a duplicate set per run, and the publisher
             # globs *.html, so a map left behind under an old filename would be
-            # embedded in the post alongside the new one. Exports are already
-            # idempotent (INSERT OR IGNORE on a unique path) and user uploads
-            # live outside this directory, so neither is touched here.
+            # embedded in the post alongside the new one. Export rows go too:
+            # a type switched off since the last run kept its row, and the
+            # publisher went on offering the file. User uploads live outside
+            # this directory and are not touched.
             cleared = self.database.delete_plot_images(recording_id)
             for stale_map in output_dir.glob('*.html'):
                 stale_map.unlink()
             if cleared:
                 logger.info(f"Cleared {cleared} plot image record(s) from previous run")
+            cleared = self.database.delete_recording_exports(recording_id)
+            if cleared:
+                logger.info(f"Cleared {cleared} export record(s) from previous run")
 
             results = {
                 'plots': [],
@@ -1405,9 +1409,18 @@ class DataProcessor:
     # === Export File Generation ===
 
     def _auto_generate_export_config(self, recording_id: int) -> Dict:
-        """Auto-generate export config: CSV always; KML/GPX when a track exists."""
+        """
+        Auto-generate export config: KML/GPX when a track exists, no CSV.
+
+        This is what automatic processing gets, because a recording does not
+        record which event started it and so cannot reach that event's
+        exports: section. Every event config turns CSV off (a full day is a
+        quarter-gigabyte, more than the uplink can publish), and the default
+        of CSV on went on writing one anyway. Ask for it explicitly through
+        the process endpoint's export_config when it is wanted.
+        """
         has_gps = bool(self._find_gps_streams(recording_id))
-        return {'csv': True, 'kml': has_gps, 'gpx': has_gps}
+        return {'csv': False, 'kml': has_gps, 'gpx': has_gps}
 
     def generate_csv_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
         """
