@@ -839,11 +839,13 @@ async function viewRecording(recordingId) {
         // Action buttons
         modalContent += '<div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">';
 
-        if (rec.status === 'active') {
+        // Name, description and photos can be changed at any stage up to
+        // publishing; the API refuses them once the post is out.
+        if (rec.status !== 'published') {
             modalContent += `
                 <a href="upload?recording_id=${rec.id}" target="_blank"
                    class="btn btn-primary">
-                    ${Icons.camera} Upload Photo
+                    ${Icons.camera} Edit / Add Photo
                 </a>
             `;
         }

@@ -32,13 +32,11 @@ async function loadRecordings() {
             return;
         }
 
-        // Only show recordings that are not yet published or failed
-        const usable = data.recordings.filter(r =>
-            !['published', 'failed'].includes(r.status)
-        );
+        // Any recording not yet published can be edited, at whatever stage
+        const usable = data.recordings.filter(r => r.status !== 'published');
 
         if (usable.length === 0) {
-            select.innerHTML = '<option value="">No active or recent recordings</option>';
+            select.innerHTML = '<option value="">No unpublished recordings</option>';
             noNote.style.display = 'block';
             return;
         }
@@ -134,27 +132,12 @@ async function uploadPhoto() {
     uploadBtn.textContent = 'Uploading…';
 
     try {
-        // Save title and description to the recording if either has changed
-        const cached = recordingsCache.find(r => r.id === parseInt(recordingId));
-        const titleChanged = title && cached && title !== (cached.name || '');
-        const descChanged = description !== (cached ? (cached.description || '') : '');
-
-        if (titleChanged || descChanged) {
-            const updateBody = {};
-            if (titleChanged) updateBody.name = title;
-            if (descChanged) updateBody.description = description;
-
-            await fetch(`api/recordings/${recordingId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updateBody)
-            });
-
-            // Update cache so a second upload reflects the saved values
-            if (cached) {
-                if (titleChanged) cached.name = title;
-                if (descChanged) cached.description = description;
-            }
+        const saved = await saveDetails(recordingId, title, description);
+        if (saved.error) {
+            showResult(`Upload failed: ${saved.error}`, 'error');
+            uploadBtn.disabled = false;
+            restoreUploadBtn();
+            return;
         }
 
         // Upload the photo
@@ -185,6 +168,70 @@ async function uploadPhoto() {
         showResult('Upload failed. Please check your connection and try again.', 'error');
         uploadBtn.disabled = false;
         restoreUploadBtn();
+    }
+}
+
+// === Save title and description to the recording if either has changed ===
+// Returns {changed} on success or {error} when the recorder refused it.
+async function saveDetails(recordingId, title, description) {
+    const cached = recordingsCache.find(r => r.id === parseInt(recordingId));
+    const titleChanged = title && cached && title !== (cached.name || '');
+    const descChanged = description !== (cached ? (cached.description || '') : '');
+
+    if (!titleChanged && !descChanged) {
+        return { changed: false };
+    }
+
+    const updateBody = {};
+    if (titleChanged) updateBody.name = title;
+    if (descChanged) updateBody.description = description;
+
+    const response = await fetch(`api/recordings/${recordingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody)
+    });
+    const data = await response.json();
+    if (!data.success) {
+        return { error: data.error };
+    }
+
+    // Update cache so a second save reflects the saved values
+    if (cached) {
+        if (titleChanged) cached.name = title;
+        if (descChanged) cached.description = description;
+    }
+    return { changed: true };
+}
+
+// === Save title and description without a photo ===
+async function saveDetailsOnly() {
+    const recordingId = document.getElementById('recordingSelect').value;
+    if (!recordingId) {
+        showResult('Please select a recording first.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('saveDetailsBtn');
+    btn.disabled = true;
+    try {
+        const saved = await saveDetails(
+            recordingId,
+            document.getElementById('postTitle').value.trim(),
+            document.getElementById('postDescription').value.trim()
+        );
+        if (saved.error) {
+            showResult(`Save failed: ${saved.error}`, 'error');
+        } else if (saved.changed) {
+            showResult('Title and description saved.', 'success');
+        } else {
+            showResult('Nothing has changed.', 'success');
+        }
+    } catch (err) {
+        console.error('Save failed:', err);
+        showResult('Save failed. Please check your connection and try again.', 'error');
+    } finally {
+        btn.disabled = false;
     }
 }
 

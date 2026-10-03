@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Upload Photo - Event Recorder</title>
+    <title>Edit / Add Photo - Event Recorder</title>
     <link rel="stylesheet" href="static/style.css">
     <style>
         /* Mobile-optimised upload page */
@@ -208,7 +208,7 @@
     <!-- Header -->
     <header class="header">
         <div class="header-content">
-            <h1><svg style="width:1em;height:1em;vertical-align:-0.125em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Upload Photo</h1>
+            <h1><svg style="width:1em;height:1em;vertical-align:-0.125em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Edit / Add Photo</h1>
             <a href="./" class="header-back">← Dashboard</a>
         </div>
     </header>
@@ -224,7 +224,7 @@
                     <option value="">Loading recordings…</option>
                 </select>
                 <p class="no-recordings-note" id="noRecordingsNote" style="display:none;">
-                    No active recordings found. Start a recording first.
+                    No unpublished recordings. Start a recording, or reset a published one to processed.
                 </p>
             </div>
 
@@ -240,6 +240,11 @@
                 <textarea id="postDescription"
                           placeholder="Describe this recording for the blog post…"
                           rows="2"></textarea>
+                <!-- Saves title and description on their own; a photo upload saves them too -->
+                <button class="btn btn-secondary" id="saveDetailsBtn"
+                        onclick="saveDetailsOnly()" style="align-self: flex-end; margin-top: 0.5rem;">
+                    Save title &amp; description
+                </button>
             </div>
 
             <!-- Photo caption -->

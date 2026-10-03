@@ -101,6 +101,28 @@ class WebInterface:
         exp['url'] = f"exports/{recording_id}/{file_path.name}"
         return exp
 
+    def _refuse_if_published(self, recording_id: int):
+        """
+        Refuse a change to a recording that has already been published.
+
+        Name, description and photos can be changed at every stage up to
+        publishing, so a recording behaves the same whether it is still being
+        recorded or has been processed. Once published they are what the post
+        shows, and a change here would not reach it; Reset to Processed first.
+
+        Returns:
+            A Flask error response, or None when the change may go ahead
+        """
+        recording = self.database.get_recording(recording_id)
+        if not recording:
+            return jsonify({'success': False, 'error': 'Recording not found'}), 404
+        if recording['status'] == RecordingStatus.PUBLISHED:
+            return jsonify({
+                'success': False,
+                'error': 'Recording is already published; reset it to processed to change it'
+            }), 409
+        return None
+
     def _register_routes(self):
         """Register Flask routes."""
 
@@ -297,6 +319,10 @@ class WebInterface:
 
                 if not update_fields:
                     return jsonify({'success': False, 'error': 'No fields to update'}), 400
+
+                refused = self._refuse_if_published(recording_id)
+                if refused:
+                    return refused
 
                 self.database.update_recording(recording_id, **update_fields)
 
@@ -719,6 +745,10 @@ class WebInterface:
                         'success': False,
                         'error': f'Invalid file type. Allowed: {allowed_extensions}'
                     }), 400
+
+                refused = self._refuse_if_published(recording_id)
+                if refused:
+                    return refused
 
                 # Save file
                 upload_dir = self.uploads_dir / str(recording_id)
