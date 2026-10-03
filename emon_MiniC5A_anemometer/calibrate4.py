@@ -543,8 +543,12 @@ def main(argv):
     print(f"format  : {'v' + version if version else 'no #EMON_CAL header (old capture?)'}")
     print(f"records : gyro={'1' if gyro else '0'}  acc={len(acc)}  mag={len(mag)}")
     if gyro is None and len(acc) == 0 and len(mag) == 0:
-        print("\nNothing recognised. This script reads captures from "
-              "collectDataForMahonyCalibration() v4;\nfor the old 6-column CSV use calibrate3.py.")
+        print("\nNothing recognised. This script reads G, A and M records from "
+              "collectDataForMahonyCalibration()\nin the sketch - capture the whole "
+              "serial session, prompts and all, and pass that file.")
+        print("\nIf this is an old 6-column acc_mag_raw.csv, it predates this format "
+              "and the\nroutine that produced it no longer exists. Re-run the "
+              "calibration; see\ndocs/Calibration_instructions.md.")
         return 2
 
     _, gok = do_gyro(gyro)
