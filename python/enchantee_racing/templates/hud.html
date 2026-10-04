@@ -34,7 +34,7 @@
   looping muted video does work over plain HTTP on both iOS and Android (DESIGN 9.8).
   Both are in place: the API when a secure context ever exists, the video meanwhile.
 
-  Also added: the three-screen navigation along the bottom, HUD, Race and Map. The Node-RED
+  Also added: the three-screen navigation along the bottom, HUD, Map and Race. The Node-RED
   page had nowhere to go, and without it a phone that lands here is stuck. href="." rather
   than "/" so it resolves to /race/ behind the nginx prefix and to / on the app's own port,
   the same reason every other asset path here is relative.
@@ -291,8 +291,8 @@
      the boat's Garmin, whose own cell comes back here (DESIGN 9.12). -->
 <nav id="nav">
   <a class="here" href="gar">HUD</a>
-  <a href=".">Race</a>
   <a href="map">Map</a>
+  <a href=".">Race</a>
   <button data-theme-toggle></button>
 </nav>
 <div id="hud">

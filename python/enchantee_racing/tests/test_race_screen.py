@@ -959,11 +959,14 @@ def test_every_page_carries_the_same_three_screen_navigation():
 
     Three pages now rather than two, which is the cost DESIGN 12.1 accepted when the map
     became its own page instead of a fourth panel.
+
+    The order is pinned too: HUD, Map, Race. The two screens used on every sail come
+    first and the one used on race days only comes last (DESIGN 9.6).
     """
     for path, nav in _navs().items():
         labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav)]
         first = "GAR" if path == "/gar" else "HUD"
-        assert labels == [first, "Race", "Map"], (path, labels)
+        assert labels == [first, "Map", "Race"], (path, labels)
         # Nothing is disabled any more: Map used to carry class="off" because there was no
         # map, and DESIGN 9.6 said to show it disabled until there was.
         assert 'class="off"' not in nav, "%s still disables an entry" % path

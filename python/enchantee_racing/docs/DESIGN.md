@@ -848,8 +848,12 @@ The app has **three** screens, named along the bottom of every one of them:
 | Screen | What it is                                                          |
 | ------ | ------------------------------------------------------------------- |
 | `HUD`  | The instrument display, its own page at `/hud`, with a second face at `/gar` reached from its own cell (9.12) |
+| `Map`  | The course map (section 12)                                         |
 | `Race` | Everything about a race: course selection, countdown, marks, finish |
-| `Map`  | The course map. Not built yet, and shown disabled until it is       |
+
+In that order, HUD, Map, Race, with the theme toggle last. Race used to sit second; it
+moved to third because the HUD and the map are used every time the boat is out and the
+race screen only on race days, so the two most-used screens come first.
 
 Every screen carries that navigation, so no screen is a dead end. Worth stating
 because it was got wrong twice: the HUD had no way back to anything, and the racing
