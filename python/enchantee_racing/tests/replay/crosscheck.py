@@ -6,8 +6,8 @@ those values. That covers the whole chain in one go: log file, the C++ EmonSeria
 emon_mqtt's topic mapping, mosquitto, the app's subscription, store.derive, and the JSON
 the page polls.
 
-    python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT -x 120 --stop 13:22
-    python tests/replay/crosscheck.py tests/data/20260816_Frostbite_3.TXT --at 13:22
+    python tests/replay/replay.py tests/data/20260913_Frostbite_1.TXT -x 120 --stop 13:22
+    python tests/replay/crosscheck.py tests/data/20260913_Frostbite_1.TXT --at 13:22
 
 Exits non-zero on any disagreement. It earned its place the first time it ran, by
 catching the replay exiting before paho had flushed its last publishes: every field was

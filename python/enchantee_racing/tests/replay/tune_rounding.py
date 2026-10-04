@@ -4,7 +4,7 @@ DESIGN 11.2 says the arming radius is "a starting value, not a fixed constant. P
 config and tune it from replayed tracks." This is that tool. It also answers the question
 behind it, which is whether the confirmation rule works at all.
 
-    python tests/replay/tune_rounding.py tests/data/20260816_Frostbite_3.TXT frostbite-3
+    python tests/replay/tune_rounding.py tests/data/20260913_Frostbite_1.TXT frostbite-1
 
 Three things come out of it:
 

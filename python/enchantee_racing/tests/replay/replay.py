@@ -5,7 +5,7 @@ exactly the kind that looks obviously correct and is not, and a recorded race is
 only honest way to find out. This is the tool that gets a recording onto the broker.
 
     docker compose -f tests/replay/docker-compose.yml up -d
-    python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT --speed 60
+    python tests/replay/replay.py tests/data/20260913_Frostbite_1.TXT --speed 4
     python app.py --broker localhost            # in another terminal
 
 Publishing goes through pyemonlib's own emon_mqtt.process_line, not a reimplementation
@@ -216,7 +216,7 @@ def replay(emon, path, speed, start, stop, progress_s, types=RACING_TYPES):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("file", help="recorded emon log, e.g. tests/data/20260816_Frostbite_3.TXT")
+    parser.add_argument("file", help="recorded emon log, e.g. tests/data/20260913_Frostbite_1.TXT")
     parser.add_argument("-m", "--broker", default="localhost")
     parser.add_argument("-p", "--port", type=int, default=1883)
     parser.add_argument("-x", "--speed", type=float, default=1.0,

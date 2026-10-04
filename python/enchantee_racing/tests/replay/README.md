@@ -10,11 +10,21 @@ and drive the app with it.
 ```
 docker compose -f tests/replay/docker-compose.yml up -d          # broker on 1883
 python app.py --broker localhost                                 # app on 5002
-python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT --speed 60
+python tests/replay/replay.py tests/data/20260913_Frostbite_1.TXT --speed 4
 ```
 
-Then open <http://localhost:5002/hud>. At 60x a two and a half hour race takes about two
-and a half minutes, so the wind swings and the motor panels come and go while you watch.
+Then open <http://localhost:5002/hud>, or `/gar`. At 4x the race takes about 40 minutes.
+
+**Keep the speed at 4x or below if the race engine is part of what you are watching.** The
+engine's guards run on the app's wall clock, the 10 s hold after each advance among them,
+and a replay compresses the race but not the hold. On this course Smith and Lucky Bay are
+rounded 45 s apart, so above 4.5x the hold swallows Lucky Bay and the race needs a manual
+Next; at 10x that is exactly what happened. For the instruments alone, 60x is fine: the
+wind swings and the motor panels come and go in under three minutes.
+
+You also have to start the race: the recording carries the boat, not the race state.
+Choose Frostbite course 1 on the race screen before 13:30 on the log's clock and press
+Start at 13:30, which is the gun Enchantee sailed (the 13:50 start is the other divisions').
 
 Stop the broker with `docker compose -f tests/replay/docker-compose.yml down`.
 
@@ -28,8 +38,8 @@ broker rather than from a shell, so the whole rig is one command.
 REPLAY_MQTT_PORT=1884 REPLAY_APP_PORT=5003 \
   docker compose -f tests/replay/docker-compose.yml --profile app up -d
 
-../venv/bin/python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT \
-  -p 1884 --speed 60
+../venv/bin/python tests/replay/replay.py tests/data/20260913_Frostbite_1.TXT \
+  -p 1884 --speed 4
 ```
 
 Then open <http://enchantee.local:5003/> from a phone or a tablet, which is the point of
@@ -60,9 +70,9 @@ about this worth remembering.
   without it you are checking the wrong instance and comparing a replay against live data.
 
 ```
-../venv/bin/python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT \
+../venv/bin/python tests/replay/replay.py tests/data/20260913_Frostbite_1.TXT \
   -p 1884 -x 120 --stop 13:22
-../venv/bin/python tests/replay/crosscheck.py tests/data/20260816_Frostbite_3.TXT \
+../venv/bin/python tests/replay/crosscheck.py tests/data/20260913_Frostbite_1.TXT \
   --at 13:22 --url http://127.0.0.1:5003/api/state
 ```
 
@@ -101,28 +111,43 @@ provisioned stack as above.
 
 ## What is in the Frostbite recording
 
-`tests/data/20260816_Frostbite_3.TXT`, 16 August 2026, 13:02 to 15:38, 55,266 records.
-Frostbite Course 3 by its filename, which is the course in `config/courses.json` that
-reconciles to 0.0 per cent against its printed distance.
+`tests/data/20260913_Frostbite_1.TXT`, 13 September 2026, 13:04 to 15:53, 51,181 records:
+Frostbite course 1, from the 13:30 start. It is the boat's daily log for that day with the
+3,005 NUL bytes the logger left at its end removed, and nothing else changed. It is the
+first race recorded after the compass was calibrated in the `emon_MiniC5A_anemometer`
+sketch, which is why it replaced the August recording as the default: before that the
+heading was out by up to 30 degrees depending on where the boat pointed, and GAR's leeway,
+the TWD corner and the mark diamond all inherit the heading.
 
 | Record | Rate | Becomes |
 |---|---|---|
-| `gps/0` | 0.96 Hz | SOG, COG and `gps/position/0` |
-| `imu/0` | 0.91 Hz | heading |
-| `mwv/0,1,2` | ~0.8 Hz each | apparent bow relative, apparent compass, true |
-| `svc/0` | 1.05 Hz | the SevCon panels |
+| `gps/0` | 0.95 Hz | SOG, COG and `gps/position/0` |
+| `imu/0` | 0.81 Hz | heading |
+| `mwv/0,1,2` | ~0.75 Hz each | apparent bow relative, apparent compass, true |
+| `svc/0` | 0.72 Hz | the SevCon panels |
 | `bms`, `pth`, `temp1` | low | nothing this app subscribes to, skipped by default |
 
-The SevCon turns from 13:10 to 13:19, which is motoring out to the start, and again from
-15:24, which is motoring home. It reads -0.06 rpm for the whole race in between, inside
-the 5 rpm deadband, so the motor panels appear at each end of the recording and the wind
-panels hold for the two hours between. That is DESIGN 11.8 happening on real data.
+The SevCon turns from 13:15 to 13:20, motoring out to the start, and from 15:21 to 15:25,
+motoring home. It also reads over the 5 rpm deadband for four seconds at 13:54:58,
+mid-race, so the motor panels flick on for about fourteen seconds there with the hold.
+Probably the prop turning under sail; it is in the data, so it is on the screen.
+
+The engine sails this race with no hand on it: nine automatic roundings and one finish, at
+15:13:17 (`tests/test_race.py`). It did not, before two changes it led to (DESIGN 11.2,
+11.3): Armstrong was rounded on the correct side 65 m off, outside the old 40 m arming
+radius, and a tight rounding of Smith clipped the end of the Smith / Lucky Bay line and was
+logged as a breach.
+
+`tests/data/20260816_Frostbite_3.TXT`, Frostbite course 3 on 16 August 2026, stays: its
+tests pin the finish line's geometry and the early advance off Hallmark. It predates the
+compass calibration, which does not affect those tests, since the engine reads only GPS.
+Do not use it to judge anything drawn from the heading.
 
 ## Checking the replay actually landed
 
 ```
-python tests/replay/replay.py tests/data/20260816_Frostbite_3.TXT -x 120 --stop 13:22
-python tests/replay/crosscheck.py tests/data/20260816_Frostbite_3.TXT --at 13:22
+python tests/replay/replay.py tests/data/20260913_Frostbite_1.TXT -x 120 --stop 13:22
+python tests/replay/crosscheck.py tests/data/20260913_Frostbite_1.TXT --at 13:22
 ```
 
 `crosscheck.py` finds the last record of each kind before the cutoff and asserts the app

@@ -132,14 +132,13 @@ spurious vessel track.
 
 Replay is the primary test strategy and `tests/replay/README.md` is the guide to it. The
 short version: bring up the broker in Docker, start the app against it, and push
-`tests/data/20260816_Frostbite_3.TXT` at it.
+`tests/data/20260913_Frostbite_1.TXT` at it, at 4x or slower.
 
-One thing the replay README does not say, because it was only ever measured in a
-conversation: `--speed` above about 10x stops being faithful to the **race engine**. The
-engine has wall-clock guards, a suppression window after each advance among them, and at
-15x only 4 of 9 leg advances fired. High multipliers are still fine for watching the
-instruments, where nothing depends on elapsed time; the README's `--speed 60` example is
-for exactly that. Use 10x or less when what you are testing is the legs.
+`--speed` above a few times real time stops being faithful to the **race engine**, which
+has wall-clock guards: the 10 s hold after each advance among them. On the August course
+15x fired only 4 of 9 advances; on Frostbite 1, where Smith and Lucky Bay are rounded 45 s
+apart, even 10x swallows Lucky Bay. So 4x or less when what you are testing is the legs,
+and the README now says so. High multipliers are fine for the instruments alone.
 
 ## What only works on Windows
 

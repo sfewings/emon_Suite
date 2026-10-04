@@ -28,6 +28,12 @@ COURSES = json.loads((ROOT / "config" / "courses.json").read_text(encoding="utf-
 RACE_CONFIG = json.loads((ROOT / "config" / "race.json").read_text(encoding="utf-8"))
 
 TRACK = ROOT / "tests" / "data" / "20260816_Frostbite_3.TXT"
+"""Frostbite course 3, 16 August 2026. Sailed before the compass was calibrated, which
+does not matter here: the engine reads GPS position, COG and SOG and never the heading."""
+
+TRACK_FROSTBITE_1 = ROOT / "tests" / "data" / "20260913_Frostbite_1.TXT"
+"""Frostbite course 1, 13 September 2026, the default replay (tests/replay/README.md). The
+race that showed the arming radius was too small: Armstrong was rounded 65 m off."""
 T0 = 1_755_500_000.0
 
 
@@ -538,6 +544,38 @@ def test_rounding_the_outside_of_a_no_cross_mark_is_not_a_breach():
     assert events == [] and state.breaches == 0
 
 
+def _cross_bricklanding_at(context, metres_from_a):
+    """Sail straight across the Bricklanding line at a point this far along it from A."""
+    state = _racing(context)
+    a = nav.as_latlon(context.marks["bricklanding-a-33a"])
+    b = nav.as_latlon(context.marks["bricklanding-b-33b"])
+    point = nav.destination(a, nav.bearing(a, b), metres_from_a)
+    across = nav.bearing(a, b) + 90.0
+    first = nav.destination(point, across + 180.0, 10.0)
+    second = nav.destination(point, across, 10.0)
+    now = T0 + 20.0
+    state, _ = _at(context, state, first, now, cog=nav.bearing(first, second))
+    return _at(context, state, second, now + 1, cog=nav.bearing(first, second))
+
+
+def test_a_crossing_beside_the_mark_is_a_tight_rounding_not_a_breach():
+    """Both Frostbite 1 recordings logged a Smith / Lucky Bay breach 1 and 6 m from Smith,
+    rounding it properly. That close, the end of the line is within GPS and survey error
+    of the mark, so a crossing inside breach_end_margin_m of either end is not one
+    (DESIGN 11.3)."""
+    context = _context()
+    margin = context.config.breach_end_margin_m
+    length = nav.distance_m(nav.as_latlon(context.marks["bricklanding-a-33a"]),
+                            nav.as_latlon(context.marks["bricklanding-b-33b"]))
+    for along in (1.0, 6.0, margin - 1.0, length - 6.0):
+        state, events = _cross_bricklanding_at(context, along)
+        assert events == [] and state.breaches == 0, along
+    # Just past the margin it counts again, from either end.
+    for along in (margin + 1.0, length - margin - 1.0):
+        state, events = _cross_bricklanding_at(context, along)
+        assert [e["type"] for e in events] == ["breach"], along
+
+
 def test_an_early_crossing_is_a_warning_and_changes_nothing():
     """Rule 30.1 is the start box's business (DESIGN 11.1)."""
     context = _context()
@@ -578,7 +616,8 @@ def test_events_carry_what_event_recorder_needs():
 
 def test_the_config_comes_from_the_file_and_ignores_its_own_notes():
     config = race.Config.from_document(RACE_CONFIG)
-    assert config.arming_radius_m == 40.0
+    assert config.arming_radius_m == 80.0
+    assert config.breach_end_margin_m == 15.0
     assert config.astern_fixes == 3
     assert config.position_stale_s == 5.0
     assert race.Config.from_document({}) == race.Config()
@@ -610,9 +649,9 @@ def _read_track(path, start="13:30:00"):
     return fixes
 
 
-def _replay(context, start_clock="13:30:00"):
+def _replay(context, start_clock="13:30:00", track=TRACK):
     """Feed the recording through the engine from the gun, collecting the events."""
-    fixes = _read_track(TRACK, start=start_clock)
+    fixes = _read_track(track, start=start_clock)
     start = fixes[0][0]
     state = race.initial()
     state, _ = race.select(state, context, context.course["id"], start)
@@ -707,6 +746,73 @@ def test_the_replay_advances_close_to_where_the_boat_actually_rounded():
     for leg, offset in late.items():
         if leg not in early:
             assert -60.0 <= offset <= 60.0, (leg, offset)
+
+
+# --- the whole race again: Frostbite course 1, 13 September 2026 -----------------------
+#
+# The default replay, and the race that set the arming radius. Both Frostbite starts are
+# printed, 13:30 and 13:50; Enchantee sailed the 13:30, being 95 m from the line at 13:31
+# and sailing away from it, and 1.1 km down the course by 13:50.
+
+
+def _replay_frostbite_1():
+    return _replay(_context("frostbite-1"), track=TRACK_FROSTBITE_1)
+
+
+def test_frostbite_1_works_through_every_leg_with_no_hand_on_it():
+    """Two manual Nexts on the screen, and only one of them was the engine's fault.
+
+    Armstrong was rounded on the correct side 65 m off, so the 40 m radius never armed it
+    and the finish could not arm after it. That is what the 80 m radius is for. The other,
+    Lucky Bay, was the replay at 10x: the 10 s hold after Smith is wall-clock, and the
+    two roundings were 45 s apart on the day, so at ten times speed the hold swallowed it.
+    Fed through at recorded time, as here, it advances on its own.
+    """
+    context = _context("frostbite-1")
+    state, events = _replay_frostbite_1()
+
+    advances = [e["leg"] for _now, e in events if e["type"] == "rounded"]
+    assert advances == list(range(1, context.last_leg + 1)), advances
+    assert all(e["source"] == race.AUTO for _now, e in events if e["type"] == "rounded")
+    assert state.mode == race.FINISHED
+
+
+def test_frostbite_1_rounds_smith_without_a_breach():
+    """It logged one at 14:40:55, 5.8 m from Smith along a 104 m line: the boat rounding
+    Smith tightly, which is what the course asks for (DESIGN 11.3)."""
+    state, events = _replay_frostbite_1()
+    assert [e for _now, e in events if e["type"] == "breach"] == []
+    assert state.breaches == 0
+
+
+def test_frostbite_1_finishes_once_where_the_boat_crossed():
+    state, events = _replay_frostbite_1()
+    finishes = [(now, e) for now, e in events if e["type"] == "finish"]
+    assert len(finishes) == 1, [now for now, _e in finishes]
+    when, event = finishes[0]
+    assert abs(when - (15 * 3600 + 13 * 60 + 17)) < 5, when       # 15:13:17
+    assert 0.0 <= event["along"] <= 1.0
+    assert abs(race.elapsed(state, when) - 6196.0) < 30.0
+    # The 13:30 start, and the rounding of Club Buoy, which is the line's outer end.
+    assert state.ignored_crossings == 2, state.ignored_crossings
+
+
+def test_frostbite_1_advances_close_to_where_the_boat_rounded():
+    """Within a minute of the closest approach to each mark, on every leg.
+
+    The widest is Sanders, 46 s early: with an 80 m radius the mark arms sooner, and the
+    boat had it abaft the beam for three fixes before its closest pass. Early is the safe
+    side, since the next mark is what the crew wants by then.
+    """
+    rounded_at = {1: "13:44:06", 2: "13:45:31", 3: "14:11:17", 4: "14:26:30",
+                  5: "14:30:27", 6: "14:40:53", 7: "14:41:40", 8: "14:58:35",
+                  9: "15:11:04"}
+    _state, events = _replay_frostbite_1()
+    fired = {e["leg"]: now for now, e in events if e["type"] == "rounded"}
+    for leg, clock in rounded_at.items():
+        hours, minutes, seconds = (int(p) for p in clock.split(":"))
+        offset = fired[leg] - (hours * 3600 + minutes * 60 + seconds)
+        assert -60.0 <= offset <= 60.0, (leg, offset)
 
 
 if __name__ == "__main__":

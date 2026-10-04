@@ -50,12 +50,13 @@ MANUAL = "manual"
 class Config(NamedTuple):
     """Detection parameters. config/race.json holds the values and explains each one."""
 
-    arming_radius_m: float = 40.0
+    arming_radius_m: float = 80.0
     astern_fixes: int = 3
     suppress_after_advance_s: float = 10.0
     position_stale_s: float = 5.0
     min_sog_for_cog_kt: float = 0.7
     early_start_warning_s: float = 60.0
+    breach_end_margin_m: float = 15.0
 
     @classmethod
     def from_document(cls, document: Optional[Mapping[str, Any]]) -> "Config":
@@ -468,14 +469,24 @@ def _check_breaches(state: State, context: Context, previous, fix: Fix, now: flo
     knows, and the penalty is theirs to take (DESIGN 11.3). Direction is irrelevant, but
     the [0, 1] parameter test is not: rounding the outside of either mark is what the
     course asks for.
+
+    Nor is a crossing within breach_end_margin_m of either mark. A boat rounding a mark
+    tightly passes over the end of the line within GPS and survey error of the mark
+    itself, and that is a good rounding, not a breach: both Frostbite 1 recordings
+    "breached" 1 to 6 m from Smith. Sailing through the gap is what the rule is for, and
+    that crosses the middle of the line.
     """
     events = []
+    margin = context.config.breach_end_margin_m
     for line in context.lines.get("no_cross_lines", []):
         try:
             a, b = (nav.as_latlon(context.marks[m]) for m in line["marks"])
         except KeyError:
             continue
-        if nav.crossing(a, b, previous, fix.position) is None:
+        crossing = nav.crossing(a, b, previous, fix.position)
+        if crossing is None:
+            continue
+        if min(crossing.t, 1.0 - crossing.t) * nav.distance_m(a, b) < margin:
             continue
         state = state._replace(breaches=state.breaches + 1)
         events.append(_event("breach", state, context, now, fix=fix, line=line["id"]))

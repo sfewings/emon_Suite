@@ -1554,7 +1554,8 @@ Auto-advance, with these guards:
 1. Only the **current target** is tested. Courses repeat marks, so a naive
    proximity test against all marks will fire when the boat sails past 32A on the
    way to Squadron.
-2. Arm when within **40 m** of the target.
+2. Arm when within **80 m** of the target. It was 40 m until the September 2026 race
+   below showed a real rounding outside it.
 3. Confirm on **three consecutive fixes of increasing distance** after arming.
    Departure confirms a rounding; proximity alone does not, since the boat may be
    drifting or becalmed near a mark.
@@ -1599,15 +1600,39 @@ Frostbite course 3 race:
   like a minute later. No proximity or departure rule distinguishes them, and a
   human reading the track would not either. This is the case 11.4 exists for.
 
+#### What the second replayed track says
+
+Frostbite course 1, 13 September 2026 (`tests/data/20260913_Frostbite_1.TXT`, now the
+default replay). Replayed at 10x it needed two manual Nexts, and only one was the
+engine's fault:
+
+- **Armstrong was rounded 65 m off**, on the correct side, so 40 m never armed it and
+  the finish could not arm after it. The mark is not misplaced: on 17 May the same
+  boat passed it 10 m off. Sometimes a rounding is simply wide (traffic, a gybe set
+  up early). Swept from 40 m to 100 m over both recorded races: from 70 m every leg of
+  both advances automatically and each finishes once, and no advance moves earlier
+  except Sanders on 13 September, which goes from 2 s late to 46 s early and is still
+  inside the minute. **80 m** was chosen, 15 m clear of the widest rounding seen.
+
+  The opposite risk, arming on a pass that is not a rounding, is bounded by the other
+  guards rather than the radius: only the current target is tested, and confirmation
+  still needs the mark abaft the beam for three fixes. Both close pairs, Smith and Lucky
+  Bay at 104 m and Bricklanding at 202 m, still advance one leg each and on time.
+- **Lucky Bay was the replay, not the engine.** The 10 s hold is wall-clock and Smith and
+  Lucky Bay were rounded 45 s apart; at 10x the hold covered 100 s of the race. At
+  recorded speed it advances on its own. Replays that exercise the legs run at 4x or
+  less (`tests/replay/README.md`).
+
 ### 11.3 The paired marks, and the lines it is a breach to cross
 
 There is no gate handling, and no leg has two marks. Section 6 has the evidence.
 Bricklanding A and B, Smith and Lucky Bay, and Mosman A and B are six ordinary
 marks in three consecutive-leg pairs, each rounded on its own under the rules of
-11.2. A pair 110 m to 206 m apart means two legs whose targets are close together,
-which the 40 m arming radius and the 10 s post-advance hold already handle: that
-hold is what stops the second mark's arming from being satisfied by the boat still
-departing the first.
+11.2. A pair 104 m to 206 m apart means two legs whose targets are close together,
+which the arming radius and the 10 s post-advance hold already handle: that hold is
+what stops the second mark's arming from being satisfied by the boat still departing
+the first, and the astern test is what stops it confirming, since departing the first
+mark of a pair puts the second ahead.
 
 Separately, and not a leg mechanism at all, `lines.json` carries
 `no_cross_lines` for Bricklanding and for Smith / Lucky Bay, because the sailing
@@ -1620,6 +1645,11 @@ Detecting a breach uses the same crossing primitive as the finish:
   projection parameter is within `[0, 1]`, so sailing round the outside of either
   mark, which is exactly what the course requires, is not a breach.
 - The crossing direction is irrelevant here. Either way across is a breach.
+- A crossing within `breach_end_margin_m` (15 m) of either mark is not a breach. Both
+  Frostbite 1 recordings logged one 1 m and 6 m from Smith: the boat rounding Smith
+  tightly, as the course asks, with the end of the line inside GPS and survey error of
+  the mark itself. Sailing between the pair crosses the middle of the line, so the
+  margin costs nothing the rule is for.
 
 When the boat crosses one of those lines while racing, log a `breach` event and
 show a brief non-blocking notice. Never advance the leg on it, and do not nag: the
@@ -1754,7 +1784,7 @@ race/event  {type: "select"|"timer"|"start"|"rounded"|"breach"
 ```
 
 Recording `source` matters. A season of races where auto-advance fired correctly
-and was not overridden is the evidence needed to tighten the 40 m threshold, and a
+and was not overridden is the evidence needed to tighten the arming radius, and a
 cluster of manual overrides at one mark points straight at a bad coordinate.
 
 **How this is wired, because getting it wrong is silent.** There is one queue, in
