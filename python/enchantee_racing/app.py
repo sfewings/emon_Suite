@@ -7,6 +7,7 @@ Serving:
 
     GET  /              race screen, still a skeleton
     GET  /hud           instrument HUD, ported from docs/reference/flows.json
+    GET  /gar           the wind dial as a Garmin GMI 20 lays it out, the HUD's other face
     GET  /map           the course map, drawn as SVG from config/ (DESIGN 12)
     GET  /hud/data      the {now, motor, fields} payload the HUD polls every 500 ms
     GET  /manifest.webmanifest  scope for both screens, so iOS keeps them in one web app
@@ -145,6 +146,12 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     @app.get("/hud")
     def hud():
         return render_template("hud.html")
+
+    @app.get("/gar")
+    def gar():
+        """The wind dial laid out like the Garmin GMI 20, the HUD's other face (DESIGN 9.12).
+        Not a fifth nav entry: the HUD's own nav cell toggles between the two."""
+        return render_template("gar.html")
 
     @app.get("/map")
     def course_map():

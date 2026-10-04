@@ -1,0 +1,138 @@
+<!doctype html>
+<!--
+  GAR: the wind dial, laid out the way the Garmin GMI 20 on the boat lays it out, so the
+  crew can read it the way they already read that instrument (DESIGN 9.12). The HUD's other
+  face rather than a fifth screen: the HUD's own nav cell toggles between the two, so the
+  navigation stays four cells wide at 320 px and no setting has to be stored to remember
+  which face a device prefers.
+
+  What is the Garmin's and what is this app's:
+
+  - The Garmin's: the bow-relative dial, 0 to 180 each side, the close-hauled sectors
+    red to port and green to starboard, the apparent wind needle, AWS in the box under the
+    hull, an inner circle, and four readings in the corners: TWD and AWA across the top,
+    TWS and TWA across the bottom.
+  - This app's: every relative angle is signed, port negative, with no S/P suffix; nothing
+    is labelled T or M, because every angle here is true (DESIGN 9.3); the colours are the
+    HUD's, on black, with the night theme like every other screen; TWA is a pointer on the
+    rim as well as a number; the inner circle carries leeway (COG - HDG) where the Garmin
+    shows drift, which needs speed through the water and this boat has no log.
+  - Added: SOG in the band underneath, which becomes the mark band while racing, with the
+    mark itself drawn on the dial; and the SevCon readings in the four corners while the
+    motor turns, the same swap the HUD makes with its wind panels.
+
+  Not self-contained, unlike hud.html, which inlines everything for a reason recorded in
+  DESIGN 9.1 that does not apply here. This page takes static/app.css, theme.js and
+  viewport.js like the map does, and its own static/gar.js.
+
+  Every URL is relative: the page is served at /race/gar behind nginx and at /gar on the
+  app's own port (CLAUDE.md).
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="static/icon-180.png">
+<title>Enchantee GAR</title>
+<link rel="stylesheet" href="static/app.css">
+<!-- Before the body, so #app has its height before it is first laid out. -->
+<script src="static/viewport.js"></script>
+
+<!-- The wake-lock video, as on the HUD: this is an instrument display and the screen must
+     not sleep while it is up (DESIGN 9.8). -->
+<video id="wake" src="static/wake.mp4" muted loop playsinline webkit-playsinline
+       preload="auto" disableremoteplayback></video>
+<div id="pip"></div>
+
+<div id="app">
+  <section class="panel" id="panel-gar">
+    <div class="gar-wrap">
+      <!--
+        One svg for the dial, the four corners and the band, so everything on the page
+        scales together and no reading needs fitting against its neighbours. gar.js picks
+        one of three arrangements by which one draws the dial largest on this screen, and
+        writes the viewBox and the pixel size. The width and height here are only a start:
+        an svg without them is resolved as 300 px wide on iOS 12 (CLAUDE.md).
+
+        The dial is drawn about its own centre with a radius of 200. Angles are degrees
+        off the bow, clockwise, port negative, the same as every relative angle in the app.
+      -->
+      <svg id="gar" xmlns="http://www.w3.org/2000/svg" width="300" height="500"
+           viewBox="0 0 440 750" preserveAspectRatio="xMidYMid meet">
+        <g id="dial">
+          <circle class="face" r="200"/>
+          <!-- the sectors, the ticks and the scale numbers, drawn by gar.js -->
+          <g id="dial-scale"></g>
+          <path class="hull" d="M0,-112 C30,-80 44,-30 42,20 C40,60 32,90 26,104 L-26,104 C-32,90 -40,60 -42,20 C-44,-30 -30,-80 0,-112 Z"/>
+
+          <!-- Leeway, where the Garmin shows drift: COG - HDG, signed (DESIGN 9.12). -->
+          <circle class="inner" cy="-34" r="38"/>
+          <text class="g-val lwy" id="lwy" x="0" y="-30" text-anchor="middle" font-size="30">---</text>
+          <text class="g-lbl" x="0" y="-9" text-anchor="middle" font-size="12">LWY</text>
+
+          <!-- AWS, in the box under the hull, as on the Garmin. -->
+          <rect class="box" x="-64" y="20" width="128" height="68" rx="4"/>
+          <text class="g-val aws" id="aws" x="0" y="64" text-anchor="middle" font-size="42">--.-</text>
+          <text class="g-lbl" x="0" y="82" text-anchor="middle" font-size="12">AWS kt</text>
+
+          <!-- Over everything else on the dial, mark last, which is the thing being steered
+               for. Each is drawn pointing at the bow and rotated by gar.js. -->
+          <g id="awa-needle" class="needle off"><polygon points="-8,-116 8,-116 0,-192"/></g>
+          <g id="twa-pointer" class="pointer off"><polygon points="-15,-198 15,-198 0,-152"/></g>
+          <g id="mark-diamond" class="diamond off"><polygon points="0,-216 13,-200 0,-184 -13,-200"/></g>
+        </g>
+
+        <!-- The four corners. Two sets of rows, the wind and the motor, both pre-rendered
+             and one hidden, which is the HUD's idiom for the same swap (DESIGN 9.1).
+             gar.js positions each corner and fits the values to its width. -->
+        <g class="corner" id="c-tl" data-side="left">
+          <g data-mode="sail"><text class="g-lbl c-lbl">TWD</text><text class="g-val c-val twd" id="twd">---</text></g>
+          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">RPM</text><text class="g-val c-val rpm" id="rpm">---</text></g>
+        </g>
+        <g class="corner" id="c-tr" data-side="right">
+          <g data-mode="sail"><text class="g-lbl c-lbl">AWA</text><text class="g-val c-val awa" id="awa">---</text></g>
+          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">AMP</text><text class="g-val c-val cur" id="cur">--.-</text></g>
+        </g>
+        <g class="corner" id="c-bl" data-side="left">
+          <g data-mode="sail"><text class="g-lbl c-lbl">TWS kt</text><text class="g-val c-val tws" id="tws">--.-</text></g>
+          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">CTRL &#176;C</text><text class="g-val c-val ctrl" id="ctrl">---</text></g>
+        </g>
+        <g class="corner" id="c-br" data-side="right">
+          <g data-mode="sail"><text class="g-lbl c-lbl">TWA</text><text class="g-val c-val twa" id="twa">---</text></g>
+          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">MOT &#176;C</text><text class="g-val c-val mot" id="mot">---</text></g>
+        </g>
+
+        <!-- The band. SOG alone until the gun, and the mark while racing: its name, then
+             SOG, distance and bearing. The band never changes size, so the dial does not
+             move when the race starts (DESIGN 9.12). -->
+        <g id="band">
+          <line class="band-rule" id="band-rule"/>
+          <g data-race="off">
+            <text class="g-lbl" id="b-sog-lbl">SOG kt</text>
+            <text class="g-val sog" id="b-sog" text-anchor="middle">--.-</text>
+          </g>
+          <g data-race="on" class="off">
+            <text id="r-name"><tspan class="g-lbl">NEXT&#160;&#160;</tspan><tspan class="mark" id="r-mark">---</tspan></text>
+            <g class="b-cell" id="b-cell-0"><text class="g-lbl">SOG kt</text><text class="g-val sog" id="r-sog">--.-</text></g>
+            <g class="b-cell" id="b-cell-1"><text class="g-lbl" id="r-dist-lbl">DIST m</text><text class="g-val dist" id="r-dist">---</text></g>
+            <g class="b-cell" id="b-cell-2"><text class="g-lbl">BRG</text><text class="g-val brg" id="r-brg">---</text></g>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- The HUD cell is this page's own: tapping it goes back to the HUD, whose HUD cell
+       comes here. Race and Map open the classic HUD from their HUD cell (DESIGN 9.12). -->
+  <nav id="nav">
+    <a class="here" href="hud">GAR</a>
+    <a href=".">Race</a>
+    <a href="map">Map</a>
+    <button data-theme-toggle></button>
+  </nav>
+</div>
+
+<script src="static/theme.js"></script>
+<script src="static/gar.js"></script>

@@ -14,7 +14,7 @@
 // up in whatever the boat is in. The sun sets on the whole boat at once, which is why this
 // is not a per-browser preference.
 //
-// Shared by index.html and map.html. hud.html carries its own copy, being self-contained
+// Shared by index.html, map.html and gar.html. hud.html carries its own copy, being self-contained
 // by decision, and a test holds the two to each other.
 //
 // var and function to match the rest of the front end.

@@ -609,6 +609,13 @@ def _page_map():
     return flask_app.test_client().get("/map").get_data(as_text=True)
 
 
+def _page_gar():
+    store = Store()
+    flask_app = app_module.create_app(store, CONFIG)
+    flask_app.config["TESTING"] = True
+    return flask_app.test_client().get("/gar").get_data(as_text=True)
+
+
 NAV_H = "2.6rem"
 """The height the navigation takes, and the room each page has to leave for it. One number
 in two files, which is why the test below checks they still agree."""
@@ -788,7 +795,7 @@ def test_the_manifest_scopes_both_screens_into_one_web_app():
 
     # Every page links it, relatively, and keeps the meta that iOS 12 reads instead.
     for what, page in (("index.html", _page()), ("hud.html", _page_hud()),
-                       ("map.html", _page_map())):
+                       ("map.html", _page_map()), ("gar.html", _page_gar())):
         link = re.search(r'<link[^>]*rel="manifest"[^>]*>', page)
         assert link, "%s does not link the manifest" % what
         href = re.search(r'href="([^"]+)"', link.group(0))
@@ -820,7 +827,7 @@ def test_the_manifest_scopes_both_screens_into_one_web_app():
             "%s is %dx%d but declares %s" % (src, width, height, icon["sizes"])
 
     for what, page in (("index.html", _page()), ("hud.html", _page_hud()),
-                       ("map.html", _page_map())):
+                       ("map.html", _page_map()), ("gar.html", _page_gar())):
         touch = re.search(r'<link[^>]*rel="apple-touch-icon"[^>]*>', page)
         assert touch, "%s has no apple-touch-icon, so iOS uses a screenshot" % what
         href = re.search(r'href="([^"]+)"', touch.group(0)).group(1)
@@ -853,9 +860,10 @@ def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
     race_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     hud = _page_hud()
     map_js = (ROOT / "static" / "map.js").read_text(encoding="utf-8")
+    gar_js = (ROOT / "static" / "gar.js").read_text(encoding="utf-8")
 
     for what, source in (("static/app.js", race_js), ("templates/hud.html", hud),
-                         ("static/map.js", map_js)):
+                         ("static/map.js", map_js), ("static/gar.js", gar_js)):
         code = re.sub(r"^\s*//.*$", "", source, flags=re.M)
         assert "location.assign(" in code, "%s does not navigate by script" % what
         assert "preventDefault()" in code, "%s does not cancel the anchor" % what
@@ -863,7 +871,7 @@ def test_both_pages_navigate_by_script_so_ios_keeps_them_in_the_web_app():
     # Every cross-page nav link is a real anchor carrying a real href, on every page, so
     # the handler has something to intercept and the link degrades to a plain one.
     for what, page in (("index.html", _page()), ("hud.html", hud),
-                       ("map.html", _page_map())):
+                       ("map.html", _page_map()), ("gar.html", _page_gar())):
         nav = re.search(r'<nav id="nav">(.*?)</nav>', page, re.S)
         assert nav, "%s has no nav" % what
         hrefs = re.findall(r'<a[^>]*\bhref="([^"]+)"', nav.group(1))
@@ -920,7 +928,9 @@ def test_the_navigation_is_never_pushed_off_or_covered():
 
 # The three screens, and the path each is served at. DESIGN 9.6: no screen is a dead end,
 # so every one of them carries the same navigation and can reach the other two.
-SCREENS = {"/": "Race", "/hud": "HUD", "/map": "Map"}
+SCREENS = {"/": "Race", "/hud": "HUD", "/map": "Map", "/gar": "GAR"}
+"""GAR is not a fourth screen in the navigation but the HUD's other face, reached from the
+HUD's own cell (DESIGN 9.12). It carries the same navigation with GAR in the HUD's place."""
 
 
 def _navs():
@@ -952,7 +962,8 @@ def test_every_page_carries_the_same_three_screen_navigation():
     """
     for path, nav in _navs().items():
         labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav)]
-        assert labels == ["HUD", "Race", "Map"], (path, labels)
+        first = "GAR" if path == "/gar" else "HUD"
+        assert labels == [first, "Race", "Map"], (path, labels)
         # Nothing is disabled any more: Map used to carry class="off" because there was no
         # map, and DESIGN 9.6 said to show it disabled until there was.
         assert 'class="off"' not in nav, "%s still disables an entry" % path
@@ -969,6 +980,7 @@ def test_every_page_carries_the_same_three_screen_navigation():
     assert 'href="hud"' in navs["/"] and 'href="map"' in navs["/"]
     assert 'href="."' in navs["/hud"] and 'href="map"' in navs["/hud"]
     assert 'href="."' in navs["/map"] and 'href="hud"' in navs["/map"]
+    assert 'href="."' in navs["/gar"] and 'href="map"' in navs["/gar"]
 
 
 def test_selecting_a_course_lands_on_the_panel_with_the_hooters():
@@ -1003,10 +1015,15 @@ def test_each_page_can_reach_both_others():
     wanted = {
         "/":    {"hud": "the race screen cannot reach the HUD",
                  "map": "the race screen cannot reach the map"},
-        "/hud": {".": "the HUD cannot get back to the race screen",
-                 "map": "the HUD cannot reach the map"},
         "/map": {".": "the map cannot get back to the race screen",
                  "hud": "the map cannot reach the HUD"},
+        # The toggle: each face's own cell is the way to the other (DESIGN 9.12).
+        "/hud": {".": "the HUD cannot get back to the race screen",
+                 "map": "the HUD cannot reach the map",
+                 "gar": "the HUD's own cell does not lead to GAR"},
+        "/gar": {".": "GAR cannot get back to the race screen",
+                 "map": "GAR cannot reach the map",
+                 "hud": "GAR's own cell does not lead back to the HUD"},
     }
     for path, targets in wanted.items():
         for href, complaint in targets.items():
@@ -1319,7 +1336,7 @@ def test_the_app_is_as_tall_as_the_screen_actually_is():
 
     # Loaded by the two pages built from app.css, and loaded before #app so the height is
     # set before the first layout rather than after a visible reflow.
-    for path, page in (("/", _page()), ("/map", _page_map())):
+    for path, page in (("/", _page()), ("/map", _page_map()), ("/gar", _page_gar())):
         assert "static/viewport.js" in page, "%s never measures its height" % path
         assert page.index("static/viewport.js") < page.index('<div id="app">'), \
             "%s loads viewport.js too late to matter" % path
@@ -1501,7 +1518,7 @@ def test_every_screen_can_set_the_theme_and_none_of_them_keeps_its_own():
     force is already obvious from the whole screen being red.
     """
     navs = _navs()
-    assert len(navs) == 3
+    assert len(navs) == 4
     for path, nav in navs.items():
         assert "data-theme-toggle" in nav, "%s cannot set the theme" % path
         # Empty in the markup: whichever theme is in force decides the word, and only the

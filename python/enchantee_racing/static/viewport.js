@@ -29,7 +29,7 @@
 // Loaded before the body content on purpose, so the height is set on #app the moment it
 // exists and there is no flash at the wrong size.
 //
-// Shared by index.html and map.html. hud.html is deliberately self-contained, no external
+// Shared by index.html, map.html and gar.html. hud.html is deliberately self-contained, no external
 // script and no external stylesheet (DESIGN 9.1), and reserves the navigation's height by
 // hand for reasons recorded there, so it is left alone.
 //

@@ -44,6 +44,14 @@
   --ctrl:  #ff0000;   /* Red, as the SevCon page                               */
   --mot:   #b22222;   /* FireBrick, as the SevCon page                         */
   --cog:   #ffff99;   /* course over ground, the lighter tint, as on the HUD   */
+  /* The apparent wind, for the GAR dial (DESIGN 9.12): the HUD's lighter tints of the
+     true readings, copied from hud.html like the rest of this set. */
+  --awa:   #ffcc80;
+  --aws:   #8fc9ff;
+  /* GAR's close-hauled sectors, red to port and green to starboard as the Garmin draws
+     them and as every sailor reads them. */
+  --port:  #e8443a;
+  --stbd:  #2fbf4f;
   --time:  #98fb98;   /* elapsed and countdown: PaleGreen, as RPM             */
   --warn:  #ffa500;   /* a breach, an early crossing: TWA orange              */
   --bad:   #e8443a;
@@ -64,6 +72,10 @@ body.night {
      point of the theme is that no wavelength but red reaches the eye. */
   --twa: #ff9068; --tws: #ff6b5a; --rpm: #ff7a68;
   --cur: #ff8f7a; --ctrl: #ff4a3a; --mot: #c03528;
+  /* GAR's, as hud.html has them. The sectors cannot stay red and green, so they are a
+     bright and a dark red; which side is which is also told by which half of the dial a
+     sector is on, which survives the theme. */
+  --awa: #bf6c4e; --aws: #bf5043; --port: #ff6b5a; --stbd: #a83828;
   --rule: #2a0f0c; --label: #8a4038; --panel: #0a0403; --ink: #ff8f7a;
 
   /* The map at night (DESIGN 12.1). Three dark reds in place of the chart blues, in the
@@ -991,3 +1003,56 @@ body.night #chart .mark-label { fill: var(--map-label); }
    there and the message is longer than a cell. */
 #map-readout.failed { display: block; color: var(--bad); padding: .35rem .6rem;
   font-size: 1.7vh; font-size: clamp(9px, 1.7vh, 15px); }
+
+
+/* --- GAR, the wind dial as the Garmin GMI 20 lays it out (DESIGN 9.12) --------------------
+   One svg, laid out by gar.js, which writes its pixel size as attributes. The wrapper is a
+   block with an explicit height, not a flex item's cross-axis guess, for the same iOS 12
+   reason as the map's chart. */
+#panel-gar { display: flex; flex-direction: column; min-height: 0; }
+.gar-wrap { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; }
+#gar { display: block; }
+#gar .off { display: none; }
+#gar text {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-variant-numeric: tabular-nums; -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+}
+#gar .g-val { font-weight: 500; transition: opacity .2s; }
+#gar .g-lbl { fill: var(--label); font-weight: 600; letter-spacing: .08em; }
+#gar .stale { opacity: .25; }
+
+/* the dial */
+#gar .face  { fill: var(--panel); stroke: var(--rule); stroke-width: 2; }
+#gar .sector-port { fill: var(--port); }
+#gar .sector-stbd { fill: var(--stbd); }
+#gar .tick  { stroke: var(--label); stroke-width: 1.5; }
+#gar .tick.major { stroke: var(--ink); stroke-width: 3; }
+#gar .scale-num { fill: var(--ink); font-weight: 600; }
+#gar .hull  { fill: none; stroke: var(--label); stroke-width: 2; }
+#gar .inner, #gar .box { fill: var(--bg); stroke: var(--label); stroke-width: 2; }
+
+/* Each reading in the colour that quantity has on every other screen. TWD shares the
+   true wind's orange, being the same wind seen from the compass rather than the bow. */
+#gar .twd, #gar .twa { fill: var(--twa); }
+#gar .awa  { fill: var(--awa); }
+#gar .tws  { fill: var(--tws); }
+#gar .aws  { fill: var(--aws); }
+#gar .lwy  { fill: var(--cog); }
+#gar .sog  { fill: var(--sog); }
+#gar .dist { fill: var(--dist); }
+#gar .brg  { fill: var(--brg); }
+#gar .mark { fill: var(--mark); font-weight: 600; }
+#gar .rpm  { fill: var(--rpm); }
+#gar .cur  { fill: var(--cur); }
+#gar .ctrl { fill: var(--ctrl); }
+#gar .mot  { fill: var(--mot); }
+
+/* The needle, the pointer and the diamond, outlined in the background colour so each
+   stays separate where it crosses a tick, a sector or another of them. */
+#gar .needle polygon  { fill: var(--awa);  stroke: var(--bg); stroke-width: 1.5; }
+#gar .pointer polygon { fill: var(--twa);  stroke: var(--bg); stroke-width: 2; }
+#gar .diamond polygon { fill: var(--mark); stroke: var(--bg); stroke-width: 2.5; }
+#gar .needle.stale, #gar .pointer.stale { opacity: .25; }
+
+#gar .band-rule { stroke: var(--rule); stroke-width: 2; }

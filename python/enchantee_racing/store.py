@@ -51,6 +51,12 @@ MOTOR_HOLD_S = 10.0
 flip the panels back and forth. The same hold idiom the leg engine uses after an
 advance (DESIGN 9.1, 11.2)."""
 
+LEEWAY_MIN_SOG_KT = 1.0
+"""Below this speed leeway is not reported at all. COG is the direction of a GPS velocity,
+and at a knot or less that velocity is mostly noise, so COG - HDG swings through tens of
+degrees on a boat sitting still. Blanked rather than dimmed, like position past its cutoff:
+a dimmed number still reads as a number (DESIGN 9.12)."""
+
 PENDING_EVENTS_MAX = 200
 """How many unpublished race events to hold. A race produces a couple of dozen, so this is
 only a bound against nothing ever draining them."""
@@ -213,6 +219,7 @@ class Store:
         snapshot = self.snapshot()
         state = derive(snapshot, now)
         state["position"] = derive_position(snapshot, now)
+        state["leeway"] = derive_leeway(snapshot, now)
         state["race"] = self.race_payload(now)
         state["theme"] = self.theme()
         return state
@@ -533,6 +540,31 @@ def derive(snapshot: Snapshot, now: float) -> dict:
     # now is milliseconds, matching the Node-RED payload exactly so the two /data
     # responses can be diffed side by side during the port (DESIGN 13 step 3).
     return {"now": int(now * 1000), "motor": motor, "fields": fields}
+
+
+def derive_leeway(snapshot: Snapshot, now: float) -> Optional[dict]:
+    """COG - HDG as {v, age}, signed port negative, or None when it cannot be known.
+
+    For the GAR page's inner circle, where the Garmin shows drift (DESIGN 9.12). It is
+    not leeway alone: with no speed through the water on this boat, the difference between
+    where the boat points and where it goes also carries the tidal set and any compass
+    error. Named for what the crew asked for, and documented as what it is.
+
+    Timestamped with the oldest of its three inputs, so it dims when any of them goes
+    stale, the way TWA does. Below LEEWAY_MIN_SOG_KT it is None, which the page blanks.
+
+    On /api/state only, beside position, and not one of FIELDS: /hud/data keeps the exact
+    shape the Node-RED flow served (DESIGN 13 step 3).
+    """
+    values = snapshot.values
+    readings = [values.get(key) for key in ("cog", "hdg", "sog")]
+    if any(r is None or not isinstance(r.v, (int, float)) for r in readings):
+        return None
+    cog, hdg, sog = readings
+    if sog.v < LEEWAY_MIN_SOG_KT:
+        return None
+    oldest = min(r.t for r in readings)
+    return {"v": nav.norm180(cog.v - hdg.v), "age": now - oldest}
 
 
 def derive_position(snapshot: Snapshot, now: float) -> Optional[dict]:

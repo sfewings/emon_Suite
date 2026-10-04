@@ -847,7 +847,7 @@ The app has **three** screens, named along the bottom of every one of them:
 
 | Screen | What it is                                                          |
 | ------ | ------------------------------------------------------------------- |
-| `HUD`  | The instrument display, its own page at `/hud`                      |
+| `HUD`  | The instrument display, its own page at `/hud`, with a second face at `/gar` reached from its own cell (9.12) |
 | `Race` | Everything about a race: course selection, countdown, marks, finish |
 | `Map`  | The course map. Not built yet, and shown disabled until it is       |
 
@@ -1306,6 +1306,86 @@ first mark before the start, and every leg here. So the geometry is defined once
 SVG `<symbol>` and used, rather than copied. That matters because the test that
 guards the sweep direction can only guard the copy it finds, and a second copy drifting
 the other way would send the boat round a mark backwards.
+
+### 9.12 GAR, the HUD as the Garmin lays it out
+
+`/gar` shows the wind on a dial laid out like the boat's Garmin GMI 20 wind page. The
+crew reads that instrument already. The HUD gives the same wind readings as numbers;
+GAR gives them as a picture, for those who read a needle faster than a figure.
+
+**Reached from the HUD's own nav cell, not a fifth nav entry.** On the HUD that cell
+goes to GAR, and on GAR it reads GAR and goes back to the HUD. From Race and Map, HUD
+always opens the classic HUD. A fifth cell would not fit well at 320 px. Remembering a
+preferred face would be a setting, and by the rule in 9.9 a setting is server state
+that every device shares: switching the iPad to GAR would switch every phone too. So
+each device simply shows the page it navigated to, as it does with Map. The cost is a
+second tap from Race or Map for anyone who prefers GAR; if GAR turns out to be the page
+most people use, flip which face the HUD cell opens first.
+
+**What is copied from the Garmin:**
+
+- the bow-relative dial, 0 to 180 each side, ticks every 10°, numbers every 30°;
+- the close-hauled sectors, 30° to 60° each side, red to port and green to starboard;
+- the apparent wind needle;
+- AWS in a box under the hull, and a small inner circle above it;
+- four corner readings: TWD and AWA across the top, TWS and TWA across the bottom.
+
+**Where it deliberately differs from the Garmin:**
+
+- Relative angles are signed, port negative, as everywhere else in the app (CLAUDE.md).
+  There is no S/P suffix.
+- Nothing is labelled T or M. Every angle in this app is true (9.3).
+- The Garmin's A/T legend circles are dropped.
+- TWA is also drawn as a pointer on the rim, in the HUD's TWA colour. On the Garmin the
+  small black arrow in the inner circle looks like it might be TWA but is not: it points
+  roughly 150° port while TWA reads 27° starboard. It belongs to the set-and-drift
+  display.
+- The inner circle shows **leeway** (`LWY`) instead of drift. Drift needs speed through
+  the water, and the boat has no log. Leeway here is `norm180(COG - HDG)`. Without a log
+  it cannot be separated from tidal set or compass error, and on the Swan the set can be
+  a large part of it. It is named for what the crew asked for and documented as what it
+  is. It is derived in `store.py`, like TWA, and timestamped with the oldest of its three
+  inputs so it dims when any of them does. Below 1 kt SOG it is blanked rather than
+  dimmed, because COG from a GPS velocity at walking pace swings by tens of degrees.
+  `/api/state` carries it as `leeway`, beside `position`. It is not one of `FIELDS`,
+  because `/hud/data` keeps its ported shape.
+- The colours are the HUD's, on black, and the night theme applies. A white Garmin face
+  at night would undo 9.7. At night the two sectors become a bright red and a dark red,
+  and the half of the dial each sits on still tells them apart.
+
+**Added:**
+
+- **SOG** in a band under the dial. The Garmin page has no SOG, and SOG is the number
+  most often wanted.
+- **Motor:** while the SevCon runs, the four corners show RPM, AMP, CTRL and MOT instead
+  of the wind readings. This uses the HUD's motor flag and its 10 s hold, with both sets
+  pre-rendered (9.1). The dial still shows the wind, which is harmless, and the corners
+  are where four wind numbers matter least when motoring.
+- **Racing:** the band shows the next mark's name, then SOG, distance and bearing, and
+  the mark appears as a diamond on the rim. The band keeps the same size in every mode,
+  so the dial never moves when the gun goes. The diamond is placed off the **heading**,
+  not off COG as the HUD's "off the bow" is. The wind on this dial is measured from the
+  heading, so the angle between the diamond and the TWA pointer is exactly
+  `bearing - TWD`, the angle the leg type is worked out from (3). A diamond inside a
+  close-hauled sector is a beat, without another number on the screen. Distance, bearing
+  and the diamond follow 9.4 and 9.5: m below 500 m, nm above, and blank (not dimmed)
+  once the fix is more than 5 s old.
+
+**Layout.** One SVG holds the dial, the corners and the band, so everything scales
+together and no reading has to be fitted against its neighbours. `gar.js` has three
+arrangements: corners above and below the dial with the band under it (phones upright);
+corners beside the dial with the band under it (the iPad); and corners and band beside
+the dial (phones on their side). It uses whichever draws the dial largest in the space
+it has, worked out on every resize rather than chosen by orientation, because a
+split-screen iPad in landscape is a portrait space. Values are fitted to their width,
+like the HUD's `fit()`. The needles ease toward each new value along the short way
+round, so a 500 ms poll does not make them jump, and a needle crossing the stern does
+not swing through the bow.
+
+**Not self-contained.** `hud.html` inlines everything for the Node-RED comparison in
+9.1, which does not apply here. GAR uses `app.css`, `theme.js` and `viewport.js` like
+the map, so there is no third copy of the theme code to keep in step. It carries the
+wake-lock video and navigates by script, as every screen must (9.8, 9.8.1).
 
 ## 10. Pre-start behaviour
 
