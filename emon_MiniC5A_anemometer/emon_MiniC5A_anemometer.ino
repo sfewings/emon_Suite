@@ -6,6 +6,7 @@
 #include <EmonShared.h>
 #include <RH_RF69.h>
 #include <Wire.h>
+#include <avr/wdt.h>    //watchdog timer
 
 //#define HOME_NETWORK
 #define BOAT_NETWORK
@@ -28,6 +29,8 @@ const uint16_t MODBUS_REG_COUNT = 5;
 const unsigned long SEND_WIND_INTERVAL_MS = 1000; // ms
 const unsigned long RESPONSE_TIMEOUT = 500;  // ms
 const unsigned long SEND_PRESSURE_INTERVAL_MS = 5000; // send pressure data at least every 5 seconds
+const uint16_t PACKET_SENT_TIMEOUT_MS = 200;  // ample for a 60 byte packet at 250kbps
+const uint8_t MAX_IMU_FAILURES = 5;   // consecutive IMU read failures before recovering the I2C bus
 
 // scaling as in the Mini C5A datasheet
 const float SCALE_WIND_SPEED = 0.01f; // register value * 0.01 -> m/s
@@ -65,33 +68,43 @@ const float SCALE_PRESSURE   = 0.1f; // hPa or other unit
 // scaling constants
 const float MPU_ACCEL_SCALE = 16384.0f; // LSB/g for ±2g
 const float MPU_GYRO_SCALE = 131.0f;    // LSB/(deg/s) for ±250deg/s
-const int INSTALATION_HEADING_OFFSET = 0;  //degrees difference between anemometer direction and sensro installation direction
+// Degrees the sensor board's X axis is rotated clockwise from the boat's centreline.
+// Subtracted from the computed heading.
+// Re-measured on the Enchantee_20260823 sail, the first with the bench recalibration
+// aboard: over 4702 steady straight-line samples the compass read 4.85 deg LOW against
+// GPS course (95% CI 4.3 to 5.4), so the previous 12 over-corrected. Allowing for
+// leeway, which the same fit puts at 0.34 deg per degree of heel, gives 5.45 deg low.
+// 12 came from the 20260816 log and was correct for the OLD magnetometer calibration;
+// changing M_B shifts the heading by a heading-dependent amount, so this constant has
+// to be re-measured whenever the magnetometer is recalibrated.
+const int INSTALATION_HEADING_OFFSET = 7;
 
-float GyroOffset[3] = {-693.9f, -62.5f, -40.3f};
+// Degrees the anemometer's zero mark is rotated clockwise from the boat's centreline.
+// Subtracted from the vane angle before it is combined with the heading, so it shifts
+// apparent and true wind direction without touching the boat-relative reading (subnode 0).
+// Confirmed at 0 on the Enchantee_20260823 sail by two independent tests: the
+// true-wind-steadiness fit is flat (2.005 kt scatter at -11 deg against 2.051 at 0, not
+// a real minimum), and the tack-to-tack true wind direction split is -0.15 +-3 deg.
+// Trim this if a genuine split reappears - but measure the split INSIDE 5-minute
+// windows. Pooling a whole sail turns any wind shift into a fake split: on 20260823 the
+// breeze veered 60 deg and the pooled figure read +5.5 deg when the real one was zero.
+const int ANEMOMETER_HEADING_OFFSET = 0;
 
+//Use calibrato4.py to calculate these values
+float GyroOffset[3] = {-654.9f, -85.8f, -100.5f};
 
-// VERY IMPORTANT!
-//These are the previously determined offsets and scale factors for accelerometer and magnetometer, using ICM_20948_cal and Magneto
-//The compass will NOT work well or at all if these are not correct
-
-//Accel scale: divide by 16604.0 to normalize. These corrections are quite small and probably can be ignored.
-float A_B [3] = {1152.16, -1208.87, 1895.63};
-
-
+float A_B [3] = {648.80, 14.56, 2393.87};
 float A_Ainv[3][3] = {
-{ 0.06165, 0.0015, 0.00235 },
-{ 0.0015, 0.05959, -0.00639 },
-{ 0.00235, -0.00639, 0.05417 }};;
+{ 0.06098, -0.00029, 0.00008 },
+{ -0.00029, 0.06140, 0.00004 },
+{ 0.00008, 0.00004, 0.06050 }};
 
-//Mag scale divide by 369.4 to normalize. These are significant corrections, especially the large offsets.
-float M_B [3] = {107.82, -122.78, 5.68};
-
+float M_B [3] = {102.05, -121.66, 10.22};
 
 float M_Ainv[3][3] = {
-{ 4.27479, 0.01328, 0.00683 },
-{ 0.01328, 4.28946, -0.05025 },
-{ 0.00683, -0.05025, 5.32997 }};
-
+{ 3.81800, 0.02270, -0.02062 },
+{ 0.02270, 3.81465, -0.04824 },
+{ -0.02062, -0.04824, 4.76717 }};
 
 // local magnetic declination in degrees
 float declination = -1.5;  // Perth, Western Australia
@@ -121,6 +134,15 @@ struct TrueWind {
   float twd;   // True Wind Direction (FROM)
 };
 
+// A tack-to-tack split in true wind direction (the same breeze reading differently on
+// port and starboard) is NOT fixed in here. This function is exact given its inputs, and
+// because it uses velocity over ground from GPS, leeway cancels out of it entirely.
+// A split means one of the two inputs that flip sense with tack is wrong:
+//   - the compass  -> fix M_B / INSTALATION_HEADING_OFFSET above
+//   - the vane zero -> fix ANEMOMETER_HEADING_OFFSET above
+// On the 20260816 log the split was 7.1 deg and came from the compass; correcting M_B
+// took it to 0.05 deg. Resist adding an empirical fudge factor here - it would hide a
+// compass fault that also corrupts the heading and apparent wind outputs.
 TrueWind calculateTrueWind(float aws, float awd, float sog, float hdg) {
   // Convert degrees to radians
   auto deg2rad = [](float d) { return d * PI / 180.0; };
@@ -178,6 +200,15 @@ int16_t readS16(uint8_t addr, uint8_t regHigh) {
   uint8_t b[2];
   if (!readRegisters(addr, regHigh, b, 2)) return 0;
   return (int16_t)((b[0] << 8) | b[1]);
+}
+
+// As readS16() but reports the failure instead of silently returning zero, so callers that publish
+// the value can keep the last known good reading rather than a fabricated one
+bool readS16Checked(uint8_t addr, uint8_t regHigh, int16_t &value) {
+  uint8_t b[2];
+  if (!readRegisters(addr, regHigh, b, 2)) return false;
+  value = (int16_t)((b[0] << 8) | b[1]);
+  return true;
 }
 
 uint32_t readU24(uint8_t addr, uint8_t reg) {
@@ -266,132 +297,558 @@ bool initMS5611()
         C[i] = ms5611ReadProm(i+1);
     }
     // basic validity checks: non-zero coefficients
-    for (int i = 0; i < 6; i++) 
+    for (int i = 0; i < 6; i++)
     {
-        if (C[i] == 0) 
+        if (C[i] == 0)
             return false;
     }
     return true;
 }
 
+//A reset part way through an I2C transfer can leave a slave holding SDA low, which stops the master
+//generating a START for ever after. Clock SCL by hand until the slave lets go, then issue a STOP
+void i2cBusClear()
+{
+    pinMode(SDA, INPUT_PULLUP);
+    pinMode(SCL, INPUT_PULLUP);
+    delayMicroseconds(10);
+
+    for (uint8_t i = 0; i < 9 && digitalRead(SDA) == LOW; i++)
+    {
+        digitalWrite(SCL, LOW);      //clears the pull up before the pin becomes an output
+        pinMode(SCL, OUTPUT);
+        delayMicroseconds(5);
+        pinMode(SCL, INPUT_PULLUP);  //release, the pull up takes it high
+        delayMicroseconds(5);
+    }
+
+    //STOP condition. SDA low to high while SCL is high
+    digitalWrite(SDA, LOW);
+    pinMode(SDA, OUTPUT);
+    delayMicroseconds(5);
+    pinMode(SDA, INPUT_PULLUP);
+    delayMicroseconds(5);
+}
+
+//Recover the bus and bring up the three GY-86 sensors. Called from setup(), and again from loop()
+//if the IMU reads keep failing
+void i2cInit()
+{
+    //Recover the bus before touching Wire, otherwise initMPU6050() can block for ever. This is the
+    //likeliest cause of a lockup with the LED left on: a brown out reset in the middle of a transfer
+    //leaves the slave driving SDA, and setup() then hangs on the first transaction
+    i2cBusClear();
+    Wire.begin();
+    //Without this the Wire library busy waits with no timeout, so one stuck slave hangs the sketch
+    //for ever. Needs Arduino AVR core 1.8.4 or later, which is where setWireTimeout() was added
+    Wire.setWireTimeout(25000, true);   //25ms, and reset the TWI hardware on a timeout
+    delay(50);
+
+    Serial.println(F("GY-86 sensor test startup"));
+
+    bool okMPU = initMPU6050();
+    Serial.print(F("MPU6050: "));
+    Serial.println(okMPU ? F("OK") : F("NOT FOUND"));
+
+    bool okHMC = initHMC5883L();
+    Serial.print(F("HMC5883L: "));
+    Serial.println(okHMC ? F("OK") : F("NOT FOUND"));
+
+    bool okMS5 = initMS5611();
+    Serial.print(F("MS5611: "));
+    Serial.println(okMS5 ? F("OK") : F("NOT FOUND"));
+}
+
+//Bring the radio up from cold. Called from setup() and again from waitPacketSentOrRecover() if the
+//driver ever wedges, so everything the sketch relies on has to be set here rather than in setup()
+bool radioInit()
+{
+    bool ok = true;
+    if (!g_rf69.init())
+    {
+        Serial.println(F("rf69 init failed"));
+        ok = false;
+    }
+    if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
+    {
+        Serial.println(F("rf69 setFrequency failed"));
+        ok = false;
+    }
+    // The encryption key has to be the same as the one in the client
+    uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    g_rf69.setEncryptionKey(key);
+    g_rf69.setHeaderId(ANEMOMETER_NODE);
+    //Leave _idleMode at its RH_RF69_OPMODE_MODE_STDBY default, see the note in loop()
+    //when using the RH_RF69 driver with the RFM69HW module, you must setTxPowercan with isHigherPowerModule set to true
+    //Otherwise, the library will not set the PA_BOOST pin high and the module will not transmit
+    //g_rf69.setTxPower(13,true);
+    Serial.print(F("RF69 initialise node: "));
+    Serial.print(ANEMOMETER_NODE);
+    Serial.print(F(" Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println(F("MHz"));
+    return ok;
+}
+
+//RH_RF69::waitPacketSent() with no argument is "while (_mode == RHModeTx) YIELD;" with no escape,
+//and RH_RF69::send() opens with the same wait, so one missed PACKETSENT interrupt wedges the radio
+//permanently: no packets, LED left on, only a power cycle recovers it. The interrupt can be missed
+//because setModeTx() writes the TX opmode register before it assigns _mode = RHModeTx, so a
+//PACKETSENT arriving in that window is seen by the ISR while _mode is still Idle and discarded, and
+//being RISING edge triggered it never comes again. Use the timeout form and rebuild the driver.
+bool waitPacketSentOrRecover()
+{
+    if( g_rf69.waitPacketSent(PACKET_SENT_TIMEOUT_MS) )
+        return true;
+
+    Serial.println(F("waitPacketSent timeout, re-initialising the radio"));
+    radioInit();
+    return false;
+}
+
 /////////////////////////////////////////////////
-//Routine taken from ICM_20948_get_cal_data.ino  
-// Collect data for Mahony AHRS calibration https://github.com/jremington/ICM_20948-AHRS
-// Paste output to acc_mag_raw.csv file for input to calibrate3.py to create updates for A_B, A_AInv, M_B, M_Ainv calibration arrays
-// Outputs pasted into this sketch
+// Calibration data collection.  Originally from ICM_20948_get_cal_data.ino
+// https://github.com/jremington/ICM_20948-AHRS
+//
+// Capture the whole serial session to a text file and feed it to calibrate4.py,
+// which emits paste-ready GyroOffset, A_B, A_Ainv, M_B and M_Ainv blocks.
+//
+// The v3 routine logged the accelerometer while the sensor was being turned, so it
+// recorded gravity plus hand movement. On the Enchantee_20260816 data set the median
+// sample was 1.11 g and 59% were outside 1 g +-10%, which made the accelerometer
+// ellipsoid fit meaningless. The accelerometer is therefore now sampled ONLY while
+// the sensor is verifiably stationary, one discrete orientation at a time.
+//
+// The magnetometer is unaffected by movement, so it still uses a continuous sweep.
+//
+// The three phases are separately selectable because they happen in different places:
+// the gyro and accelerometer phases need the unit in your hands on a bench, while the
+// magnetometer sweep must be done with the unit mounted in its final position on the
+// boat, otherwise it cannot capture the boat's own hard and soft iron.
+//
+// Every record is also broadcast on CALIBRATION_NODE as a PayloadCalibration, which
+// emon_RaspPiSerial relays to its own serial port in the identical line format. That is
+// what makes an in-situ magnetometer swing possible: the sensor can be up the mast with
+// no serial cable and the capture still lands in a file at the Pi. (The v3 routine also
+// broadcast on node 99, but nothing in the repo ever received those packets.)
+//
+// Define CAL_AUTOSTART_MAG before flashing a unit that will be swung with no serial
+// cable attached - it skips the menu and sweeps on power-up.
+//#define CAL_AUTOSTART_MAG
+
+const uint8_t  CAL_ACC_POSITIONS   = 12;   // discrete orientations for the accelerometer
+const uint16_t CAL_ACC_AVG         = 200;  // samples averaged at each orientation
+const uint16_t CAL_GYRO_SAMPLES    = 500;  // samples averaged for the gyro offsets
+const uint16_t CAL_MAG_SAMPLES     = 600;  // samples in the magnetometer sweep
+const uint16_t CAL_MAG_INTERVAL_MS = 100;  // -> 60 s sweep
+const uint8_t  CAL_STILL_WINDOW    = 25;   // samples examined when testing for stillness
+const int16_t  CAL_STILL_PP        = 400;  // max peak-to-peak per axis to count as still (~0.024 g)
+const uint16_t CAL_STILL_TIMEOUT_S = 30;   // give up waiting for stillness after this long
+
+// Returns false if the MPU6050 did not answer, in which case v is only partly written. The
+// calibration phases ignore the result, get_scaled_IMU() and get_gyro() do not.
+bool readRawAcc(int16_t v[3])
+{
+    return readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0, v[0])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2, v[1])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4, v[2]);
+}
+
+bool readRawGyro(int16_t v[3])
+{
+    return readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8, v[0])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 10, v[1])
+        && readS16Checked(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 12, v[2]);
+}
+
+// Returns false if the HMC5883L did not answer. Note the on-the-wire order is X, Z, Y.
+bool readRawMag(int16_t v[3])
+{
+    uint8_t b[6];
+    if (!readRegisters(ADDR_HMC5883L, HMC_DATA_X_MSB, b, 6))
+        return false;
+    v[0] = (int16_t)((b[0] << 8) | b[1]);   // X
+    v[2] = (int16_t)((b[2] << 8) | b[3]);   // Z
+    v[1] = (int16_t)((b[4] << 8) | b[5]);   // Y
+    return true;
+}
+
+// Broadcast one calibration record so emon_RaspPiSerial can relay it to serial.
+// Sets the header every time rather than trusting the caller: a radio recovery inside
+// waitPacketSentOrRecover() puts it back to ANEMOMETER_NODE, and silently mislabelling the rest of
+// an in-situ magnetometer swing would waste the whole trip up the mast.
+void calBroadcast(char phase, uint8_t index, const int16_t* v, uint8_t n)
+{
+    PayloadCalibration p;
+    memset(&p, 0, sizeof(p));
+    p.phase = (byte)phase;
+    p.index = index;
+    for (uint8_t i = 0; i < n && i < 9; i++)
+        p.v[i] = v[i];
+    g_rf69.setHeaderId(CALIBRATION_NODE);
+    g_rf69.send((const uint8_t*)&p, sizeof(p));
+    waitPacketSentOrRecover();
+}
+
+// Block until the operator sends any character. Discards anything already buffered so a
+// stray newline from the previous prompt cannot skip this one.
+void calWaitForKey()
+{
+    while (Serial.available())
+        Serial.read();
+    while (!Serial.available())
+        delay(10);
+    while (Serial.available())
+        Serial.read();
+}
+
+// The 12 orientations. ORDER DOES NOT MATTER, and neither does the accuracy of any
+// individual position - see the note above calAccPhase() for why.
+//
+// 0-5  are the six axis-aligned faces. Between them they place a full +1 g and a full
+//      -1 g on each axis in turn, which is what fixes the zero offset and the scale of
+//      that axis. All six must appear or that axis is left unconstrained; calibrate4.py
+//      reports the gap if one is missed.
+// 6-11 are tilted so that gravity lands on two or three axes at once. These are what
+//      constrain the off-diagonal (cross-axis) terms of A_Ainv. Roughly 45 degrees is
+//      plenty - the angle is not measured, so it only has to differ from the others.
+//      Four are component-side-up and two are component-side-down, which spreads them
+//      over both hemispheres.
+void calPrintPositionName(uint8_t i)
+{
+    switch (i)
+    {
+        case 0:  Serial.print(F("FLAT on the bench, component side UP        -> +Z up")); break;
+        case 1:  Serial.print(F("FLAT, turned over, component side DOWN     -> -Z up")); break;
+        case 2:  Serial.print(F("on its side, edge the X arrow points to UP  -> +X up")); break;
+        case 3:  Serial.print(F("on its side, that same X edge DOWN          -> -X up")); break;
+        case 4:  Serial.print(F("on its side, edge the Y arrow points to UP  -> +Y up")); break;
+        case 5:  Serial.print(F("on its side, that same Y edge DOWN          -> -Y up")); break;
+        case 6:  Serial.print(F("TILTED ~45 deg, component side up, corner between +X and +Y highest")); break;
+        case 7:  Serial.print(F("TILTED ~45 deg, component side up, corner between -X and +Y highest")); break;
+        case 8:  Serial.print(F("TILTED ~45 deg, component side up, corner between +X and -Y highest")); break;
+        case 9:  Serial.print(F("TILTED ~45 deg, component side up, corner between -X and -Y highest")); break;
+        case 10: Serial.print(F("TILTED ~45 deg, component side DOWN, corner between +X and +Y highest")); break;
+        case 11: Serial.print(F("TILTED ~45 deg, component side DOWN, corner between -X and -Y highest")); break;
+        default: Serial.print(F("any orientation not already used")); break;
+    }
+}
+
+// Waits for the sensor to stop moving, then averages CAL_ACC_AVG accelerometer samples
+// and one magnetometer sample set. Returns false if it never settled.
+bool calCaptureStatic(int32_t accMean[3], int16_t accPP[3], int32_t magMean[3])
+{
+    int16_t a[3], lo[3], hi[3];
+    bool still = false;
+
+    for (uint16_t sec = 0; sec < CAL_STILL_TIMEOUT_S * 4 && !still; sec++)
+    {
+        readRawAcc(a);
+        for (uint8_t k = 0; k < 3; k++)
+            lo[k] = hi[k] = a[k];
+        for (uint8_t s = 1; s < CAL_STILL_WINDOW; s++)
+        {
+            delay(10);
+            readRawAcc(a);
+            for (uint8_t k = 0; k < 3; k++)
+            {
+                if (a[k] < lo[k]) lo[k] = a[k];
+                if (a[k] > hi[k]) hi[k] = a[k];
+            }
+        }
+        still = true;
+        for (uint8_t k = 0; k < 3; k++)
+            if ((int32_t)hi[k] - (int32_t)lo[k] > CAL_STILL_PP)
+                still = false;
+    }
+    if (!still)
+        return false;
+
+    int32_t sum[3] = {0, 0, 0};
+    int32_t msum[3] = {0, 0, 0};
+    uint16_t mcount = 0;
+    readRawAcc(a);
+    for (uint8_t k = 0; k < 3; k++)
+        lo[k] = hi[k] = a[k];
+
+    for (uint16_t s = 0; s < CAL_ACC_AVG; s++)
+    {
+        readRawAcc(a);
+        for (uint8_t k = 0; k < 3; k++)
+        {
+            sum[k] += a[k];
+            if (a[k] < lo[k]) lo[k] = a[k];
+            if (a[k] > hi[k]) hi[k] = a[k];
+        }
+        if ((s % 8) == 0)
+        {
+            int16_t m[3];
+            if (readRawMag(m))
+            {
+                for (uint8_t k = 0; k < 3; k++)
+                    msum[k] += m[k];
+                mcount++;
+            }
+        }
+        delay(5);
+    }
+    for (uint8_t k = 0; k < 3; k++)
+    {
+        accMean[k] = sum[k] / (int32_t)CAL_ACC_AVG;
+        // clamp: a bump mid-average can make this exceed an int16 and wrap negative,
+        // which would sneak past the "was it still" check in calibrate4.py
+        int32_t range = (int32_t)hi[k] - (int32_t)lo[k];
+        accPP[k]   = (range > 32767) ? 32767 : (int16_t)range;
+        magMean[k] = mcount ? msum[k] / (int32_t)mcount : 0;
+    }
+    return true;
+}
+
+void calGyroPhase()
+{
+    Serial.println(F("#BEGIN GYRO"));
+    Serial.println(F("# Put the unit down on a solid surface and DO NOT TOUCH IT."));
+    Serial.println(F("# Press any key when it is settled..."));
+    calWaitForKey();
+    Serial.println(F("# sampling..."));
+
+    int16_t g[3], lo[3], hi[3];
+    int32_t sum[3] = {0, 0, 0};
+    readRawGyro(g);
+    for (uint8_t k = 0; k < 3; k++)
+        lo[k] = hi[k] = g[k];
+
+    for (uint16_t i = 0; i < CAL_GYRO_SAMPLES; i++)
+    {
+        readRawGyro(g);
+        for (uint8_t k = 0; k < 3; k++)
+        {
+            sum[k] += g[k];
+            if (g[k] < lo[k]) lo[k] = g[k];
+            if (g[k] > hi[k]) hi[k] = g[k];
+        }
+        delay(4);
+    }
+    // G,<mean x>,<mean y>,<mean z>,<peak-to-peak x>,<pp y>,<pp z>,<n>
+    // The means go over RF scaled by 10 so the one decimal place survives an int16.
+    int16_t rec[7];
+    Serial.print(F("G"));
+    for (uint8_t k = 0; k < 3; k++)
+    {
+        float mean = (float)sum[k] / CAL_GYRO_SAMPLES;
+        // clamp so the x10 encoding cannot silently wrap an int16. A real MPU6050 zero
+        // rate offset is within +-20 deg/s (~2620 LSB), so hitting this means a fault.
+        float scaled = mean * 10.0;
+        if (scaled > 32767.0)  scaled = 32767.0;
+        if (scaled < -32768.0) scaled = -32768.0;
+        rec[k] = (int16_t)scaled;
+        Serial.print(F(","));
+        Serial.print(mean, 1);
+    }
+    for (uint8_t k = 0; k < 3; k++)
+    {
+        rec[3 + k] = hi[k] - lo[k];
+        Serial.print(F(","));
+        Serial.print(hi[k] - lo[k]);
+    }
+    rec[6] = CAL_GYRO_SAMPLES;
+    Serial.print(F(","));
+    Serial.println(CAL_GYRO_SAMPLES);
+    calBroadcast('G', 0, rec, 7);
+    Serial.println(F("#END GYRO"));
+}
+
+// Does the ORDER of the 12 orientations matter?  No.
+//
+// The fit is a least-squares ellipsoid through an unordered cloud of points, so the
+// sequence has no effect on the result. Nor does the accuracy of any one position: the
+// claimed orientation is never used as an input. calibrate4.py reads only the measured
+// counts, and the position index in each 'A' record is a label for the operator's
+// benefit, nothing more.
+//
+// What the prompts are actually for is COVERAGE. The fit needs points spread over the
+// whole sphere, and the quickest way to get a human to produce that is to name twelve
+// specific attitudes. So:
+//   - all six faces must appear, or the missing axis is left unconstrained
+//   - no two positions should be the same, or a constraint is wasted and the
+//     least-squares weighting skews toward that direction
+//   - exact angles are irrelevant; "roughly 45 degrees" really is roughly
+// calibrate4.py measures the coverage it actually got and names the worst gap, so a
+// missed or duplicated position is caught there rather than being assumed away here.
+//
+// Worth doing in one sitting though, not because of order but because the MPU6050's
+// zero-g offset drifts with temperature, and the fit assumes one constant bias.
+void calAccPhase()
+{
+    Serial.println(F("#BEGIN ACC"));
+    Serial.println(F("# Hold the unit STILL in each orientation. It waits until it stops"));
+    Serial.println(F("# moving before it samples, so resting it against something helps."));
+    Serial.println(F("# The magnetometer is logged here too, for the dip cross-check."));
+    Serial.println(F("# Order does not matter and the angles need not be exact - what"));
+    Serial.println(F("# matters is that all 6 faces appear and no two are the same."));
+    Serial.println(F("# Try to get through all 12 without a long break: the zero-g offset"));
+    Serial.println(F("# drifts with temperature and the fit assumes it is constant."));
+
+    for (uint8_t i = 0; i < CAL_ACC_POSITIONS; i++)
+    {
+        Serial.print(F("# position "));
+        Serial.print(i + 1);
+        Serial.print(F(" of "));
+        Serial.print(CAL_ACC_POSITIONS);
+        Serial.print(F(": "));
+        calPrintPositionName(i);
+        Serial.println();
+        Serial.println(F("# place it, let go, then press any key..."));
+        calWaitForKey();
+
+        int32_t acc[3], mag[3];
+        int16_t pp[3];
+        digitalWrite(MOTEINO_LED, HIGH);
+        bool ok = calCaptureStatic(acc, pp, mag);
+        digitalWrite(MOTEINO_LED, LOW);
+
+        if (!ok)
+        {
+            Serial.println(F("# NOT STILL - never settled, position skipped. Try again."));
+            i--;                     // repeat this position
+            continue;
+        }
+        // A,<pos>,<ax>,<ay>,<az>,<mx>,<my>,<mz>,<ppx>,<ppy>,<ppz>
+        int16_t rec[9];
+        for (uint8_t k = 0; k < 3; k++)
+        {
+            rec[k]     = (int16_t)acc[k];
+            rec[3 + k] = (int16_t)mag[k];
+            rec[6 + k] = pp[k];
+        }
+        Serial.print(F("A,"));
+        Serial.print(i);
+        for (uint8_t k = 0; k < 9; k++)
+        {
+            Serial.print(F(","));
+            Serial.print(rec[k]);
+        }
+        Serial.println();
+        calBroadcast('A', i, rec, 9);
+    }
+    Serial.println(F("#END ACC"));
+}
+
+void calMagPhase(bool prompt)
+{
+    Serial.println(F("#BEGIN MAG"));
+    Serial.println(F("# Mount the unit where it normally lives, then turn the BOAT slowly"));
+    Serial.println(F("# through at least two full circles, rocking it if you can."));
+    Serial.println(F("# On the bench instead, turn the unit slowly about all three axes."));
+    Serial.print(F("# This takes "));
+    Serial.print((uint16_t)((uint32_t)CAL_MAG_SAMPLES * CAL_MAG_INTERVAL_MS / 1000));
+    Serial.println(F(" seconds."));
+    if (prompt)
+    {
+        Serial.println(F("# Press any key to start..."));
+        calWaitForKey();
+    }
+    else
+    {
+        // no serial cable: give the operator time to get to the helm
+        Serial.println(F("# autostart, beginning in 30 s..."));
+        for (uint8_t s = 0; s < 30; s++)
+        {
+            digitalWrite(MOTEINO_LED, (s & 1) ? HIGH : LOW);
+            delay(1000);
+        }
+    }
+    Serial.println(F("# sweeping..."));
+
+    for (uint16_t i = 0; i < CAL_MAG_SAMPLES; i++)
+    {
+        int16_t m[3];
+        if (readRawMag(m))
+        {
+            // M,<mx>,<my>,<mz>
+            Serial.print(F("M,"));
+            Serial.print(m[0]);
+            Serial.print(F(","));
+            Serial.print(m[1]);
+            Serial.print(F(","));
+            Serial.println(m[2]);
+            calBroadcast('M', (uint8_t)(i & 0xFF), m, 3);
+        }
+        if ((i % 50) == 0)
+        {
+            Serial.print(F("# "));
+            Serial.print(i);
+            Serial.print(F("/"));
+            Serial.println(CAL_MAG_SAMPLES);
+            digitalWrite(MOTEINO_LED, HIGH);
+        }
+        else
+        {
+            digitalWrite(MOTEINO_LED, LOW);
+        }
+        delay(CAL_MAG_INTERVAL_MS);
+    }
+    Serial.println(F("#END MAG"));
+}
+
 void collectDataForMahonyCalibration()
 {
-    int16_t acc_mag_readings[6];
-    
-    g_rf69.setHeaderId(99);
-    
-    // find gyro offsets
-    Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z"));
+    //This routine waits on the operator indefinitely and sweeps for minutes at a time, so it cannot
+    //live inside the 8 second watchdog. Re-enabled at both exits, below
+    wdt_disable();
 
-    Serial.println(F("Hold sensor still for 5 seconds for gyro offset calibration ..."));
-    delay(5000);
-
-    float goff;
-    int i;
-    long gyro[3] = {0};
-    int offset_count = 500; //average this many values for gyro
-    int acc_mag_count = 300; //collect this many values for acc/mag calibration
-
-
-    for (i = 0; i < offset_count; i++) 
-    {
-        // MPU6050 accel & gyro
-        int16_t gx = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
-        int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
-        int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
-
-        gyro[0] += gx;
-        gyro[1] += gy;
-        gyro[2] += gz;
-    } //done with gyro
-
-    Serial.print("Gyro offsets x, y, z: ");
-    for (i = 0; i < 3; i++) 
-    {
-        goff = (float)gyro[i] / offset_count;
-        Serial.print(goff, 1);
-        Serial.print(", ");
-    }
     Serial.println();
+    Serial.println(F("#EMON_CAL,4"));
+    Serial.println(F("# emon_MiniC5A_anemometer calibration capture"));
+    Serial.println(F("# Save this whole session to a file and run:  python calibrate4.py <file>"));
+    Serial.println(F("# Records are also broadcast to CALIBRATION_NODE; emon_RaspPiSerial"));
+    Serial.println(F("# relays them to serial in the same format if no cable is attached."));
 
-    Serial.println(F("Turn sensor SLOWLY and STEADILY in all directions until done"));
-    delay(5000);
-    Serial.println(F("Starting..."));
+    // everything below transmits as the calibration node, not the anemometer
+    g_rf69.setHeaderId(CALIBRATION_NODE);
 
-    //get values for calibration of acc/mag
-    for (i = 0; i < acc_mag_count; i++) 
-    {
-        int16_t ax = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
-        int16_t ay = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
-        int16_t az = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
-
-        acc_mag_readings[0] = ax;
-        acc_mag_readings[1] = ay;
-        acc_mag_readings[2] = az;
-
-        Serial.print(ax);
-        Serial.print(", ");
-        Serial.print(ay);
-        Serial.print(", ");
-        Serial.print(az);
-        Serial.print(", ");
-
-
-        uint8_t magBuf[6];
-        if (readRegisters(ADDR_HMC5883L, HMC_DATA_X_MSB, magBuf, 6)) {
-            int16_t mX = (int16_t)((magBuf[0] << 8) | magBuf[1]);
-            int16_t mZ = (int16_t)((magBuf[2] << 8) | magBuf[3]);
-            int16_t mY = (int16_t)((magBuf[4] << 8) | magBuf[5]);
-
-            acc_mag_readings[3] = mX;
-            acc_mag_readings[4] = mY;
-            acc_mag_readings[5] = mZ;
-
-            Serial.print(mX);
-            Serial.print(", ");
-            Serial.print(mY);
-            Serial.print(", ");
-            Serial.print(mZ);
-        }
-
-        digitalWrite(MOTEINO_LED,HIGH);
-        g_rf69.send((const uint8_t*) acc_mag_readings, 6*sizeof(int16_t) );
-        if( g_rf69.waitPacketSent() )
-            Serial.print(",sent");   
-        digitalWrite(MOTEINO_LED,LOW);
-
-        Serial.println();
-           delay(200);
-    }
-
-    // for (i = 0; i < acc_mag_count; i++) 
-    // {
-    //     for(int j=0; j<6;j++)
-    //     {
-    //         acc_mag_readings[j] = i;
-    //         Serial.print(i);
-    //         if(j<5)
-    //             Serial.print(", ");
-    //     }
-
-    //     digitalWrite(MOTEINO_LED,HIGH);
-    //     g_rf69.send((const uint8_t*) acc_mag_readings, 6*sizeof(int16_t) );
-    //     if( g_rf69.waitPacketSent() )
-    //         Serial.print(",sent");   
-    //     digitalWrite(MOTEINO_LED,LOW);
-
-    //     Serial.println();
-
-    //     delay(200);
-    // }
-    Serial.print(F("Done collecting"));
-    
+#ifdef CAL_AUTOSTART_MAG
+    calMagPhase(false);
+    Serial.println(F("#DONE"));
     g_rf69.setHeaderId(ANEMOMETER_NODE);
+    wdt_enable(WDTO_8S);
+    return;
+#endif
+
+    while (true)
+    {
+        Serial.println();
+        Serial.println(F("# ---- choose a phase ----"));
+        Serial.println(F("#  1 = gyro offsets      (bench, unit still)"));
+        Serial.println(F("#  2 = accelerometer     (bench, 12 static orientations)"));
+        Serial.println(F("#  3 = magnetometer      (in situ, slow sweep)"));
+        Serial.println(F("#  4 = all three in order"));
+        Serial.println(F("#  0 = done, restart the sketch normally"));
+        Serial.println(F("# send the digit..."));
+
+        while (Serial.available())
+            Serial.read();
+        while (!Serial.available())
+            delay(10);
+        char c = Serial.read();
+        while (Serial.available())
+            Serial.read();
+
+        switch (c)
+        {
+            case '1': calGyroPhase(); break;
+            case '2': calAccPhase();  break;
+            case '3': calMagPhase(true);  break;
+            case '4': calGyroPhase(); calAccPhase(); calMagPhase(true); break;
+            case '0':
+                Serial.println(F("#DONE"));
+                g_rf69.setHeaderId(ANEMOMETER_NODE);
+                wdt_enable(WDTO_8S);
+                return;
+            default:
+                Serial.println(F("# unrecognised, try again"));
+                break;
+        }
+    }
 }
 
 // Routine to call to output on serial to wireFrame.py or wireFramePitchRollYaw.py. 
@@ -400,12 +857,17 @@ void DoPitchRollYawLoop()
 {
     static float Axyz[3], Mxyz[3]; //centered and scaled accel/mag data
     static unsigned long lastPrint = millis();
+
+    //never returns, so it cannot live inside the 8 second watchdog
+    wdt_disable();
+
     Serial.println(F("Output for external pitch, roll, yaw display"));
     Serial.println(F("ax(g), ay(g), az(g), mag_x, mag_y, mag_z, heading, loop_time_ms"));
 
     //if (millis() - lastPrint > 50)
     while(true)
     {
+        //on a failed read the previous values are printed again, so a stalled line means I2C trouble
         get_scaled_IMU(Axyz, Mxyz);  //apply relative scale and offset to RAW data. UNITS are not important
 
         Serial.print(Axyz[0]);
@@ -491,29 +953,40 @@ float vector_dot(float a[3], float b[3])
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-void vector_normalize(float a[3])
+// Returns false and leaves the vector alone if it has no length. Dividing by a zero magnitude
+// produced NaN, which propagated silently into the published heading
+bool vector_normalize(float a[3])
 {
   float mag = sqrt(vector_dot(a, a));
+  if (!(mag > 0.0f))    //written this way so a NaN magnitude also fails
+    return false;
   a[0] /= mag;
   a[1] /= mag;
   a[2] /= mag;
+  return true;
 }
 ////////////////////////////////////
 
 
 // Returns a heading (in degrees) given an acceleration vector a due to gravity, a magnetic vector m, and a facing vector p.
 // applies magnetic declination
+// Returns -1 if the geometry is degenerate, meaning the acceleration and magnetic vectors are
+// parallel so there is no horizontal reference to work from. That needs a tilt of about 66 degrees
+// here, where the magnetic dip is steep, so it takes a knockdown, but the zero length cross product
+// used to divide through to NaN and casting a NaN to int is undefined.
 int get_heading(float acc[3], float mag[3], float p[3], float magdec)
 {
   float W[3], N[3]; //derived direction vectors
 
   // cross "Up" (acceleration vector, g) with magnetic vector (magnetic north + inclination) with  to produce "West"
   vector_cross(acc, mag, W);
-  vector_normalize(W);
+  if (!vector_normalize(W))
+    return -1;
 
   // cross "West" with "Up" to produce "North" (parallel to the ground)
   vector_cross(W, acc, N);
-  vector_normalize(N);
+  if (!vector_normalize(N))
+    return -1;
 
   // compute heading in horizontal plane, correct for local magnetic declination in degrees
 
@@ -523,69 +996,87 @@ int get_heading(float acc[3], float mag[3], float p[3], float magdec)
   return heading;
 }
 
-void get_gyro(float Gxyz[3]) 
+// Returns false and leaves Gxyz untouched if the read failed
+bool get_gyro(float Gxyz[3])
 {
-  int16_t gx = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 8);
-  int16_t gy = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +10);
-  int16_t gz = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H +12);
+  int16_t g[3];
+  if (!readRawGyro(g))
+    return false;
 
-  Gxyz[0] = (float)gx + GyroOffset[0];
-  Gxyz[1] = (float)gy + GyroOffset[1];
-  Gxyz[2] = (float)gz + GyroOffset[2];
+  // GyroOffset holds the MEAN of the raw readings taken while the sensor was held
+  // still by collectDataForMahonyCalibration(), so it must be SUBTRACTED. Adding it
+  // doubled the bias instead of removing it.
+  Gxyz[0] = (float)g[0] - GyroOffset[0];
+  Gxyz[1] = (float)g[1] - GyroOffset[1];
+  Gxyz[2] = (float)g[2] - GyroOffset[2];
+  return true;
 }
 
 // subtract offsets and correction matrix to accel and mag data
-
-void get_scaled_IMU(float Axyz[3], float Mxyz[3]) {
+// Returns false and leaves Axyz and Mxyz untouched if any read failed or the result could not be
+// normalized, so the caller keeps its last known good values. The old version ignored the
+// magnetometer read result and used magBuf uninitialised on a failure, which put whatever was on
+// the stack through the correction matrix and into the published payload.
+bool get_scaled_IMU(float Axyz[3], float Mxyz[3]) {
   byte i;
   float temp[3];
+  float acc[3], mag[3];
+  int16_t a[3], m[3];
 
-  int16_t ax = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 0);
-  int16_t ay = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 2);
-  int16_t az = readS16(ADDR_MPU6050, MPU_ACCEL_XOUT_H + 4);
+  if (!readRawAcc(a))
+    return false;
+  if (!readRawMag(m))    //handles the X, Z, Y order on the wire
+    return false;
 
-  uint8_t magBuf[6];
-  readRegisters(ADDR_HMC5883L, HMC_DATA_X_MSB, magBuf, 6);
-  int16_t mX = (int16_t)((magBuf[0] << 8) | magBuf[1]);
-  int16_t mZ = (int16_t)((magBuf[2] << 8) | magBuf[3]);
-  int16_t mY = (int16_t)((magBuf[4] << 8) | magBuf[5]);
-
-  Axyz[0] = ax;
-  Axyz[1] = ay;
-  Axyz[2] = az;
-  Mxyz[0] = mX;
-  Mxyz[1] = mY;
-  Mxyz[2] = mZ;
+  acc[0] = a[0];
+  acc[1] = a[1];
+  acc[2] = a[2];
+  mag[0] = m[0];
+  mag[1] = m[1];
+  mag[2] = m[2];
   //apply offsets (bias) and scale factors from Magneto
-  for (i = 0; i < 3; i++) temp[i] = (Axyz[i] - A_B[i]);
-  Axyz[0] = A_Ainv[0][0] * temp[0] + A_Ainv[0][1] * temp[1] + A_Ainv[0][2] * temp[2];
-  Axyz[1] = A_Ainv[1][0] * temp[0] + A_Ainv[1][1] * temp[1] + A_Ainv[1][2] * temp[2];
-  Axyz[2] = A_Ainv[2][0] * temp[0] + A_Ainv[2][1] * temp[1] + A_Ainv[2][2] * temp[2];
-  vector_normalize(Axyz);
+  for (i = 0; i < 3; i++) temp[i] = (acc[i] - A_B[i]);
+  acc[0] = A_Ainv[0][0] * temp[0] + A_Ainv[0][1] * temp[1] + A_Ainv[0][2] * temp[2];
+  acc[1] = A_Ainv[1][0] * temp[0] + A_Ainv[1][1] * temp[1] + A_Ainv[1][2] * temp[2];
+  acc[2] = A_Ainv[2][0] * temp[0] + A_Ainv[2][1] * temp[1] + A_Ainv[2][2] * temp[2];
+  if (!vector_normalize(acc))
+    return false;
 
   //apply offsets (bias) and scale factors from Magneto
-  for (int i = 0; i < 3; i++) temp[i] = (Mxyz[i] - M_B[i]);
-  Mxyz[0] = M_Ainv[0][0] * temp[0] + M_Ainv[0][1] * temp[1] + M_Ainv[0][2] * temp[2];
-  Mxyz[1] = M_Ainv[1][0] * temp[0] + M_Ainv[1][1] * temp[1] + M_Ainv[1][2] * temp[2];
-  Mxyz[2] = M_Ainv[2][0] * temp[0] + M_Ainv[2][1] * temp[1] + M_Ainv[2][2] * temp[2];
-  vector_normalize(Mxyz);
+  for (i = 0; i < 3; i++) temp[i] = (mag[i] - M_B[i]);
+  mag[0] = M_Ainv[0][0] * temp[0] + M_Ainv[0][1] * temp[1] + M_Ainv[0][2] * temp[2];
+  mag[1] = M_Ainv[1][0] * temp[0] + M_Ainv[1][1] * temp[1] + M_Ainv[1][2] * temp[2];
+  mag[2] = M_Ainv[2][0] * temp[0] + M_Ainv[2][1] * temp[1] + M_Ainv[2][2] * temp[2];
+  if (!vector_normalize(mag))
+    return false;
+
+  //only commit once everything succeeded
+  for (i = 0; i < 3; i++)
+  {
+    Axyz[i] = acc[i];
+    Mxyz[i] = mag[i];
+  }
+  return true;
 }
 
 
 /////////////////////////////////////////////////
 // MiniC5 anemometer routines
 
+// Note this blocks for error*500ms plus a second, so a Modbus failure costs 3 seconds of loop time
 void flashErrorToLED(int error, bool haltExecution = false)
 {
   do
-  { 
+  {
     for( int i = 0; i < error; i++)
     {
+      wdt_reset();    //this blocks for seconds, and with haltExecution for ever
       digitalWrite(MOTEINO_LED, HIGH);
       delay(300);
       digitalWrite(MOTEINO_LED, LOW);
       delay(200);
     }
+	wdt_reset();
 	delay(1000);
   }
   while( haltExecution );
@@ -722,30 +1213,37 @@ void printValues(AnemometerReadings anemometerReadings)
 
 void setup()
 {
-    pinMode(MOTEINO_LED, OUTPUT);     
+    //Capture the reset cause and get the watchdog out of the way before anything else. After a
+    //watchdog reset the AVR re-enables the watchdog at its 16ms minimum, and if the bootloader does
+    //not clear it the chip resets again before setup() can finish. That is an endless reset loop
+    //which looks exactly like a dead board, and the reset button does not help either
+    uint8_t mcusr = MCUSR;
+    MCUSR = 0;
+    wdt_disable();
+
+    pinMode(MOTEINO_LED, OUTPUT);
     digitalWrite(MOTEINO_LED, HIGH );
+
+    //8 seconds, as used by the other emon nodes. Comfortably longer than the 500ms Modbus timeout
+    //plus the packet sends, and it turns a lockup at the top of the mast into a short gap in the log
+    wdt_enable(WDTO_8S);
+
     Serial.begin(9600);
+//    Serial.begin(115200); For DoPitchRollYaw()
 
     g_rs232Serial.begin(BAUD_RS232);
     g_rs232Serial.stopListening();  //disable as interrupt can interfer with g_rf69
     Serial.println(F("Mini-C5A Modbus RTU reader starting"));
 
-    if (!g_rf69.init())
-        Serial.println(F("rf69 init failed"));
-    if (!g_rf69.setFrequency(NETWORK_FREQUENCY))
-        Serial.println(F("rf69 setFrequency failed"));
-    // The encryption key has to be the same as the one in the client
-    uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
-    g_rf69.setEncryptionKey(key);
-    g_rf69.setHeaderId(ANEMOMETER_NODE);
-    //g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
-    //when using the RH_RF69 driver with the RFM69HW module, you must setTxPowercan with isHigherPowerModule set to true
-    //Otherwise, the library will not set the PA_BOOST pin high and the module will not transmit
-    //g_rf69.setTxPower(13,true);
-    Serial.print(F("RF69 initialise node: "));
-    Serial.print(ANEMOMETER_NODE);
-    Serial.print(F(" Freq: "));Serial.print(NETWORK_FREQUENCY,1); Serial.println(F("MHz"));
+    //BORF here means the supply is sagging, most likely on the transmit current spike, and that is
+    //also what leaves the I2C bus stuck for i2cBusClear() to sort out below
+    Serial.print(F("Reset cause MCUSR=0x")); Serial.println(mcusr, HEX);   //0 if the bootloader cleared it
+    if( mcusr & _BV(WDRF) )  Serial.println(F(" watchdog reset"));
+    if( mcusr & _BV(BORF) )  Serial.println(F(" brown out reset"));
+    if( mcusr & _BV(EXTRF) ) Serial.println(F(" external reset"));
+    if( mcusr & _BV(PORF) )  Serial.println(F(" power on reset"));
+
+    radioInit();
 
     memset(&g_payloadAnemometer, 0, sizeof(g_payloadAnemometer));
     g_payloadAnemometer.subnode = 1;
@@ -761,22 +1259,7 @@ void setup()
     Serial.println(F("mwv,1= apparent wind"));
     Serial.println(F("mwv,2= true wind"));
 
-    Wire.begin();
-    delay(50);
-    Serial.println(F("GY-86 sensor test startup"));
-
-    bool okMPU = initMPU6050();
-    Serial.print(F("MPU6050: "));
-    Serial.println(okMPU ? F("OK") : F("NOT FOUND"));
-
-    bool okHMC = initHMC5883L();
-    Serial.print(F("HMC5883L: "));
-    Serial.println(okHMC ? F("OK") : F("NOT FOUND"));
-
-    bool okMS5 = initMS5611();
-    Serial.print(F("MS5611: "));
-    Serial.println(okMS5 ? F("OK") : F("NOT FOUND"));
-
+    i2cInit();
 
     digitalWrite(MOTEINO_LED, LOW );
 
@@ -792,6 +1275,9 @@ void loop()
     static unsigned long lastSendWindTime = millis();
     static unsigned long lastSendPressureTime = millis();
     static unsigned long lastGPSUpdate = 0;
+    static uint8_t imuFailures = 0;
+
+    wdt_reset();
 
     unsigned long now = millis();
 
@@ -813,28 +1299,55 @@ void loop()
 
     if (now - lastSendWindTime >= SEND_WIND_INTERVAL_MS) 
     {
-        //turn off the radio to avoid interference with RS232 reading
+        //The radio deliberately stays in receive while the Modbus response is read. The two
+        //setIdleMode() calls that used to sit here did not turn it off: setIdleMode() only assigns
+        //RH_RF69's _idleMode field, it never touches the chip. What they did do is leave _idleMode
+        //at SLEEP across the read, so an incoming packet made the ISR put the chip to sleep, and the
+        //following send() then filled the FIFO with the chip asleep. Staying in RX is also what
+        //catches the GPS packets that true wind needs.
         lastSendWindTime = now;
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_SLEEP);
         g_rs232Serial.listen();
         sendReadRequest();          // send request to MiniC5A anemometer
         // read and parse response
         AnemometerReadings anemometerReadings;
         bool readAnemometerOK = readResponseAndParse(anemometerReadings);
         g_rs232Serial.stopListening();
-        g_rf69.setIdleMode(RH_RF69_OPMODE_MODE_STDBY);
 
         digitalWrite(MOTEINO_LED, HIGH );
 
         //Get the IMU data to publish
         // Calculate the vessel heading so we can send apparent wind direction as well as vessel oriented wind direction
-        get_scaled_IMU(g_payloadIMU.acc, g_payloadIMU.mag);  //apply relative scale and offset to RAW data. UNITS are not important
-        get_gyro(g_payloadIMU.gyro);                         //get gyro data with offsets removed
-        g_payloadIMU.heading = get_heading(g_payloadIMU.acc, g_payloadIMU.mag, p, declination);
+        //On a failed I2C read the previous values are kept and published again, which is far better
+        //than the garbage the old code let through, but it does mean a wedged sensor shows up as a
+        //frozen heading rather than an obviously bad one. Watch for the message below.
+        bool imuOK = get_scaled_IMU(g_payloadIMU.acc, g_payloadIMU.mag);  //apply relative scale and offset to RAW data. UNITS are not important
+        if( imuOK )
+        {
+            int heading = get_heading(g_payloadIMU.acc, g_payloadIMU.mag, p, declination);
+            if( heading >= 0 )
+                g_payloadIMU.heading = heading;
+            else
+                imuOK = false;
+        }
+        if( !get_gyro(g_payloadIMU.gyro) )                   //get gyro data with offsets removed
+            imuOK = false;
+
+        if( imuOK )
+        {
+            imuFailures = 0;
+        }
+        else if( ++imuFailures >= MAX_IMU_FAILURES )
+        {
+            //Wire.setWireTimeout() has already reset the TWI hardware, so the only thing left that
+            //it cannot fix is a slave holding SDA low. Clock it out and re-initialise the sensors
+            Serial.println(F("IMU reads failing, recovering the I2C bus"));
+            i2cInit();
+            imuFailures = 0;
+        }
 
         g_rf69.setHeaderId(IMU_NODE);
         g_rf69.send((const uint8_t*) &g_payloadIMU, sizeof(PayloadIMU) );
-        if( g_rf69.waitPacketSent() )
+        if( waitPacketSentOrRecover() )
         {
             EmonSerial::PrintIMUPayload(&g_payloadIMU);
         }
@@ -854,7 +1367,7 @@ void loop()
             g_payloadAnemometer.temperature = anemometerReadings.temperature;  // degree celcius
 
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-            if( g_rf69.waitPacketSent() )
+            if( waitPacketSentOrRecover() )
             {
                 EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
             }
@@ -862,12 +1375,15 @@ void loop()
             {
                 Serial.println(F("No packet sent"));
             }
-            //now send compass based wind direction as a separate packet
-            float apparentWindDirection = fmod(anemometerReadings.windDirection + g_payloadIMU.heading, 360.0);
+            //now send compass based wind direction as a separate packet.
+            //ANEMOMETER_HEADING_OFFSET trims the vane's zero relative to the centreline; the
+            //compass's own alignment is already removed inside get_heading().
+            float apparentWindDirection = anemometerReadings.windDirection - ANEMOMETER_HEADING_OFFSET + g_payloadIMU.heading;
+            apparentWindDirection = fmod(apparentWindDirection + 720.0, 360.0);
             g_payloadAnemometer.subnode = 1;    //apparent wind
             g_payloadAnemometer.windDirection = apparentWindDirection;
             g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-            if( g_rf69.waitPacketSent() )   
+            if( waitPacketSentOrRecover() )   
             {
                 EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
             }
@@ -884,7 +1400,7 @@ void loop()
                 g_payloadAnemometer.windDirection = tw.twd;
                 g_payloadAnemometer.windSpeed = tw.tws;
                 g_rf69.send((const uint8_t*) &g_payloadAnemometer, sizeof(PayloadAnemometer) );
-                if( g_rf69.waitPacketSent() )   
+                if( waitPacketSentOrRecover() )   
                 {
                     EmonSerial::PrintAnemometerPayload(&g_payloadAnemometer);
                 }
@@ -911,7 +1427,7 @@ void loop()
                 g_payloadPressure.temperature = anemometerReadings.temperature;
 
                 g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
-                if( g_rf69.waitPacketSent() )
+                if( waitPacketSentOrRecover() )
                 {
                     EmonSerial::PrintPressurePayload(&g_payloadPressure);
                 }
@@ -925,7 +1441,7 @@ void loop()
                 // g_payloadPressure.humidity = 0;
                 // get_temperature_pressure(g_payloadPressure.temperature, g_payloadPressure.pressure );
                 // g_rf69.send((const uint8_t*) &g_payloadPressure, sizeof(PayloadPressure) );
-                // if( g_rf69.waitPacketSent() )
+                // if( waitPacketSentOrRecover() )
                 // {
                 //     EmonSerial::PrintPressurePayload(&g_payloadPressure);
                 // }

@@ -227,6 +227,23 @@
                     "args": [
                             "--help"
                     ]
+            },
+            {
+                    // Live pitch/roll/yaw wireframe from the anemometer's IMU.
+                    // Needs DoPitchRollYawLoop() uncommented in setup() of
+                    // emon_MiniC5A_anemometer.ino, which prints at 115200.
+                    "name": "wireFramePitchRollYaw (COM4)",
+                    "type": "debugpy",
+                    "request": "launch",
+                    "program": "${workspaceFolder}/emon_MiniC5A_anemometer/wireFramePitchRollYaw.py",
+                    "console": "integratedTerminal",
+                    "args": [
+                            "--port",
+                            "COM4",
+                            "--baud",
+                            "115200"
+                    ],
+                    "cwd": "${workspaceFolder}"
             }
     ]
 }
