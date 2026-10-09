@@ -69,6 +69,10 @@ class RecordingService:
         # Recordings started by this process. Only these can have been written
         # on a clock that has since been corrected (main._check_for_clock_step).
         self._started_this_run = set()
+        # The latest publish job per recording (TR-11). In memory: a restart
+        # mid-publish loses the job, not the post, which is found again by
+        # its stored id on the next attempt.
+        self._publish_jobs = {}
         self._lock = threading.Lock()
 
     @property
@@ -188,10 +192,74 @@ class RecordingService:
 
     # === Publishing ===
 
-    def publish(self, recording_id: int, category: str = 'Track Logs',
-                template: str = None, auto_publish: Optional[bool] = None) -> Dict:
+    def start_publish(self, recording_id: int, **options) -> Dict:
         """
-        Publish a recording to WordPress.
+        Start publishing in the background (TR-11) and return the job.
+
+        Only what can be answered at once is checked here. Everything that
+        talks to WordPress happens in the job, because from a phone hotspot
+        that is minutes, and a request held open that long is one a phone
+        gives up on while the upload carries on unseen.
+        """
+        if not self.wordpress_publisher:
+            raise RecordingError('WordPress publisher not configured', 400)
+        self._get(recording_id)
+
+        with self._lock:
+            job = self._publish_jobs.get(recording_id)
+            if job and job['state'] == 'running':
+                raise RecordingError('Already publishing this recording', 409)
+            job = {
+                'recording_id': recording_id,
+                'state': 'running',
+                'step': 'Starting',
+                'done': 0,
+                'total': 0,
+                'post': None,
+                'error': None,
+                'status': None,
+                'started_at': datetime.utcnow().isoformat(),
+                'finished_at': None,
+            }
+            self._publish_jobs[recording_id] = job
+
+        def progress(step, done, total):
+            with self._lock:
+                job.update(step=step, done=done, total=total)
+
+        def run():
+            try:
+                post = self.publish(recording_id, progress=progress, **options)
+                outcome = {'state': 'done', 'step': 'Published', 'post': post}
+            except RecordingError as e:
+                outcome = {'state': 'failed', 'error': str(e), 'status': e.status}
+            except Exception as e:
+                logger.error(f"Publishing recording {recording_id} failed: {e}")
+                outcome = {'state': 'failed', 'error': str(e), 'status': 500}
+            with self._lock:
+                job.update(outcome, finished_at=datetime.utcnow().isoformat())
+
+        threading.Thread(target=run, daemon=True,
+                         name=f"Publish-{recording_id}").start()
+        return self.publish_job(recording_id)
+
+    def publish_job(self, recording_id: int) -> Optional[Dict]:
+        """The latest publish job for a recording, as a copy, or None."""
+        with self._lock:
+            job = self._publish_jobs.get(recording_id)
+            return dict(job) if job else None
+
+    def publish(self, recording_id: int, category: str = 'Track Logs',
+                template: str = None, auto_publish: Optional[bool] = None,
+                progress: Optional[Callable[[str, int, int], None]] = None) -> Dict:
+        """
+        Publish a recording to WordPress, there and then. start_publish() runs
+        this in the background; this is the work itself.
+
+        A recording is one post for its whole life: once published, a later
+        publish updates that post rather than making another. It refuses if
+        the post was changed in wp-admin since, because that work would be
+        overwritten, and creates a new post only if the old one is gone.
 
         Returns:
             The post dict from the publisher, including `failed_uploads`
@@ -201,6 +269,10 @@ class RecordingService:
 
         recording = self._get(recording_id)
 
+        def step(text):
+            if progress:
+                progress(text, 0, 0)
+
         # One request to see whether the site can be reached at all,
         # before sending it a few dozen files. Publishing from a phone
         # hotspot with a stale resolver spent seven minutes failing
@@ -209,10 +281,13 @@ class RecordingService:
         # here: the boat being off the air is not a fault in the
         # recording, and it should publish on the next attempt without
         # having to be reset first.
+        step('Connecting to WordPress')
         reachable, detail = self.wordpress_publisher.test_connection()
         if not reachable:
             logger.error(f"Not publishing recording {recording_id}: {detail}")
             raise RecordingError(f'Cannot reach WordPress: {detail}', 503)
+
+        post_id = self._existing_post_id(recording_id)
 
         images = self.database.get_recording_images(recording_id)
         if not images:
@@ -298,7 +373,9 @@ class RecordingService:
             map_htmls=map_htmls,
             template=template,
             category=category,
-            auto_publish=auto_publish
+            auto_publish=auto_publish,
+            post_id=post_id,
+            progress=progress
         )
 
         if not post:
@@ -309,6 +386,8 @@ class RecordingService:
             )
             raise RecordingError('Failed to create WordPress post', 500)
 
+        self.database.save_post_ref(recording_id, post['id'],
+                                    post.get('modified_gmt'), post.get('status'))
         self.database.update_recording(
             recording_id,
             status=RecordingStatus.PUBLISHED,
@@ -317,6 +396,64 @@ class RecordingService:
         logger.info(f"Recording published: {post['link']}")
         post.setdefault('failed_uploads', [])
         return post
+
+    def _existing_post_id(self, recording_id: int) -> Optional[int]:
+        """
+        The post to update, or None to create one.
+
+        Raises RecordingError (409) when the post was edited in WordPress
+        since this recording last published it.
+        """
+        ref = self.database.get_post_draft(recording_id)
+        if not ref or not ref.get('wp_post_id'):
+            self._refuse_if_published_untracked(recording_id)
+            return None
+        post_id = ref['wp_post_id']
+
+        try:
+            current = self.wordpress_publisher.get_post(post_id)
+        except Exception as e:
+            # Not knowing is not the same as it being gone: answering this
+            # with a new post is how a recording ends up published twice
+            raise RecordingError(f'Could not check post {post_id} in WordPress: {e}', 503)
+
+        if current is None:
+            logger.warning(f"Post {post_id} for recording {recording_id} is gone "
+                           f"from WordPress; publishing a new one")
+            return None
+
+        if current.get('modified_gmt') != ref.get('wp_modified'):
+            raise RecordingError(
+                f"Post {post_id} has been edited in WordPress since it was published "
+                f"from here (last changed {current.get('modified_gmt')} UTC). "
+                f"Publishing again would overwrite that, so it has not been done.",
+                409)
+        return post_id
+
+    def _refuse_if_published_untracked(self, recording_id: int):
+        """
+        A recording published before TR-11 has a link but no post id, and no
+        record of when WordPress last changed the post. Publishing it again
+        would make a second post, and there is no way to tell whether the
+        first was edited in wp-admin since, which the Track Logs on
+        enchantee.org often are. So while that post exists, refuse; once it
+        has been deleted there, publish afresh.
+        """
+        link = self._get(recording_id).get('wordpress_url')
+        if not link:
+            return
+        try:
+            post = self.wordpress_publisher.find_post_by_link(link)
+        except Exception as e:
+            raise RecordingError(f'Could not check {link} in WordPress: {e}', 503)
+        if post:
+            raise RecordingError(
+                f"This recording was published as {link} before the recorder kept "
+                f"track of its posts, so it cannot tell whether that post has been "
+                f"edited in WordPress since. Change it there, or delete it there and "
+                f"publish again.", 409)
+        logger.info(f"{link} is gone from WordPress; publishing recording "
+                    f"{recording_id} as a new post")
 
     # === Helpers ===
 

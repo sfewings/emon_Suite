@@ -41,12 +41,37 @@ Recordings are stamped with the time they were made, not the log's time, so a 60
 is a three-minute recording dated today. Use `--speed 4` or lower when the recording's
 times or the wind summary are what is being tested.
 
+## Publish to a local blog
+
+When publishing is what is being tested. A WordPress on <http://localhost:8080>
+(wp-admin: admin / admin), on Perth time and with enchantee.org's categories:
+
+```bash
+docker compose -f dev/docker-compose.yml --profile wordpress up -d
+sh dev/wordpress-setup.sh
+```
+
+The script installs the blog, makes an application password, writes it to `dev/.env`
+(git-ignored) and recreates the recorder so it picks it up. It is safe to run again.
+After that, a recording processed and published from <http://localhost:5000> appears on
+the local blog. Without the profile, `dev/.env` is not used and the publisher is off.
+
+To change a post as if in wp-admin, or see what is there:
+
+```bash
+cd dev
+MSYS_NO_PATHCONV=1 docker compose run --rm -T wpcli wp post list --post_type=post
+MSYS_NO_PATHCONV=1 docker compose run --rm -T wpcli wp post update 21 --post_title="Edited"
+```
+
 ## Run the tests
 
 ```bash
 MSYS_NO_PATHCONV=1 docker exec -e TZ=UTC -w /app event_recorder_dev \
     python -m pytest event_recorder/tests/test_foreign_keys.py \
                      event_recorder/tests/test_ios12_floor.py \
+                     event_recorder/tests/test_recording_service.py \
+                     event_recorder/tests/test_publish.py \
                      event_recorder/tests/test_chart_map.py \
                      event_recorder/tests/test_gps_position.py
 ```
@@ -74,6 +99,7 @@ rm dev/data/recordings.db*      # the database only; plots/ and uploads/ are bes
 ## Stop
 
 ```bash
-docker compose -f dev/docker-compose.yml down
+docker compose -f dev/docker-compose.yml --profile wordpress down   # keeps the blog
+docker compose -f dev/docker-compose.yml --profile wordpress down -v  # deletes it too
 docker compose -f ../enchantee_racing/tests/replay/docker-compose.yml down
 ```

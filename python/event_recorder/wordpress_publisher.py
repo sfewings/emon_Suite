@@ -10,7 +10,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -660,6 +660,50 @@ class WordPressPublisher:
             logger.error(f"Failed to get category ID: {e}")
             return None
 
+    def get_post(self, post_id: int) -> Optional[Dict]:
+        """
+        The post as WordPress has it now, or None if it no longer exists.
+
+        Trashed counts as gone: updating a post in the trash would publish
+        into a place nobody looks. Any other failure raises, because "could
+        not tell" must not be read as "it is gone" and answered with a second
+        post.
+        """
+        response = self._retry_request(
+            'GET', self._api_url(f'posts/{post_id}') + '&context=edit')
+        if response.status_code in (404, 410):
+            return None
+        response.raise_for_status()
+        post = response.json()
+        if post.get('status') == 'trash':
+            return None
+        return post
+
+    def find_post_by_link(self, link: str) -> Optional[Dict]:
+        """
+        The post a published URL belongs to, or None if it is gone.
+
+        For recordings published before the post id was kept (TR-11), which
+        have only their link. Handles both forms WordPress gives out: ?p=N on
+        a site with plain permalinks, and a slug under pretty ones. Raises
+        when WordPress cannot be asked, as get_post does.
+        """
+        from urllib.parse import parse_qs, urlparse
+        parsed = urlparse(link)
+        query = parse_qs(parsed.query)
+        if 'p' in query:
+            return self.get_post(int(query['p'][0]))
+
+        slug = [part for part in parsed.path.split('/') if part]
+        if not slug:
+            return None
+        response = self._retry_request(
+            'GET', self._api_url('posts') +
+            f'&slug={slug[-1]}&status=publish,future,draft,pending,private&context=edit')
+        response.raise_for_status()
+        matches = response.json()
+        return matches[0] if len(matches) == 1 else None
+
     def create_post(
         self,
         title: str,
@@ -668,10 +712,11 @@ class WordPressPublisher:
         categories: List[str] = None,
         featured_media: int = None,
         excerpt: str = None,
-        date: str = None
+        date: str = None,
+        post_id: int = None
     ) -> Optional[Dict]:
         """
-        Create WordPress blog post.
+        Create WordPress blog post, or update an existing one.
 
         Args:
             title: Post title
@@ -682,9 +727,12 @@ class WordPressPublisher:
             excerpt: Post excerpt
             date: Publication date in ISO 8601 format (YYYY-MM-DDTHH:MM:SS);
                   WordPress treats this as the site's local timezone
+            post_id: Update this post instead of creating one (TR-11)
 
         Returns:
-            Post data dict if successful, None otherwise
+            Post data dict if successful, None otherwise. `modified_gmt` is
+            WordPress's own record of the change, kept so a later update can
+            tell whether the post was edited in wp-admin in between.
         """
         try:
             # Build post data
@@ -717,26 +765,32 @@ class WordPressPublisher:
             if featured_media:
                 post_data['featured_media'] = featured_media
 
-            # Create post
-            logger.info(f"Creating post: {title}")
+            if post_id:
+                logger.info(f"Updating post {post_id}: {title}")
+                endpoint, expected = f'posts/{post_id}', 200
+            else:
+                logger.info(f"Creating post: {title}")
+                endpoint, expected = 'posts', 201
             response = self._retry_request(
                 'POST',
-                self._api_url('posts'),
+                self._api_url(endpoint),
                 json=post_data
             )
 
-            if response.status_code == 201:
+            if response.status_code == expected:
                 post = response.json()
-                logger.info(f"Post created successfully: {post['link']}")
+                logger.info(f"Post {'updated' if post_id else 'created'} successfully: {post['link']}")
                 return {
                     'id': post['id'],
                     'title': post['title']['rendered'],
                     'link': post['link'],
                     'status': post['status'],
-                    'date': post['date']
+                    'date': post['date'],
+                    'modified_gmt': post.get('modified_gmt'),
                 }
             else:
-                logger.error(f"Post creation failed: {response.status_code} - {response.text}")
+                logger.error(f"Post {'update' if post_id else 'creation'} failed: "
+                             f"{response.status_code} - {response.text}")
                 return None
 
         except Exception as e:
@@ -752,10 +806,12 @@ class WordPressPublisher:
         map_htmls: List[str] = None,
         template: str = None,
         category: str = "Track Logs",
-        auto_publish: bool = False
+        auto_publish: bool = False,
+        post_id: int = None,
+        progress: Callable[[str, int, int], None] = None
     ) -> Optional[Dict]:
         """
-        Publish recording as WordPress blog post.
+        Publish recording as WordPress blog post, or update the post it already is.
 
         Args:
             recording_data: Recording metadata dict
@@ -766,11 +822,21 @@ class WordPressPublisher:
             template: HTML template string (with {placeholders})
             category: WordPress category name
             auto_publish: Publish immediately (vs draft)
+            post_id: Update this post rather than create one (TR-11)
+            progress: Called as progress(step, done, total) as each file goes
+                up, so a background job can say how far it has got
 
         Returns:
             Dict with post info if successful, None otherwise
         """
         logger.info(f"Publishing recording: {recording_data.get('name')}")
+
+        total_files = len(images) + len(exports or [])
+        sent = 0
+
+        def report(step):
+            if progress:
+                progress(step, sent, total_files)
 
         try:
             # Files that did not make it. A post is still worth publishing
@@ -787,6 +853,7 @@ class WordPressPublisher:
             # Upload images to WordPress
             media_ids = []
             for image in images:
+                report(f"Uploading {sent + 1} of {total_files}")
                 media_result = self.upload_media(
                     image['path'],
                     caption=image.get('caption', ''),
@@ -802,6 +869,7 @@ class WordPressPublisher:
                     })
                 else:
                     failed_uploads.append(Path(image['path']).name)
+                sent += 1
 
             if not media_ids and not statistics and not map_htmls:
                 logger.error("No images uploaded successfully")
@@ -810,6 +878,7 @@ class WordPressPublisher:
             # Upload export files and collect download links
             download_links = []
             for exp in (exports or []):
+                report(f"Uploading {sent + 1} of {total_files}")
                 result = self.upload_export_file(
                     exp['path'], label=exp.get('label', ''),
                     upload_name=f"{prefix}{Path(exp['path']).name}"
@@ -822,6 +891,9 @@ class WordPressPublisher:
                     })
                 else:
                     failed_uploads.append(Path(exp['path']).name)
+                sent += 1
+
+            report("Updating the post" if post_id else "Creating the post")
 
             # Build HTML content
             content = self._build_post_content(
@@ -880,7 +952,8 @@ class WordPressPublisher:
                 categories=[category],
                 featured_media=featured_id,
                 excerpt=excerpt,
-                date=post_date
+                date=post_date,
+                post_id=post_id
             )
 
             if post and failed_uploads:

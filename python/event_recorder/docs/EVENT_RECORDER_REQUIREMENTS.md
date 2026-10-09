@@ -75,7 +75,7 @@ Foundations, needed by the editor and worth doing on their own:
 
 - [x] **TR-9:** Foreign keys enforced, and deleting a recording removes all of it
 - [x] **TR-10:** One recording service behind the triggers and the routes
-- [ ] **TR-11:** Publishing runs in the background and updates its own post
+- [x] **TR-11:** Publishing runs in the background and updates its own post
 - [ ] **TR-12:** Recording, artefact and post state kept apart
 - [x] **TR-13:** Web UI runs on iOS 12
 
@@ -1340,28 +1340,56 @@ by the GPS triggers and by the Flask routes alike
 ### TR-11: Publishing Runs in the Background and Updates Its Own Post
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09). The draft button arrives with the event page
 **Description:** Publishing is a job with progress, not one HTTP request, and a recording
 publishes to one post for its whole life
 
 **Acceptance Criteria:**
 
-- [ ] Publish starts a background job and returns at once; the page polls its progress
-      ("Uploading 3 of 7")
-- [ ] The WordPress post id is stored (`post_drafts.wp_post_id`)
-- [ ] A later publish of the same recording **updates** that post
+- [x] `POST /api/recordings/<id>/publish` checks what it can at once and returns 202
+      with the job; `GET` on the same URL reports it (`running`, `done`, `failed`, with
+      a `step` such as "Uploading 3 of 16"). A second publish while one runs is 409.
+      The dashboard follows the job
+- [x] The WordPress post id is stored, in a new `post_drafts` table (`wp_post_id`,
+      `wp_modified`, `wp_status`), which FR-24 extends with the draft
+- [x] A later publish of the same recording **updates** that post
       (`POST /wp/v2/posts/<id>`) rather than creating another
-- [ ] Before updating, the post's `modified` is compared with the stored `wp_modified`.
-      If it changed, the post was edited in wp-admin, and the update is refused with a
-      message instead of overwriting that work
-- [ ] "Send as WordPress draft" publishes with `status: draft`, for finishing on a laptop
+- [x] Before updating, the post's `modified_gmt` is compared with the stored
+      `wp_modified`. If it changed, the post was edited in wp-admin, and the publish is
+      refused (409) with a message instead of overwriting that work
+- [x] A post deleted or trashed in WordPress is published afresh. Failing to *check*
+      is a 503, never read as "gone", which would make a second post
+- [x] Recordings published before this have a link but no post id (enchantee.org's
+      existing Track Logs). While that post can still be found by its link, whether
+      `?p=N` or a pretty slug, publishing again is refused (409); once it is deleted
+      there, the recording publishes as a new post
+- [x] "Send as WordPress draft": the API takes `auto_publish: false`. The button is
+      FR-27's
+- [x] `tests/test_publish.py`, against a fake WordPress
 
 **Implementation Notes:**
 
-- Today, reset then publish creates a duplicate post, and a publish over a phone hotspot
-  holds the request open for minutes with no progress.
+- Before, reset then publish created a duplicate post, and a publish held the request
+  open for its whole length: 27 s on the dev rig's local network, minutes from a
+  phone hotspot, with no progress.
 - Rule of ownership: the local draft is the master until the post is published.
   Afterwards it is WordPress, and the event page locks.
+- Jobs are held in memory. A restart mid-publish loses the job, not the post: the next
+  attempt finds the post by its stored id, or by its link if the id was never stored.
+- The publisher takes `post_id` and a `progress(step, done, total)` callback; media
+  already uploaded are reused by the existing name-and-size check, so an update of an
+  unchanged recording sent nothing but the post (2 s on the rig).
+- **Verified against a real WordPress** (the dev rig's `wordpress` profile):
+  - first publish created post 21; a second publish updated post 21
+  - the post retitled through wp-cli, as if in wp-admin: the next publish was refused
+    with the 409 message and the title left as edited
+  - a recording given only a `?p=20` link was refused while post 20 existed, and
+    published as post 40 once it was deleted
+  - the same with post 40's pretty link: found by slug and refused
+- **Found doing it:** the post date is sent as Perth local time, which WordPress
+  interprets in the site's own timezone. A blog on UTC therefore schedules every post 8
+  hours ahead (`future`). The dev blog is set to Australia/Perth for that reason;
+  enchantee.org's posts have the right dates, so it must be too.
 
 ---
 

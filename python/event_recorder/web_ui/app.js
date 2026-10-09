@@ -596,6 +596,8 @@ async function publishRecording(recordingId) {
     showToast('Publishing to WordPress...', 'info');
 
     try {
+        // Publishing runs in the background on the recorder (TR-11): this
+        // starts it, then follows it until it is done or failed
         const response = await fetch(`api/recordings/${recordingId}/publish`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -605,25 +607,55 @@ async function publishRecording(recordingId) {
         });
 
         const data = await response.json();
-
-        if (data.success) {
-            const failed = data.failed_uploads || [];
-            if (failed.length) {
-                showToast(`Published, but ${failed.length} file(s) did not upload: ${failed.join(', ')}`, 'error');
-            } else {
-                showToast('Published to WordPress successfully', 'success');
-            }
-            if (data.post && data.post.link) {
-                showToast(`Post URL: ${data.post.link}`, 'info');
-            }
-            loadRecordings();
-        } else {
+        if (!data.success) {
             showToast(`Publish failed: ${data.error}`, 'error');
+            return;
         }
+        followPublish(recordingId, data.job.step);
     } catch (error) {
         console.error('Failed to publish recording:', error);
         showToast('Failed to publish to WordPress', 'error');
     }
+}
+
+async function followPublish(recordingId, lastStep) {
+    let job;
+    try {
+        const response = await fetch(`api/recordings/${recordingId}/publish`);
+        job = (await response.json()).job;
+    } catch (error) {
+        // The recorder carries on publishing whether or not this page can
+        // see it, so a missed poll is retried rather than reported as failure
+        setTimeout(() => followPublish(recordingId, lastStep), 2000);
+        return;
+    }
+    if (!job) {
+        showToast('Lost track of the publish: the recorder may have restarted', 'error');
+        return;
+    }
+
+    if (job.state === 'running') {
+        if (job.step !== lastStep) {
+            showToast(job.step, 'info');
+        }
+        setTimeout(() => followPublish(recordingId, job.step), 2000);
+        return;
+    }
+
+    if (job.state === 'done') {
+        const failed = job.post.failed_uploads || [];
+        if (failed.length) {
+            showToast(`Published, but ${failed.length} file(s) did not upload: ${failed.join(', ')}`, 'error');
+        } else {
+            showToast('Published to WordPress successfully', 'success');
+        }
+        if (job.post.link) {
+            showToast(`Post URL: ${job.post.link}`, 'info');
+        }
+    } else {
+        showToast(`Publish failed: ${job.error}`, 'error');
+    }
+    loadRecordings();
 }
 
 async function resetRecordingToProcessed(recordingId) {

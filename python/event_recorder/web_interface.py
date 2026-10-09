@@ -439,20 +439,34 @@ class WebInterface:
 
         @self.app.route('/api/recordings/<int:recording_id>/publish', methods=['POST'])
         def publish_recording(recording_id):
-            """Publish recording to WordPress."""
+            """Start publishing to WordPress. Returns 202 and the job, which
+            GET on the same URL reports on until it is done or failed."""
             try:
                 data = request.get_json(silent=True) or {}
-                post = self.recordings.publish(
+                job = self.recordings.start_publish(
                     recording_id,
                     category=data.get('category', 'Track Logs'),
                     template=data.get('template', None),
                     auto_publish=data.get('auto_publish', None)
                 )
-                return jsonify({
-                    'success': True,
-                    'post': post,
-                    'failed_uploads': post.get('failed_uploads', [])
-                })
+                return jsonify({'success': True, 'job': job}), 202
+
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
+            except Exception as e:
+                logger.error(f"Publish recording error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/api/recordings/<int:recording_id>/publish', methods=['GET'])
+        def publish_progress(recording_id):
+            """The recording's latest publish job: running, done or failed."""
+            try:
+                job = self.recordings.publish_job(recording_id)
+                if not job:
+                    return jsonify({'success': False,
+                                    'error': 'No publish started for this recording '
+                                             'since the service started'}), 404
+                return jsonify({'success': True, 'job': job})
 
             except RecordingError as e:
                 return jsonify({'success': False, 'error': str(e)}), e.status

@@ -187,6 +187,14 @@ class Database:
 
             self._repair_dangling_references(conn)
 
+            # Add post_drafts table if missing (TR-11)
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='post_drafts'"
+            )
+            if not cursor.fetchone():
+                logger.info("Migrating: adding post_drafts table")
+                conn.execute(self.POST_DRAFTS_SQL)
+
             # Rows left behind by deletes made before foreign keys were
             # enforced. Done once: it scans recording_data, which is the bulk
             # of the file on the Pi's SD card.
@@ -205,6 +213,22 @@ class Database:
                     "INSERT INTO service_settings (key, value) VALUES ('orphans_removed', ?)",
                     (datetime.utcnow().isoformat(),)
                 )
+
+    # One row per recording that has been, or is going to be, a post. TR-11
+    # needs only the WordPress side: which post it is, and when WordPress last
+    # changed it, so a republish updates that post rather than making another,
+    # and refuses to overwrite edits made in wp-admin since. FR-24 adds the
+    # draft itself to this table.
+    POST_DRAFTS_SQL = """
+        CREATE TABLE IF NOT EXISTS post_drafts (
+            recording_id INTEGER PRIMARY KEY,
+            wp_post_id INTEGER,
+            wp_modified TEXT,
+            wp_status TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+        )
+    """
 
     DANGLING_REFERENCE = 'REFERENCES "recordings_old"'
 
@@ -348,6 +372,8 @@ class Database:
                     value TEXT NOT NULL
                 )
             """)
+
+            conn.execute(self.POST_DRAFTS_SQL)
 
             logger.info("Database schema created successfully")
 
@@ -794,6 +820,30 @@ class Database:
         """Delete export record (does not delete the file on disk)."""
         with self.get_connection() as conn:
             conn.execute("DELETE FROM recording_exports WHERE id = ?", (export_id,))
+
+    # === Post Draft Operations ===
+
+    def get_post_draft(self, recording_id: int) -> Optional[Dict]:
+        """The recording's post_drafts row, or None if it has never been a post."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM post_drafts WHERE recording_id = ?", (recording_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def save_post_ref(self, recording_id: int, wp_post_id: int,
+                      wp_modified: str, wp_status: str):
+        """Record which WordPress post a recording is, as WordPress last left it."""
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO post_drafts (recording_id, wp_post_id, wp_modified, wp_status, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(recording_id) DO UPDATE SET
+                    wp_post_id = excluded.wp_post_id,
+                    wp_modified = excluded.wp_modified,
+                    wp_status = excluded.wp_status,
+                    updated_at = excluded.updated_at
+            """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
 
     # === Service Settings Operations ===
 
