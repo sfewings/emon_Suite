@@ -363,7 +363,7 @@ class RecordingService:
         self.database.set_post_state(recording_id, PostState.PUBLISHING)
         try:
             post = self.wordpress_publisher.publish_recording(
-                recording_data=recording,
+                recording_data=self._as_written(recording),
                 images=inputs['images'],
                 exports=inputs['exports'],
                 statistics=inputs['statistics'],
@@ -600,7 +600,7 @@ class RecordingService:
             return draft
         return {
             'title': recording['name'],
-            'excerpt': recording.get('description') or '',
+            'excerpt': self.written_description(recording),
             'categories': self.suggested_categories(recording),
             'crew': [],
             'story': '',
@@ -610,6 +610,31 @@ class RecordingService:
             'revision': 0,
             'stored': False,
         }
+
+    def written_description(self, recording: Dict) -> str:
+        """
+        The recording's description if the crew wrote it, else ''.
+
+        A triggered recording starts with its event's description from the
+        config, "Record when vessel departs from home anchor and stop when it
+        returns", which says what the trigger does, not what the sail was.
+        As a post's excerpt or opening paragraph it is noise. The crew do
+        write descriptions of their own (the 7-Oct-2026 Track Log's crew and
+        story were typed there), so only text identical to the config's is
+        set aside.
+        """
+        text = (recording.get('description') or '').strip()
+        if not text or not self.event_configs:
+            return text
+        try:
+            config = self.event_configs().get(recording.get('event_key')) or {}
+        except Exception:
+            return text
+        return '' if text == (config.get('description') or '').strip() else text
+
+    def _as_written(self, recording: Dict) -> Dict:
+        """A copy of the recording whose description is only ever the crew's."""
+        return dict(recording, description=self.written_description(recording))
 
     def save_draft(self, recording_id: int, changes: Dict, base_revision: int) -> Dict:
         """
@@ -908,7 +933,7 @@ class RecordingService:
                       id=None) for img in inputs['images']]
         downloads = [{'url': media_url(exp['path']), 'label': exp['label'],
                       'export_type': exp['export_type']} for exp in inputs['exports']]
-        ctx = post_renderer.PostContext(recording, media=media,
+        ctx = post_renderer.PostContext(self._as_written(recording), media=media,
                                         statistics=inputs['statistics'],
                                         map_htmls=inputs['map_htmls'],
                                         downloads=downloads, draft=draft)

@@ -230,5 +230,46 @@ def test_the_preview_and_its_images_work_under_log(client, db, tmp_path):
     assert client.get(f"/log/plots/{rid}/route_map_0.png").data == b"png"
 
 
+# === The event's own description is not the crew's ===
+
+CONFIG_TEXT = "Record when vessel departs from home anchor and stop when it returns"
+DESCRIBED = {"anchor_track_recording": {"editor_default": True, "description": CONFIG_TEXT}}
+
+
+@pytest.fixture
+def described(db, wp, tmp_path):
+    return RecordingService(db, plots_dir=str(tmp_path / "plots"),
+                            uploads_dir=str(tmp_path / "uploads"),
+                            wordpress_publisher=wp, event_configs=lambda: DESCRIBED)
+
+
+def test_a_new_drafts_short_description_is_empty_not_the_triggers_description(db, described):
+    rid = _recording(db, "anchor_track_recording", description=CONFIG_TEXT)
+    assert described.get_draft(rid)["excerpt"] == ""
+
+
+def test_the_triggers_description_stays_out_of_the_post(db, described, wp, tmp_path):
+    rid = _recording(db, "anchor_track_recording", description=CONFIG_TEXT,
+                     artefacts=Artefacts.FRESH)
+    photo = tmp_path / "kite.jpg"
+    photo.write_bytes(b"jpg")
+    db.add_image(rid, str(photo), ImageType.USER_UPLOAD, "")
+
+    preview = described.preview(rid, lambda path: path)
+    described.publish(rid)
+
+    assert CONFIG_TEXT not in preview
+    assert wp.calls[0]["recording_data"]["description"] == ""
+    # ...so the publisher's own fallback excerpt is the one used
+    assert wp.calls[0]["draft"]["excerpt"] == ""
+
+
+def test_a_description_the_crew_wrote_is_kept(db, described):
+    rid = _recording(db, "anchor_track_recording",
+                     description="Henry, Steve. Out to Pt Walter and back.")
+    assert described.get_draft(rid)["excerpt"] == "Henry, Steve. Out to Pt Walter and back."
+    assert "Out to Pt Walter" in described.preview(rid, lambda path: path)
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

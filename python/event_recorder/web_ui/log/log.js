@@ -342,7 +342,41 @@
         });
     }
 
+    // Fields whose starting text is the recorder's guess ("anchor_track_recording -
+    // 2026-10-09 ..."), there to be replaced rather than edited
+    var REPLACEABLE = ['title', 'excerpt'];
+
+    // Still the recorder's text: nobody has saved this field, so it has no revision
+    function untouched(field) {
+        var revisions = (state && state.draft.field_revisions) || {};
+        return !revisions[field] && !dirty[field];
+    }
+
+    function selectAllOnFocus(field) {
+        var input = $(field);
+        var selecting = false;
+        input.addEventListener('focus', function () {
+            if (!untouched(field) || !input.value) return;
+            selecting = true;
+            // After the focus has settled: iOS Safari places the caret itself once
+            // focus completes, undoing a select() made in this handler
+            setTimeout(function () {
+                if (document.activeElement === input) input.setSelectionRange(0, input.value.length);
+            }, 0);
+        });
+        // The tap that focused the field ends in a mouseup that would put the caret
+        // where the finger was, over the selection just made. Only that one is stopped.
+        input.addEventListener('mouseup', function (e) {
+            if (selecting) {
+                e.preventDefault();
+                selecting = false;
+            }
+        });
+        input.addEventListener('blur', function () { selecting = false; });
+    }
+
     function bindTextFields() {
+        REPLACEABLE.forEach(selectAllOnFocus);
         TEXT_FIELDS.forEach(function (field) {
             var input = $(field);
             input.addEventListener('input', function () {

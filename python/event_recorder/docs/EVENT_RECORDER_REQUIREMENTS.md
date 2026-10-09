@@ -898,6 +898,17 @@ localhost:8000. Not yet tried on the boat's iPad or a phone
 - **One Publish button.** A recording not yet processed, or processed before it
   changed, is drawn first, inside the same background job ("Drawing the charts"). The
   dashboard's Publish gains this too.
+- **Replacing the recorder's guesses** (after first testing on an iPhone, 2026-10-09):
+  while Title and Short description still hold what the recorder filled in, focusing
+  them selects all of it, so typing replaces it. A field the crew have saved has a
+  revision and is left alone. The selection is made just after focus, and the focusing
+  tap's mouseup is cancelled, because iOS Safari otherwise places the caret over it.
+- **The trigger's description is not the crew's.** A triggered recording starts with its
+  event's config description ("Record when vessel departs from home anchor..."), which
+  had become the default short description and, through the story's fallback, the
+  opening paragraph of a post nobody wrote up. A description identical to the event's
+  config text is now treated as none, so the short description starts empty and the
+  publisher's own excerpt is used. Any other description is the crew's and is kept.
 - **The categories** are enchantee.org's surveyed list until FR-30 fetches the live one.
 - **Crew suggestions** come from earlier drafts, most-sailed first. Names from past posts
   on the site come with FR-30.
