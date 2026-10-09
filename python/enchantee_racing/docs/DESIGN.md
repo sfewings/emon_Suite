@@ -847,11 +847,12 @@ The app has **three** screens, named along the bottom of every one of them:
 
 | Screen | What it is                                                          |
 | ------ | ------------------------------------------------------------------- |
-| `HUD`  | The instrument display, its own page at `/hud`, with a second face at `/gar` reached from its own cell (9.12) |
+| `GAR`  | The instruments, as a Garmin-style dial at `/gar`, with the classic HUD at `/hud` as a second face reached from the same cell (9.12) |
 | `Map`  | The course map (section 12)                                         |
 | `Race` | Everything about a race: course selection, countdown, marks, finish |
 
-In that order, HUD, Map, Race, with the theme toggle last. Race used to sit second; it
+In that order, GAR, Map, Race, with the theme toggle last (the first cell reads HUD on
+the HUD itself, 9.12). Race used to sit second; it
 moved to third because the HUD and the map are used every time the boat is out and the
 race screen only on race days, so the two most-used screens come first.
 
@@ -1317,14 +1318,19 @@ the other way would send the boat round a mark backwards.
 crew reads that instrument already. The HUD gives the same wind readings as numbers;
 GAR gives them as a picture, for those who read a needle faster than a figure.
 
-**Reached from the HUD's own nav cell, not a fifth nav entry.** On the HUD that cell
-goes to GAR, and on GAR it reads GAR and goes back to the HUD. From Race and Map, HUD
-always opens the classic HUD. A fifth cell would not fit well at 320 px. Remembering a
+**One nav cell for both faces, not a fifth nav entry.** From Race and Map that cell
+reads GAR and opens GAR. On GAR it goes to the classic HUD, and on the HUD it reads HUD
+and comes back to GAR. A fifth cell would not fit well at 320 px. Remembering a
 preferred face would be a setting, and by the rule in 9.9 a setting is server state
 that every device shares: switching the iPad to GAR would switch every phone too. So
-each device simply shows the page it navigated to, as it does with Map. The cost is a
-second tap from Race or Map for anyone who prefers GAR; if GAR turns out to be the page
-most people use, flip which face the HUD cell opens first.
+each device simply shows the page it navigated to, as it does with Map, and the cost
+is a second tap for whichever face is not first.
+
+GAR is first. It started second, with the HUD opening from Race and Map and this
+paragraph saying to flip the two if GAR turned out to be the page most people use; once
+it carried leeway, heel and all eight corner readings, the crew asked for it first. The
+`/hud` short URL the crew types is nginx's, not the app's, and still opens the classic
+HUD.
 
 **What is copied from the Garmin:**
 
