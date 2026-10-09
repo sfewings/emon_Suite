@@ -73,11 +73,11 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 
 Foundations, needed by the editor and worth doing on their own:
 
-- [ ] **TR-9:** Foreign keys enforced, and deleting a recording removes all of it
+- [x] **TR-9:** Foreign keys enforced, and deleting a recording removes all of it
 - [ ] **TR-10:** One recording service behind the triggers and the routes
 - [ ] **TR-11:** Publishing runs in the background and updates its own post
 - [ ] **TR-12:** Recording, artefact and post state kept apart
-- [ ] **TR-13:** Web UI runs on iOS 12
+- [x] **TR-13:** Web UI runs on iOS 12
 
 The editor:
 
@@ -1242,22 +1242,49 @@ ticked; crew names are offered from those used before
 ### TR-9: Foreign Keys Enforced, and Deleting a Recording Removes All of It
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09)
 **Description:** The schema declares `ON DELETE CASCADE` on every child table, but SQLite
-ignores it unless each connection turns foreign keys on, and `get_connection()` never does
+ignores it unless each connection turns foreign keys on, and `get_connection()` never did
 
 **Acceptance Criteria:**
 
-- [ ] `PRAGMA foreign_keys=ON` on every connection in `Database.get_connection()`
-- [ ] Deleting a recording removes its `recording_data`, `recording_images`,
-      `recording_exports` and `post_drafts` rows
-- [ ] It also removes `uploads/<id>/`, not only `plots/<id>/`
-- [ ] A one-off cleanup removes child rows already orphaned by past deletes
+- [x] `PRAGMA foreign_keys=ON` on every connection in `Database.get_connection()`,
+      except migrations, which pass `foreign_keys=False`
+- [x] Deleting a recording removes its `recording_data`, `recording_images` and
+      `recording_exports` rows (`post_drafts` joins the list when FR-24 adds it)
+- [x] The delete route also removes `uploads/<id>/`, not only `plots/<id>/`
+- [x] A one-off cleanup removes child rows already orphaned by past deletes, marked done
+      by the `orphans_removed` service setting so it never rescans `recording_data`
+- [x] Child tables left pointing at the dropped `recordings_old` are repaired
+- [x] A buffered row for a recording deleted meanwhile is dropped, not allowed to fail
+      the batch
+- [x] `tests/test_foreign_keys.py`
 
 **Implementation Notes:**
 
-- Today `delete_recording()` deletes only the `recordings` row. Every deleted recording
-  has left all of its MQTT rows in the database on the Pi's SD card.
+- Before this, `delete_recording()` deleted only the `recordings` row. Every deleted
+  recording has left all of its MQTT rows in the database on the Pi's SD card.
+- **The dangling reference, found while doing this.** The `processed` migration renames
+  `recordings` to `recordings_old`, creates the new table and drops the old one. Since
+  SQLite 3.26 a rename rewrites the `REFERENCES` in every child table to the new name
+  whether foreign keys are on or not, so `recording_data` and `recording_images` were
+  left referencing `"recordings_old"`, which the migration then dropped. With
+  enforcement off nothing noticed. With it on, every insert into `recording_data` fails
+  with `no such table: main.recordings_old`, which on the Pi would stop all recording.
+  Any database old enough to have taken that migration (Feb to Mar 2026) is affected.
+  - **Repair:** `_repair_dangling_references()` edits the stored `CREATE TABLE` text
+    under `PRAGMA writable_schema`, bumps `schema_version`, and requires
+    `PRAGMA integrity_check` to say `ok` before the transaction commits. No rows are
+    copied; on the Pi `recording_data` is most of the file.
+  - **Prevention:** migrations run with `PRAGMA legacy_alter_table=ON`, which stops the
+    rewrite.
+- **Why a bad row is dropped rather than retried:** `MessageBuffer._flush_buffer()` keeps
+  a failed batch and retries it. Once foreign keys are enforced, one row for a missing
+  recording would fail every flush from then on and block all recording. No code path
+  produces such a row today; the guard is there because the cost of being wrong is
+  every recording.
+- Verified on the dev rig (`dev/README.md`): a Frostbite replay produced two recordings;
+  deleting one through the API removed its 67,067 rows and left the other's 47,934.
 
 ---
 
@@ -1334,22 +1361,30 @@ field. The editor needs them separately
 ### TR-13: Web UI Runs on iOS 12
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09), with one recorded exception
 **Description:** The boat's iPad mini 3 is on iOS 12 and shows the racing app full time.
 Anything it opens has to run there
 
 **Acceptance Criteria:**
 
-- [ ] No optional chaining (`?.`) or nullish coalescing (`??`): Safari 13.1+
-- [ ] No `clamp()`, no flexbox `gap`, no `dvh` without a fallback ahead of it, the same
-      floor as the racing app (its CLAUDE.md and DESIGN 9.8.1)
-- [ ] A test that fails on any of these in `web_ui/`, as the racing app has
+- [x] No optional chaining (`?.`) or nullish coalescing (`??`): Safari 13.1+. Also
+      checked: `replaceAll`, `matchAll`, `Promise.allSettled`, `Array.at`,
+      `structuredClone`
+- [x] No `clamp()` or `dvh` without a fallback ahead of it
+- [x] No flexbox `gap`, except in `style.css` and `upload.html` (below)
+- [x] `tests/test_ios12_floor.py` checks every `.js` file and inline `<script>` and
+      `<style>` in `web_ui/`, so a new page is covered without being listed
 
 **Implementation Notes:**
 
-- `web_ui/app.js` uses `?.` on seven lines (241, 247, 248, 252, 307, 670, 909). On
-  iOS 12 that is a syntax error, so the whole dashboard script fails to load there.
-  `upload.js` is clean.
+- `web_ui/app.js` used `?.` on seven lines (241, 247, 248, 252, 307, 670, 909). On
+  iOS 12 that is a syntax error, so the whole dashboard script failed to load there.
+  `upload.js` was clean.
+- **The exception:** the dashboard's `style.css` and `upload.html` use flexbox `gap` in
+  17 places. iOS 12 ignores it rather than failing, so items lose their spacing and
+  nothing breaks, and both pages are being replaced by the event page (FR-27). They are
+  listed in `FLEX_GAP_LEGACY` in the test rather than reworked. Nothing new may join
+  that list.
 
 ---
 
