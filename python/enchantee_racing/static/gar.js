@@ -299,6 +299,7 @@
   };
 
   var needles = {
+    heel: new Needle("heel-line"),
     lwy: new Needle("lwy-line"),
     awa: new Needle("awa-needle"),
     twa: new Needle("twa-pointer"),
@@ -317,6 +318,51 @@
     });
   }
 
+  // --- the heel trail --------------------------------------------------------------------
+  //
+  // The solid heel line is the newest reading, eased like the needles. Behind it, the
+  // readings of the last HEEL_TRAIL_S, each fading with its age, so a roll shows as a fan
+  // and a steady heel as one line. Display only, so kept here and not on the server: a
+  // page opened mid-roll starts with no trail, which costs nothing.
+  //
+  // Each reading is keyed by when the server got it, which is the poll's clock less its
+  // age and stays put across polls, so a reading polled twice is one line not two. The
+  // lines are a fixed set made once and reused, rather than made and dropped per reading.
+
+  var HEEL_TRAIL_S = 15;
+  var HEEL_TRAIL_MAX = 24;        // the IMU sends at about 1 Hz, so room to spare
+  var heelTrail = [];             // {t, v}, oldest first
+  var heelLines = [];
+  (function () {
+    var g = $("heel-trail");
+    for (var i = 0; i < HEEL_TRAIL_MAX; i++) {
+      heelLines.push(el("line", { x1: -118, y1: 0, x2: 118, y2: 0, "class": "off" }, g));
+    }
+  }());
+
+  function paintHeelTrail(heel, now) {
+    if (live(heel)) {
+      var t = now - heel.age;
+      var last = heelTrail[heelTrail.length - 1];
+      // The same reading again, or y and z landing either side of a poll: one line.
+      if (last && Math.abs(t - last.t) < 0.3) last.v = heel.v;
+      else heelTrail.push({ t: t, v: heel.v });
+    }
+    while (heelTrail.length && (now - heelTrail[0].t > HEEL_TRAIL_S ||
+                                heelTrail.length > HEEL_TRAIL_MAX + 1)) {
+      heelTrail.shift();
+    }
+    // All but the newest, which is the solid line drawn over them.
+    var older = heelTrail.length - 1;
+    for (var i = 0; i < HEEL_TRAIL_MAX; i++) {
+      var line = heelLines[i], h = i < older ? heelTrail[older - 1 - i] : null;
+      if (!h) { line.setAttribute("class", "off"); continue; }
+      line.setAttribute("class", "");
+      line.setAttribute("transform", "rotate(" + h.v.toFixed(1) + ")");
+      line.setAttribute("opacity", (0.6 * (1 - (now - h.t) / HEEL_TRAIL_S)).toFixed(2));
+    }
+  }
+
   function paint(d) {
     var f = d.fields || {};
     Object.keys(CORNERS).forEach(function (k) {
@@ -327,6 +373,11 @@
     // Leeway is blanked by the server below a knot, where COG is noise (DESIGN 9.12).
     reading($("lwy"), d.leeway, fmtSigned, "---");
     needles.lwy.set(live(d.leeway) ? d.leeway.v : null, d.leeway && d.leeway.age > STALE_S);
+
+    // Heel, positive to starboard, and a positive rotation is clockwise on screen, so the
+    // starboard end of the line goes down as the starboard rail does.
+    needles.heel.set(live(d.heel) ? d.heel.v : null, d.heel && d.heel.age > STALE_S);
+    paintHeelTrail(d.heel, d.now / 1000);
 
     needles.awa.set(live(f.awa) ? f.awa.v : null, f.awa && f.awa.age > STALE_S);
     needles.twa.set(live(f.twa) ? f.twa.v : null, f.twa && f.twa.age > STALE_S);

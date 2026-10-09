@@ -1373,6 +1373,24 @@ most people use, flip which face the HUD cell opens first.
   of the wind readings. This uses the HUD's motor flag and its 10 s hold, with both sets
   pre-rendered (9.1). The dial still shows the wind, which is harmless, and the corners
   are where four wind numbers matter least when motoring.
+- **Heel:** a line across the dial's centre that tilts with the deck, starboard end down
+  when heeled to starboard, with the last 15 s of readings behind it as thinner lines
+  fading with their age. A steady heel is one line; a boat rolling is a fan whose width
+  is the roll. Violet by day, the one hue the dial had free, and a red at night like
+  everything else. It passes under the hull, the leeway circle and the AWS box, which hide
+  its middle, and stops short of the scale numbers.
+  Heel is `atan2(acc y, acc z)` from the anemometer node's IMU, which publishes
+  `imu/0/acc/{0,1,2}` (x, y, z, by index) in g already, so nothing changed on the sketch or in pyemonlib.
+  Derived in `store.py` like leeway, on `/api/state` as `heel`, not one of `FIELDS`.
+  **Signed by measurement, not by the axis convention:** over the 13 September Frostbite
+  race the median was +5.7 with the wind from port and -15.6 from starboard, so positive is
+  starboard, matching every other signed angle in the app, and a test holds the function
+  to that recording. The two tacks are not symmetric, which may be a zero offset in the
+  mounting or may be a windier tack; not corrected until it is known which. y and z are
+  separate topics from one packet, so one can be a packet ahead of the other for an
+  instant, which at 1 Hz is a fraction of a degree. The trail is kept by the page, not the
+  server: it is display rather than a setting, and a page opened mid-roll merely starts
+  without one.
 - **Racing:** the band shows the next mark's name, then SOG, distance and bearing, and
   the mark appears as a diamond on the rim. The band keeps the same size in every mode,
   so the dial never moves when the gun goes. The diamond is placed off the **heading**,

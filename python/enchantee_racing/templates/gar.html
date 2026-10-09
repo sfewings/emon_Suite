@@ -19,7 +19,8 @@
     shows drift, which needs speed through the water and this boat has no log, and leeway
     is also a thin line out of the bow, which is the track over the ground.
   - Added: SOG in the band underneath, which becomes the mark band while racing, with the
-    mark itself drawn on the dial; and the SevCon readings in the four corners while the
+    mark itself drawn on the dial; heel, as a line across the centre with the last 15 s
+    fading behind it; and the SevCon readings in the four corners while the
     motor turns, the same swap the HUD makes with its wind panels.
 
   Not self-contained, unlike hud.html, which inlines everything for a reason recorded in
@@ -66,6 +67,17 @@
           <circle class="face" r="200"/>
           <!-- the sectors, the ticks and the scale numbers, drawn by gar.js -->
           <g id="dial-scale"></g>
+
+          <!-- Heel: a line across the dial's centre that tilts with the deck, starboard
+               end down when heeled to starboard, and the last 15 s of it fading behind,
+               so the roll can be seen as well as the angle (DESIGN 9.12). Under the hull,
+               the inner circle and the box, which hide its middle, and short of the scale
+               numbers at its ends. gar.js fills the trail. -->
+          <g id="heel-trail" class="heel-trail"></g>
+          <g id="heel-line" class="heel off">
+            <line class="halo" x1="-118" y1="0" x2="118" y2="0"/>
+            <line x1="-118" y1="0" x2="118" y2="0"/>
+          </g>
           <path class="hull" d="M0,-112 C30,-80 44,-30 42,20 C40,60 32,90 26,104 L-26,104 C-32,90 -40,60 -42,20 C-44,-30 -30,-80 0,-112 Z"/>
 
           <!-- Leeway, where the Garmin shows drift: COG - HDG, signed (DESIGN 9.12). -->

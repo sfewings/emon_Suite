@@ -45,6 +45,10 @@ TOPICS = {
     "gps/speed/0": "sog",
     "gps/course/0": "cog",
     "imu/0/heading": "hdg",
+    # The accelerometer's y and z, in g, for heel on the GAR dial (DESIGN 9.12). Not
+    # FIELDS: heel is derived from them in store.py, as leeway is from cog and hdg.
+    "imu/0/acc/1": "accy",
+    "imu/0/acc/2": "accz",
     "anemometer/windSpeed/2": "tws",
     "anemometer/windDirection/2": "twd",
     "anemometer/windSpeed/1": "aws",
@@ -240,10 +244,15 @@ def demo_readings(tick: int) -> list:
     twd = 84.0 + wobble * 6.0
     tws = 19.5 + wobble * 1.2
     sog = 15.9 + wobble * 0.6
+    # Heeled to starboard, the wind being on the port side, and rolling faster than the
+    # rest wobbles so GAR's fading heel lines have something to show.
+    heel = math.radians(12.0 + math.sin(tick / 2.0) * 5.0)
     return [
         ("gps/speed/0", sog),
         ("gps/course/0", (hdg + 4.0) % 360.0),
         ("imu/0/heading", hdg),
+        ("imu/0/acc/1", math.sin(heel)),
+        ("imu/0/acc/2", math.cos(heel)),
         ("anemometer/windSpeed/2", tws),
         ("anemometer/windDirection/2", twd % 360.0),
         ("anemometer/windSpeed/1", tws + 6.0),
