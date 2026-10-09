@@ -168,7 +168,8 @@ def test_a_draft_is_offered_but_not_stored_until_the_first_edit(client, db, rid)
 
     assert draft["stored"] is False and draft["revision"] == 0
     assert draft["title"] == "Sunday race" and draft["excerpt"] == "Course 3"
-    assert draft["blocks"] == LAYOUT_TRACK_LOG
+    # The ship's log, approved as the default (FR-25)
+    assert draft["blocks"] == LAYOUT_SHIP_LOG
     assert db.get_draft(rid) is None
 
 
@@ -181,7 +182,7 @@ def test_saving_stores_the_draft_and_counts_the_revision(client, rid):
     assert (draft["stored"], draft["revision"], draft["title"], draft["crew"]) == \
         (True, 1, "Twilight", ["Ed"])
     # Untouched fields keep what the new draft started with
-    assert draft["blocks"] == LAYOUT_TRACK_LOG
+    assert draft["blocks"] == LAYOUT_SHIP_LOG
 
 
 def test_a_save_based_on_an_old_revision_is_refused_with_the_current_draft(client, rid):
@@ -212,10 +213,29 @@ def test_a_published_recordings_draft_cannot_change(client, db, rid):
 
 
 def test_the_layout_setting_chooses_what_a_new_draft_starts_as(db, service, rid):
-    db.set_setting("post_layout", "ship_log")
-    assert service.get_draft(rid)["blocks"] == LAYOUT_SHIP_LOG
-    db.set_setting("post_layout", "something else")
+    db.set_setting("post_layout", "track_log")
     assert service.get_draft(rid)["blocks"] == LAYOUT_TRACK_LOG
+    db.set_setting("post_layout", "something else")
+    assert service.get_draft(rid)["blocks"] == LAYOUT_SHIP_LOG
+
+
+def test_a_recording_with_no_draft_publishes_as_a_ships_log(db, service, rid, monkeypatch):
+    db.add_image(rid, __file__, ImageType.USER_UPLOAD, "a photo")
+    db.update_recording(rid, description="Out to Pt Walter")
+    wp = WordPressPublisher("http://wp.invalid", "u", "p")
+    sent = {}
+    monkeypatch.setattr(wp, "test_connection", lambda: (True, "ok"))
+    monkeypatch.setattr(wp, "upload_media", lambda path, caption=None, upload_name=None:
+                        {"id": 7, "url": "https://wp/a.jpg"})
+    monkeypatch.setattr(wp, "create_post", lambda **kw: sent.update(kw) or
+                        {"id": 1, "link": "https://wp/?p=1", "status": "publish",
+                         "modified_gmt": "t"})
+    service.wordpress_publisher = wp
+
+    service.publish(rid, auto_publish=True)
+
+    assert "Track Summary" not in sent["content"]
+    assert "<p>Out to Pt Walter</p>" in sent["content"]
 
 
 def test_the_preview_is_a_page_drawn_from_files_on_the_pi(client, db, rid, tmp_path):

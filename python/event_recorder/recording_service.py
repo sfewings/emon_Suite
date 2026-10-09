@@ -492,9 +492,13 @@ class RecordingService:
     # === Drafts (FR-24) ===
 
     def layout(self) -> str:
-        """The layout a new draft starts from: 'track_log' until FR-25 is approved."""
-        name = self.database.get_setting('post_layout', 'track_log')
-        return name if name in post_renderer.LAYOUTS else 'track_log'
+        """
+        The layout a new draft starts from, and a recording with no draft
+        publishes as: the ship's log (FR-25, approved 2026-10-09). The
+        `post_layout` setting can put 'track_log' back.
+        """
+        name = self.database.get_setting('post_layout', post_renderer.DEFAULT_LAYOUT)
+        return name if name in post_renderer.LAYOUTS else post_renderer.DEFAULT_LAYOUT
 
     def default_blocks(self) -> List[Dict]:
         return [dict(block) for block in post_renderer.LAYOUTS[self.layout()]]

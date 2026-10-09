@@ -968,8 +968,9 @@ class WordPressPublisher:
         draft: Dict = None
     ) -> str:
         """
-        The post's content, drawn by post_renderer (FR-24) from the draft's
-        blocks, or today's Track Log layout when there is no draft.
+        The post's content, drawn by post_renderer (FR-24) from the given
+        blocks. The service always passes them; the Track Log layout is only
+        the fallback for a direct caller that does not.
         """
         ctx = post_renderer.PostContext(
             recording_data, media=media_ids, statistics=statistics,

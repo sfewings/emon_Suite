@@ -49,8 +49,8 @@ MAP_STYLESHEETS = (
     'fontawesome',
 )
 
-# Today's post, block for block (FR-16 as it stood before FR-24). The default
-# until the ship's log layout is approved to replace it.
+# The post as it was, block for block (FR-16 as it stood before FR-24). Kept
+# so the post_layout setting can choose it.
 LAYOUT_TRACK_LOG = [
     {'type': 'track_summary'},
     {'type': 'crew_photos'},
@@ -77,6 +77,10 @@ LAYOUT_SHIP_LOG = [
 ]
 
 LAYOUTS = {'track_log': LAYOUT_TRACK_LOG, 'ship_log': LAYOUT_SHIP_LOG}
+
+# What a recording publishes as unless its draft or the post_layout setting
+# says otherwise. The ship's log since FR-25 was approved (2026-10-09).
+DEFAULT_LAYOUT = 'ship_log'
 
 
 class PostContext:

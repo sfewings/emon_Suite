@@ -82,7 +82,7 @@ Foundations, needed by the editor and worth doing on their own:
 The editor:
 
 - [x] **FR-24:** Post draft held as blocks, rendered once for preview and publish
-- [ ] **FR-25:** Ship's log default layout
+- [x] **FR-25:** Ship's log default layout
 - [ ] **FR-26:** Log lines filled in from the data
 - [ ] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
 - [ ] **FR-28:** Which recording the event page opens
@@ -810,28 +810,40 @@ WordPress block markup for both the preview and the published post
 ### FR-25: Ship's Log Default Layout
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented and made the default (2026-10-09, approved by the owner after
+reviewing the preview). Notes join with FR-29; the wind line is typed until FR-26
 **Description:** A new draft starts in the shape of the hand-written posts, with the
 recorder's data below the more-break instead of in front of the story
 
 **Acceptance Criteria:**
 
-- [ ] Default block order:
+- [x] Default block order (`post_renderer.LAYOUT_SHIP_LOG`):
   1. `log_lines`: crew, time and wind, each its own paragraph (FR-26)
-  2. the story paragraphs
-  3. photos and notes, in time order (FR-29)
+  2. `story`: the draft's story, a blank line between paragraphs; the recording's
+        description until there is one
+  3. `photos` (notes join here, in time order, with FR-29)
   4. `route_map`, the static chart PNG
   5. `more`
   6. `statistics`, `interactive_map`, `charts`, `downloads`
-- [ ] No `<h2>Track Summary</h2>` and no Date or Duration lines above the break; the
-      time line carries that
-- [ ] Headings appear only below the break, over the data sections
-- [ ] Photos render full width, `size-large`, uncaptioned unless a caption was typed
-- [ ] The more-break is always present and always above any `wp:html` block, because
+- [x] No `<h2>Track Summary</h2>` and no Date or Duration lines above the break; the
+      time line carries that, as `H:MM-H:MM` local
+- [x] Headings appear only below the break, over the data sections
+- [x] Photos render full width, `size-large`, uncaptioned unless a caption was typed
+- [x] The more-break is always present and always above any `wp:html` block, because
       the theme renders the homepage with `the_content()` and the map scripts collapse
       the listing without it (FR-16)
-- [ ] Featured image: kept as now (last crew photo, else the route map), since the
+- [x] Featured image: kept as now (last crew photo, else the route map), since the
       hand-written posts set none and the theme does not depend on it
+
+**Implementation Notes:**
+
+- The default applies to every new draft, and to a recording with no draft when it is
+  published. `post_renderer.DEFAULT_LAYOUT` is `'ship_log'`; the `post_layout` service
+  setting set to `'track_log'` puts the old post back, and an unknown value falls back to
+  the ship's log.
+- A recording published before this as a Track Log keeps that layout on enchantee.org.
+  If it is ever published again (TR-11 permitting), it goes out as a ship's log unless
+  its draft says otherwise.
 
 ---
 
@@ -1799,7 +1811,7 @@ Suggested order, each step useful without the next:
 4. **Computed lines and live mode:** FR-26 and FR-31
 
 - [x] Step 1: foundations (2026-10-09), plus the dev rig, `dev/README.md`
-- [ ] Step 2: draft and renderer
+- [x] Step 2: draft and renderer (2026-10-09), ship's log the default
 - [ ] Step 3: event page and Log link
 - [ ] Step 4: computed lines and live mode
 
