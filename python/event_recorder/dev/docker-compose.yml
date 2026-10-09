@@ -1,0 +1,40 @@
+# Event recorder on a Windows (or any Docker) development machine. See README.md here.
+#
+# The broker is not in this file. It is the racing app's replay broker, which is also
+# what replay.py publishes to, so a replayed sail reaches the recorder exactly as the
+# boat's own traffic would:
+#
+#   docker compose -f ../../enchantee_racing/tests/replay/docker-compose.yml up -d
+#
+# Event definitions are the boat's own, mounted read-only from provisioning, so the
+# triggers being tested are the ones that run on enchantee. The service config is a dev
+# copy (config/) with no WordPress credentials in it: nothing here can publish to
+# enchantee.org.
+
+services:
+  recorder:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile
+    image: event_recorder_dev
+    container_name: event_recorder_dev
+    ports:
+      - "5000:5000"
+    volumes:
+      - ..:/app/event_recorder
+      - ./config/event_recorder_config.yml:/config/event_recorder_config.yml:ro
+      - ../../../provisioning/enchantee/config/events:/config/events:ro
+      - ./data:/data
+    environment:
+      - TZ=Australia/Perth
+    command:
+      - python
+      - -m
+      - event_recorder.main
+      - --config
+      - /config/event_recorder_config.yml
+      - --events-dir
+      - /config/events
+      - --data-dir
+      - /data
+    restart: "no"

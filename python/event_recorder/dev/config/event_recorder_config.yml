@@ -1,0 +1,51 @@
+# Development copy of provisioning/enchantee/config/event_recorder_config.yml.
+#
+# Differences, and why:
+# - The broker is the host's, reached from the container as host.docker.internal: the
+#   racing app's replay broker on 1883.
+# - The chart basemap comes from the racing app on the host's 5002, if one is running.
+#   When it is not, route maps fall back to plain lat/lon axes, as on the boat.
+# - WordPress has no site_url, so the publisher is off and nothing can reach
+#   enchantee.org. The section has to exist: validate_config() requires it.
+
+service:
+  name: "Event Recorder (dev)"
+  mqtt_broker: "host.docker.internal"
+  mqtt_port: 1883
+  database_path: "/data/recordings.db"
+  plots_dir: "/data/plots"
+  timezone: "Australia/Perth"
+
+recording:
+  buffer_flush_interval: 5
+  max_buffer_size: 1000
+  min_recording_duration: 30
+  max_recording_duration: 86400
+  auto_publish: false
+
+charts:
+  enabled: true
+  base_url: "http://host.docker.internal:5002"
+  cache_dir: ""
+  timeout: 5
+
+plots:
+  dpi: 150
+  default_width: 12
+  default_height: 6
+  style: "seaborn-v0_8"
+  linewidth: 0.9
+
+wordpress:
+  default_site:
+    site_url: ""
+    publish_status: "draft"
+
+web:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
