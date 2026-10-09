@@ -208,9 +208,38 @@ def _crew_photos(block, ctx, state):
 
 
 def _photos(block, ctx, state):
-    """Crew photos as the hand-written posts show them: captioned only when typed."""
-    return ''.join(_image(m, m.get('caption', ''), default_alt='Photo')
-                   for m in ctx.photos)
+    """
+    Crew photos as the hand-written posts show them, captioned only when
+    typed, with the crew's notes among them as paragraphs: all in the order
+    they happened (FR-29). Undated photos keep their upload order, last.
+    """
+    items = [(_utc(m.get('taken_at')), 0, i, 'photo', m) for i, m in enumerate(ctx.photos)]
+    items += [(_utc(n.get('ts')), 1, i, 'note', n)
+              for i, n in enumerate(ctx.draft.get('notes') or []) if n.get('text')]
+    items.sort(key=lambda item: (item[0] is None, item[0] or datetime.min, item[1], item[2]))
+    out = ''
+    for _, _, _, kind, thing in items:
+        if kind == 'photo':
+            out += _image(thing, thing.get('caption', ''), default_alt='Photo')
+        else:
+            out += _paragraph(html.escape(thing['text']))
+    return out
+
+
+def _utc(value) -> Optional[datetime]:
+    """A stored or ISO 8601 time as naive UTC, for ordering; None if unreadable."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        stamp = value
+    else:
+        try:
+            stamp = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        except ValueError:
+            return None
+    if stamp.tzinfo:
+        stamp = stamp.astimezone(timezone.utc).replace(tzinfo=None)
+    return stamp
 
 
 def _log_lines(block, ctx, state):

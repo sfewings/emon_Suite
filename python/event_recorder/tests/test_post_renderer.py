@@ -276,7 +276,9 @@ def test_publishing_sends_the_drafts_title_excerpt_categories_and_blocks(
     assert sent["excerpt"] == "Short and sweet"
     assert sent["categories"] == ["Ship's Log", "Twilight"]
     assert re.findall(r"<p>(.*?)</p>", sent["content"])[0] == "Ed, Steve"
-    assert 'class="wp-image-7"' in sent["content"]
+    # The large size, not the full-size file: the publisher once dropped
+    # large_url between uploading and rendering, and only the class was checked
+    assert '<img src="https://wp/a-1024.jpg" alt="a photo" class="wp-image-7"/>' in sent["content"]
 
 
 if __name__ == "__main__":

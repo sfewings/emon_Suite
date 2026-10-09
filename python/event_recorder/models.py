@@ -335,6 +335,14 @@ class Database:
         if 'field_revisions' not in columns('post_drafts'):
             conn.execute("ALTER TABLE post_drafts ADD COLUMN field_revisions TEXT")
 
+        # FR-29: the crew's one-line notes, JSON [{ts, lat, lon, text}], and
+        # when each photo was taken, so both can be told in the order they
+        # happened
+        if 'notes' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN notes TEXT")
+        if 'taken_at' not in columns('recording_images'):
+            conn.execute("ALTER TABLE recording_images ADD COLUMN taken_at TIMESTAMP")
+
         def set_post_state(where, state, error_sql='NULL'):
             conn.execute(f"""
                 INSERT INTO post_drafts (recording_id, post_state, post_error)
@@ -837,7 +845,8 @@ class Database:
     # === Image Operations ===
 
     def add_image(self, recording_id: int, image_path: str,
-                 image_type: str = ImageType.PLOT, caption: str = None) -> int:
+                 image_type: str = ImageType.PLOT, caption: str = None,
+                 taken_at: datetime = None) -> int:
         """
         Add image to recording.
 
@@ -846,16 +855,28 @@ class Database:
             image_path: Path to image file
             image_type: 'plot' or 'user_upload'
             caption: Optional caption
+            taken_at: When a photo was taken, UTC (FR-29)
 
         Returns:
             int: Image ID
         """
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO recording_images (recording_id, image_path, image_type, caption)
-                VALUES (?, ?, ?, ?)
-            """, (recording_id, image_path, image_type, caption))
+                INSERT INTO recording_images (recording_id, image_path, image_type, caption, taken_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (recording_id, image_path, image_type, caption, taken_at))
             return cursor.lastrowid
+
+    def get_image(self, image_id: int) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM recording_images WHERE id = ?",
+                               (image_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_image_caption(self, image_id: int, caption: str):
+        with self.get_connection() as conn:
+            conn.execute("UPDATE recording_images SET caption = ? WHERE id = ?",
+                         (caption, image_id))
 
     def get_recording_images(self, recording_id: int) -> List[Dict]:
         """
@@ -874,6 +895,48 @@ class Database:
                 ORDER BY created_at
             """, (recording_id,))
             return [dict(row) for row in cursor.fetchall()]
+
+    def position_near(self, recording_id: int, when: datetime,
+                      window: timedelta) -> Optional[Tuple[float, float]]:
+        """
+        The recorded (lat, lon) nearest `when` (naive UTC), if a fix lies
+        within `window` of it (FR-29, placing a note on the track).
+
+        gps/position/0 first: lat and lon from one fix. The separate
+        latitude and longitude topics are the fallback, as everywhere else.
+        """
+        stamp = when.strftime('%Y-%m-%d %H:%M:%S.%f')
+
+        def nearest(conn, topic):
+            best = None
+            for comparison, order in (('<=', 'DESC'), ('>=', 'ASC')):
+                row = conn.execute(
+                    f"""SELECT timestamp, payload FROM recording_data
+                        WHERE recording_id = ? AND topic = ? AND timestamp {comparison} ?
+                        ORDER BY timestamp {order} LIMIT 1""",
+                    (recording_id, topic, stamp)).fetchone()
+                if row is None:
+                    continue
+                at = datetime.fromisoformat(str(row['timestamp']))
+                gap = abs(at - when)
+                if gap <= window and (best is None or gap < best[0]):
+                    best = (gap, row['payload'])
+            return best[1] if best else None
+
+        with self.get_connection() as conn:
+            payload = nearest(conn, 'gps/position/0')
+            if payload:
+                try:
+                    fix = json.loads(payload)
+                    return float(fix['lat']), float(fix['lon'])
+                except (ValueError, KeyError, TypeError):
+                    pass
+            lat = nearest(conn, 'gps/latitude/0')
+            lon = nearest(conn, 'gps/longitude/0')
+            try:
+                return (float(lat), float(lon)) if lat and lon else None
+            except ValueError:
+                return None
 
     def delete_image(self, image_id: int):
         """
@@ -1055,8 +1118,8 @@ class Database:
                     updated_at = excluded.updated_at
             """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
 
-    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks')
-    DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks')
+    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks', 'notes')
+    DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks', 'notes')
 
     def get_draft(self, recording_id: int) -> Optional[Dict]:
         """The stored draft (FR-24), lists decoded, or None if never saved."""
@@ -1077,6 +1140,19 @@ class Database:
                 "SELECT recording_id FROM post_drafts WHERE blocks IS NOT NULL")]
         return [self.get_draft(rid) for rid in ids]
 
+    def append_draft_note(self, recording_id: int, start: Dict, note: Dict) -> int:
+        """
+        Add a note to the draft (FR-29). The notes are read and written in one
+        transaction, so two devices adding notes at the same moment both keep
+        theirs, which saving the whole list from each would not.
+        """
+        def add(stored):
+            notes = list(stored.get('notes') or [])
+            notes.append(note)
+            notes.sort(key=lambda n: n.get('ts') or '')
+            return {'notes': notes}
+        return self.save_draft_fields(recording_id, start, add)
+
     def save_draft_fields(self, recording_id: int, start: Dict, changes: Dict) -> int:
         """
         Change some fields of a draft, whoever else has changed others (FR-27).
@@ -1089,7 +1165,9 @@ class Database:
 
         Args:
             start: The whole draft to begin from if none is stored yet
-            changes: {field: value}, draft fields only
+            changes: {field: value}, draft fields only; or a function given
+                the stored draft's fields that returns them, for a change
+                that depends on what is stored (append_draft_note)
 
         Returns:
             The draft's new revision
@@ -1099,8 +1177,16 @@ class Database:
             # otherwise both read revision n and both write n + 1
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                "SELECT blocks, revision, field_revisions FROM post_drafts WHERE recording_id = ?",
+                "SELECT * FROM post_drafts WHERE recording_id = ?",
                 (recording_id,)).fetchone()
+            if callable(changes):
+                if row is None or row['blocks'] is None:
+                    stored = dict(start)
+                else:
+                    stored = {f: row[f] for f in self.DRAFT_FIELDS}
+                    for f in self.DRAFT_JSON_FIELDS:
+                        stored[f] = json.loads(stored[f]) if stored[f] else []
+                changes = changes(stored)
             if row is None or row['blocks'] is None:
                 conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
                              (recording_id,))

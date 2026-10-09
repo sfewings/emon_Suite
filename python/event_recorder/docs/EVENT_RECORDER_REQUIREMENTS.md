@@ -86,7 +86,7 @@ The editor:
 - [ ] **FR-26:** Log lines filled in from the data
 - [ ] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
 - [ ] **FR-28:** Which recording the event page opens
-- [ ] **FR-29:** Photo and note capture
+- [x] **FR-29:** Photo and note capture
 - [ ] **FR-30:** Categories and crew from the site, offered not typed
 - [ ] **FR-31:** Live while recording
 
@@ -880,7 +880,7 @@ from the recording, shown filled in, and remain editable
 **Status:** 🔨 In progress (2026-10-09). Done: the page at `/log/` (`event_page.py`,
 `web_ui/log/`) with title, crew, time, wind, short description, story, categories,
 preview and publish; per-field autosave; the switcher; the back link (shown at
-`/race/log/` only). To come: photo and note capture (FR-29), the nginx route and the
+`/race/log/` only); photo and note capture (FR-29). To come: the nginx route and the
 racing app's link (racing DESIGN 9.13). Tests: `tests/test_event_page.py`
 
 **Progress notes:**
@@ -1031,7 +1031,33 @@ most likely to be, without asking
 ### FR-29: Photo and Note Capture
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09). `photos.py`, `event_page.py`, `web_ui/log/`;
+tests `tests/test_photos_notes.py`
+
+**Implementation Notes:**
+
+- **Photo button** is a `<label>` for an off-screen file input, not a button that clicks
+  it: a label's tap reaches the input on every iOS, a scripted click does not. `multiple`
+  is allowed; files go up one at a time with a count.
+- **Kept per photo:** the original, the `_web.jpg` copy (at most 2048 px, upright, JPEG,
+  which is the `image_path` stored and what goes to WordPress), and `thumbs/<name>.jpg`
+  (400 px) for the page. A PNG screenshot with transparency becomes an opaque JPEG. A
+  file Pillow cannot read is kept as it came, with no thumbnail.
+- **Taken at:** EXIF `DateTimeOriginal`, read as Perth time (fixed +8, no daylight
+  saving there) unless the photo carries `OffsetTimeOriginal`; the upload time
+  otherwise. Stored in the new `recording_images.taken_at`.
+- **Notes** are the draft's `notes` field, `[{ts, lat, lon, text}]`, kept in time order.
+  Adding one appends inside one write-locked transaction, so notes from two devices at
+  once are all kept (tested with six). The page edits, removes or moves a note into the
+  story by saving the field.
+- **Position** comes from the recording's own track: the `gps/position/0` fix nearest
+  the note's time, within two minutes, falling back to the split latitude and longitude
+  topics; none if no fix is that close.
+- **In the post**, the `photos` block tells photos and notes in the order they happened,
+  notes as plain paragraphs.
+- **Found doing it:** the publisher built its media list without `large_url`, so posts
+  were getting the full-size image despite FR-24. Fixed, and the FR-24 test now checks
+  the image URL rather than only the attachment class.
 **Description:** The two things the crew adds during a sail, a photo and a one-line note,
 each one tap from the top of the event page, each placed on the track by its time
 

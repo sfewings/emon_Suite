@@ -16,11 +16,11 @@ import json
 import logging
 import shutil
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from . import post_renderer
+from . import photos, post_renderer
 from .models import Artefacts, Database, ImageType, PostState, RecordingStatus
 
 logger = logging.getLogger(__name__)
@@ -462,7 +462,10 @@ class RecordingService:
                 images.append({
                     'path': str(img_path),
                     'caption': img.get('caption', ''),
-                    'image_type': img.get('image_type', ImageType.PLOT)
+                    'image_type': img.get('image_type', ImageType.PLOT),
+                    # When a photo was taken, or uploaded, to place it among
+                    # the notes (FR-29)
+                    'taken_at': img.get('taken_at') or img.get('created_at'),
                 })
             else:
                 logger.warning(f"Image file not found: {img_path}")
@@ -594,6 +597,7 @@ class RecordingService:
             'crew': [],
             'story': '',
             'wind': '',
+            'notes': [],
             'blocks': self.default_blocks(),
             'revision': 0,
             'stored': False,
@@ -644,6 +648,100 @@ class RecordingService:
             if not isinstance(block, dict) or block.get('type') not in post_renderer.BLOCK_TYPES:
                 raise RecordingError(f"Not a block: {block}", 400)
 
+    # === Photos and notes (FR-29) ===
+
+    PHOTO_TYPES = {'jpg', 'jpeg', 'png', 'gif', 'heic', 'heif'}
+    NOTE_LENGTH = 500
+
+    def _refuse_if_owned(self, recording_id: int) -> Dict:
+        recording = self._get(recording_id)
+        if recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
+            raise RecordingError('Recording is already published; change the post in WordPress', 409)
+        return recording
+
+    def add_photo(self, recording_id: int, upload, caption: str = '') -> int:
+        """
+        Keep a photo from the event page: the original, a web copy and a
+        thumbnail (photos.prepare), placed in time by when it was taken, or
+        by when it arrived if the photo does not say.
+
+        Args:
+            upload: A werkzeug FileStorage
+        """
+        from werkzeug.utils import secure_filename
+        self._refuse_if_owned(recording_id)
+
+        name = secure_filename(upload.filename or '') or 'photo.jpg'
+        if name.rsplit('.', 1)[-1].lower() not in self.PHOTO_TYPES:
+            raise RecordingError(f"Not a photo: {name}", 400)
+
+        directory = self.uploads_dir / str(recording_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
+        original = directory / f"{stamp}_{name}"
+        upload.save(str(original))
+
+        prepared = photos.prepare(original)
+        return self.database.add_image(
+            recording_id, str(prepared['web']), ImageType.USER_UPLOAD, caption or '',
+            taken_at=prepared['taken_at'] or datetime.utcnow())
+
+    def _photo(self, image_id: int) -> Dict:
+        image = self.database.get_image(image_id)
+        if not image or image['image_type'] != ImageType.USER_UPLOAD:
+            raise RecordingError('Photo not found', 404)
+        self._refuse_if_owned(image['recording_id'])
+        return image
+
+    def caption_photo(self, image_id: int, caption: str):
+        self._photo(image_id)
+        self.database.update_image_caption(image_id, caption or '')
+
+    def remove_photo(self, image_id: int):
+        image = self._photo(image_id)
+        photos.remove(Path(image['image_path']))
+        self.database.delete_image(image_id)
+
+    def add_note(self, recording_id: int, text: str, ts: Optional[str] = None) -> Dict:
+        """
+        Add a one-line note (FR-29). `ts` is when the crew opened the note
+        field, as the phone saw it (ISO 8601): the moment it is about, not
+        the moment typing finished. Placed on the recorded track at that time.
+        """
+        self._refuse_if_owned(recording_id)
+        text = (text or '').strip()
+        if not text:
+            raise RecordingError('A note needs some words', 400)
+        if len(text) > self.NOTE_LENGTH:
+            raise RecordingError(f'A note is one line: {self.NOTE_LENGTH} characters at most', 400)
+
+        when = self._parse_utc(ts) or datetime.utcnow()
+        position = self.position_at(recording_id, when)
+        note = {'ts': when.strftime('%Y-%m-%dT%H:%M:%SZ'), 'text': text,
+                'lat': position[0] if position else None,
+                'lon': position[1] if position else None}
+        self.database.append_draft_note(recording_id, self.get_draft(recording_id), note)
+        return note
+
+    @staticmethod
+    def _parse_utc(text: Optional[str]) -> Optional[datetime]:
+        if not text:
+            return None
+        try:
+            stamp = datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+        except ValueError:
+            return None
+        if stamp.tzinfo:
+            stamp = stamp.astimezone(timezone.utc).replace(tzinfo=None)
+        return stamp
+
+    # How far from a fix a note can be and still be placed at it
+    NOTE_FIX_WINDOW = timedelta(minutes=2)
+
+    def position_at(self, recording_id: int, when: datetime) -> Optional[tuple]:
+        """The recorded position nearest `when` (UTC), within two minutes, or None."""
+        return self.database.position_near(recording_id, when, self.NOTE_FIX_WINDOW)
+
     # enchantee.org's categories as surveyed on 2026-10-09, for the event page
     # until FR-30 fetches the live list; offered in this order
     KNOWN_CATEGORIES = ["Ship's Log", "Track Logs", "Twilight", "Club event", "Rottnest",
@@ -686,10 +784,20 @@ class RecordingService:
         timing = dict(recording)
         if active:
             timing['end_time'] = datetime.utcnow()
-        photos = [{'image_id': img['id'], 'url': media_url(img['image_path']),
-                   'caption': img.get('caption') or ''}
-                  for img in self.database.get_recording_images(rid)
-                  if img.get('image_type') == ImageType.USER_UPLOAD]
+        photo_list = []
+        for img in self.database.get_recording_images(rid):
+            if img.get('image_type') != ImageType.USER_UPLOAD:
+                continue
+            url = media_url(img['image_path'])
+            thumb = photos.thumb_path(Path(img['image_path']))
+            photo_list.append({
+                'image_id': img['id'],
+                'url': url,
+                'thumb_url': (f"uploads/{rid}/thumbs/{thumb.name}" if thumb.exists() else url),
+                'caption': img.get('caption') or '',
+                'taken_at': str(img.get('taken_at') or img.get('created_at') or ''),
+            })
+        photo_list.sort(key=lambda p: p['taken_at'])
 
         candidates = choice['candidates']
         if all(c['id'] != rid for c in candidates):
@@ -702,7 +810,7 @@ class RecordingService:
                                    .total_seconds()),
             'time_line': post_renderer.log_time_line(timing),
             'draft': draft,
-            'photos': photos,
+            'photos': photo_list,
             'candidates': [{key: c.get(key) for key in ('id', 'name', 'status', 'start_time', 'event_key')}
                            for c in candidates],
             'categories_available': self.categories_available(),

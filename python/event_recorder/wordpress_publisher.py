@@ -845,9 +845,13 @@ class WordPressPublisher:
                     media_ids.append({
                         'id': media_result['id'],
                         'url': media_result['url'],
+                        # The 1024 px size the post shows (FR-24)
+                        'large_url': media_result.get('large_url'),
                         'caption': image.get('caption', ''),
                         'image_type': image.get('image_type', 'plot'),
-                        'path': image['path']
+                        'path': image['path'],
+                        # Places a photo among the crew's notes (FR-29)
+                        'taken_at': image.get('taken_at'),
                     })
                 else:
                     failed_uploads.append(Path(image['path']).name)

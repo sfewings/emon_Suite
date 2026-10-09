@@ -126,6 +126,8 @@
         showCrew();
         showCategories();
         showPhotos();
+        showNotes();
+        $('capture').hidden = locked();
     }
 
     // Another device saved this field after this one did. Its text stands, as the later
@@ -197,11 +199,37 @@
         var photos = state.photos || [];
         var html = '';
         for (var i = 0; i < photos.length; i++) {
-            html += '<figure><img src="' + escapeHtml(photos[i].url) + '" alt="">' +
+            html += '<figure data-image="' + photos[i].image_id + '"><img src="' +
+                escapeHtml(photos[i].thumb_url) + '" alt="">' +
                 (photos[i].caption ? '<span class="caption">' + escapeHtml(photos[i].caption) +
                  '</span>' : '') + '</figure>';
         }
         $('photos').innerHTML = html || '<span class="hint">None yet</span>';
+    }
+
+    function noteTime(ts) {
+        var d = new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        var m = d.getMinutes();
+        return d.getHours() + ':' + (m < 10 ? '0' : '') + m;
+    }
+
+    function showNotes() {
+        // Not while one is being edited here: the poll would replace the text under
+        // the crew's fingers
+        if ($('notes').contains(document.activeElement)) return;
+        var notes = state.draft.notes || [];
+        var html = '';
+        for (var i = 0; i < notes.length; i++) {
+            html += '<div class="note" data-index="' + i + '">' +
+                '<span class="when">' + noteTime(notes[i].ts) + '</span>' +
+                '<input type="text" value="' + escapeHtml(notes[i].text) + '"' +
+                (locked() ? ' disabled' : '') + ' aria-label="Note">' +
+                (locked() ? '' : '<button type="button" class="link" data-act="story">Move into story</button>' +
+                 '<button type="button" class="link" data-act="remove">Remove</button>') +
+                '</div>';
+        }
+        $('notes').innerHTML = html || '<span class="hint">None yet</span>';
     }
 
     function showActions() {
@@ -376,6 +404,155 @@
         });
     }
 
+    // === Photos and notes (FR-29) ===
+
+    function status(text) { $('capture-status').textContent = text; }
+
+    function bindPhotos() {
+        var input = $('photo-input');
+        input.addEventListener('change', function () {
+            var files = Array.prototype.slice.call(input.files || []);
+            var done = 0;
+            function next() {
+                if (done === files.length) {
+                    input.value = '';
+                    status(files.length ? 'Photo added' + (files.length > 1 ? 's' : '') : '');
+                    refresh();
+                    return;
+                }
+                status('Uploading ' + (files.length > 1 ? (done + 1) + ' of ' + files.length : 'photo') + '…');
+                var form = new FormData();
+                form.append('file', files[done]);
+                api('api/photos/' + recordingId, { method: 'POST', body: form }).then(function (body) {
+                    if (!body.success) {
+                        status('Not added: ' + body.error);
+                        input.value = '';
+                        return;
+                    }
+                    done += 1;
+                    next();
+                }).catch(function () {
+                    status('Not added: no connection');
+                    input.value = '';
+                });
+            }
+            next();
+        });
+
+        var editing = null;
+        $('photos').addEventListener('click', function (e) {
+            var figure = e.target.closest ? e.target.closest('figure') : null;
+            if (!figure || locked()) return;
+            var id = parseInt(figure.getAttribute('data-image'), 10);
+            editing = null;
+            for (var i = 0; i < state.photos.length; i++) {
+                if (state.photos[i].image_id === id) editing = state.photos[i];
+            }
+            if (!editing) return;
+            $('photo-edit-img').src = editing.url;
+            $('photo-caption').value = editing.caption;
+            $('photo-edit').hidden = false;
+        });
+        $('photo-close').addEventListener('click', function () { $('photo-edit').hidden = true; });
+        $('photo-caption-save').addEventListener('click', function () {
+            if (!editing) return;
+            api('api/photos/' + recordingId + '/' + editing.image_id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ caption: $('photo-caption').value })
+            }).then(function (body) {
+                mark('photos', body.success ? 'Saved' : body.error, !body.success);
+                refresh();
+            });
+        });
+        $('photo-remove').addEventListener('click', function () {
+            if (!editing) return;
+            api('api/photos/' + recordingId + '/' + editing.image_id, { method: 'DELETE' })
+                .then(function (body) {
+                    mark('photos', body.success ? 'Removed' : body.error, !body.success);
+                    $('photo-edit').hidden = true;
+                    refresh();
+                });
+        });
+    }
+
+    function bindNotes() {
+        var openedAt = null;
+        var entry = $('note-entry');
+        var text = $('note-text');
+
+        $('note-button').addEventListener('click', function () {
+            // The moment the note is about is now, when it was thought of, not when
+            // the typing is finished
+            openedAt = new Date();
+            $('note-at').textContent = 'at ' + noteTime(openedAt.toISOString());
+            entry.hidden = false;
+            text.focus();
+        });
+        function close() {
+            entry.hidden = true;
+            text.value = '';
+            openedAt = null;
+        }
+        function add() {
+            if (!text.value.trim()) return close();
+            $('note-save').disabled = true;
+            api('api/notes/' + recordingId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text.value, ts: openedAt.toISOString() })
+            }).then(function (body) {
+                $('note-save').disabled = false;
+                if (!body.success) {
+                    status('Not added: ' + body.error);
+                    return;
+                }
+                close();
+                status('Note added');
+                refresh();
+            }).catch(function () {
+                $('note-save').disabled = false;
+                status('Not added: no connection. The note is still there to try again.');
+            });
+        }
+        $('note-save').addEventListener('click', add);
+        $('note-cancel').addEventListener('click', close);
+        text.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                add();
+            }
+        });
+
+        // Changing, removing or moving a note saves the notes field as a whole
+        function saveNotes(notes) {
+            state.draft.notes = notes;
+            return save('notes', notes);
+        }
+        $('notes').addEventListener('change', function (e) {
+            var row = e.target.closest ? e.target.closest('.note') : null;
+            if (!row) return;
+            var notes = (state.draft.notes || []).slice();
+            var i = parseInt(row.getAttribute('data-index'), 10);
+            notes[i] = Object.assign({}, notes[i], { text: e.target.value });
+            saveNotes(notes);
+        });
+        $('notes').addEventListener('click', function (e) {
+            var act = e.target.getAttribute('data-act');
+            var row = e.target.closest ? e.target.closest('.note') : null;
+            if (!act || !row) return;
+            var notes = (state.draft.notes || []).slice();
+            var i = parseInt(row.getAttribute('data-index'), 10);
+            var note = notes.splice(i, 1)[0];
+            if (act === 'story') {
+                var story = $('story');
+                story.value = story.value.replace(/\s+$/, '') + (story.value.trim() ? '\n\n' : '') + note.text;
+                save('story');
+            }
+            saveNotes(notes).then(function () { showNotes(); });
+        });
+    }
+
     // === Publishing ===
 
     function startPublish(asDraft) {
@@ -414,6 +591,8 @@
     bindTextFields();
     bindCrew();
     bindCategories();
+    bindPhotos();
+    bindNotes();
     bindPublish();
     bindSwitcher();
     load(true);

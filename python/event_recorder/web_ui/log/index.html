@@ -31,6 +31,26 @@
 
   <p id="locked" class="notice" hidden></p>
 
+  <!-- FR-29. The photo button is a label for the file input rather than a button that
+       clicks it: a label's tap reaches a hidden file input on every iOS, a scripted
+       click does not. On iOS, accept="image/*" offers the camera or the library and
+       hands over HEIC as JPEG. -->
+  <div id="capture" class="capture">
+    <label class="button big" for="photo-input">&#128247; Photo</label>
+    <input id="photo-input" class="offscreen" type="file" accept="image/*" multiple>
+    <button id="note-button" class="button big" type="button">&#9998; Note</button>
+  </div>
+  <div id="note-entry" class="field" hidden>
+    <input id="note-text" type="text" maxlength="500" autocomplete="off"
+           placeholder="Dolphins at the bridge" aria-label="Note">
+    <span id="note-at" class="hint"></span>
+    <div>
+      <button id="note-save" class="button" type="button">Add note</button>
+      <button id="note-cancel" class="link" type="button">Cancel</button>
+    </div>
+  </div>
+  <p id="capture-status" class="hint"></p>
+
   <label class="field">
     <span class="label">Title <span class="saved" data-saved="title"></span></span>
     <input id="title" data-field="title" type="text" autocomplete="off">
@@ -70,8 +90,21 @@
   </label>
 
   <div class="field">
-    <span class="label">Photos</span>
+    <span class="label">Notes <span class="saved" data-saved="notes"></span></span>
+    <div id="notes"></div>
+  </div>
+
+  <div class="field">
+    <span class="label">Photos <span class="saved" data-saved="photos"></span></span>
     <div id="photos" class="photos"></div>
+    <div id="photo-edit" class="photo-edit" hidden>
+      <img id="photo-edit-img" alt="">
+      <input id="photo-caption" type="text" autocomplete="off" placeholder="Caption (optional)"
+             aria-label="Caption">
+      <button id="photo-caption-save" class="button" type="button">Save caption</button>
+      <button id="photo-remove" class="link" type="button">Remove photo</button>
+      <button id="photo-close" class="link" type="button">Done</button>
+    </div>
   </div>
 
   <div class="field">
