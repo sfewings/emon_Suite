@@ -255,6 +255,14 @@ class RecordingService:
 
         def run():
             try:
+                # One button on the event page: a recording not yet processed,
+                # or processed before it changed, is drawn first
+                if self.database.get_recording(recording_id)['artefacts'] != Artefacts.FRESH:
+                    progress('Drawing the charts', 0, 0)
+                    results = self.process(recording_id)
+                    if results.get('status') != 'success':
+                        raise RecordingError(
+                            f"Could not draw the charts: {results.get('error', 'processing failed')}", 500)
                 post = self.publish(recording_id, progress=progress, **options)
                 outcome = {'state': 'done', 'step': 'Published', 'post': post}
             except RecordingError as e:
@@ -599,19 +607,7 @@ class RecordingService:
         WordPress already has the post (Q5). Unknown fields are refused
         (400), so a typo is an error rather than a change that vanishes.
         """
-        recording = self._get(recording_id)
-        if recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
-            raise RecordingError('Recording is already published; change the post in WordPress', 409)
-
-        unknown = set(changes) - set(self.database.DRAFT_FIELDS)
-        if unknown:
-            raise RecordingError(f"Not draft fields: {', '.join(sorted(unknown))}", 400)
-        for field in ('categories', 'crew', 'blocks'):
-            if field in changes and not isinstance(changes[field], list):
-                raise RecordingError(f"{field} must be a list", 400)
-        for block in changes.get('blocks', []):
-            if not isinstance(block, dict) or block.get('type') not in post_renderer.BLOCK_TYPES:
-                raise RecordingError(f"Not a block: {block}", 400)
+        self._check_draft_changes(recording_id, changes)
 
         draft = self.get_draft(recording_id)
         draft.update(changes)
@@ -622,6 +618,105 @@ class RecordingService:
                 f"The draft was changed elsewhere (now revision {current['revision']}, "
                 f"this edit was based on {base_revision})", 409)
         return self.get_draft(recording_id)
+
+    def save_draft_fields(self, recording_id: int, changes: Dict) -> Dict:
+        """
+        Save some fields from the event page (FR-27). Unlike save_draft there
+        is no revision to match: each field keeps its own, so another
+        device's edit of a different field is never undone, and the later of
+        two edits of one field stands.
+        """
+        self._check_draft_changes(recording_id, changes)
+        self.database.save_draft_fields(recording_id, self.get_draft(recording_id), changes)
+        return self.get_draft(recording_id)
+
+    def _check_draft_changes(self, recording_id: int, changes: Dict):
+        recording = self._get(recording_id)
+        if recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
+            raise RecordingError('Recording is already published; change the post in WordPress', 409)
+        unknown = set(changes) - set(self.database.DRAFT_FIELDS)
+        if unknown:
+            raise RecordingError(f"Not draft fields: {', '.join(sorted(unknown))}", 400)
+        for field in ('categories', 'crew', 'blocks'):
+            if field in changes and not isinstance(changes[field], list):
+                raise RecordingError(f"{field} must be a list", 400)
+        for block in changes.get('blocks', []):
+            if not isinstance(block, dict) or block.get('type') not in post_renderer.BLOCK_TYPES:
+                raise RecordingError(f"Not a block: {block}", 400)
+
+    # enchantee.org's categories as surveyed on 2026-10-09, for the event page
+    # until FR-30 fetches the live list; offered in this order
+    KNOWN_CATEGORIES = ["Ship's Log", "Track Logs", "Twilight", "Club event", "Rottnest",
+                        "Dolphins", "Whales", "Maintenance", "No Sail", "Arduino"]
+
+    def categories_available(self) -> List[str]:
+        cached = self.database.get_setting('wp_categories')
+        if cached:
+            try:
+                return json.loads(cached)
+            except ValueError:
+                pass
+        return list(self.KNOWN_CATEGORIES)
+
+    def crew_suggestions(self) -> List[str]:
+        """Names from earlier drafts, the most often sailed first (FR-26)."""
+        counts = {}
+        for draft in self.database.get_all_drafts():
+            for name in draft.get('crew') or []:
+                counts[name] = counts.get(name, 0) + 1
+        return sorted(counts, key=lambda name: (-counts[name], name.lower()))
+
+    def page_state(self, recording_id: Optional[int],
+                   media_url: Callable[[str], str]) -> Dict:
+        """
+        Everything the event page shows, in one answer, so a poll is one
+        request. With no id, FR-28 chooses the recording.
+        """
+        choice = self.editor_choice()
+        if recording_id:
+            recording = self._get(recording_id)
+        else:
+            recording = choice['recording']
+        if recording is None:
+            return {'recording': None, 'candidates': []}
+        rid = recording['id']
+
+        draft = self.get_draft(rid)
+        active = recording['status'] == RecordingStatus.ACTIVE
+        timing = dict(recording)
+        if active:
+            timing['end_time'] = datetime.utcnow()
+        photos = [{'image_id': img['id'], 'url': media_url(img['image_path']),
+                   'caption': img.get('caption') or ''}
+                  for img in self.database.get_recording_images(rid)
+                  if img.get('image_type') == ImageType.USER_UPLOAD]
+
+        candidates = choice['candidates']
+        if all(c['id'] != rid for c in candidates):
+            candidates = [recording] + candidates
+        return {
+            'recording': {key: recording.get(key) for key in (
+                'id', 'name', 'status', 'stage', 'artefacts', 'post_state', 'post_error',
+                'start_time', 'end_time', 'event_key', 'wordpress_url')},
+            'elapsed_seconds': int((self._started_end(timing) - self._started(recording))
+                                   .total_seconds()),
+            'time_line': post_renderer.log_time_line(timing),
+            'draft': draft,
+            'photos': photos,
+            'candidates': [{key: c.get(key) for key in ('id', 'name', 'status', 'start_time', 'event_key')}
+                           for c in candidates],
+            'categories_available': self.categories_available(),
+            'crew_suggestions': self.crew_suggestions(),
+            'publish_job': self.publish_job(rid),
+            'can_publish': (bool(self.wordpress_publisher) and not active
+                            and recording['post_state'] not in PostState.OWNED_BY_WORDPRESS),
+        }
+
+    def _started_end(self, recording: Dict) -> datetime:
+        end = recording.get('end_time')
+        if not end:
+            return self._started(recording)
+        return end if isinstance(end, datetime) else datetime.fromisoformat(str(end))
 
     def preview(self, recording_id: int, media_url: Callable[[str], str],
                 layout: Optional[str] = None) -> str:

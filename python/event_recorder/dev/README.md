@@ -72,6 +72,14 @@ between the recording's draft and the two layouts, Track Log (today's post) and 
 Log (FR-25). The dashed line is the more-break: the enchantee.org home page shows only
 what is above it.
 
+## The event page
+
+<http://localhost:5000/log/> is the page the crew will use from the racing app. With no
+`?id=` it opens what FR-28 chooses: the anchor recording if one is running, otherwise
+the latest unpublished outing. Open it in two browser windows to see two devices
+editing at once. The back link to the racing app only appears at `/race/log/`, which
+needs the nginx route this rig does not have yet.
+
 ## Run the tests
 
 ```bash
@@ -82,6 +90,8 @@ MSYS_NO_PATHCONV=1 docker exec -e TZ=UTC -w /app event_recorder_dev \
                      event_recorder/tests/test_publish.py \
                      event_recorder/tests/test_status_split.py \
                      event_recorder/tests/test_post_renderer.py \
+                     event_recorder/tests/test_editor_choice.py \
+                     event_recorder/tests/test_event_page.py \
                      event_recorder/tests/test_chart_map.py \
                      event_recorder/tests/test_gps_position.py
 ```

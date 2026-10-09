@@ -1,0 +1,131 @@
+/* Event page (FR-27). iOS 12 floor: no flexbox gap, no clamp(), inputs at least 16 px. */
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    background: #f4f1ec;
+    color: #1d1d1d;
+    font: 17px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Stays at the top as the page scrolls, so the way back is always one tap away */
+#bar {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    padding-top: calc(8px + env(safe-area-inset-top));
+    background: #7a1a1a;
+    color: #fff;
+}
+#bar > * { margin-right: 12px; }
+#bar > *:last-child { margin-right: 0; }
+
+#back {
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 10px 12px 10px 0;
+    white-space: nowrap;
+}
+#state { flex: 1; font-variant-numeric: tabular-nums; }
+#state .rec { color: #ff8a80; }
+#switcher { font-size: 16px; max-width: 45%; }
+
+main, #empty { max-width: 720px; margin: 0 auto; padding: 8px 16px 48px; }
+
+.field { display: block; margin: 18px 0; }
+.label { display: block; font-weight: 600; margin-bottom: 6px; }
+.saved { font-weight: normal; color: #2e7d32; font-size: 14px; margin-left: 6px; }
+.saved.error { color: #b00020; }
+
+input[type="text"], textarea, select {
+    font-size: 17px;            /* 16 or more, or iOS zooms on focus */
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #b9b2a8;
+    border-radius: 8px;
+    background: #fff;
+    color: inherit;
+}
+textarea { resize: vertical; min-height: 9em; }
+input:disabled, textarea:disabled { background: #ece8e2; color: #666; }
+
+.readout { display: block; padding: 4px 0; }
+
+.other {
+    display: block;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #fff4d6;
+    font-size: 15px;
+}
+.other:empty { display: none; }
+.other button { margin-top: 6px; }
+
+.chips { margin-bottom: 8px; }
+.chip {
+    display: inline-block;
+    margin: 0 8px 8px 0;
+    padding: 8px 14px;
+    min-height: 44px;
+    box-sizing: border-box;
+    border: 1px solid #7a1a1a;
+    border-radius: 22px;
+    background: #fff;
+    color: #7a1a1a;
+    font: inherit;
+}
+.chip[aria-pressed="true"] { background: #7a1a1a; color: #fff; }
+.chip .x { margin-left: 8px; font-weight: bold; }
+
+/* Grid gap is fine on iOS 12; it is flexbox gap that is not */
+.photos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    grid-gap: 8px;
+}
+.photos img { width: 100%; height: 96px; object-fit: cover; border-radius: 6px; display: block; }
+.photos .caption { font-size: 13px; color: #555; }
+
+.actions { margin-top: 28px; }
+.button {
+    display: inline-block;
+    min-height: 48px;
+    margin: 0 10px 10px 0;
+    padding: 12px 22px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 8px;
+    background: #7a1a1a;
+    color: #fff;
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+    text-decoration: none;
+}
+.button.secondary { background: #fff; color: #7a1a1a; border: 2px solid #7a1a1a; }
+.button:disabled { background: #b9b2a8; }
+
+.link {
+    border: 0;
+    background: none;
+    color: #7a1a1a;
+    text-decoration: underline;
+    font: inherit;
+    padding: 8px 0;
+}
+.link:disabled { color: #999; }
+
+.hint { color: #555; font-size: 15px; margin: 4px 0; }
+.notice { background: #fff4d6; padding: 10px 12px; border-radius: 8px; }
+
+[hidden] { display: none !important; }

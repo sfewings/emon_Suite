@@ -329,6 +329,12 @@ class Database:
                            "revision INTEGER NOT NULL DEFAULT 0"):
                 conn.execute(f"ALTER TABLE post_drafts ADD COLUMN {column}")
 
+        # FR-27: the revision at which each field last changed, JSON
+        # {field: revision}, so the event page can save one field without
+        # disturbing another device's edit of a different one
+        if 'field_revisions' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN field_revisions TEXT")
+
         def set_post_state(where, state, error_sql='NULL'):
             conn.execute(f"""
                 INSERT INTO post_drafts (recording_id, post_state, post_error)
@@ -1061,7 +1067,62 @@ class Database:
         for field in self.DRAFT_JSON_FIELDS:
             draft[field] = json.loads(draft[field]) if draft[field] else []
         draft['revision'] = ref['revision']
+        draft['field_revisions'] = json.loads(ref['field_revisions']) if ref.get('field_revisions') else {}
         return draft
+
+    def get_all_drafts(self) -> List[Dict]:
+        """Every stored draft, for what the crew have written before (FR-26, FR-30)."""
+        with self.get_connection() as conn:
+            ids = [row[0] for row in conn.execute(
+                "SELECT recording_id FROM post_drafts WHERE blocks IS NOT NULL")]
+        return [self.get_draft(rid) for rid in ids]
+
+    def save_draft_fields(self, recording_id: int, start: Dict, changes: Dict) -> int:
+        """
+        Change some fields of a draft, whoever else has changed others (FR-27).
+
+        The event page saves one field at a time from more than one device.
+        Each field records the revision it last changed at; a save touches
+        only its own fields, so the phone's title and the iPad's story never
+        undo each other. Two saves of the same field: the later one stands,
+        and the field's revision tells the other device it was overtaken.
+
+        Args:
+            start: The whole draft to begin from if none is stored yet
+            changes: {field: value}, draft fields only
+
+        Returns:
+            The draft's new revision
+        """
+        with self.get_connection() as conn:
+            # The write lock before the read: two saves at once would
+            # otherwise both read revision n and both write n + 1
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT blocks, revision, field_revisions FROM post_drafts WHERE recording_id = ?",
+                (recording_id,)).fetchone()
+            if row is None or row['blocks'] is None:
+                conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
+                             (recording_id,))
+                fields = dict(start, **changes)
+                revisions = {}
+                revision = (row['revision'] if row else 0) + 1
+            else:
+                fields = dict(changes)
+                revisions = json.loads(row['field_revisions']) if row['field_revisions'] else {}
+                revision = row['revision'] + 1
+            for field in changes:
+                revisions[field] = revision
+
+            names = [f for f in self.DRAFT_FIELDS if f in fields]
+            values = [json.dumps(fields[f] or []) if f in self.DRAFT_JSON_FIELDS else fields[f]
+                      for f in names]
+            sets = ''.join(f"{f} = ?, " for f in names)
+            conn.execute(
+                f"""UPDATE post_drafts SET {sets}revision = ?, field_revisions = ?, updated_at = ?
+                    WHERE recording_id = ?""",
+                (*values, revision, json.dumps(revisions), datetime.utcnow(), recording_id))
+            return revision
 
     def save_draft(self, recording_id: int, draft: Dict, base_revision: int) -> Optional[int]:
         """

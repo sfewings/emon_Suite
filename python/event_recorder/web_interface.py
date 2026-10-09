@@ -17,6 +17,7 @@ from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
 from .models import Database, ImageType, PostState, RecordingStatus
+from .event_page import create_event_page
 from .recording_service import RecordingError, RecordingService
 from .wordpress_publisher import WordPressPublisher
 
@@ -135,6 +136,9 @@ class WebInterface:
 
         # Register routes
         self._register_routes()
+
+        # The event page, at /log (FR-27)
+        self.app.register_blueprint(create_event_page(self))
 
         logger.info(f"WebInterface initialized (port={port})")
 

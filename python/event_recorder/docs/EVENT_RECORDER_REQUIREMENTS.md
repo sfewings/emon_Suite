@@ -877,7 +877,27 @@ from the recording, shown filled in, and remain editable
 ### FR-27: Event Page at `/race/log/`
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** 🔨 In progress (2026-10-09). Done: the page at `/log/` (`event_page.py`,
+`web_ui/log/`) with title, crew, time, wind, short description, story, categories,
+preview and publish; per-field autosave; the switcher; the back link (shown at
+`/race/log/` only). To come: photo and note capture (FR-29), the nginx route and the
+racing app's link (racing DESIGN 9.13). Tests: `tests/test_event_page.py`
+
+**Progress notes:**
+
+- **Per field, not per draft.** `post_drafts.field_revisions` holds the revision each
+  field last changed at, and `PUT log/api/draft/<id>` saves only the fields it names
+  under a write lock, so different fields from two devices never undo each other and,
+  for one field, the later save stands. The page compares each field's revision on every
+  5 s poll: overtaken while idle, it takes the other device's text and offers its own
+  back ("Put that back"); overtaken mid-edit, it shows the other text and lets the edit
+  carry on, to land as the later save.
+- **One Publish button.** A recording not yet processed, or processed before it
+  changed, is drawn first, inside the same background job ("Drawing the charts"). The
+  dashboard's Publish gains this too.
+- **The categories** are enchantee.org's surveyed list until FR-30 fetches the live one.
+- **Crew suggestions** come from earlier drafts, most-sailed first. Names from past posts
+  on the site come with FR-30.
 **Description:** One page, built for a phone and for the iPad that shows the racing app full
 time, where the crew edits the post for the current sail. It replaces `upload.html`
 

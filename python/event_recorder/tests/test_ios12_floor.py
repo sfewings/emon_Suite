@@ -43,25 +43,27 @@ def _without_strings_and_comments(js):
 
 
 def _scripts():
-    for path in sorted(WEB_UI.glob("*.js")):
+    for path in sorted(WEB_UI.rglob("*.js")):
         yield path.name, path.read_text(encoding="utf-8")
-    for path in sorted(WEB_UI.glob("*.html")):
+    for path in sorted(WEB_UI.rglob("*.html")):
         text = path.read_text(encoding="utf-8")
         for i, block in enumerate(re.findall(r"<script\b[^>]*>(.*?)</script>", text, re.S)):
             yield "%s <script> %d" % (path.name, i + 1), block
 
 
 def _stylesheets():
-    for path in sorted(WEB_UI.glob("*.css")):
+    for path in sorted(WEB_UI.rglob("*.css")):
         yield path.name, path.read_text(encoding="utf-8")
-    for path in sorted(WEB_UI.glob("*.html")):
+    for path in sorted(WEB_UI.rglob("*.html")):
         text = path.read_text(encoding="utf-8")
         for block in re.findall(r"<style\b[^>]*>(.*?)</style>", text, re.S):
             yield path.name, block
 
 
 def test_there_are_scripts_to_check():
-    assert any(True for _ in _scripts())
+    names = [name for name, _ in _scripts()]
+    # rglob, so the event page under log/ is held to the floor with the rest
+    assert "log.js" in names
 
 
 def test_no_script_uses_javascript_newer_than_safari_12():
