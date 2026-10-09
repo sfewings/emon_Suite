@@ -16,10 +16,12 @@
     is labelled T or M, because every angle here is true (DESIGN 9.3); the colours are the
     HUD's, on black, with the night theme like every other screen; TWA is a pointer on the
     rim as well as a number; the inner circle carries leeway (COG - HDG) where the Garmin
-    shows drift, which needs speed through the water and this boat has no log.
+    shows drift, which needs speed through the water and this boat has no log, and leeway
+    is also a thin line out of the bow, which is the track over the ground.
   - Added: SOG in the band underneath, which becomes the mark band while racing, with the
-    mark itself drawn on the dial; and the SevCon readings in the four corners while the
-    motor turns, the same swap the HUD makes with its wind panels.
+    mark itself drawn on the dial; heel, as a line across the centre with the last 15 s
+    fading behind it; and the SevCon readings while the motor turns, which take the
+    corners and move the wind to smaller slots beside them rather than off the screen.
 
   Not self-contained, unlike hud.html, which inlines everything for a reason recorded in
   DESIGN 9.1 that does not apply here. This page takes static/app.css, theme.js and
@@ -65,6 +67,17 @@
           <circle class="face" r="200"/>
           <!-- the sectors, the ticks and the scale numbers, drawn by gar.js -->
           <g id="dial-scale"></g>
+
+          <!-- Heel: a line across the dial's centre that tilts with the deck, starboard
+               end down when heeled to starboard, and the last 15 s of it fading behind,
+               so the roll can be seen as well as the angle (DESIGN 9.12). Under the hull,
+               the inner circle and the box, which hide its middle, and short of the scale
+               numbers at its ends. gar.js fills the trail. -->
+          <g id="heel-trail" class="heel-trail"></g>
+          <g id="heel-line" class="heel off">
+            <line class="halo" x1="-118" y1="0" x2="118" y2="0"/>
+            <line x1="-118" y1="0" x2="118" y2="0"/>
+          </g>
           <path class="hull" d="M0,-112 C30,-80 44,-30 42,20 C40,60 32,90 26,104 L-26,104 C-32,90 -40,60 -42,20 C-44,-30 -30,-80 0,-112 Z"/>
 
           <!-- Leeway, where the Garmin shows drift: COG - HDG, signed (DESIGN 9.12). -->
@@ -77,6 +90,17 @@
           <text class="g-val aws" id="aws" x="0" y="64" text-anchor="middle" font-size="42">--.-</text>
           <text class="g-lbl" x="0" y="82" text-anchor="middle" font-size="12">AWS kt</text>
 
+          <!-- Leeway again, as a line out of the bow at that angle. The dial is heading-up,
+               so the line is where the boat is going over the ground; the mark diamond is
+               placed off the heading too, so the line on the diamond is making good for
+               the mark (DESIGN 9.12). Thin, and under the needles, which matter more. It
+               runs past the rim so it is not lost in the 0 tick. The halo underneath is
+               the outline the other markers get from their stroke. -->
+          <g id="lwy-line" class="leeway off">
+            <line class="halo" x1="0" y1="-112" x2="0" y2="-214"/>
+            <line x1="0" y1="-112" x2="0" y2="-214"/>
+          </g>
+
           <!-- Over everything else on the dial, mark last, which is the thing being steered
                for. Each is drawn pointing at the bow and rotated by gar.js. -->
           <g id="awa-needle" class="needle off"><polygon points="-8,-116 8,-116 0,-192"/></g>
@@ -84,24 +108,40 @@
           <g id="mark-diamond" class="diamond off"><polygon points="0,-216 13,-200 0,-184 -13,-200"/></g>
         </g>
 
-        <!-- The four corners. Two sets of rows, the wind and the motor, both pre-rendered
-             and one hidden, which is the HUD's idiom for the same swap (DESIGN 9.1).
-             gar.js positions each corner and fits the values to its width. -->
+        <!-- Eight readings in four pairs, one pair to a corner: TWD and RPM, AWA and AMP,
+             TWS and CTRL, TWA and MOT. Each corner has a large slot against the edge of
+             the screen and a smaller one towards the middle, under a top corner and above
+             a bottom one. Sailing, the wind is large and the motor hidden; while the motor
+             turns, the two swap slots, the motor large and the wind small, so nothing
+             leaves the screen (DESIGN 9.12). gar.js places each reading in its slot and
+             fits its value to the width. Beside the dial the small slots have a whole
+             column; upright on a phone they are the dial square's corners outside the rim,
+             which is why their size is per layout. -->
         <g class="corner" id="c-tl" data-side="left">
-          <g data-mode="sail"><text class="g-lbl c-lbl">TWD</text><text class="g-val c-val twd" id="twd">---</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">RPM</text><text class="g-val c-val rpm" id="rpm">---</text></g>
+          <text class="g-lbl c-lbl">TWD</text><text class="g-val c-val twd" id="twd">---</text>
         </g>
         <g class="corner" id="c-tr" data-side="right">
-          <g data-mode="sail"><text class="g-lbl c-lbl">AWA</text><text class="g-val c-val awa" id="awa">---</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">AMP</text><text class="g-val c-val cur" id="cur">--.-</text></g>
+          <text class="g-lbl c-lbl">AWA</text><text class="g-val c-val awa" id="awa">---</text>
         </g>
         <g class="corner" id="c-bl" data-side="left">
-          <g data-mode="sail"><text class="g-lbl c-lbl">TWS kt</text><text class="g-val c-val tws" id="tws">--.-</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">CTRL &#176;C</text><text class="g-val c-val ctrl" id="ctrl">---</text></g>
+          <text class="g-lbl c-lbl">TWS kt</text><text class="g-val c-val tws" id="tws">--.-</text>
         </g>
         <g class="corner" id="c-br" data-side="right">
-          <g data-mode="sail"><text class="g-lbl c-lbl">TWA</text><text class="g-val c-val twa" id="twa">---</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">MOT &#176;C</text><text class="g-val c-val mot" id="mot">---</text></g>
+          <text class="g-lbl c-lbl">TWA</text><text class="g-val c-val twa" id="twa">---</text>
+        </g>
+        <!-- The SevCon's four, pre-rendered and hidden by a class until the motor turns,
+             the HUD's idiom (DESIGN 9.1). -->
+        <g class="corner off" id="m-tl" data-side="left">
+          <text class="g-lbl c-lbl">RPM</text><text class="g-val c-val rpm" id="rpm">---</text>
+        </g>
+        <g class="corner off" id="m-tr" data-side="right">
+          <text class="g-lbl c-lbl">AMP</text><text class="g-val c-val cur" id="cur">--.-</text>
+        </g>
+        <g class="corner off" id="m-bl" data-side="left">
+          <text class="g-lbl c-lbl">CTRL &#176;C</text><text class="g-val c-val ctrl" id="ctrl">---</text>
+        </g>
+        <g class="corner off" id="m-br" data-side="right">
+          <text class="g-lbl c-lbl">MOT &#176;C</text><text class="g-val c-val mot" id="mot">---</text>
         </g>
 
         <!-- The band. SOG alone until the gun, and the mark while racing: its name, then
@@ -124,8 +164,9 @@
     </div>
   </section>
 
-  <!-- The HUD cell is this page's own: tapping it goes back to the HUD, whose HUD cell
-       comes here. Race and Map open the classic HUD from their HUD cell (DESIGN 9.12). -->
+  <!-- The instruments cell is this page's own: tapping it goes to the classic HUD, whose
+       cell comes back here. Race and Map open GAR from that cell, GAR being the face the
+       crew use first (DESIGN 9.12). -->
   <nav id="nav">
     <a class="here" href="hud">GAR</a>
     <a href="map">Map</a>

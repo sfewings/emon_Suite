@@ -93,22 +93,40 @@
   var CW = 150, CH = 92;         // a corner block
   var BAND = 130;                // the band's height under the dial
   var BAND_W = 270;              // its width beside it
+  var S_LBL = 14;                // a small slot's label size
+
+  // The four small slots, under the top corners and above the bottom ones, between the
+  // given top and bottom edges. Each is a label then a value of `size`, fitted to `w`.
+  // The motor's readings sit in them while sailing (hidden), the wind's while motoring.
+  function smallSlots(left, right, top, bottom, w, size) {
+    var h = S_LBL + 2 + size;
+    return { w: w, size: size,
+             at: { tl: [left, top], tr: [right, top],
+                   bl: [left, bottom - h], br: [right, bottom - h] } };
+  }
 
   var LAYOUTS = [
     { name: "tall", w: DIAL, h: CH + DIAL + CH + BAND,
       dial: [DIAL / 2, CH + DIAL / 2],
       corners: { tl: [8, 0], tr: [DIAL - 8, 0],
                  bl: [8, CH + DIAL], br: [DIAL - 8, CH + DIAL] },
+      // Inside the dial's square, in the four corners outside the rim. Small, because
+      // that is all the room there is: 30 at 66 wide keeps a four-character value, an
+      // rpm or a TWA of -105, clear of the mark diamond's tip by about ten units.
+      small: smallSlots(8, DIAL - 8, CH + 2, CH + DIAL - 2, 66, 30),
       band: { x: 0, y: CH + DIAL + CH, w: DIAL, h: BAND, vertical: false } },
     { name: "wide", w: DIAL + 2 * CW, h: DIAL + BAND,
       dial: [CW + DIAL / 2, DIAL / 2],
       corners: { tl: [8, 12], tr: [DIAL + 2 * CW - 8, 12],
                  bl: [8, DIAL - CH - 12], br: [DIAL + 2 * CW - 8, DIAL - CH - 12] },
+      // The columns beside the dial, which are empty between their two corners.
+      small: smallSlots(8, DIAL + 2 * CW - 8, 12 + CH + 10, DIAL - CH - 12 - 10, CW - 16, 44),
       band: { x: 0, y: DIAL, w: DIAL + 2 * CW, h: BAND, vertical: false } },
     { name: "side", w: DIAL + 2 * CW + BAND_W, h: DIAL,
       dial: [CW + DIAL / 2, DIAL / 2],
       corners: { tl: [8, 12], tr: [DIAL + 2 * CW - 8, 12],
                  bl: [8, DIAL - CH - 12], br: [DIAL + 2 * CW - 8, DIAL - CH - 12] },
+      small: smallSlots(8, DIAL + 2 * CW - 8, 12 + CH + 10, DIAL - CH - 12 - 10, CW - 16, 44),
       band: { x: DIAL + 2 * CW, y: 0, w: BAND_W, h: DIAL, vertical: true } }
   ];
 
@@ -158,24 +176,49 @@
 
     $("dial").setAttribute("transform", "translate(" + best.dial + ")");
 
-    // Each corner: its label on the top line, its value under it, against the outside edge.
-    Object.keys(best.corners).forEach(function (k) {
-      var g = $("c-" + k);
-      var at = best.corners[k];
-      g.setAttribute("transform", "translate(" + at + ")");
-      var anchor = g.getAttribute("data-side") === "left" ? "start" : "end";
-      Array.prototype.forEach.call(g.querySelectorAll(".c-lbl"), function (t) {
-        place(t, 0, 20, anchor);
-        t.setAttribute("font-size", 17);
-      });
-      Array.prototype.forEach.call(g.querySelectorAll(".c-val"), function (t) {
-        place(t, 0, 80, anchor);
-        setFit(t, CW - 16, 60);
-      });
-    });
-
+    placeCorners();
     arrangeBand(best.band);
     refitAll();
+  }
+
+  // --- the corners -----------------------------------------------------------------------
+  //
+  // Four pairs, c-* the wind and m-* the motor, one pair to a corner. Sailing, the wind
+  // takes the large slot and the motor is hidden; motoring, they trade slots and both
+  // show, so the motor gets the corner and the wind stays on screen, smaller (DESIGN 9.12).
+
+  var motoring = false;
+
+  // One reading into a slot: its label on the top line, its value under it, against the
+  // outside edge.
+  function slot(g, at, lblSize, lblY, valY, w, size) {
+    g.setAttribute("transform", "translate(" + at + ")");
+    var anchor = g.getAttribute("data-side") === "left" ? "start" : "end";
+    var lbl = g.querySelector(".c-lbl"), val = g.querySelector(".c-val");
+    place(lbl, 0, lblY, anchor);
+    lbl.setAttribute("font-size", lblSize);
+    place(val, 0, valY, anchor);
+    setFit(val, w, size);
+  }
+
+  function placeCorners() {
+    if (!layout) return;
+    var s = layout.small;
+    Object.keys(layout.corners).forEach(function (k) {
+      var wind = $("c-" + k), motor = $("m-" + k);
+      var large = motoring ? motor : wind, small = motoring ? wind : motor;
+      slot(large, layout.corners[k], 17, 20, 80, CW - 16, 60);
+      slot(small, s.at[k], S_LBL, S_LBL, S_LBL + 2 + s.size * 0.8, s.w, s.size);
+      motor.classList.toggle("off", !motoring);
+    });
+  }
+
+  // Returns whether anything moved, so the caller can refit what was hidden.
+  function setMotoring(on) {
+    if (on === motoring) return false;
+    motoring = on;
+    placeCorners();
+    return true;
   }
 
   function arrangeBand(b) {
@@ -242,8 +285,9 @@
   };
   var BLANK = { tws: "--.-", cur: "--.-" };
 
-  // The two swaps, both the HUD's idiom: every set pre-rendered and one hidden by a class.
-  // `onValue` is the attribute value of the set that shows when `on` is true.
+  // The racing swap, the HUD's idiom: both sets pre-rendered and one hidden by a class.
+  // `onValue` is the attribute value of the set that shows when `on` is true. The motor
+  // is not a swap any more but a trade of slots, setMotoring above.
   function swap(attr, onValue, on) {
     var changed = false;
     Array.prototype.forEach.call(svg.querySelectorAll("[" + attr + "]"), function (g) {
@@ -299,6 +343,8 @@
   };
 
   var needles = {
+    heel: new Needle("heel-line"),
+    lwy: new Needle("lwy-line"),
     awa: new Needle("awa-needle"),
     twa: new Needle("twa-pointer"),
     mark: new Needle("mark-diamond")
@@ -316,6 +362,51 @@
     });
   }
 
+  // --- the heel trail --------------------------------------------------------------------
+  //
+  // The solid heel line is the newest reading, eased like the needles. Behind it, the
+  // readings of the last HEEL_TRAIL_S, each fading with its age, so a roll shows as a fan
+  // and a steady heel as one line. Display only, so kept here and not on the server: a
+  // page opened mid-roll starts with no trail, which costs nothing.
+  //
+  // Each reading is keyed by when the server got it, which is the poll's clock less its
+  // age and stays put across polls, so a reading polled twice is one line not two. The
+  // lines are a fixed set made once and reused, rather than made and dropped per reading.
+
+  var HEEL_TRAIL_S = 15;
+  var HEEL_TRAIL_MAX = 24;        // the IMU sends at about 1 Hz, so room to spare
+  var heelTrail = [];             // {t, v}, oldest first
+  var heelLines = [];
+  (function () {
+    var g = $("heel-trail");
+    for (var i = 0; i < HEEL_TRAIL_MAX; i++) {
+      heelLines.push(el("line", { x1: -118, y1: 0, x2: 118, y2: 0, "class": "off" }, g));
+    }
+  }());
+
+  function paintHeelTrail(heel, now) {
+    if (live(heel)) {
+      var t = now - heel.age;
+      var last = heelTrail[heelTrail.length - 1];
+      // The same reading again, or y and z landing either side of a poll: one line.
+      if (last && Math.abs(t - last.t) < 0.3) last.v = heel.v;
+      else heelTrail.push({ t: t, v: heel.v });
+    }
+    while (heelTrail.length && (now - heelTrail[0].t > HEEL_TRAIL_S ||
+                                heelTrail.length > HEEL_TRAIL_MAX + 1)) {
+      heelTrail.shift();
+    }
+    // All but the newest, which is the solid line drawn over them.
+    var older = heelTrail.length - 1;
+    for (var i = 0; i < HEEL_TRAIL_MAX; i++) {
+      var line = heelLines[i], h = i < older ? heelTrail[older - 1 - i] : null;
+      if (!h) { line.setAttribute("class", "off"); continue; }
+      line.setAttribute("class", "");
+      line.setAttribute("transform", "rotate(" + h.v.toFixed(1) + ")");
+      line.setAttribute("opacity", (0.6 * (1 - (now - h.t) / HEEL_TRAIL_S)).toFixed(2));
+    }
+  }
+
   function paint(d) {
     var f = d.fields || {};
     Object.keys(CORNERS).forEach(function (k) {
@@ -325,6 +416,12 @@
 
     // Leeway is blanked by the server below a knot, where COG is noise (DESIGN 9.12).
     reading($("lwy"), d.leeway, fmtSigned, "---");
+    needles.lwy.set(live(d.leeway) ? d.leeway.v : null, d.leeway && d.leeway.age > STALE_S);
+
+    // Heel, positive to starboard, and a positive rotation is clockwise on screen, so the
+    // starboard end of the line goes down as the starboard rail does.
+    needles.heel.set(live(d.heel) ? d.heel.v : null, d.heel && d.heel.age > STALE_S);
+    paintHeelTrail(d.heel, d.now / 1000);
 
     needles.awa.set(live(f.awa) ? f.awa.v : null, f.awa && f.awa.age > STALE_S);
     needles.twa.set(live(f.twa) ? f.twa.v : null, f.twa && f.twa.age > STALE_S);
@@ -376,7 +473,7 @@
       .then(function (d) {
         failures = 0;
         pip.classList.remove("down");
-        var swapped = swap("data-mode", "motor", !!d.motor);
+        var swapped = setMotoring(!!d.motor);
         swapped = swap("data-race", "on", !!(d.race && d.race.mode === "racing")) || swapped;
         paint(d);
         window.Theme.apply(d.theme);

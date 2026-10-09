@@ -929,8 +929,9 @@ def test_the_navigation_is_never_pushed_off_or_covered():
 # The three screens, and the path each is served at. DESIGN 9.6: no screen is a dead end,
 # so every one of them carries the same navigation and can reach the other two.
 SCREENS = {"/": "Race", "/hud": "HUD", "/map": "Map", "/gar": "GAR"}
-"""GAR is not a fourth screen in the navigation but the HUD's other face, reached from the
-HUD's own cell (DESIGN 9.12). It carries the same navigation with GAR in the HUD's place."""
+"""GAR and the HUD are not two screens in the navigation but two faces of one, sharing the
+first cell (DESIGN 9.12). GAR is the face Race and Map open; the HUD is reached from GAR's
+own cell, and carries the same navigation with HUD in GAR's place."""
 
 
 def _navs():
@@ -960,12 +961,14 @@ def test_every_page_carries_the_same_three_screen_navigation():
     Three pages now rather than two, which is the cost DESIGN 12.1 accepted when the map
     became its own page instead of a fourth panel.
 
-    The order is pinned too: HUD, Map, Race. The two screens used on every sail come
-    first and the one used on race days only comes last (DESIGN 9.6).
+    The order is pinned too: the instruments (GAR, or HUD on the HUD), Map, Race. The two
+    screens used on every sail come first and the one used on race days only comes last
+    (DESIGN 9.6).
     """
     for path, nav in _navs().items():
         labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav)]
-        first = "GAR" if path == "/gar" else "HUD"
+        # The instruments cell reads GAR everywhere but on the HUD, its second face.
+        first = "HUD" if path == "/hud" else "GAR"
         assert labels == [first, "Map", "Race"], (path, labels)
         # Nothing is disabled any more: Map used to carry class="off" because there was no
         # map, and DESIGN 9.6 said to show it disabled until there was.
@@ -980,9 +983,9 @@ def test_every_page_carries_the_same_three_screen_navigation():
     for path, nav in navs.items():
         assert 'href="/' not in nav, "%s has a root-relative nav target" % path
         assert "://" not in nav, "%s names a host" % path
-    assert 'href="hud"' in navs["/"] and 'href="map"' in navs["/"]
+    assert 'href="gar"' in navs["/"] and 'href="map"' in navs["/"]
     assert 'href="."' in navs["/hud"] and 'href="map"' in navs["/hud"]
-    assert 'href="."' in navs["/map"] and 'href="hud"' in navs["/map"]
+    assert 'href="."' in navs["/map"] and 'href="gar"' in navs["/map"]
     assert 'href="."' in navs["/gar"] and 'href="map"' in navs["/gar"]
 
 
@@ -1016,10 +1019,11 @@ def test_each_page_can_reach_both_others():
     navs = _navs()
     # what each page must be able to reach, and by which relative href
     wanted = {
-        "/":    {"hud": "the race screen cannot reach the HUD",
+        # GAR first, from both: the HUD is the second tap (DESIGN 9.12).
+        "/":    {"gar": "the race screen cannot reach GAR",
                  "map": "the race screen cannot reach the map"},
         "/map": {".": "the map cannot get back to the race screen",
-                 "hud": "the map cannot reach the HUD"},
+                 "gar": "the map cannot reach GAR"},
         # The toggle: each face's own cell is the way to the other (DESIGN 9.12).
         "/hud": {".": "the HUD cannot get back to the race screen",
                  "map": "the HUD cannot reach the map",

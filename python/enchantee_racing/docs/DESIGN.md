@@ -847,11 +847,12 @@ The app has **three** screens, named along the bottom of every one of them:
 
 | Screen | What it is                                                          |
 | ------ | ------------------------------------------------------------------- |
-| `HUD`  | The instrument display, its own page at `/hud`, with a second face at `/gar` reached from its own cell (9.12) |
+| `GAR`  | The instruments, as a Garmin-style dial at `/gar`, with the classic HUD at `/hud` as a second face reached from the same cell (9.12) |
 | `Map`  | The course map (section 12)                                         |
 | `Race` | Everything about a race: course selection, countdown, marks, finish |
 
-In that order, HUD, Map, Race, with the theme toggle last. Race used to sit second; it
+In that order, GAR, Map, Race, with the theme toggle last (the first cell reads HUD on
+the HUD itself, 9.12). Race used to sit second; it
 moved to third because the HUD and the map are used every time the boat is out and the
 race screen only on race days, so the two most-used screens come first.
 
@@ -1317,14 +1318,19 @@ the other way would send the boat round a mark backwards.
 crew reads that instrument already. The HUD gives the same wind readings as numbers;
 GAR gives them as a picture, for those who read a needle faster than a figure.
 
-**Reached from the HUD's own nav cell, not a fifth nav entry.** On the HUD that cell
-goes to GAR, and on GAR it reads GAR and goes back to the HUD. From Race and Map, HUD
-always opens the classic HUD. A fifth cell would not fit well at 320 px. Remembering a
+**One nav cell for both faces, not a fifth nav entry.** From Race and Map that cell
+reads GAR and opens GAR. On GAR it goes to the classic HUD, and on the HUD it reads HUD
+and comes back to GAR. A fifth cell would not fit well at 320 px. Remembering a
 preferred face would be a setting, and by the rule in 9.9 a setting is server state
 that every device shares: switching the iPad to GAR would switch every phone too. So
-each device simply shows the page it navigated to, as it does with Map. The cost is a
-second tap from Race or Map for anyone who prefers GAR; if GAR turns out to be the page
-most people use, flip which face the HUD cell opens first.
+each device simply shows the page it navigated to, as it does with Map, and the cost
+is a second tap for whichever face is not first.
+
+GAR is first. It started second, with the HUD opening from Race and Map and this
+paragraph saying to flip the two if GAR turned out to be the page most people use; once
+it carried leeway, heel and all eight corner readings, the crew asked for it first. The
+`/hud` short URL the crew types is nginx's, not the app's, and still opens the classic
+HUD.
 
 **What is copied from the Garmin:**
 
@@ -1353,6 +1359,14 @@ most people use, flip which face the HUD cell opens first.
   dimmed, because COG from a GPS velocity at walking pace swings by tens of degrees.
   `/api/state` carries it as `leeway`, beside `position`. It is not one of `FIELDS`,
   because `/hud/data` keeps its ported shape.
+- Leeway is **also a line on the dial**: thin, in the leeway digit's colour, out of the
+  bow at the leeway angle and past the rim. The dial is heading-up, so this line is the
+  track over the ground, COG drawn where the hull shows the heading. Since the mark
+  diamond is placed off the heading too, the line on the diamond means the boat is making
+  good for the mark, set and leeway included, which no single number on the screen says.
+  It is thin where the needles are solid and drawn under them, and that shape is what
+  separates it at night, when every marker is a red. Same stale rule as the digit, and
+  gone with it below 1 kt. The digit stays: a few degrees is easier read than judged.
 - The colours are the HUD's, on black, and the night theme applies. A white Garmin face
   at night would undo 9.7. At night the two sectors become a bright red and a dark red,
   and the half of the dial each sits on still tells them apart.
@@ -1361,10 +1375,42 @@ most people use, flip which face the HUD cell opens first.
 
 - **SOG** in a band under the dial. The Garmin page has no SOG, and SOG is the number
   most often wanted.
-- **Motor:** while the SevCon runs, the four corners show RPM, AMP, CTRL and MOT instead
-  of the wind readings. This uses the HUD's motor flag and its 10 s hold, with both sets
-  pre-rendered (9.1). The dial still shows the wind, which is harmless, and the corners
-  are where four wind numbers matter least when motoring.
+- **Motor:** the corners hold four pairs, TWD and RPM, AWA and AMP, TWS and CTRL, TWA
+  and MOT, each corner with a large slot against the screen's edge and a small one
+  towards the middle, under a top corner or above a bottom one. Sailing, the wind has the
+  large slots and the motor is hidden. While the SevCon runs the pairs trade: the motor
+  takes the corners and the wind moves to the small slots, so all eight are on screen.
+  Uses the HUD's motor flag and its 10 s hold, the motor readings pre-rendered and hidden
+  by a class (9.1).
+  Three versions so far. First the motor replaced the wind outright, on the reasoning
+  that the corners are where wind numbers matter least when motoring. Then the crew
+  asked for all eight on screen, and the motor went in the small slots with the wind
+  keeping the corners. Then they asked for the motor to have the corners while it runs
+  and the wind to be the smaller, which is this.
+  The small slots depend on the layout. Beside the dial the columns are empty between
+  their two corners, so a small value is 44 against the corners' 60. Upright on a phone
+  the corners are above and below the dial instead, so the small slots are the dial
+  square's corners outside the rim, where 30 at 66 wide is what fits clear of the mark
+  diamond's tip: room for four characters, an rpm or a TWA of -105. A test holds that
+  geometry.
+- **Heel:** a line across the dial's centre that tilts with the deck, starboard end down
+  when heeled to starboard, with the last 15 s of readings behind it as thinner lines
+  fading with their age. A steady heel is one line; a boat rolling is a fan whose width
+  is the roll. Violet by day, the one hue the dial had free, and a red at night like
+  everything else. It passes under the hull, the leeway circle and the AWS box, which hide
+  its middle, and stops short of the scale numbers.
+  Heel is `atan2(acc y, acc z)` from the anemometer node's IMU, which publishes
+  `imu/0/acc/{0,1,2}` (x, y, z, by index) in g already, so nothing changed on the sketch or in pyemonlib.
+  Derived in `store.py` like leeway, on `/api/state` as `heel`, not one of `FIELDS`.
+  **Signed by measurement, not by the axis convention:** over the 13 September Frostbite
+  race the median was +5.7 with the wind from port and -15.6 from starboard, so positive is
+  starboard, matching every other signed angle in the app, and a test holds the function
+  to that recording. The two tacks are not symmetric, which may be a zero offset in the
+  mounting or may be a windier tack; not corrected until it is known which. y and z are
+  separate topics from one packet, so one can be a packet ahead of the other for an
+  instant, which at 1 Hz is a fraction of a degree. The trail is kept by the page, not the
+  server: it is display rather than a setting, and a page opened mid-roll merely starts
+  without one.
 - **Racing:** the band shows the next mark's name, then SOG, distance and bearing, and
   the mark appears as a diamond on the rim. The band keeps the same size in every mode,
   so the dial never moves when the gun goes. The diamond is placed off the **heading**,

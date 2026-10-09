@@ -57,6 +57,12 @@ and at a knot or less that velocity is mostly noise, so COG - HDG swings through
 degrees on a boat sitting still. Blanked rather than dimmed, like position past its cutoff:
 a dimmed number still reads as a number (DESIGN 9.12)."""
 
+HEEL_MIN_G = 0.5
+"""Heel is not reported when the y and z axes between them carry less than this much of
+gravity. The board is level-ish on a boat, so the pair should hold nearly all of 1 g; well
+short of that it is lying on its end or the readings are nonsense, and atan2 of two
+near-zero numbers is any angle at all."""
+
 PENDING_EVENTS_MAX = 200
 """How many unpublished race events to hold. A race produces a couple of dozen, so this is
 only a bound against nothing ever draining them."""
@@ -220,6 +226,7 @@ class Store:
         state = derive(snapshot, now)
         state["position"] = derive_position(snapshot, now)
         state["leeway"] = derive_leeway(snapshot, now)
+        state["heel"] = derive_heel(snapshot, now)
         state["race"] = self.race_payload(now)
         state["theme"] = self.theme()
         return state
@@ -565,6 +572,31 @@ def derive_leeway(snapshot: Snapshot, now: float) -> Optional[dict]:
         return None
     oldest = min(r.t for r in readings)
     return {"v": nav.norm180(cog.v - hdg.v), "age": now - oldest}
+
+
+def derive_heel(snapshot: Snapshot, now: float) -> Optional[dict]:
+    """Heel as {v, age} in degrees, positive heeled to starboard, or None.
+
+    atan2(acc y, acc z), from the IMU on the anemometer node, whose accelerometer reads
+    "up" in g with z up through the deck (emon_MiniC5A_anemometer). Signed by measurement
+    rather than from the axis convention: in the 13 September Frostbite recording the boat
+    read a median +5.7 with the wind from port and -15.6 with it from starboard, so
+    positive is starboard, the side the app already counts positive. atan2 of the pair
+    rather than asin(y) keeps pitch out of it. The board's 7 degree twist from the
+    centreline turns about z, so it barely touches heel and is not corrected for.
+
+    The two axes are separate topics from one packet, so for an instant after y lands z
+    is the previous packet's. At 1 Hz on a rolling boat that is a fraction of a degree.
+    Timestamped with the older of the two, so it dims when either stops (DESIGN 9.12).
+    """
+    values = snapshot.values
+    readings = [values.get(key) for key in ("accy", "accz")]
+    if any(r is None or not isinstance(r.v, (int, float)) for r in readings):
+        return None
+    y, z = readings
+    if math.hypot(y.v, z.v) < HEEL_MIN_G:
+        return None
+    return {"v": math.degrees(math.atan2(y.v, z.v)), "age": now - min(y.t, z.t)}
 
 
 def derive_position(snapshot: Snapshot, now: float) -> Optional[dict]:

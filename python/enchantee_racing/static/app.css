@@ -52,6 +52,10 @@
      them and as every sailor reads them. */
   --port:  #e8443a;
   --stbd:  #2fbf4f;
+  /* GAR's heel line. Chosen rather than copied, because nothing else shows heel: a violet,
+     which is the one hue on the dial not already taken by a wind angle, a sector, COG
+     or the mark. */
+  --heel:  #d070ff;
   --time:  #98fb98;   /* elapsed and countdown: PaleGreen, as RPM             */
   --warn:  #ffa500;   /* a breach, an early crossing: TWA orange              */
   --bad:   #e8443a;
@@ -75,7 +79,7 @@ body.night {
   /* GAR's, as hud.html has them. The sectors cannot stay red and green, so they are a
      bright and a dark red; which side is which is also told by which half of the dial a
      sector is on, which survives the theme. */
-  --awa: #bf6c4e; --aws: #bf5043; --port: #ff6b5a; --stbd: #a83828;
+  --awa: #bf6c4e; --aws: #bf5043; --port: #ff6b5a; --stbd: #a83828; --heel: #c8506e;
   --rule: #2a0f0c; --label: #8a4038; --panel: #0a0403; --ink: #ff8f7a;
 
   /* The map at night (DESIGN 12.1). Three dark reds in place of the chart blues, in the
@@ -1053,6 +1057,16 @@ body.night #chart .mark-label { fill: var(--map-label); }
 #gar .needle polygon  { fill: var(--awa);  stroke: var(--bg); stroke-width: 1.5; }
 #gar .pointer polygon { fill: var(--twa);  stroke: var(--bg); stroke-width: 2; }
 #gar .diamond polygon { fill: var(--mark); stroke: var(--bg); stroke-width: 2.5; }
-#gar .needle.stale, #gar .pointer.stale { opacity: .25; }
+/* The leeway line, in the leeway digit's colour. Thin where the others are solid, which is
+   what still tells it apart at night, when every one of them is a red. */
+#gar .leeway line       { stroke: var(--cog); stroke-width: 3; stroke-linecap: round; }
+#gar .leeway line.halo  { stroke: var(--bg);  stroke-width: 7; }
+/* Heel: the newest solid with a halo, the last 15 s behind it thinner, each faded by
+   gar.js through its opacity attribute as the reading ages. */
+#gar .heel line       { stroke: var(--heel); stroke-width: 4; stroke-linecap: round; }
+#gar .heel line.halo  { stroke: var(--bg);   stroke-width: 8; }
+#gar .heel-trail line { stroke: var(--heel); stroke-width: 2; stroke-linecap: round; }
+#gar .needle.stale, #gar .pointer.stale, #gar .leeway.stale,
+#gar .heel.stale { opacity: .25; }
 
 #gar .band-rule { stroke: var(--rule); stroke-width: 2; }

@@ -230,6 +230,8 @@ def test_every_topic_the_flow_subscribed_to_is_mapped():
         "gps/speed/0": "sog",
         "gps/course/0": "cog",
         "imu/0/heading": "hdg",
+        "imu/0/acc/1": "accy",    # not the flow's: heel for GAR (DESIGN 9.12)
+        "imu/0/acc/2": "accz",
         "anemometer/windSpeed/2": "tws",
         "anemometer/windDirection/2": "twd",
         "anemometer/windSpeed/1": "aws",
@@ -336,7 +338,8 @@ def test_api_state_carries_the_hud_payload_and_the_position():
     response = client.get("/api/state")
     assert response.status_code == 200
     state = json.loads(response.get_data(as_text=True))
-    assert set(state) == {"now", "motor", "fields", "position", "leeway", "race", "theme"}
+    assert set(state) == {"now", "motor", "fields", "position", "leeway", "heel", "race",
+                          "theme"}
     assert state["race"] is None, "no course selected yet, so there is no race to report"
     assert state["fields"]["sog"]["v"] == 5.58
     assert state["position"]["v"] == {"lat": -32.0039101, "lon": 115.8137589}

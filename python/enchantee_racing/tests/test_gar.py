@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))  # for standalone runs
 
 import app as app_module  # noqa: E402
 import store as store_module  # noqa: E402
-from store import Store, derive_leeway  # noqa: E402
+from store import Store, derive_heel, derive_leeway  # noqa: E402
 
 T0 = 1_755_500_000.0
 
@@ -114,6 +114,140 @@ def test_leeway_is_on_api_state_and_not_on_the_hud_payload():
     assert set(hud) == {"now", "motor", "fields"}, "/hud/data keeps its ported shape"
 
 
+# --- heel --------------------------------------------------------------------------------
+
+
+def _heeled(s, degrees, ts=None):
+    import math
+    s.set("accy", math.sin(math.radians(degrees)), ts=ts)
+    s.set("accz", math.cos(math.radians(degrees)), ts=ts)
+
+
+def test_heel_is_the_angle_of_the_accelerometer_in_the_y_z_plane():
+    s, _ = _store()
+    _heeled(s, 12.0)
+    assert abs(derive_heel(s.snapshot(), T0)["v"] - 12.0) < 1e-9
+    _heeled(s, -20.0)
+    assert abs(derive_heel(s.snapshot(), T0)["v"] + 20.0) < 1e-9
+
+
+def test_heel_ignores_pitch():
+    """atan2 of y and z, not asin of y: pitching down by the bow scales y and z alike."""
+    import math
+    s, _ = _store()
+    pitch, heel = math.radians(8.0), math.radians(15.0)
+    s.set("accy", math.sin(heel) * math.cos(pitch))
+    s.set("accz", math.cos(heel) * math.cos(pitch))
+    assert abs(derive_heel(s.snapshot(), T0)["v"] - 15.0) < 1e-9
+
+
+def test_heel_needs_both_axes_and_enough_of_gravity_in_them():
+    for missing in ("accy", "accz"):
+        s, _ = _store()
+        s.set("accz" if missing == "accy" else "accy", 0.2)
+        assert derive_heel(s.snapshot(), T0) is None, missing
+    s, _ = _store()
+    s.set("accy", 0.1)
+    s.set("accz", 0.1)
+    assert derive_heel(s.snapshot(), T0) is None, "on its end: any angle at all"
+
+
+def test_heel_goes_stale_with_the_older_axis():
+    s, _ = _store()
+    _heeled(s, 10.0, ts=T0 - 1)
+    s.set("accz", 0.98, ts=T0 - 20)
+    assert derive_heel(s.snapshot(), T0)["age"] == 20.0
+
+
+def test_heel_subscribes_to_the_topics_emon_mqtt_actually_publishes():
+    """emon_mqtt names the axes by index, imu/0/acc/0 to 2, not x, y and z. Subscribing to
+    acc/y passed every other test here and showed nothing on a replay, so the names are
+    held to pyemonlib's source, which runs on the Pi without its compiled half."""
+    import mqtt_client
+    source = (ROOT.parent / "pyEmon" / "pyemonlib" / "emon_mqtt.py").read_text(encoding="utf-8")
+    imu = re.search(r"def imuMessage\(.*?\n    def ", source, re.S)
+    assert imu, "no imuMessage in emon_mqtt.py"
+    assert re.search(r'for axis in range\(3\):\s*\n\s*self\.mqttClient\.publish\('
+                     r'f"imu/\{payload\.subnode\}/acc/\{axis\}"', imu.group(0)), \
+        "emon_mqtt no longer publishes the accelerometer as imu/<subnode>/acc/<index>"
+    assert mqtt_client.TOPICS["imu/0/acc/1"] == "accy"
+    assert mqtt_client.TOPICS["imu/0/acc/2"] == "accz"
+
+
+def test_heel_is_positive_to_starboard_in_the_recorded_race():
+    """The sign is the recording's, not the axis convention's (store.derive_heel). With the
+    wind from port a boat heels to starboard, so over the Frostbite race the heel must
+    lean positive on port tack and negative on starboard."""
+    path = ROOT / "tests" / "data" / "20260913_Frostbite_1.TXT"
+    awa, aws, port, stbd = None, 0.0, [], []
+    s, _ = _store()
+    with open(path, encoding="latin-1") as f:
+        for line in f:
+            p = line.strip().split(",")
+            if len(p) < 6 or not ("13:35:00" <= p[0][11:19] <= "15:10:00"):
+                continue
+            if p[1] == "mwv" and p[2] == "0":
+                aws, awa = float(p[3]), (float(p[4]) + 180) % 360 - 180
+            elif p[1] == "imu" and awa is not None and aws > 8:   # enough wind to heel
+                s.set("accy", float(p[4]), ts=T0)
+                s.set("accz", float(p[5]), ts=T0)
+                heel = derive_heel(s.snapshot(), T0)["v"]
+                if -120 < awa < -20:
+                    port.append(heel)
+                elif 20 < awa < 120:
+                    stbd.append(heel)
+    assert len(port) > 300 and len(stbd) > 300, (len(port), len(stbd))
+    median = lambda xs: sorted(xs)[len(xs) // 2]  # noqa: E731
+    assert median(port) > 2, "wind from port, heeled to starboard: %.1f" % median(port)
+    assert median(stbd) < -2, "wind from starboard, heeled to port: %.1f" % median(stbd)
+
+
+def test_heel_is_on_api_state_and_not_on_the_hud_payload():
+    s, _ = _store()
+    _heeled(s, 9.0)
+    client, _ = _client(s)
+    state = json.loads(client.get("/api/state").get_data(as_text=True))
+    assert abs(state["heel"]["v"] - 9.0) < 1e-6
+    assert "heel" not in state["fields"]
+    assert "now" in state, "the page keys the fading trail on the poll's clock"
+    hud = json.loads(client.get("/hud/data").get_data(as_text=True))
+    assert set(hud) == {"now", "motor", "fields"}
+
+
+def test_the_demo_heels_to_starboard():
+    import mqtt_client
+    s, _ = _store()
+    for topic, value in mqtt_client.demo_readings(0):
+        mqtt_client.handle_message(s, topic, str(value))
+    assert 5 < derive_heel(s.snapshot(), T0)["v"] < 20
+
+
+def test_heel_is_a_line_across_the_dial_with_fifteen_seconds_fading_behind():
+    page = _page()
+    assert re.search(r'<g id="heel-line" class="heel off">', page), "shown before known"
+    assert '<g id="heel-trail"' in page
+    for over in ('class="hull"', 'class="inner"', 'class="box"'):
+        assert page.index('id="heel-line"') < page.index(over), \
+            "the heel line is drawn over the %s it is meant to pass under" % over
+
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    assert 'heel: new Needle("heel-line")' in code
+    assert ("needles.heel.set(live(d.heel) ? d.heel.v : null, "
+            "d.heel && d.heel.age > STALE_S)") in code
+    assert "var HEEL_TRAIL_S = 15;" in code
+    assert "paintHeelTrail(d.heel, d.now / 1000)" in code
+    trail = re.search(r"function paintHeelTrail\(heel, now\) \{(.*?)\n  \}", code, re.S)
+    assert trail, "no trail painter"
+    body = trail.group(1)
+    assert "var t = now - heel.age;" in body, "a reading must keep its time across polls"
+    assert "(1 - (now - h.t) / HEEL_TRAIL_S)" in body, "the trail does not fade with age"
+
+    css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
+    for rule in (r"#gar \.heel line\s*\{", r"#gar \.heel-trail line\s*\{"):
+        assert re.search(rule + r"[^}]*stroke: var\(--heel\)", css), rule
+    assert re.search(r"#gar [^{]*\.heel\.stale[^{]*\{[^}]*opacity", css)
+
+
 # --- the page ----------------------------------------------------------------------------
 
 
@@ -169,20 +303,60 @@ def test_the_screen_is_kept_awake():
         "the video has to be started from a gesture or it never plays"
 
 
-def test_both_corner_sets_are_pre_rendered_and_the_wind_is_on_show():
-    """The motor swap is the HUD's: both sets in the markup, one hidden by a class
-    (DESIGN 9.1). Clockwise from top left, as the Garmin has them."""
+def test_the_corners_pair_wind_with_motor_and_trade_slots_while_motoring():
+    """Four pairs, one to a corner, clockwise from top left as the Garmin has them: TWD
+    and RPM, AWA and AMP, TWS and CTRL, TWA and MOT. Sailing, the wind has the corners and
+    the motor is hidden, pre-rendered, the HUD's idiom (DESIGN 9.1). Motoring, the two
+    trade slots and both show: the motor has the corners and the wind is smaller beside
+    them, never off the screen (DESIGN 9.12)."""
     page = _page()
-    want = {"c-tl": ("twd", "rpm"), "c-tr": ("awa", "cur"),
-            "c-bl": ("tws", "ctrl"), "c-br": ("twa", "mot")}
-    for corner, (sail, motor) in want.items():
-        block = re.search(r'<g class="corner" id="%s"[^>]*>(.*?)\n        </g>' % corner,
-                          page, re.S)
-        assert block, corner
-        body = block.group(1)
-        assert re.search(r'<g data-mode="sail">.*id="%s"' % sail, body), (corner, sail)
-        assert re.search(r'<g data-mode="motor" class="off">.*id="%s"' % motor, body), \
-            (corner, motor)
+    pairs = {"tl": ("twd", "rpm"), "tr": ("awa", "cur"),
+             "bl": ("tws", "ctrl"), "br": ("twa", "mot")}
+    for k, (wind, motor) in pairs.items():
+        shown = re.search(r'<g class="corner" id="c-%s"[^>]*>(.*?)</g>' % k, page, re.S)
+        assert shown and 'id="%s"' % wind in shown.group(1), (k, wind)
+        hidden = re.search(r'<g class="corner off" id="m-%s"[^>]*>(.*?)</g>' % k, page, re.S)
+        assert hidden and 'id="%s"' % motor in hidden.group(1), (k, motor)
+    assert "data-mode" not in page, "the motor is a trade of slots now, not a swap"
+
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    assert len(re.findall(r"\bsmall: smallSlots\(", code)) == 3, "a layout has no small slots"
+    place = re.search(r"function placeCorners\(\) \{(.*?)\n  \}", code, re.S)
+    assert place, "no placeCorners"
+    body = place.group(1)
+    assert 'var wind = $("c-" + k), motor = $("m-" + k);' in body
+    assert "var large = motoring ? motor : wind, small = motoring ? wind : motor;" in body, \
+        "the pair does not trade slots on the motor flag"
+    assert "slot(large, layout.corners[k]" in body and "slot(small, s.at[k]" in body
+    assert 'motor.classList.toggle("off", !motoring)' in body, \
+        "the motor shows while sailing, or the wind hides while motoring"
+    assert "var swapped = setMotoring(!!d.motor);" in code, "not driven by the HUD's flag"
+    assert "if (swapped) refitAll();" in code, "values hidden until now are never fitted"
+
+
+def test_the_small_slots_clear_the_dial_when_the_phone_is_upright():
+    """Upright on a phone the small slots are the dial square's corners, outside the rim,
+    where the room is a triangle; the motor sits there sailing and the wind motoring.
+    Worked out from the numbers in gar.js: the inner end of a value at its full width
+    must be further from the dial's centre than the diamond's tip, the outermost thing on
+    the dial."""
+    import math
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    consts = {k: float(v) for k, v in re.findall(r"\b(DIAL|CH|S_LBL) = (\d+)[;,]", code)}
+    assert set(consts) == {"DIAL", "CH", "S_LBL"}, consts
+    tall = re.search(r'name: "tall".*?small: smallSlots\(8, DIAL - 8, CH \+ 2, '
+                     r'CH \+ DIAL - 2, (\d+), (\d+)\)', code, re.S)
+    assert tall, "the upright layout's small slots have moved; recheck this geometry"
+    w, size = float(tall.group(1)), float(tall.group(2))
+    r = consts["DIAL"] / 2
+    tip = max(float(n) for n in re.findall(
+        r"-(\d+)", re.search(r'id="mark-diamond".*?points="([^"]+)"', _page()).group(1)))
+    x_inner = -r + 8 + w
+    # top block: the value's baseline and its cap top; the bottom block mirrors it
+    base = -r + 2 + consts["S_LBL"] + 2 + size * 0.8
+    for y in (base, base - size * 0.72):
+        assert math.hypot(x_inner, y) > tip + 4, \
+            "a %d px small value reaches the dial (r=%.0f)" % (size, math.hypot(x_inner, y))
 
 
 def test_the_band_shows_sog_until_the_race_and_the_mark_during_it():
@@ -200,7 +374,7 @@ def test_the_band_shows_sog_until_the_race_and_the_mark_during_it():
 
 def test_the_dial_carries_the_needle_the_pointer_and_the_mark_hidden_until_known():
     page = _page()
-    for node in ("awa-needle", "twa-pointer", "mark-diamond"):
+    for node in ("lwy-line", "awa-needle", "twa-pointer", "mark-diamond"):
         assert re.search(r'<g id="%s" class="[a-z]+ off">' % node, page), node
     for reading in ("lwy", "aws"):
         assert 'id="%s"' % reading in page, reading
@@ -229,6 +403,31 @@ def test_the_mark_is_placed_off_the_heading_and_blanks_with_the_fix():
     assert "needles.mark.set(markAngle, false)" in code
 
 
+def test_leeway_is_also_a_line_on_the_dial_in_the_leeway_colour():
+    """The track over the ground, out of the bow at the leeway angle (DESIGN 9.12). The
+    same number as the digit in the inner circle, so the same colour and the same stale
+    rule, and it goes when the server blanks leeway below a knot. Under the needles and
+    the diamond, which matter more than it does."""
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    assert 'lwy: new Needle("lwy-line")' in code
+    assert ("needles.lwy.set(live(d.leeway) ? d.leeway.v : null, "
+            "d.leeway && d.leeway.age > STALE_S)") in code
+
+    page = _page()
+    assert page.index('id="lwy-line"') < page.index('id="awa-needle"'), \
+        "the leeway line is drawn over the needles"
+
+    css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
+    digit = re.search(r"#gar \.lwy\s*\{[^}]*fill: (var\(--\w+\))", css).group(1)
+    line = re.search(r"#gar \.leeway line\s*\{[^}]*stroke: (var\(--\w+\))", css).group(1)
+    assert line == digit, "the line and the digit are one reading in two colours"
+    for other in ("needle polygon", "pointer polygon", "diamond polygon"):
+        colour = re.search(r"#gar \.%s\s*\{[^}]*fill: (var\(--\w+\))" % other, css).group(1)
+        assert colour != line, "the leeway line is the colour of the %s" % other
+    assert re.search(r"#gar [^{]*\.leeway\.stale[^{]*\{[^}]*opacity", css), \
+        "a stale leeway line does not dim"
+
+
 def test_the_needles_take_the_short_way_round():
     code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
     step = re.search(r"Needle\.prototype\.step = function \(\) \{(.*?)\n  \};", code, re.S)
@@ -246,7 +445,7 @@ def test_every_gar_colour_has_a_night_value_and_it_is_red():
     css = (ROOT / "static" / "app.css").read_text(encoding="utf-8")
     day = re.search(r":root \{(.*?)\n\}", css, re.S).group(1)
     night = re.search(r"body\.night \{(.*?)\n\}", css, re.S).group(1)
-    for var in ("awa", "aws", "port", "stbd"):
+    for var in ("awa", "aws", "port", "stbd", "heel"):
         assert re.search(r"--%s:\s*#" % var, day), "--%s has no day value" % var
         value = re.search(r"--%s:\s*(#[0-9a-fA-F]{6})" % var, night)
         assert value, "--%s has no night value" % var
@@ -269,7 +468,9 @@ def test_every_gar_colour_has_a_night_value_and_it_is_red():
 def test_every_reading_class_on_the_page_has_a_colour():
     page = _bare(_page())
     css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
-    for cls in set(re.findall(r'class="g-val (?:c-val )?([a-z]+)"', page)):
+    classes = set(re.findall(r'class="g-val (?:[cm]-val )?([a-z]+)"', page))
+    assert {"rpm", "cur", "ctrl", "mot"} <= classes, "the motor readings were not found"
+    for cls in classes:
         assert re.search(r"#gar [^{]*\.%s\b[^{]*\{[^}]*fill: var\(--" % cls, css), \
             ".%s has no colour" % cls
 

@@ -296,8 +296,15 @@ def test_each_event_is_logged_once_however_it_was_drained():
             if "race event" in record.getMessage():
                 records.append(record)
 
+    # INFO set here, not inherited. Only main() calls basicConfig, so this passed when a
+    # main() test happened to run first (the standalone runner's alphabetical order) and
+    # failed under pytest's file order, where both assertions ran with INFO filtered out
+    # and the first one passed for nothing.
     handler = Collect()
-    logging.getLogger().addHandler(handler)
+    root = logging.getLogger()
+    level = root.level
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
     try:
         # with a publisher: the publisher is the one that speaks
         client, _store, _ticker, published = _client()
@@ -315,7 +322,8 @@ def test_each_event_is_logged_once_however_it_was_drained():
         _post(bare, "/api/select", {"course": "frostbite-3"})
         assert len(records) == 1, "a transition nobody publishes must still be logged"
     finally:
-        logging.getLogger().removeHandler(handler)
+        root.removeHandler(handler)
+        root.setLevel(level)
 
 
 def test_the_config_documents_the_map_needs_are_served():
@@ -704,7 +712,7 @@ def test_the_state_payload_survives_being_read_while_fixes_arrive():
             if payload["race"] is None or payload["position"] is None:
                 failures.append(payload)
             elif set(payload) != {"now", "motor", "fields", "position", "leeway",
-                                  "race", "theme"}:
+                                  "heel", "race", "theme"}:
                 failures.append(payload)
     finally:
         stop.set()
