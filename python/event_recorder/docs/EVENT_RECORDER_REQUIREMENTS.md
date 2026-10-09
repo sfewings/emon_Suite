@@ -76,7 +76,7 @@ Foundations, needed by the editor and worth doing on their own:
 - [x] **TR-9:** Foreign keys enforced, and deleting a recording removes all of it
 - [x] **TR-10:** One recording service behind the triggers and the routes
 - [x] **TR-11:** Publishing runs in the background and updates its own post
-- [ ] **TR-12:** Recording, artefact and post state kept apart
+- [x] **TR-12:** Recording, artefact and post state kept apart
 - [x] **TR-13:** Web UI runs on iOS 12
 
 The editor:
@@ -1396,18 +1396,66 @@ publishes to one post for its whole life
 ### TR-12: Recording, Artefact and Post State Kept Apart
 
 **Priority:** Should Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09), with the differences noted below
 **Description:** `recordings.status` holds the recording's life and the post's life in one
 field. The editor needs them separately
 
 **Acceptance Criteria:**
 
-- [ ] Recording state: `active`, `stopped`, `failed`
-- [ ] Artefact state: `none`, `processing`, `fresh`, `stale`. Stale when the recording
-      or its photos changed after processing
-- [ ] Post state, on the draft: `none`, `editing`, `publishing`, `wp_draft`,
-      `published`, `publish_failed`
-- [ ] Migration maps the existing statuses onto the three fields
+- [x] Recording state, `recordings.status`: `active`, `stopped`, `failed`. `failed` now
+      means only that nothing was recorded
+- [x] Artefact state, `recordings.artefacts`: `none`, `processing`, `fresh`, `stale`,
+      **`failed`**, with `processed_at`
+- [x] Post state, `post_drafts.post_state`: `none`, `publishing`, `wp_draft`,
+      `published`, `publish_failed`, with `post_error`
+- [x] Migration maps the existing statuses onto the three fields
+- [x] Every recording read carries all three, and a derived `stage` for display
+- [x] `tests/test_status_split.py`
+
+**Implementation Notes:**
+
+- **Differences from the specification:**
+  - Artefacts gain `failed`. Without it a processing error had nowhere to go but the
+    recording's own status, which is the conflation this requirement removes.
+  - Stale is set when the *recording* changes after processing: stopped after being
+    processed mid-recording, or moved by the clock-step repair. Not when photos change:
+    processing never touches the crew's photos, which go to the post straight from
+    `recording_images`.
+  - Post state has no `editing`. Whether a draft is being edited is FR-24's to say,
+    when the draft exists.
+- **Compatibility:** columns are added, not the table rebuilt, so the CHECK constraint
+  still allows the old values; nothing writes them. The API keeps `status` (now the
+  recording's own) and adds `artefacts`, `post_state`, `post_error` and `stage`.
+  `stage` uses the old status names plus `publishing`, so the dashboard and upload page
+  switched from `status` to `stage` with their logic unchanged. `?status=` on the list
+  filters by stage.
+- **The migration's map:**
+
+  | old `status` | becomes | post |
+  |---|---|---|
+  | `processing` | `stopped`, artefacts `none` | |
+  | `processed` | `stopped`, `fresh` | `published` if it has a `wordpress_url` |
+  | `published` | `stopped`, `fresh` | `published` |
+  | `failed`, "...WordPress..." | `stopped`, `fresh` | `publish_failed`, message kept |
+  | `failed`, "No data recorded..." | `failed` | |
+  | `failed`, anything else | `stopped`, artefacts `failed` | |
+
+  A post id stored by TR-11 with no state becomes `published` (or `wp_draft`). The
+  `processed`-with-a-link rule matters on the Pi: the old way to add a photo to a
+  published Track Log, or republish one, was to reset it to processed first.
+- **Reset** now clears a failed process or publish and nothing else. A published
+  recording publishes again without it (TR-11), so a published recording is refused,
+  and the dashboard's button is "Clear the failure", shown only for those.
+- **Locking (Q5)** is by post state: photos and title are refused once the post is
+  `wp_draft` or `published`, and accepted after a failed publish.
+- **Recovery** had to change, or it would have broken: it queued every `stopped`
+  recording for processing, which after the split is every finished recording. It now
+  queues only those with no artefacts, resets interrupted processing, and turns a
+  publish interrupted by a restart into `publish_failed`. `get_recovery_summary()`
+  counts by stage; it used `.value` on plain strings and raised whenever called.
+- Verified on the dev rig: the migration ran on the day's database, the published
+  recording came out `published`, and recovery queued only the two never-processed
+  recordings rather than all of them.
 
 ---
 
@@ -1716,7 +1764,7 @@ Suggested order, each step useful without the next:
    `/race/log/` nginx route, and the Log link in the racing app (racing DESIGN 9.13)
 4. **Computed lines and live mode:** FR-26 and FR-31
 
-- [ ] Step 1: foundations
+- [x] Step 1: foundations (2026-10-09), plus the dev rig, `dev/README.md`
 - [ ] Step 2: draft and renderer
 - [ ] Step 3: event page and Log link
 - [ ] Step 4: computed lines and live mode

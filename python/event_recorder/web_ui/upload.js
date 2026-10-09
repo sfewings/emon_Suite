@@ -33,7 +33,7 @@ async function loadRecordings() {
         }
 
         // Any recording not yet published can be edited, at whatever stage
-        const usable = data.recordings.filter(r => r.status !== 'published');
+        const usable = data.recordings.filter(r => r.stage !== 'published');
 
         if (usable.length === 0) {
             select.innerHTML = '<option value="">No unpublished recordings</option>';

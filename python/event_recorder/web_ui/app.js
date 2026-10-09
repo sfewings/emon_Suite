@@ -292,8 +292,8 @@ async function loadRecentRecordings() {
                             ${(rec.message_count || 0).toLocaleString()} messages
                         </span>
                     </div>
-                    <span class="badge badge-${getStatusColor(rec.status)}">
-                        ${rec.status}
+                    <span class="badge badge-${getStatusColor(rec.stage)}">
+                        ${rec.stage}
                     </span>
                 </div>
             `).join('');
@@ -340,8 +340,8 @@ async function loadRecordings() {
                                 <td>${rec.id}</td>
                                 <td>${escapeHtml(rec.name)}</td>
                                 <td>
-                                    <span class="badge badge-${getStatusColor(rec.status)}">
-                                        ${rec.status}
+                                    <span class="badge badge-${getStatusColor(rec.stage)}">
+                                        ${rec.stage}${rec.artefacts === 'stale' ? ' (out of date)' : ''}
                                     </span>
                                 </td>
                                 <td>${formatDateTime(rec.start_time)}</td>
@@ -351,13 +351,13 @@ async function loadRecordings() {
                                             onclick="viewRecording(${rec.id})">
                                         ${Icons.view} View
                                     </button>
-                                    ${rec.status === 'stopped' ? `
+                                    ${rec.stage === 'stopped' ? `
                                         <button class="btn btn-sm btn-success"
                                                 onclick="processRecording(${rec.id})">
                                             ${Icons.process} Process
                                         </button>
                                     ` : ''}
-                                    ${['stopped', 'processing', 'processed'].includes(rec.status) ? `
+                                    ${['stopped', 'processing', 'processed'].includes(rec.stage) ? `
                                         <button class="btn btn-sm btn-wp"
                                                 onclick="publishRecording(${rec.id})">
                                             ${Icons.publish} Publish
@@ -800,7 +800,8 @@ async function viewRecording(recordingId) {
         let modalContent = `
             <div class="recording-details">
                 <h4>${escapeHtml(rec.name)}</h4>
-                <p><strong>Status:</strong> <span class="badge badge-${getStatusColor(rec.status)}">${rec.status}</span></p>
+                <p><strong>Status:</strong> <span class="badge badge-${getStatusColor(rec.stage)}">${rec.stage}</span>${rec.artefacts === 'stale' ? ' plots out of date: reprocess' : ''}</p>
+                ${rec.post_error ? `<p><strong>Publishing:</strong> ${escapeHtml(rec.post_error)}</p>` : ''}
                 <p><strong>Started:</strong> ${formatDateTime(rec.start_time)}</p>
                 ${rec.end_time ? `<p><strong>Ended:</strong> ${formatDateTime(rec.end_time)}</p>` : ''}
                 ${rec.description ? `<p><strong>Description:</strong> ${escapeHtml(rec.description)}</p>` : ''}
@@ -878,7 +879,7 @@ async function viewRecording(recordingId) {
 
         // Name, description and photos can be changed at any stage up to
         // publishing; the API refuses them once the post is out.
-        if (rec.status !== 'published') {
+        if (rec.stage !== 'published') {
             modalContent += `
                 <a href="upload?recording_id=${rec.id}" target="_blank"
                    class="btn btn-primary">
@@ -887,7 +888,7 @@ async function viewRecording(recordingId) {
             `;
         }
 
-        if (rec.status === 'stopped') {
+        if (rec.stage === 'stopped') {
             modalContent += `
                 <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
                     ${Icons.process} Process
@@ -895,7 +896,7 @@ async function viewRecording(recordingId) {
             `;
         }
 
-        if (rec.status === 'processed') {
+        if (rec.stage === 'processed') {
             modalContent += `
                 <button class="btn btn-success" onclick="closeModal(); reprocessRecording(${rec.id})">
                     ${Icons.process} Reprocess
@@ -903,7 +904,7 @@ async function viewRecording(recordingId) {
             `;
         }
 
-        if (['stopped', 'processing', 'processed'].includes(rec.status)) {
+        if (['stopped', 'processing', 'processed'].includes(rec.stage)) {
             modalContent += `
                 <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
                     ${Icons.publish} Publish to WordPress
@@ -911,10 +912,12 @@ async function viewRecording(recordingId) {
             `;
         }
 
-        if (['failed', 'published'].includes(rec.status)) {
+        // A failed process or publish, cleared so it can be tried again. A
+        // published recording no longer needs this to publish again (TR-11)
+        if (rec.stage === 'failed' && rec.status !== 'failed') {
             modalContent += `
                 <button class="btn btn-secondary" onclick="closeModal(); resetRecordingToProcessed(${rec.id})">
-                    &#8635; Reset to Processed
+                    &#8635; Clear the failure
                 </button>
             `;
         }
@@ -1018,6 +1021,8 @@ function getStatusColor(status) {
         'active': 'success',
         'stopped': 'info',
         'processing': 'warning',
+        'processed': 'info',
+        'publishing': 'warning',
         'published': 'success',
         'failed': 'danger'
     };

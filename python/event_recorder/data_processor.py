@@ -31,7 +31,7 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 from . import chart_map
-from .models import Database, RecordingStatus, ImageType
+from .models import Artefacts, Database, ImageType
 
 logger = logging.getLogger(__name__)
 
@@ -492,8 +492,9 @@ class DataProcessor:
         """
         logger.info(f"Processing recording {recording_id}")
 
-        # Update status
-        self.database.update_recording(recording_id, status=RecordingStatus.PROCESSING)
+        # The artefacts' state, not the recording's (TR-12): processing a
+        # recording says nothing about whether recording it went well
+        self.database.update_recording(recording_id, artefacts=Artefacts.PROCESSING)
 
         try:
             # Create output directory for this recording
@@ -603,12 +604,14 @@ class DataProcessor:
             logger.info(f"Processing complete: {len(results['plots'])} plots, "
                         f"{len(results['exports'])} exports")
 
-            self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
+            self.database.update_recording(recording_id, artefacts=Artefacts.FRESH,
+                                           processed_at=datetime.utcnow())
             return results
 
         except Exception as e:
             logger.error(f"Processing failed: {e}")
-            self.database.update_recording(recording_id, status=RecordingStatus.FAILED)
+            self.database.update_recording(recording_id, artefacts=Artefacts.FAILED,
+                                           error_message=f"Processing failed: {e}")
             return {
                 'plots': [],
                 'statistics': {},

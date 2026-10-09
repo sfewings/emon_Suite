@@ -8,7 +8,7 @@ or complete processing based on current GPS position and recording state.
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Callable
-from .models import Database, RecordingStatus
+from .models import Artefacts, Database, PostState, RecordingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -82,23 +82,31 @@ class RecoveryManager:
                 )
                 recovery_actions['process'].append(recording_id)
 
-        # Get recordings stuck in 'stopped' state (stopped but not processed)
-        stopped_recordings = self.database.get_recordings_by_status(RecordingStatus.STOPPED)
+        # Stopped and never processed. Since TR-12 every finished recording
+        # is 'stopped', processed and published ones included, so the
+        # artefacts are what say which of them are waiting.
+        stopped_recordings = [
+            r for r in self.database.get_recordings_by_status(RecordingStatus.STOPPED)
+            if r['artefacts'] == Artefacts.NONE
+        ]
 
         if stopped_recordings:
             logger.info(f"Found {len(stopped_recordings)} stopped recordings awaiting processing")
             for recording in stopped_recordings:
                 recovery_actions['process'].append(recording['id'])
 
-        # Get recordings stuck in 'processing' state
-        processing_recordings = self.database.get_recordings_by_status(RecordingStatus.PROCESSING)
-
-        if processing_recordings:
-            logger.info(f"Found {len(processing_recordings)} recordings interrupted during processing")
-            for recording in processing_recordings:
-                # Reset to stopped state for reprocessing
-                self.database.update_recording(recording['id'], status=RecordingStatus.STOPPED)
+        # Interrupted part way through processing, or publishing. Both were
+        # work in this process that died with it.
+        for recording in self.database.get_recordings_by_status(RecordingStatus.STOPPED):
+            if recording['artefacts'] == Artefacts.PROCESSING:
+                logger.info(f"Recording {recording['id']}: interrupted during processing")
+                self.database.update_recording(recording['id'], artefacts=Artefacts.NONE)
                 recovery_actions['process'].append(recording['id'])
+            if recording['post_state'] == PostState.PUBLISHING:
+                logger.info(f"Recording {recording['id']}: interrupted during publishing")
+                self.database.set_post_state(
+                    recording['id'], PostState.PUBLISH_FAILED,
+                    "Publishing was interrupted by a restart; publish again")
 
         return recovery_actions
 
@@ -238,7 +246,7 @@ class RecoveryManager:
                     logger.error(f"Failed to process recording {recording_id}: {e}")
                     self.database.update_recording(
                         recording_id,
-                        status=RecordingStatus.FAILED,
+                        artefacts=Artefacts.FAILED,
                         error_message=f"Recovery processing failed: {e}"
                     )
                     summary['failed'] += 1
@@ -253,12 +261,11 @@ class RecoveryManager:
         Returns:
             Dict with counts per status
         """
+        # By stage (TR-12). This used `status.value` on plain strings, so it
+        # raised the first time anything called it.
         summary = {}
-        for status in [RecordingStatus.ACTIVE, RecordingStatus.STOPPED,
-                      RecordingStatus.PROCESSING, RecordingStatus.PUBLISHED,
-                      RecordingStatus.FAILED]:
-            recordings = self.database.get_recordings_by_status(status.value)
-            summary[status.value] = len(recordings)
+        for recording in self.database.get_all_recordings(limit=1000000):
+            summary[recording['stage']] = summary.get(recording['stage'], 0) + 1
 
         return summary
 
@@ -296,7 +303,7 @@ class RecoveryManager:
                 continue
 
             # Skip published recordings if requested
-            if keep_published and status == RecordingStatus.PUBLISHED:
+            if keep_published and recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
                 continue
 
             # Delete old recording

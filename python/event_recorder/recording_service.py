@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from .models import Database, ImageType, RecordingStatus
+from .models import Artefacts, Database, ImageType, PostState, RecordingStatus
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,9 @@ class RecordingService:
             status=RecordingStatus.STOPPED,
             end_time=datetime.utcnow()
         )
+        # Processed while still recording: the plots stop short of the end
+        if self.database.get_recording(recording_id)['artefacts'] == Artefacts.FRESH:
+            self.database.update_recording(recording_id, artefacts=Artefacts.STALE)
 
     # === Processing ===
 
@@ -167,13 +170,30 @@ class RecordingService:
     # === Status changes and deletion ===
 
     def reset_to_processed(self, recording_id: int) -> str:
-        """Put a failed or published recording back to processed. Returns the old status."""
+        """
+        Clear a failed process or publish so it can be tried again. Returns
+        the stage the recording was at.
+
+        Before TR-12 this was also how a published recording was made
+        publishable again. That is no longer needed: a publish updates the
+        recording's own post (TR-11). So a published recording is refused
+        here, as anything else that has not failed is.
+        """
         recording = self._get(recording_id)
-        if recording['status'] not in (RecordingStatus.FAILED, RecordingStatus.PUBLISHED):
-            raise RecordingError(f"Cannot reset from status '{recording['status']}'", 400)
-        self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
-        logger.info(f"Recording {recording_id} reset to processed (was {recording['status']})")
-        return recording['status']
+        stage = recording['stage']
+        if recording['post_state'] == PostState.PUBLISH_FAILED:
+            # Back to where the post was before the attempt: none, unless
+            # an earlier publish put it out
+            self.database.set_post_state(
+                recording_id,
+                PostState.PUBLISHED if recording.get('wp_post_id') else PostState.NONE)
+        elif recording['artefacts'] == Artefacts.FAILED:
+            self.database.update_recording(recording_id, artefacts=Artefacts.NONE,
+                                           error_message=None)
+        else:
+            raise RecordingError(f"Nothing to reset: the recording is {stage}", 400)
+        logger.info(f"Recording {recording_id} reset (was {stage})")
+        return stage
 
     def delete(self, recording_id: int):
         """Delete a stopped recording: its rows (by cascade), plots, exports and photos."""
@@ -364,35 +384,42 @@ class RecordingService:
                     'export_type': exp['export_type']
                 })
 
+        # The post's state from here on, never the recording's (TR-12). Set
+        # only now, after the refusals above, which leave the post as it was.
         logger.info(f"Publishing recording {recording_id} to WordPress")
-        post = self.wordpress_publisher.publish_recording(
-            recording_data=recording,
-            images=image_list,
-            exports=export_list,
-            statistics=statistics,
-            map_htmls=map_htmls,
-            template=template,
-            category=category,
-            auto_publish=auto_publish,
-            post_id=post_id,
-            progress=progress
-        )
+        self.database.set_post_state(recording_id, PostState.PUBLISHING)
+        try:
+            post = self.wordpress_publisher.publish_recording(
+                recording_data=recording,
+                images=image_list,
+                exports=export_list,
+                statistics=statistics,
+                map_htmls=map_htmls,
+                template=template,
+                category=category,
+                auto_publish=auto_publish,
+                post_id=post_id,
+                progress=progress
+            )
+        except Exception as e:
+            self.database.set_post_state(recording_id, PostState.PUBLISH_FAILED,
+                                         f"WordPress publishing failed: {e}")
+            raise
 
         if not post:
-            self.database.update_recording(
-                recording_id,
-                status=RecordingStatus.FAILED,
-                error_message="WordPress publishing failed"
-            )
+            self.database.set_post_state(recording_id, PostState.PUBLISH_FAILED,
+                                         "WordPress publishing failed")
             raise RecordingError('Failed to create WordPress post', 500)
 
         self.database.save_post_ref(recording_id, post['id'],
                                     post.get('modified_gmt'), post.get('status'))
-        self.database.update_recording(
+        # A WordPress draft is still WordPress's to finish (Q5); 'future' is
+        # a post that will go live by itself, so it counts as published
+        self.database.set_post_state(
             recording_id,
-            status=RecordingStatus.PUBLISHED,
-            wordpress_url=post['link']
-        )
+            PostState.WP_DRAFT if post.get('status') in ('draft', 'pending')
+            else PostState.PUBLISHED)
+        self.database.update_recording(recording_id, wordpress_url=post['link'])
         logger.info(f"Recording published: {post['link']}")
         post.setdefault('failed_uploads', [])
         return post

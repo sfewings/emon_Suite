@@ -17,13 +17,76 @@ logger = logging.getLogger(__name__)
 
 
 class RecordingStatus:
-    """Recording status constants."""
+    """
+    The recording's own life, in `recordings.status` (TR-12).
+
+    ACTIVE, STOPPED and FAILED are the only values written. FAILED means the
+    recording itself failed (nothing was recorded), never that processing or
+    publishing did: those are Artefacts.FAILED and PostState.PUBLISH_FAILED.
+
+    PROCESSING, PROCESSED and PUBLISHED are what this one field used to say
+    about the artefacts and the post as well. The table's CHECK constraint
+    still allows them, and _split_status() rewrites any it finds, but nothing
+    writes them now. They remain as the names of display stages (stage_of).
+    """
     ACTIVE = 'active'
     STOPPED = 'stopped'
     PROCESSING = 'processing'
     PROCESSED = 'processed'
     PUBLISHED = 'published'
     FAILED = 'failed'
+
+
+class Artefacts:
+    """The plots, statistics and exports, in `recordings.artefacts` (TR-12)."""
+    NONE = 'none'
+    PROCESSING = 'processing'
+    FRESH = 'fresh'
+    # Processed, then the recording changed: more data after an early
+    # process, or its times moved by the clock-step repair
+    STALE = 'stale'
+    FAILED = 'failed'
+
+
+class PostState:
+    """The WordPress post, in `post_drafts.post_state` (TR-12)."""
+    NONE = 'none'
+    PUBLISHING = 'publishing'
+    WP_DRAFT = 'wp_draft'
+    PUBLISHED = 'published'
+    PUBLISH_FAILED = 'publish_failed'
+
+    # WordPress owns the post in these, so the recording is locked (Q5)
+    OWNED_BY_WORDPRESS = (WP_DRAFT, PUBLISHED)
+
+
+def stage_of(recording: Dict) -> str:
+    """
+    One label for where a recording has got to, for lists and filters.
+
+    Derived from the three states, never stored, so it cannot disagree with
+    them. The values are the ones the single status field used to hold, plus
+    'publishing', so the existing dashboard reads it unchanged.
+    """
+    post = recording.get('post_state') or PostState.NONE
+    if recording['status'] == RecordingStatus.ACTIVE:
+        return 'active'
+    if recording['status'] == RecordingStatus.FAILED:
+        return 'failed'
+    if post == PostState.PUBLISHING:
+        return 'publishing'
+    if post in PostState.OWNED_BY_WORDPRESS:
+        return 'published'
+    if post == PostState.PUBLISH_FAILED:
+        return 'failed'
+    artefacts = recording.get('artefacts') or Artefacts.NONE
+    if artefacts == Artefacts.PROCESSING:
+        return 'processing'
+    if artefacts in (Artefacts.FRESH, Artefacts.STALE):
+        return 'processed'
+    if artefacts == Artefacts.FAILED:
+        return 'failed'
+    return 'stopped'
 
 
 class ImageType:
@@ -195,6 +258,8 @@ class Database:
                 logger.info("Migrating: adding post_drafts table")
                 conn.execute(self.POST_DRAFTS_SQL)
 
+            self._split_status(conn)
+
             # Rows left behind by deletes made before foreign keys were
             # enforced. Done once: it scans recording_data, which is the bulk
             # of the file on the Pi's SD card.
@@ -229,6 +294,87 @@ class Database:
             FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
         )
     """
+
+    def _split_status(self, conn):
+        """
+        TR-12: give the artefacts and the post states of their own, and move
+        what the single status said about them into those.
+
+        Columns are added rather than the table rebuilt, so the old status
+        values stay allowed by its CHECK constraint; they are rewritten here
+        and nothing writes them again. Runs on every start and does nothing
+        once there is nothing left to move.
+        """
+        def columns(table):
+            return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+        if 'artefacts' not in columns('recordings'):
+            logger.info("Migrating: adding recordings.artefacts and processed_at")
+            conn.execute("ALTER TABLE recordings ADD COLUMN artefacts TEXT NOT NULL DEFAULT 'none'")
+            conn.execute("ALTER TABLE recordings ADD COLUMN processed_at TIMESTAMP")
+        if 'post_state' not in columns('post_drafts'):
+            logger.info("Migrating: adding post_drafts.post_state and post_error")
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN post_state TEXT NOT NULL DEFAULT 'none'")
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN post_error TEXT")
+
+        def set_post_state(where, state, error_sql='NULL'):
+            conn.execute(f"""
+                INSERT INTO post_drafts (recording_id, post_state, post_error)
+                SELECT id, '{state}', {error_sql} FROM recordings WHERE {where}
+                ON CONFLICT(recording_id) DO UPDATE SET
+                    post_state = excluded.post_state, post_error = excluded.post_error
+            """)
+
+        # A post id stored by TR-11 with no state yet: that post is out
+        untracked = """wp_post_id IS NOT NULL AND post_state = 'none'"""
+
+        moved = conn.execute("""
+            SELECT COUNT(*) FROM recordings
+            WHERE status IN ('processing', 'processed', 'published')
+               OR (status = 'failed' AND COALESCE(error_message, '') NOT LIKE 'No data recorded%')
+        """).fetchone()[0] + conn.execute(
+            f"SELECT COUNT(*) FROM post_drafts WHERE {untracked}").fetchone()[0]
+        if not moved:
+            return
+        logger.info(f"Migrating: splitting the status of {moved} recordings")
+
+        conn.execute(f"""
+            UPDATE post_drafts SET post_state = CASE
+                WHEN wp_status IN ('draft', 'pending') THEN '{PostState.WP_DRAFT}'
+                ELSE '{PostState.PUBLISHED}' END
+            WHERE {untracked}
+        """)
+
+        # A post that went out: processed, and published. 'processed' with a
+        # link is one too: the old way to republish, or add a photo to a
+        # published recording, was to reset it to processed first.
+        set_post_state("status = 'published'", PostState.PUBLISHED)
+        set_post_state("""status = 'processed' AND wordpress_url IS NOT NULL
+                          AND id NOT IN (SELECT recording_id FROM post_drafts
+                                         WHERE post_state != 'none')""",
+                       PostState.PUBLISHED)
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FRESH}'
+                         WHERE status = 'published'""")
+
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FRESH}'
+                         WHERE status = 'processed'""")
+
+        # Processing that was interrupted: as if never started
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.NONE}'
+                         WHERE status = 'processing'""")
+
+        # 'failed' meant three things. A publish that failed was processed
+        # first; the message the publisher left says which one it was.
+        publish_failed = "status = 'failed' AND error_message LIKE '%WordPress%'"
+        set_post_state(publish_failed, PostState.PUBLISH_FAILED, 'error_message')
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FRESH}'
+                         WHERE {publish_failed}""")
+
+        # Only a recording with nothing in it failed as a recording (recovery
+        # says so in those words). Any other failure was processing's.
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FAILED}'
+                         WHERE status = 'failed'
+                           AND COALESCE(error_message, '') NOT LIKE 'No data recorded%'""")
 
     DANGLING_REFERENCE = 'REFERENCES "recordings_old"'
 
@@ -374,6 +520,7 @@ class Database:
             """)
 
             conn.execute(self.POST_DRAFTS_SQL)
+            self._split_status(conn)
 
             logger.info("Database schema created successfully")
 
@@ -435,6 +582,20 @@ class Database:
             conn.execute(query, values)
             logger.info(f"Updated recording {recording_id}: {kwargs}")
 
+    # A recording with its post's state beside it, so a reader has all three
+    # of TR-12's states in one row, and the stage derived from them
+    RECORDING_SELECT = """
+        SELECT r.*, COALESCE(d.post_state, 'none') AS post_state,
+               d.post_error, d.wp_post_id
+        FROM recordings r LEFT JOIN post_drafts d ON d.recording_id = r.id
+    """
+
+    @staticmethod
+    def _recording(row) -> Dict:
+        recording = dict(row)
+        recording['stage'] = stage_of(recording)
+        return recording
+
     def get_recording(self, recording_id: int) -> Optional[Dict]:
         """
         Get recording by ID.
@@ -446,11 +607,10 @@ class Database:
             Dict with recording data or None if not found
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT * FROM recordings WHERE id = ?
-            """, (recording_id,))
+            cursor = conn.execute(
+                self.RECORDING_SELECT + " WHERE r.id = ?", (recording_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._recording(row) if row else None
 
     def get_recordings_by_status(self, status: str) -> List[Dict]:
         """
@@ -463,11 +623,10 @@ class Database:
             List of recording dicts
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT * FROM recordings WHERE status = ?
-                ORDER BY start_time DESC
-            """, (status,))
-            return [dict(row) for row in cursor.fetchall()]
+            cursor = conn.execute(
+                self.RECORDING_SELECT + " WHERE r.status = ? ORDER BY r.start_time DESC",
+                (status,))
+            return [self._recording(row) for row in cursor.fetchall()]
 
     def get_all_recordings(self, limit: int = 100, offset: int = 0) -> List[Dict]:
         """
@@ -481,12 +640,10 @@ class Database:
             List of recording dicts
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT * FROM recordings
-                ORDER BY start_time DESC
-                LIMIT ? OFFSET ?
-            """, (limit, offset))
-            return [dict(row) for row in cursor.fetchall()]
+            cursor = conn.execute(
+                self.RECORDING_SELECT + " ORDER BY r.start_time DESC LIMIT ? OFFSET ?",
+                (limit, offset))
+            return [self._recording(row) for row in cursor.fetchall()]
 
     def delete_recording(self, recording_id: int):
         """
@@ -733,6 +890,13 @@ class Database:
                 [(shifted(r['timestamp']), r['id']) for r in data]
             )
 
+            # Plots drawn before the move carry the old times
+            conn.execute(
+                f"UPDATE recordings SET artefacts = '{Artefacts.STALE}' "
+                f"WHERE id = ? AND artefacts = '{Artefacts.FRESH}'",
+                (recording_id,)
+            )
+
             return len(data)
 
     def delete_plot_images(self, recording_id: int) -> int:
@@ -844,6 +1008,18 @@ class Database:
                     wp_status = excluded.wp_status,
                     updated_at = excluded.updated_at
             """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
+
+    def set_post_state(self, recording_id: int, state: str, error: str = None):
+        """Set where the recording's post has got to (TR-12), with the error if it failed."""
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO post_drafts (recording_id, post_state, post_error, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(recording_id) DO UPDATE SET
+                    post_state = excluded.post_state,
+                    post_error = excluded.post_error,
+                    updated_at = excluded.updated_at
+            """, (recording_id, state, error, datetime.utcnow()))
 
     # === Service Settings Operations ===
 

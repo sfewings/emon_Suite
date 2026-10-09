@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from event_recorder.models import Database, ImageType, RecordingStatus
+from event_recorder.models import Artefacts, Database, ImageType, PostState, RecordingStatus
 from event_recorder.recording_service import RecordingError, RecordingService
 from event_recorder.web_interface import WebInterface
 
@@ -91,7 +91,7 @@ def service(db, wp, tmp_path):
 def rid(db, tmp_path):
     """A processed recording with one plot on disk, which is all publish needs."""
     rid = db.create_recording("Sunday race")
-    db.update_recording(rid, status=RecordingStatus.PROCESSED)
+    db.update_recording(rid, status=RecordingStatus.STOPPED, artefacts=Artefacts.FRESH)
     plot = tmp_path / "speed.png"
     plot.write_bytes(b"png")
     db.add_image(rid, str(plot), ImageType.PLOT, "Speed")
@@ -105,12 +105,16 @@ def test_the_first_publish_creates_a_post_and_remembers_it(service, db, wp, rid)
     ref = db.get_post_draft(rid)
     assert ref["wp_post_id"] == post["id"]
     assert ref["wp_modified"] == wp.posts[post["id"]]["modified_gmt"]
-    assert db.get_recording(rid)["status"] == RecordingStatus.PUBLISHED
+    rec = db.get_recording(rid)
+    # No publish_status configured here, so it goes out as a WordPress draft,
+    # which WordPress owns as much as a live post (Q5)
+    assert rec["post_state"] == PostState.WP_DRAFT and rec["stage"] == "published"
+    # The recording's own state is untouched by publishing (TR-12)
+    assert rec["status"] == RecordingStatus.STOPPED
 
 
 def test_publishing_again_updates_the_same_post(service, db, wp, rid):
     first = service.publish(rid)
-    service.reset_to_processed(rid)
 
     second = service.publish(rid)
 
@@ -121,7 +125,6 @@ def test_publishing_again_updates_the_same_post(service, db, wp, rid):
 
 def test_a_post_edited_in_wp_admin_is_not_overwritten(service, db, wp, rid):
     post = service.publish(rid)
-    service.reset_to_processed(rid)
     wp.edit_in_wp_admin(post["id"])
     edited = dict(wp.posts[post["id"]])
 
@@ -131,12 +134,12 @@ def test_a_post_edited_in_wp_admin_is_not_overwritten(service, db, wp, rid):
     assert refused.value.status == 409
     assert "edited in WordPress" in str(refused.value)
     assert wp.posts[post["id"]] == edited
-    assert db.get_recording(rid)["status"] == RecordingStatus.PROCESSED
+    # A refusal leaves the post's state as it was
+    assert db.get_recording(rid)["post_state"] == PostState.WP_DRAFT
 
 
 def test_a_post_deleted_in_wordpress_is_published_afresh(service, db, wp, rid):
     old = service.publish(rid)
-    service.reset_to_processed(rid)
     del wp.posts[old["id"]]
 
     new = service.publish(rid)
@@ -147,7 +150,6 @@ def test_a_post_deleted_in_wordpress_is_published_afresh(service, db, wp, rid):
 
 def test_not_being_able_to_check_the_post_never_makes_a_second_one(service, wp, rid):
     service.publish(rid)
-    service.reset_to_processed(rid)
     wp.check_fails = True
 
     with pytest.raises(RecordingError) as refused:
@@ -221,7 +223,6 @@ def test_publishing_runs_in_the_background_and_reports_progress(service, wp, rid
 
 def test_a_failed_publish_is_reported_on_the_job(service, wp, rid):
     service.publish(rid)
-    service.reset_to_processed(rid)
     wp.edit_in_wp_admin(next(iter(wp.posts)))
 
     service.start_publish(rid)
@@ -257,7 +258,6 @@ def test_without_wordpress_publishing_is_refused_at_once(db, tmp_path, rid):
 
 def test_deleting_a_recording_removes_its_post_reference(service, db, rid, tmp_path):
     service.publish(rid)
-    service.reset_to_processed(rid)
 
     service.delete(rid)
 

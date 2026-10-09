@@ -16,7 +16,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
-from .models import Database, RecordingStatus, ImageType
+from .models import Database, ImageType, PostState, RecordingStatus
 from .recording_service import RecordingError, RecordingService
 from .wordpress_publisher import WordPressPublisher
 
@@ -131,10 +131,13 @@ class WebInterface:
         recording = self.database.get_recording(recording_id)
         if not recording:
             return jsonify({'success': False, 'error': 'Recording not found'}), 404
-        if recording['status'] == RecordingStatus.PUBLISHED:
+        # Once WordPress has the post, as a draft or live, it is WordPress's
+        # to change (Q5); the recording no longer takes edits that would not
+        # reach it
+        if recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
             return jsonify({
                 'success': False,
-                'error': 'Recording is already published; reset it to processed to change it'
+                'error': 'Recording is already published; change the post in WordPress'
             }), 409
         return None
 
@@ -220,10 +223,16 @@ class WebInterface:
                 limit = int(request.args.get('limit', 100))
                 offset = int(request.args.get('offset', 0))
 
-                if status_filter:
+                # The filter is a stage (TR-12), which is derived rather than
+                # stored, so it is applied here. 'active' is the one stage that
+                # is also a status, and the dashboard asks for it every second,
+                # so that one is still a query.
+                if status_filter == RecordingStatus.ACTIVE:
                     recordings = self.database.get_recordings_by_status(status_filter)
                 else:
                     recordings = self.database.get_all_recordings(limit, offset)
+                    if status_filter:
+                        recordings = [r for r in recordings if r['stage'] == status_filter]
 
                 # Add message counts
                 for recording in recordings:
