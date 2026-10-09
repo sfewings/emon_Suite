@@ -214,10 +214,11 @@ reorganises the URLs: the navigation is relative links (`href="hud"` and
 `href="."`), and `hud.html` derives its API base by stripping a trailing `/hud`
 from `location.pathname`. A prefix of `/race/` and a prefix of `/hud/` both work.
 
-**Specified, not yet added:** `location /race/log/`, proxied to event_recorder's
-`:5000/log/`, not to this app. It sits inside `/race/` so that the post editor opens in
-this app's Home Screen window (9.13). The longer prefix outranks `/race/`, so the
-existing block needs no change. The block itself is in event_recorder's FR-27.
+**Added, 2026-10-09:** `location /race/log/`, proxied to event_recorder's `:5000/log/`,
+not to this app, in `provisioning/enchantee/etc/nginx/sites-available/default`. It sits
+inside `/race/` so that the post editor opens in this app's Home Screen window (9.13).
+The longer prefix outranks `/race/`, so the existing block needed no change.
+`client_max_body_size 100m` for photos, as `/events/` has.
 
 ### Deployment
 
@@ -857,8 +858,8 @@ The app has **three** screens, named along the bottom of every one of them:
 | `Race` | Everything about a race: course selection, countdown, marks, finish |
 
 In that order, GAR, Map, Race, with the theme toggle last (the first cell reads HUD on
-the HUD itself, 9.12). A fourth link, Log, is specified to go between Race and the
-toggle; it leaves these screens for event_recorder's post editor (9.13). Race used to sit second; it
+the HUD itself, 9.12). A fourth link, Log, goes between Race and the toggle; it leaves
+these screens for event_recorder's post editor (9.13). Race used to sit second; it
 moved to third because the HUD and the map are used every time the boat is out and the
 race screen only on race days, so the two most-used screens come first.
 
@@ -1445,9 +1446,9 @@ wake-lock video and navigates by script, as every screen must (9.8, 9.8.1).
 
 ### 9.13 Log, the way to the day's post
 
-**Specified 2026-10-09, not built.** The requirements are event_recorder's FR-27 and
-FR-28 (`python/event_recorder/docs/EVENT_RECORDER_REQUIREMENTS.md`); this section is
-the racing app's half.
+**Built 2026-10-09.** The requirements are event_recorder's FR-27 and FR-28
+(`python/event_recorder/docs/EVENT_RECORDER_REQUIREMENTS.md`); this section is the
+racing app's half. `tests/test_race_screen.py` pins the link, its `from`, and the dot.
 
 The recording of a sail becomes a post on enchantee.org, and the crew add the words and
 photos on the boat: crew names, title, a short description, the story, a photo, a
@@ -1461,15 +1462,22 @@ more.
 would be `/log/`). It is last of the
 destinations because it is the one that leaves the app's own screens: GAR, Map and Race
 are about sailing the boat, Log is about writing it up. Like the others it navigates by
-script as well as by anchor (9.8.1). Five cells must still fit the narrowest phone
-upright; check that before anything else.
+script as well as by anchor (9.8.1): every page's handler already takes every
+`#nav a[href]`, so it needed nothing new.
+
+Five cells, where the comment at the top of `gar.html` had kept it to four. That
+decision was about not giving the HUD's second face a cell of its own; this one is a
+different destination. At 320 px a cell is 64 px, above the 44 px minimum, and the
+longest label, RACE, is four letters like the rest.
 
 **A dot on it while a recording runs.** event_recorder publishes
 `event_recorder/recording/<id>/status` every second while a recording is active
 (its FR-22). `mqtt_client.py` subscribes to `event_recorder/recording/+/status`, and
 `/api/state` carries whether any recording is active, stale after 5 s like position, so
 a stopped recorder cannot leave the dot lit. It is the only thing the racing app learns
-about recordings, and it is display only.
+about recordings, and it is display only. `static/logdot.js` applies it on GAR, Map and
+Race beside `Theme.apply`. **The HUD has the link but no dot:** it polls `/hud/data`,
+which keeps the Node-RED flow's shape (9.1), and that carries no recording state.
 
 **No photo or note buttons on the racing screens.** Considered and rejected. Every
 screen here is built for 9's cockpit rules: no scrolling, no dialogs, glance and go.

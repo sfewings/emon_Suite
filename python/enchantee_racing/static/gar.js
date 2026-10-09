@@ -477,6 +477,7 @@
         swapped = swap("data-race", "on", !!(d.race && d.race.mode === "racing")) || swapped;
         paint(d);
         window.Theme.apply(d.theme);
+        if (window.LogDot) window.LogDot.apply(d.recording);
         if (swapped) refitAll();   // a hidden set had nothing to measure
       })
       .catch(function () { if (++failures > 3) pip.classList.add("down"); });

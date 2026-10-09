@@ -38,6 +38,16 @@ POSITION_KEY = "position"
 """Where a gps/position/0 fix lands. Its value is a {"lat": .., "lon": ..} dict, not a
 number, which is why it is not one of FIELDS and not on the HUD payload."""
 
+RECORDING_KEY = "recording"
+"""Where event_recorder's status for a recording in progress lands (DESIGN 9.13). Its
+value is the status dict the recorder publishes once a second, not a number, so like the
+position it is not one of FIELDS and not on the HUD payload."""
+
+RECORDING_STALE_S = 5.0
+"""The recorder publishes every second while a recording runs and nothing once it stops.
+Five missed messages is a stopped recording or a stopped recorder, and either way the dot
+on the Log link goes out, so a recorder that has died cannot leave it lit."""
+
 POSITION_STALE_S = 5.0
 """Position blanks rather than dims past this age, and the leg engine stops evaluating
 advance (DESIGN 9.5). A bearing computed from a 15 s old fix at 6 knots is 46 m out, so
@@ -227,6 +237,7 @@ class Store:
         state["position"] = derive_position(snapshot, now)
         state["leeway"] = derive_leeway(snapshot, now)
         state["heel"] = derive_heel(snapshot, now)
+        state["recording"] = derive_recording(snapshot, now)
         state["race"] = self.race_payload(now)
         state["theme"] = self.theme()
         return state
@@ -597,6 +608,23 @@ def derive_heel(snapshot: Snapshot, now: float) -> Optional[dict]:
     if math.hypot(y.v, z.v) < HEEL_MIN_G:
         return None
     return {"v": math.degrees(math.atan2(y.v, z.v)), "age": now - min(y.t, z.t)}
+
+
+def derive_recording(snapshot: Snapshot, now: float) -> dict:
+    """Whether event_recorder is recording, for the dot on the Log link (DESIGN 9.13).
+
+    {"active": bool}, decided here rather than in each page, like position's `stale`, so
+    every device lights the dot together. Active only while the status keeps arriving: the
+    recorder says nothing once a recording stops, so silence past RECORDING_STALE_S is
+    "not recording", and a crashed recorder cannot leave the dot lit.
+
+    Display only. The racing app does nothing else with recordings.
+    """
+    reading = snapshot.values.get(RECORDING_KEY)
+    if reading is None or not isinstance(reading.v, dict):
+        return {"active": False}
+    fresh = (now - reading.t) <= RECORDING_STALE_S
+    return {"active": fresh and reading.v.get("status") == "active"}
 
 
 def derive_position(snapshot: Snapshot, now: float) -> Optional[dict]:

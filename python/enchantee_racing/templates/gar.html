@@ -2,8 +2,9 @@
 <!--
   GAR: the wind dial, laid out the way the Garmin GMI 20 on the boat lays it out, so the
   crew can read it the way they already read that instrument (DESIGN 9.12). The HUD's other
-  face rather than a fifth screen: the HUD's own nav cell toggles between the two, so the
-  navigation stays four cells wide at 320 px and no setting has to be stored to remember
+  face rather than another screen: the HUD's own nav cell toggles between the two, so the
+  instruments take one cell of the navigation, not two (the fifth is Log, DESIGN 9.13),
+  and no setting has to be stored to remember
   which face a device prefers.
 
   What is the Garmin's and what is this app's:
@@ -171,9 +172,11 @@
     <a class="here" href="hud">GAR</a>
     <a href="map">Map</a>
     <a href=".">Race</a>
+    <a class="log" href="log/?from=gar">Log</a>
     <button data-theme-toggle></button>
   </nav>
 </div>
 
 <script src="static/theme.js"></script>
+<script src="static/logdot.js"></script>
 <script src="static/gar.js"></script>

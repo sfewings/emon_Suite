@@ -249,7 +249,10 @@ def test_position_is_subscribed_and_handled_apart_from_the_bare_numbers():
     assert mqtt_client.POSITION_TOPIC == "gps/position/0"
     assert mqtt_client.POSITION_TOPIC not in mqtt_client.TOPICS  # not a bare number
     assert mqtt_client.POSITION_TOPIC in mqtt_client.SUBSCRIPTIONS
-    assert set(mqtt_client.SUBSCRIPTIONS) == set(mqtt_client.TOPICS) | {mqtt_client.POSITION_TOPIC}
+    # Plus the recorder's status, for the dot on the Log link (DESIGN 9.13)
+    assert set(mqtt_client.SUBSCRIPTIONS) == (set(mqtt_client.TOPICS)
+                                              | {mqtt_client.POSITION_TOPIC,
+                                                 mqtt_client.RECORDING_TOPIC})
 
 
 def test_a_position_fix_is_parsed_and_stored():
@@ -339,7 +342,7 @@ def test_api_state_carries_the_hud_payload_and_the_position():
     assert response.status_code == 200
     state = json.loads(response.get_data(as_text=True))
     assert set(state) == {"now", "motor", "fields", "position", "leeway", "heel", "race",
-                          "theme"}
+                          "theme", "recording"}
     assert state["race"] is None, "no course selected yet, so there is no race to report"
     assert state["fields"]["sog"]["v"] == 5.58
     assert state["position"]["v"] == {"lat": -32.0039101, "lon": 115.8137589}

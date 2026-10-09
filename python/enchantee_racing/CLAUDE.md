@@ -74,6 +74,8 @@ static/                 app.js and app.css, the race screen
                         scripts/gen_palette.py from matplotlib's viridis so the
                         trail and event_recorder's route maps agree (DESIGN 12.6)
                         theme.js, day and night, shared by index, map and gar
+                        logdot.js, the recording dot on the Log link, the
+                        same three (DESIGN 9.13)
                         viewport.js, the measured screen height, same three
                         flags/*.svg, audio/, wake.mp4, silence.wav, icon*
                         audio-check.html, geo-check.html with geo-fixture.json,
