@@ -237,19 +237,23 @@ async function loadActiveRecordings() {
 async function loadServiceStatus() {
     if (!serviceStatus) return;
 
+    // No optional chaining here or anywhere in this file: the boat's iPad is on
+    // iOS 12, where it is a syntax error that stops the whole script (TR-13).
+    const buffer = serviceStatus.buffer_status || {};
+
     // MQTT Status
-    const mqttConnected = serviceStatus.buffer_status?.connected || false;
+    const mqttConnected = buffer.connected || false;
     document.getElementById('mqttStatus').innerHTML = mqttConnected
         ? '<span class="status-online">✓ Connected</span>'
         : '<span class="status-offline">✗ Disconnected</span>';
 
     // Buffer Size
-    const bufferSize = serviceStatus.buffer_status?.buffer_size || 0;
-    const maxBuffer = serviceStatus.buffer_status?.max_buffer_size || 1000;
+    const bufferSize = buffer.buffer_size || 0;
+    const maxBuffer = buffer.max_buffer_size || 1000;
     document.getElementById('bufferSize').textContent = `${bufferSize} / ${maxBuffer}`;
 
     // Subscribed Topics
-    const topics = serviceStatus.buffer_status?.subscribed_topics || [];
+    const topics = buffer.subscribed_topics || [];
     document.getElementById('subscribedTopics').textContent = topics.length;
 
     // Active Monitors
@@ -304,7 +308,8 @@ async function loadRecentRecordings() {
 // === Recordings View ===
 async function loadRecordings() {
     try {
-        const statusFilter = document.getElementById('statusFilter')?.value || '';
+        const filterSelect = document.getElementById('statusFilter');
+        const statusFilter = (filterSelect && filterSelect.value) || '';
         const url = statusFilter
             ? `api/recordings?status=${statusFilter}`
             : 'api/recordings';
@@ -667,7 +672,7 @@ async function loadWordPressSettings() {
     if (!container) return;
 
     // Use cached serviceStatus if available
-    const wp = serviceStatus?.wordpress;
+    const wp = serviceStatus && serviceStatus.wordpress;
 
     if (wp && wp.configured) {
         container.innerHTML = `
@@ -906,7 +911,8 @@ function closeModal() {
 }
 
 // Close modal on background click
-document.getElementById('recordingModal')?.addEventListener('click', (e) => {
+var recordingModal = document.getElementById('recordingModal');
+if (recordingModal) recordingModal.addEventListener('click', (e) => {
     if (e.target.id === 'recordingModal') {
         closeModal();
     }
