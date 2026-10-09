@@ -1375,15 +1375,24 @@ HUD.
 
 - **SOG** in a band under the dial. The Garmin page has no SOG, and SOG is the number
   most often wanted.
-- **Motor:** while the SevCon runs, RPM, AMP, CTRL and MOT appear as four smaller blocks
-  under the top corners and above the bottom ones, and the wind corners stay. They used
-  to replace the wind, on the reasoning that the corners are where wind numbers matter
-  least when motoring; the crew asked for all eight on screen, and there was room. Uses the HUD's motor flag and its 10 s
-  hold, pre-rendered and hidden by a class (9.1). Where they go depends on the layout:
-  beside the dial, the columns are empty between their two corners, so they get a value
-  of 44; upright on a phone the corners are above and below the dial instead, so the
-  blocks go in the dial square's corners outside the rim, where a value of 30 at 66 wide
-  is what fits clear of the mark diamond's tip. A test holds that geometry.
+- **Motor:** the corners hold four pairs, TWD and RPM, AWA and AMP, TWS and CTRL, TWA
+  and MOT, each corner with a large slot against the screen's edge and a small one
+  towards the middle, under a top corner or above a bottom one. Sailing, the wind has the
+  large slots and the motor is hidden. While the SevCon runs the pairs trade: the motor
+  takes the corners and the wind moves to the small slots, so all eight are on screen.
+  Uses the HUD's motor flag and its 10 s hold, the motor readings pre-rendered and hidden
+  by a class (9.1).
+  Three versions so far. First the motor replaced the wind outright, on the reasoning
+  that the corners are where wind numbers matter least when motoring. Then the crew
+  asked for all eight on screen, and the motor went in the small slots with the wind
+  keeping the corners. Then they asked for the motor to have the corners while it runs
+  and the wind to be the smaller, which is this.
+  The small slots depend on the layout. Beside the dial the columns are empty between
+  their two corners, so a small value is 44 against the corners' 60. Upright on a phone
+  the corners are above and below the dial instead, so the small slots are the dial
+  square's corners outside the rim, where 30 at 66 wide is what fits clear of the mark
+  diamond's tip: room for four characters, an rpm or a TWA of -105. A test holds that
+  geometry.
 - **Heel:** a line across the dial's centre that tilts with the deck, starboard end down
   when heeled to starboard, with the last 15 s of readings behind it as thinner lines
   fading with their age. A steady heel is one line; a boat rolling is a fan whose width
