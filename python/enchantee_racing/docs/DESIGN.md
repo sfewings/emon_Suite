@@ -214,6 +214,11 @@ reorganises the URLs: the navigation is relative links (`href="hud"` and
 `href="."`), and `hud.html` derives its API base by stripping a trailing `/hud`
 from `location.pathname`. A prefix of `/race/` and a prefix of `/hud/` both work.
 
+**Specified, not yet added:** `location /race/log/`, proxied to event_recorder's
+`:5000/log/`, not to this app. It sits inside `/race/` so that the post editor opens in
+this app's Home Screen window (9.13). The longer prefix outranks `/race/`, so the
+existing block needs no change. The block itself is in event_recorder's FR-27.
+
 ### Deployment
 
 A container, not the systemd unit section 13 and CLAUDE.md assumed:
@@ -852,7 +857,8 @@ The app has **three** screens, named along the bottom of every one of them:
 | `Race` | Everything about a race: course selection, countdown, marks, finish |
 
 In that order, GAR, Map, Race, with the theme toggle last (the first cell reads HUD on
-the HUD itself, 9.12). Race used to sit second; it
+the HUD itself, 9.12). A fourth link, Log, is specified to go between Race and the
+toggle; it leaves these screens for event_recorder's post editor (9.13). Race used to sit second; it
 moved to third because the HUD and the map are used every time the boat is out and the
 race screen only on race days, so the two most-used screens come first.
 
@@ -1436,6 +1442,64 @@ not swing through the bow.
 9.1, which does not apply here. GAR uses `app.css`, `theme.js` and `viewport.js` like
 the map, so there is no third copy of the theme code to keep in step. It carries the
 wake-lock video and navigates by script, as every screen must (9.8, 9.8.1).
+
+### 9.13 Log, the way to the day's post
+
+**Specified 2026-10-09, not built.** The requirements are event_recorder's FR-27 and
+FR-28 (`python/event_recorder/docs/EVENT_RECORDER_REQUIREMENTS.md`); this section is
+the racing app's half.
+
+The recording of a sail becomes a post on enchantee.org, and the crew add the words and
+photos on the boat: crew names, title, a short description, the story, a photo, a
+one-line note ("dolphins at the bridge"). That is done from a phone, or from the iPad,
+which shows this app full time. So the app needs a way there and a way back, and nothing
+more.
+
+**A fourth link, `Log`, after Race and before the theme toggle.** It goes to
+`log/?from=<this screen>`, which from `/race/`, `/race/gar`, `/race/map` and
+`/race/hud` alike resolves to `/race/log/` (not `../log/`, which from `/race/gar`
+would be `/log/`). It is last of the
+destinations because it is the one that leaves the app's own screens: GAR, Map and Race
+are about sailing the boat, Log is about writing it up. Like the others it navigates by
+script as well as by anchor (9.8.1). Five cells must still fit the narrowest phone
+upright; check that before anything else.
+
+**A dot on it while a recording runs.** event_recorder publishes
+`event_recorder/recording/<id>/status` every second while a recording is active
+(its FR-22). `mqtt_client.py` subscribes to `event_recorder/recording/+/status`, and
+`/api/state` carries whether any recording is active, stale after 5 s like position, so
+a stopped recorder cannot leave the dot lit. It is the only thing the racing app learns
+about recordings, and it is display only.
+
+**No photo or note buttons on the racing screens.** Considered and rejected. Every
+screen here is built for 9's cockpit rules: no scrolling, no dialogs, glance and go.
+Taking a photo or typing a note is a quiet-moment job, and both are at the top of the
+event page, one tap from any screen. Putting them here would also put a file picker and
+a text field on a screen that is otherwise read at arm's length.
+
+**The editor is served inside `/race/`, though it is not this app's code.** The manifest
+scope is `/race/` (9.8.1), and that is what keeps the screens in one standalone window.
+A link to `/events/...` would leave the scope, and the phone would open it in the
+overlay browser with a Done button, while the iPad, on iOS 12, would stay full screen:
+the same split between devices that 9.8.1 records. So nginx routes `/race/log/` to
+event_recorder (its FR-27 has the block), the editor opens in the same window on both
+devices, and both directions are ordinary relative links. The page and its API are
+event_recorder's, mounted at `/log` there; nothing in this app serves or proxies them.
+
+**The way back.** The event page's header stays at the top as it scrolls, and its left
+end is a link labelled with the screen the crew came from, "‹ GAR", "‹ Map" or
+"‹ Race", taken from `from` and defaulting to GAR. It is a relative link (`../gar`),
+not `history.back()`, because after a photo upload, or on a page opened fresh from the
+Home Screen, there is no history to go back through.
+
+**Which recording it opens.** Usually two are running, because event_recorder records
+every sail twice (by movement and by leaving the home anchor). The event page picks the
+anchor one, which spans the whole outing; that rule is event_recorder's FR-28. The Log
+link passes no recording id and needs to know nothing about it.
+
+**On the app's own port** (5002), `log/` does not exist, so the link is dead there.
+That is development only, and the same is true of the editor's back link at
+`/events/log/`, where it is hidden.
 
 ## 10. Pre-start behaviour
 

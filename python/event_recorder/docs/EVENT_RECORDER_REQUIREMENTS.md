@@ -1,9 +1,9 @@
 # Event Recorder & WordPress Publisher - Living Requirements
 
-**Version:** 0.3.0
-**Last Updated:** 2026-03-06
+**Version:** 0.4.0
+**Last Updated:** 2026-10-09
 **Owner:** Stephen Fewings
-**Status:** All Phases Complete
+**Status:** Phases 1–5 complete. Phase 6 (post editor) specified, not started
 
 ---
 
@@ -68,6 +68,27 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 - [x] **TR-8:** End-to-end test suite
 - [x] **DOC-1:** Deployment documentation
 - [x] **DOC-2:** Configuration examples
+
+### Phase 6: Post Editor 📋 Specified (2026-10-09)
+
+Foundations, needed by the editor and worth doing on their own:
+
+- [ ] **TR-9:** Foreign keys enforced, and deleting a recording removes all of it
+- [ ] **TR-10:** One recording service behind the triggers and the routes
+- [ ] **TR-11:** Publishing runs in the background and updates its own post
+- [ ] **TR-12:** Recording, artefact and post state kept apart
+- [ ] **TR-13:** Web UI runs on iOS 12
+
+The editor:
+
+- [ ] **FR-24:** Post draft held as blocks, rendered once for preview and publish
+- [ ] **FR-25:** Ship's log default layout
+- [ ] **FR-26:** Log lines filled in from the data
+- [ ] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
+- [ ] **FR-28:** Which recording the event page opens
+- [ ] **FR-29:** Photo and note capture
+- [ ] **FR-30:** Categories and crew from the site, offered not typed
+- [ ] **FR-31:** Live while recording
 
 ---
 
@@ -673,6 +694,356 @@ CREATE TABLE configurations (
 
 ---
 
+### Phase 6 background: what the posts on enchantee.org actually look like
+
+Phase 6 replaces a workflow that is already happening by hand. Track Log posts are
+published and then reworked in wp-admin: the 7-Oct-2026 Track Log was retitled ("Terra15
+software team Crew"), had the crew and a story typed into its description, gained a photo
+through the classic editor, and was given the Twilight category. The editor exists so that
+work is done on the boat, on the day, before the post goes out.
+
+What it should produce was read from the 40 most recent posts outside Track Logs
+(Dec 2025 to Aug 2026). They follow one pattern closely enough to be the default layout:
+
+- The **crew** as the first paragraph ("Henry, Steve"), then the **time** ("5:30-8:20"),
+  then often the **wind** ("NNE 12-14kts"), each its own short paragraph.
+- **One to three short paragraphs** of story. The median is about 40 words, and many
+  posts are under 20.
+- **Zero to five photos**, full width, as core image blocks (`size-large`,
+  `wp-image-NNN`), almost never captioned. Several are phone screenshots of the
+  instruments.
+- **No** headings, galleries, tags, featured image or `<!--more-->` break.
+- **Two categories** as a rule: Ship's Log plus one of Twilight, Club event, Rottnest,
+  Dolphins or Whales. Days off the water use Arduino, Maintenance or No Sail.
+
+A Track Log post is 45 to 117 KB of HTML. A hand-written post is about 2 KB. The gap
+between the two is what FR-25 closes.
+
+The site is behind Apache Basic auth (`docs/APACHE_HTACCESS_AUTH_FIX.md`), which is why
+none of this was visible from outside.
+
+---
+
+### FR-24: Post Draft Held as Blocks
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** Each recording that is going to become a post has a draft, stored as an
+ordered list of blocks rather than as HTML, and a single renderer turns that draft into
+WordPress block markup for both the preview and the published post
+
+**Acceptance Criteria:**
+
+- [ ] New table `post_drafts`, one row per recording: `recording_id`, `title`, `excerpt`,
+      `categories` (JSON list of WordPress ids), `crew` (JSON list), `blocks` (JSON),
+      `featured_image_id`, `revision`, `wp_post_id`, `wp_modified`, `updated_at`
+- [ ] Two kinds of block:
+  - **Content blocks**, which hold what the crew wrote or added: `paragraph`,
+        `photo`, `note`, `more`
+  - **Auto blocks**, which hold only a reference and are rendered from the recording's
+        current data each time: `log_lines`, `route_map`, `statistics`,
+        `interactive_map`, `charts`, `downloads`
+- [ ] Auto blocks can be moved and removed like any other block, and are re-rendered on
+      every preview, so a draft started during a recording shows current numbers
+- [ ] One renderer replaces `_build_post_content()`. The preview and the publish call the
+      same function; they differ only in whether image URLs point at the Pi or at the
+      WordPress media library
+- [ ] The renderer writes delimited core blocks (`<!-- wp:paragraph -->`,
+      `<!-- wp:image {"id":N,"sizeSlug":"large"} -->` with `class="wp-image-N"` and the
+      1024 px URL, `<!-- wp:table -->`, `<!-- wp:more -->`, `<!-- wp:html -->`), the same
+      markup the hand-written posts carry
+- [ ] A recording with no draft publishes exactly as it does today; the draft is created
+      on first edit, from the FR-25 layout
+
+**Implementation Notes:**
+
+- The current output is raw HTML with only `wp:more` and `wp:html` delimited, so
+  wp-admin opens it as one Classic block. The 7-Oct post shows what follows: the classic
+  editor rewrote the photo it added as `<a><img class="alignnone ...">` with `&nbsp;`
+  spacers. Real blocks keep a post editable in the block editor if it is ever opened
+  there.
+- Bare `<img src>` with no `wp-image-N` class is why recorder posts get no `srcset` and
+  serve the full `-scaled` file. With the class and the attachment id, WordPress adds
+  `srcset`, `sizes` and lazy loading itself.
+- Captions stay escaped through `html.escape`, as `_build_figure_html()` does now. The
+  description is currently inserted into the HTML unescaped; the renderer escapes every
+  field the crew can type.
+- Preview CSS: a vendored copy of the red-shadow theme stylesheet, so the preview looks
+  like the site without the Pi needing the internet.
+
+---
+
+### FR-25: Ship's Log Default Layout
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** A new draft starts in the shape of the hand-written posts, with the
+recorder's data below the more-break instead of in front of the story
+
+**Acceptance Criteria:**
+
+- [ ] Default block order:
+  1. `log_lines`: crew, time and wind, each its own paragraph (FR-26)
+  2. the story paragraphs
+  3. photos and notes, in time order (FR-29)
+  4. `route_map`, the static chart PNG
+  5. `more`
+  6. `statistics`, `interactive_map`, `charts`, `downloads`
+- [ ] No `<h2>Track Summary</h2>` and no Date or Duration lines above the break; the
+      time line carries that
+- [ ] Headings appear only below the break, over the data sections
+- [ ] Photos render full width, `size-large`, uncaptioned unless a caption was typed
+- [ ] The more-break is always present and always above any `wp:html` block, because
+      the theme renders the homepage with `the_content()` and the map scripts collapse
+      the listing without it (FR-16)
+- [ ] Featured image: kept as now (last crew photo, else the route map), since the
+      hand-written posts set none and the theme does not depend on it
+
+---
+
+### FR-26: Log Lines Filled In From the Data
+
+**Priority:** Should Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** The three lines typed at the top of every hand-written post are worked out
+from the recording, shown filled in, and remain editable
+
+**Acceptance Criteria:**
+
+- [ ] **Time:** local start and end as `H:MM-H:MM`, matching "5:30-8:20". While
+      recording, the start and "now"
+- [ ] **Wind:** from the recorded `anemometer/windDirection/2` (TWD) and
+      `anemometer/windSpeed/2` (TWS), the topics the racing app reads. Direction as a
+      16-point compass name of the circular mean; speed as the 10th to 90th percentile
+      range, rounded to whole knots. Format `NNE 12-14 kts`
+- [ ] Wind is left blank, not guessed, when there is less than ten minutes of wind data
+      or the direction spread is too wide to name one quarter
+- [ ] **Crew:** chips, offered from names used in earlier drafts and in the first
+      paragraph of past Ship's Log posts (FR-30). Rendered as one comma-separated
+      paragraph
+- [ ] Each line has an override. Once the crew types over a computed line it stops
+      being recomputed, and a "reset to data" control brings the computed value back
+- [ ] **Distance in nautical miles**, in the log lines and in the statistics table.
+      The table currently mixes km with knots; the hand-written posts use knots
+
+---
+
+### FR-27: Event Page at `/race/log/`
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** One page, built for a phone and for the iPad that shows the racing app full
+time, where the crew edits the post for the current sail. It replaces `upload.html`
+
+**Acceptance Criteria:**
+
+- [ ] Served by event_recorder at `log/` on its own port, and reached through nginx at
+      **`/race/log/`** (and `/events/log/`). See Implementation Notes for why it lives
+      under the racing app's prefix
+- [ ] Every URL in the page and its script is relative, so it works at both prefixes
+      and on port 5000
+- [ ] `?id=<recording_id>` opens a specific recording; with no `id` the page applies
+      FR-28. `?from=gar|map|race|hud` records where the crew came from
+- [ ] One column, top to bottom:
+  1. **Header bar**, sticky: the back link, the recording state ("● REC 1:23 4.2 nm",
+        or "Stopped", or "Published"), and the switcher when FR-28 finds more than one
+        candidate
+  2. **Photo** and **Note** buttons, large, side by side (FR-29)
+  3. **Title**
+  4. **Crew** chips with an add field
+  5. **Time and wind** lines, filled in (FR-26)
+  6. **Short description**, one line, which becomes the excerpt
+  7. **Story**, a textarea in which a blank line starts a new paragraph
+  8. **Notes**, timestamped, each editable, deletable or movable into the story
+  9. **Photos**, a strip of thumbnails; tap for caption, position, remove, featured
+  10. **Categories** chips (FR-30)
+  11. **Preview** and **Publish**
+- [ ] **Back link:** at the left of the header, labelled with the page the crew came
+      from ("‹ GAR", "‹ Map", "‹ Race"), defaulting to GAR when `from` is missing.
+      A relative link (`../gar`, `../map`, `../`), never `history.back()`, which has
+      nothing to go back to after an upload or when the page was opened fresh
+- [ ] The back link is shown only when the page is at `/race/log/`. At `/events/log/`
+      or on port 5000 those relative links would land outside the racing app, and there
+      is no racing app to go back to
+- [ ] Navigation uses `location.assign` on tap as well as the anchor, as the racing app
+      does, for iOS 12 (racing DESIGN 9.8.1)
+- [ ] **Autosave**, no Save button: each field saves on blur and 1.5 s after typing
+      stops, with a quiet "Saved" mark beside it
+- [ ] **Per-field revisions:** a save carries the revision it was based on. A phone and
+      the iPad editing different fields never overwrite each other; the same field
+      edited on both keeps the later save and shows the other device "Changed on
+      another device" with its text
+- [ ] The page polls the draft every 5 s while open, so an edit on one device appears on
+      the other
+- [ ] **Publish** is disabled while recording, and says why. After publishing, the page
+      shows the post link and the fields lock (TR-11)
+- [ ] Inputs and textareas are at least 16 px, or iOS zooms the page on every focus
+- [ ] Meets the iOS 12 floor in full (TR-13)
+- [ ] Scrolling is allowed. The racing app's no-scrolling rule is for the cockpit
+      screens; this page is used in a quiet moment, not at a mark rounding
+
+**Implementation Notes:**
+
+- **Why `/race/log/` and not `/events/...`:** the racing app's manifest has
+  `"scope": "./"`, which behind nginx is `/race/`. That scope is what keeps GAR, Map and
+  Race in one full-screen Home Screen window. A link out of it, to `/events/...`, opens
+  on the phone in an overlay browser with a Done button (the exact fault recorded in
+  racing DESIGN 9.8.1), while the iOS 12 iPad, which ignores scope, stays full screen.
+  Serving the page inside `/race/` keeps both devices in the same window and makes the
+  back link an ordinary relative link. The code stays in event_recorder; only nginx
+  routes it.
+- nginx, beside the existing `/race/` block. The longer prefix wins, so it needs no
+  ordering care:
+
+  ```nginx
+      location /race/log/ {
+          proxy_pass http://127.0.0.1:5000/log/;
+          proxy_http_version 1.1;
+          proxy_set_header Host              $http_host;
+          proxy_set_header X-Real-IP         $remote_addr;
+          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          # photo uploads, as on /events/
+          client_max_body_size 100m;
+      }
+      location = /race/log { return 301 /race/log/; }
+  ```
+
+- `client_max_body_size` matters: nginx's default is 1 MB, and a phone photo is 3 to
+  6 MB. `/events/` already sets 100m for the same reason.
+- The page is not a racing app page and does not poll `/api/state`; it talks only to
+  event_recorder. Because the page is at `log/`, a relative `api/draft` resolves to
+  `/race/log/api/draft` and reaches the recorder as `/log/api/draft`. So the editor is a
+  Flask blueprint mounted at `/log`, carrying its own API, thumbnails and preview under
+  that prefix, all calling the same recording service (TR-10) as the existing routes.
+  Nothing in the page reaches outside `log/` except the back link.
+
+---
+
+### FR-28: Which Recording the Event Page Opens
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** With no `id`, the event page opens the recording a sail on Enchantee is
+most likely to be, without asking
+
+**Acceptance Criteria:**
+
+- [ ] Order of preference:
+  1. an **active** recording from the event marked `editor_default` (today,
+        `anchor_track_recording`)
+  2. otherwise the most recent active recording of any event
+  3. otherwise the newest **unpublished** recording, preferring the `editor_default`
+        event
+- [ ] When more than one recording qualifies, the header shows "1 of 2 ▾", which opens
+      a short list (event, start time, status). Otherwise the switcher is not shown
+- [ ] Recordings gain an **`event_key`** column, set in `_on_trigger_start()` from the
+      event's key (`anchor_track_recording`), and `manual` for recordings started from
+      the web UI
+- [ ] Existing rows are backfilled once by migration from the name prefix
+      (`anchor_track_recording - 2026-...`). Nothing after that reads the name to find
+      the event, because the name is the post title and the crew edits it
+- [ ] The preference is an event-config flag, `editor_default: true`, not a key written
+      into the code. The event files are versioned by date, and a hard-coded key would
+      stop matching silently on the day the event is renamed
+- [ ] Only the chosen recording gets a draft automatically. Another recording of the
+      same sail is reachable through the switcher and does not become a second post
+      unless someone opens it and edits it
+
+**Implementation Notes:**
+
+- `track_recording` (movement) and `anchor_track_recording` (leaving the home anchor) are
+  both enabled in `events/20260904-1200.yml`, so one sail produces two recordings. The
+  anchor one spans the whole outing, which is what a post describes; the movement one
+  can split a day at every long stop.
+- That file's comment above `anchor_track_recording` still says "disabled by default";
+  correct it when adding the flag.
+- This supersedes Q2: simultaneous recordings are normal.
+
+---
+
+### FR-29: Photo and Note Capture
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** The two things the crew adds during a sail, a photo and a one-line note,
+each one tap from the top of the event page, each placed on the track by its time
+
+**Acceptance Criteria:**
+
+- [ ] **Photo:** `<input type="file" accept="image/*">`, which on iOS offers the camera or
+      the library, works over plain HTTP, and hands over HEIC as JPEG
+- [ ] Uploaded photos are kept as the original plus a 2048 px web copy and a 400 px
+      thumbnail, with EXIF orientation applied. The web copy is what goes to WordPress
+- [ ] The photo's EXIF `DateTimeOriginal` (phone clock, usually right) places it on the
+      track and orders it among notes and story; when absent, the upload time is used
+- [ ] **Note:** tapping Note opens a one-line field in place, under the buttons. No
+      dialog. The time and position are taken **when the field opens**, not when typing
+      ends
+- [ ] Notes are stored as `{ts, lat, lon, text}` content blocks, editable and
+      deletable, and render in the post as paragraphs in time order after the story
+- [ ] "Move into story" turns a note into a story paragraph
+- [ ] A photo or note added to a published recording is refused, as uploads are now
+
+**Implementation Notes:**
+
+- Pillow is already in the image for matplotlib; it handles the resize and orientation.
+- EXIF time is local phone time with no zone; read it as Perth local (+8), the same
+  explicit offset the racing app uses, not the container's `TZ=UTC`.
+
+---
+
+### FR-30: Categories and Crew Offered, Not Typed
+
+**Priority:** Should Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** Categories are chosen from the site's real list, with likely ones already
+ticked; crew names are offered from those used before
+
+**Acceptance Criteria:**
+
+- [ ] Whenever WordPress is reachable (at the dock), fetch and cache the category list
+      and the crew names. Both are then available offline at sea
+- [ ] Categories are chips from the cached list. A category is never created from free
+      text; `create_post` stops creating categories by name
+- [ ] Ticked by default, each untickable:
+  - **Track Logs**: always
+  - **Ship's Log**: when the boat moved
+  - **Twilight**: start on a weekday after 16:00 local
+  - **Club event**: a `race/event` of type `start` was recorded during the recording
+  - **Rottnest**: the track enters the Rottnest bounding box (in config)
+- [ ] Rules live in config, so a new rule needs no code
+- [ ] Crew: names from earlier drafts, plus the first paragraph of past Ship's Log
+      posts, ordered by how often they appear
+
+**Implementation Notes:**
+
+- `race/event` is published by the racing app for event_recorder to log, but no event
+  config records it yet. Add `race/#` to `record_topics` for `anchor_track_recording`.
+  That also gives the title a suggestion from the event's `course`.
+
+---
+
+### FR-31: Live While Recording
+
+**Priority:** Could Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** The draft and its preview are useful while the recording is still running
+
+**Acceptance Criteria:**
+
+- [ ] A light summary is kept for each active recording and refreshed every 10 s:
+      duration, distance, max SOG and a downsampled track. No matplotlib
+- [ ] The event page header and the preview's auto blocks use that summary until the
+      recording stops; the full processing runs on stop as now
+- [ ] The preview's live map is drawn in the browser with the racing app's offline
+      chart code (`geo.js`, `palette.js`), which already matches the recorder's route
+      maps
+- [ ] The summary is also what FR-22 publishes, replacing its per-second `COUNT(*)` over
+      `recording_data`
+
+---
+
 ## Technical Requirements
 
 ### TR-1: Power Outage Recovery
@@ -868,7 +1239,143 @@ CREATE TABLE configurations (
 
 ---
 
+### TR-9: Foreign Keys Enforced, and Deleting a Recording Removes All of It
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** The schema declares `ON DELETE CASCADE` on every child table, but SQLite
+ignores it unless each connection turns foreign keys on, and `get_connection()` never does
+
+**Acceptance Criteria:**
+
+- [ ] `PRAGMA foreign_keys=ON` on every connection in `Database.get_connection()`
+- [ ] Deleting a recording removes its `recording_data`, `recording_images`,
+      `recording_exports` and `post_drafts` rows
+- [ ] It also removes `uploads/<id>/`, not only `plots/<id>/`
+- [ ] A one-off cleanup removes child rows already orphaned by past deletes
+
+**Implementation Notes:**
+
+- Today `delete_recording()` deletes only the `recordings` row. Every deleted recording
+  has left all of its MQTT rows in the database on the Pi's SD card.
+
+---
+
+### TR-10: One Recording Service Behind the Triggers and the Routes
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** Start, stop, process and publish each happen in exactly one place, called
+by the GPS triggers and by the Flask routes alike
+
+**Acceptance Criteria:**
+
+- [ ] A recording service owns start, stop, auto-process, publish and the draft
+- [ ] `_on_trigger_start()` / `_on_trigger_stop()` in `main.py` and the manual start and
+      stop routes in `web_interface.py` call it rather than repeating its steps
+- [ ] Routes only parse the request and shape the response
+
+**Implementation Notes:**
+
+- Duplication today: auto-process exists in both `main.py` and the stop route; the
+  publish route holds about 170 lines of publishing logic.
+- A real bug comes from the split: a manually started recording never enters
+  `_recordings_this_run`, so the clock-step repair does not cover it, and
+  `service.stop()` does not end it on shutdown.
+
+---
+
+### TR-11: Publishing Runs in the Background and Updates Its Own Post
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** Publishing is a job with progress, not one HTTP request, and a recording
+publishes to one post for its whole life
+
+**Acceptance Criteria:**
+
+- [ ] Publish starts a background job and returns at once; the page polls its progress
+      ("Uploading 3 of 7")
+- [ ] The WordPress post id is stored (`post_drafts.wp_post_id`)
+- [ ] A later publish of the same recording **updates** that post
+      (`POST /wp/v2/posts/<id>`) rather than creating another
+- [ ] Before updating, the post's `modified` is compared with the stored `wp_modified`.
+      If it changed, the post was edited in wp-admin, and the update is refused with a
+      message instead of overwriting that work
+- [ ] "Send as WordPress draft" publishes with `status: draft`, for finishing on a laptop
+
+**Implementation Notes:**
+
+- Today, reset then publish creates a duplicate post, and a publish over a phone hotspot
+  holds the request open for minutes with no progress.
+- Rule of ownership: the local draft is the master until the post is published.
+  Afterwards it is WordPress, and the event page locks.
+
+---
+
+### TR-12: Recording, Artefact and Post State Kept Apart
+
+**Priority:** Should Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** `recordings.status` holds the recording's life and the post's life in one
+field. The editor needs them separately
+
+**Acceptance Criteria:**
+
+- [ ] Recording state: `active`, `stopped`, `failed`
+- [ ] Artefact state: `none`, `processing`, `fresh`, `stale`. Stale when the recording
+      or its photos changed after processing
+- [ ] Post state, on the draft: `none`, `editing`, `publishing`, `wp_draft`,
+      `published`, `publish_failed`
+- [ ] Migration maps the existing statuses onto the three fields
+
+---
+
+### TR-13: Web UI Runs on iOS 12
+
+**Priority:** Must Have
+**Status:** 📋 Specified (2026-10-09)
+**Description:** The boat's iPad mini 3 is on iOS 12 and shows the racing app full time.
+Anything it opens has to run there
+
+**Acceptance Criteria:**
+
+- [ ] No optional chaining (`?.`) or nullish coalescing (`??`): Safari 13.1+
+- [ ] No `clamp()`, no flexbox `gap`, no `dvh` without a fallback ahead of it, the same
+      floor as the racing app (its CLAUDE.md and DESIGN 9.8.1)
+- [ ] A test that fails on any of these in `web_ui/`, as the racing app has
+
+**Implementation Notes:**
+
+- `web_ui/app.js` uses `?.` on seven lines (241, 247, 248, 252, 307, 670, 909). On
+  iOS 12 that is a syntax error, so the whole dashboard script fails to load there.
+  `upload.js` is clean.
+
+---
+
 ## Change Log
+
+### 2026-10-09: Phase 6, Post Editor, Specified
+
+**Source:** Design review of event_recorder, and the 40 most recent hand-written posts on
+enchantee.org (read through the REST API)
+**Updated by:** Claude Opus 5.5
+
+**Summary of changes documented:**
+
+- Added Phase 6 to the status list, and a background section on the site's real posts
+- Added FR-24 to FR-31: draft model and renderer, ship's log layout, computed log lines,
+  the event page at `/race/log/`, default recording selection, photo and note capture,
+  categories and crew, live updating
+- Added TR-9 to TR-13, found in the review: foreign keys never enforced, logic split
+  between `main.py` and the routes, publish blocking and duplicating, one status field
+  for two lifecycles, dashboard broken on iOS 12
+- Q2 superseded: two recordings of one sail are normal
+- Added Q4 (where the editor lives) and Q5 (who owns a post)
+- Companion entry in the racing app: DESIGN 9.13, the Log link
+- Version bumped to 0.4.0
+
+---
 
 ### 2026-03-06: Post-Theme and Operational Enhancements Update
 
@@ -965,6 +1472,38 @@ CREATE TABLE configurations (
 **Decision (2026-02-17):** ✅ Resolved — Single recording at a time (initial version)
 - State machine enforces one active recording
 - Multi-recording deferred to future enhancement if needed
+
+**Superseded (2026-10-09):** one recording per event, several at once. `track_recording`
+and `anchor_track_recording` are both enabled and both record every sail. FR-28 decides
+which of them the editor opens.
+
+---
+
+### Q4: Where Does the Post Editor Live?
+
+**Decision (2026-10-09):** ✅ In event_recorder, reached from the racing app
+
+- **Not a racing app page.** The racing app is designed for the cockpit: no scrolling,
+  no modal dialogs, glance and go. Writing a post is the opposite job. The recordings,
+  photos and WordPress publisher are all here, and racing DESIGN section 2 already keeps
+  the two apart.
+- **But served under the racing app's prefix**, at `/race/log/`, so it opens inside the
+  racing app's Home Screen window on the phone and on the iPad (FR-27).
+- The racing app gets one link to it, "Log", and a recording dot (racing DESIGN 9.13).
+  The photo and note buttons are on the event page, not on the racing screens.
+
+---
+
+### Q5: Who Owns a Post, the Pi or WordPress?
+
+**Decision (2026-10-09):** ✅ The Pi until published, WordPress afterwards
+
+- Two-way sync between a local draft and wp-admin was rejected: the boat is offline at
+  sea, and merging two edited copies of a post is not worth building for one author.
+- Before publishing, the local draft is the only copy. After publishing, the event page
+  locks, and edits are made in wp-admin.
+- A republish is allowed only if wp-admin has not touched the post since (TR-11), so
+  work done there is never overwritten.
 
 ---
 
@@ -1075,6 +1614,27 @@ CREATE TABLE configurations (
 
 ---
 
+### Phase 6: Post Editor
+
+**Status:** 📋 Specified, not started (2026-10-09)
+
+Suggested order, each step useful without the next:
+
+1. **Foundations:** TR-9 (foreign keys), TR-13 (iOS 12), TR-10 (recording service),
+   TR-11 (background publish, stored post id), TR-12 (state split)
+2. **Draft and renderer:** FR-24, with the current post layout as the first draft
+   template so published posts do not change. Then FR-25 as the new default
+3. **Event page:** FR-27, FR-28, FR-29 and FR-30 for stopped recordings, the
+   `/race/log/` nginx route, and the Log link in the racing app (racing DESIGN 9.13)
+4. **Computed lines and live mode:** FR-26 and FR-31
+
+- [ ] Step 1: foundations
+- [ ] Step 2: draft and renderer
+- [ ] Step 3: event page and Log link
+- [ ] Step 4: computed lines and live mode
+
+---
+
 ## References
 
 - **Existing Patterns:**
@@ -1086,5 +1646,5 @@ CREATE TABLE configurations (
 
 ---
 
-**Last Updated:** 2026-03-06 by Claude Sonnet 4.6
-**Next Review:** After first production deployment
+**Last Updated:** 2026-10-09 by Claude Opus 5.5
+**Next Review:** After Phase 6 step 1
