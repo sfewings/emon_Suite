@@ -833,8 +833,13 @@ recorder's data below the more-break instead of in front of the story
 - [x] The more-break is always present and always above any `wp:html` block, because
       the theme renders the homepage with `the_content()` and the map scripts collapse
       the listing without it (FR-16)
-- [x] Featured image: kept as now (last crew photo, else the route map), since the
-      hand-written posts set none and the theme does not depend on it
+- [x] **No featured image** (changed 2026-10-09, after the first published test). It was
+      kept at first (last crew photo, else the route map), but a theme that shows
+      featured images prints it above the content, and the first photo appeared twice
+      on the dev blog. The hand-written posts set none; red-shadow on enchantee.org was
+      checked and shows none on a post or the home page, and the site has no sharing
+      tags that would use one. The publisher sends `featured_media: 0`, so a post
+      published earlier with one loses it when it is next updated
 
 **Implementation Notes:**
 

@@ -219,6 +219,26 @@ def test_the_layout_setting_chooses_what_a_new_draft_starts_as(db, service, rid)
     assert service.get_draft(rid)["blocks"] == LAYOUT_SHIP_LOG
 
 
+def test_a_post_has_no_featured_image_and_loses_one_it_had(db, service, rid, monkeypatch):
+    """The hand-written posts have none, and a theme that shows one prints it above the
+    content, so the first photo appeared twice. 0 rather than nothing, so an update
+    clears one set by an earlier publish."""
+    db.add_image(rid, __file__, ImageType.USER_UPLOAD, "a photo")
+    wp = WordPressPublisher("http://wp.invalid", "u", "p")
+    sent = {}
+    monkeypatch.setattr(wp, "test_connection", lambda: (True, "ok"))
+    monkeypatch.setattr(wp, "upload_media", lambda path, caption=None, upload_name=None:
+                        {"id": 7, "url": "https://wp/a.jpg"})
+    monkeypatch.setattr(wp, "create_post", lambda **kw: sent.update(kw) or
+                        {"id": 1, "link": "https://wp/?p=1", "status": "publish",
+                         "modified_gmt": "t"})
+    service.wordpress_publisher = wp
+
+    service.publish(rid, auto_publish=True)
+
+    assert sent["featured_media"] == 0
+
+
 def test_a_recording_with_no_draft_publishes_as_a_ships_log(db, service, rid, monkeypatch):
     db.add_image(rid, __file__, ImageType.USER_UPLOAD, "a photo")
     db.update_recording(rid, description="Out to Pt Walter")

@@ -769,8 +769,8 @@ class WordPressPublisher:
                 if category_ids:
                     post_data['categories'] = category_ids
 
-            # Add featured image
-            if featured_media:
+            # Featured image: 0 removes one, None leaves it as it is
+            if featured_media is not None:
                 post_data['featured_media'] = featured_media
 
             if post_id:
@@ -944,20 +944,12 @@ class WordPressPublisher:
                     f"Duration: {duration}"
                 )
 
-            # Featured image priority:
-            #   1. Last user-uploaded photo (most recent/relevant shot of the trip)
-            #   2. First generated plot (route map, speed chart, etc.)
-            #   3. Any uploaded image
-            user_uploads = [m for m in media_ids if m.get('image_type') == 'user_upload']
-            plots_for_featured = [m for m in media_ids if m.get('image_type', 'plot') == 'plot']
-            if user_uploads:
-                featured_id = user_uploads[-1]['id']
-            elif plots_for_featured:
-                featured_id = plots_for_featured[0]['id']
-            elif media_ids:
-                featured_id = media_ids[0]['id']
-            else:
-                featured_id = None
+            # No featured image, as the hand-written posts have none. The
+            # red-shadow theme on enchantee.org never shows one, and the site
+            # has no sharing tags that would use it; a theme that does show it
+            # prints it above the content, so the photo appeared twice. 0, not
+            # left out, so a post published earlier with one loses it.
+            featured_id = 0
 
             # Format recording start time as ISO 8601 for WordPress date field
             # WordPress reads this field as the site's local time, so it has to
