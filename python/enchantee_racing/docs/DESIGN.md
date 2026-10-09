@@ -1369,10 +1369,15 @@ most people use, flip which face the HUD cell opens first.
 
 - **SOG** in a band under the dial. The Garmin page has no SOG, and SOG is the number
   most often wanted.
-- **Motor:** while the SevCon runs, the four corners show RPM, AMP, CTRL and MOT instead
-  of the wind readings. This uses the HUD's motor flag and its 10 s hold, with both sets
-  pre-rendered (9.1). The dial still shows the wind, which is harmless, and the corners
-  are where four wind numbers matter least when motoring.
+- **Motor:** while the SevCon runs, RPM, AMP, CTRL and MOT appear as four smaller blocks
+  under the top corners and above the bottom ones, and the wind corners stay. They used
+  to replace the wind, on the reasoning that the corners are where wind numbers matter
+  least when motoring; the crew asked for all eight on screen, and there was room. Uses the HUD's motor flag and its 10 s
+  hold, pre-rendered and hidden by a class (9.1). Where they go depends on the layout:
+  beside the dial, the columns are empty between their two corners, so they get a value
+  of 44; upright on a phone the corners are above and below the dial instead, so the
+  blocks go in the dial square's corners outside the rim, where a value of 30 at 66 wide
+  is what fits clear of the mark diamond's tip. A test holds that geometry.
 - **Heel:** a line across the dial's centre that tilts with the deck, starboard end down
   when heeled to starboard, with the last 15 s of readings behind it as thinner lines
   fading with their age. A steady heel is one line; a boat rolling is a fan whose width

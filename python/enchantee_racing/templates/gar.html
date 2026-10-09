@@ -20,8 +20,8 @@
     is also a thin line out of the bow, which is the track over the ground.
   - Added: SOG in the band underneath, which becomes the mark band while racing, with the
     mark itself drawn on the dial; heel, as a line across the centre with the last 15 s
-    fading behind it; and the SevCon readings in the four corners while the
-    motor turns, the same swap the HUD makes with its wind panels.
+    fading behind it; and the SevCon readings while the motor turns, smaller and inside
+    the four wind corners rather than in place of them.
 
   Not self-contained, unlike hud.html, which inlines everything for a reason recorded in
   DESIGN 9.1 that does not apply here. This page takes static/app.css, theme.js and
@@ -108,24 +108,38 @@
           <g id="mark-diamond" class="diamond off"><polygon points="0,-216 13,-200 0,-184 -13,-200"/></g>
         </g>
 
-        <!-- The four corners. Two sets of rows, the wind and the motor, both pre-rendered
-             and one hidden, which is the HUD's idiom for the same swap (DESIGN 9.1).
-             gar.js positions each corner and fits the values to its width. -->
+        <!-- The four corners: the wind, always. gar.js positions each corner and fits the
+             values to its width. -->
         <g class="corner" id="c-tl" data-side="left">
-          <g data-mode="sail"><text class="g-lbl c-lbl">TWD</text><text class="g-val c-val twd" id="twd">---</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">RPM</text><text class="g-val c-val rpm" id="rpm">---</text></g>
+          <text class="g-lbl c-lbl">TWD</text><text class="g-val c-val twd" id="twd">---</text>
         </g>
         <g class="corner" id="c-tr" data-side="right">
-          <g data-mode="sail"><text class="g-lbl c-lbl">AWA</text><text class="g-val c-val awa" id="awa">---</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">AMP</text><text class="g-val c-val cur" id="cur">--.-</text></g>
+          <text class="g-lbl c-lbl">AWA</text><text class="g-val c-val awa" id="awa">---</text>
         </g>
         <g class="corner" id="c-bl" data-side="left">
-          <g data-mode="sail"><text class="g-lbl c-lbl">TWS kt</text><text class="g-val c-val tws" id="tws">--.-</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">CTRL &#176;C</text><text class="g-val c-val ctrl" id="ctrl">---</text></g>
+          <text class="g-lbl c-lbl">TWS kt</text><text class="g-val c-val tws" id="tws">--.-</text>
         </g>
         <g class="corner" id="c-br" data-side="right">
-          <g data-mode="sail"><text class="g-lbl c-lbl">TWA</text><text class="g-val c-val twa" id="twa">---</text></g>
-          <g data-mode="motor" class="off"><text class="g-lbl c-lbl">MOT &#176;C</text><text class="g-val c-val mot" id="mot">---</text></g>
+          <text class="g-lbl c-lbl">TWA</text><text class="g-val c-val twa" id="twa">---</text>
+        </g>
+
+        <!-- The SevCon, while the motor turns: smaller, under the top corners and above the
+             bottom ones, so the wind stays on show while motoring rather than being swapped
+             out for it (DESIGN 9.12). Pre-rendered and hidden by a class, the HUD's idiom
+             (DESIGN 9.1). Beside the dial on a wide screen there is a whole column for
+             them; upright on a phone they go in the dial square's corners outside the rim,
+             which is why gar.js sizes them per layout. -->
+        <g class="motor-corner off" id="m-tl" data-side="left" data-mode="motor">
+          <text class="g-lbl m-lbl">RPM</text><text class="g-val m-val rpm" id="rpm">---</text>
+        </g>
+        <g class="motor-corner off" id="m-tr" data-side="right" data-mode="motor">
+          <text class="g-lbl m-lbl">AMP</text><text class="g-val m-val cur" id="cur">--.-</text>
+        </g>
+        <g class="motor-corner off" id="m-bl" data-side="left" data-mode="motor">
+          <text class="g-lbl m-lbl">CTRL &#176;C</text><text class="g-val m-val ctrl" id="ctrl">---</text>
+        </g>
+        <g class="motor-corner off" id="m-br" data-side="right" data-mode="motor">
+          <text class="g-lbl m-lbl">MOT &#176;C</text><text class="g-val m-val mot" id="mot">---</text>
         </g>
 
         <!-- The band. SOG alone until the gun, and the mark while racing: its name, then

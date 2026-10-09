@@ -303,20 +303,56 @@ def test_the_screen_is_kept_awake():
         "the video has to be started from a gesture or it never plays"
 
 
-def test_both_corner_sets_are_pre_rendered_and_the_wind_is_on_show():
-    """The motor swap is the HUD's: both sets in the markup, one hidden by a class
-    (DESIGN 9.1). Clockwise from top left, as the Garmin has them."""
+def test_the_wind_corners_stay_and_the_motor_joins_them():
+    """The wind in the four corners always, clockwise from top left as the Garmin has
+    them, and never hidden: motoring used to swap them out for the SevCon, and the crew
+    wanted both (DESIGN 9.12). The SevCon readings are blocks of their own, pre-rendered
+    and hidden by a class until the motor turns, the HUD's idiom (DESIGN 9.1)."""
     page = _page()
-    want = {"c-tl": ("twd", "rpm"), "c-tr": ("awa", "cur"),
-            "c-bl": ("tws", "ctrl"), "c-br": ("twa", "mot")}
-    for corner, (sail, motor) in want.items():
-        block = re.search(r'<g class="corner" id="%s"[^>]*>(.*?)\n        </g>' % corner,
+    wind = {"c-tl": "twd", "c-tr": "awa", "c-bl": "tws", "c-br": "twa"}
+    for corner, reading in wind.items():
+        block = re.search(r'<g class="corner" id="%s"([^>]*)>(.*?)\n        </g>' % corner,
                           page, re.S)
         assert block, corner
-        body = block.group(1)
-        assert re.search(r'<g data-mode="sail">.*id="%s"' % sail, body), (corner, sail)
-        assert re.search(r'<g data-mode="motor" class="off">.*id="%s"' % motor, body), \
-            (corner, motor)
+        assert 'id="%s"' % reading in block.group(2), (corner, reading)
+        assert "data-mode" not in block.group(0), "%s is hidden while motoring" % corner
+
+    motor = {"m-tl": "rpm", "m-tr": "cur", "m-bl": "ctrl", "m-br": "mot"}
+    for block_id, reading in motor.items():
+        block = re.search(r'<g class="motor-corner off" id="%s"[^>]*data-mode="motor">'
+                          r'(.*?)</g>' % block_id, page, re.S)
+        assert block, "%s is not a hidden motor block" % block_id
+        assert 'id="%s"' % reading in block.group(1), (block_id, reading)
+    assert len(re.findall(r'data-mode="', page)) == 4, "only the motor blocks swap"
+
+    # Each layout places the motor blocks, and the swap that shows them is the HUD's flag.
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    assert len(re.findall(r"\bmotor: motorBlocks\(", code)) == 3, "a layout has no motor blocks"
+    assert 'swap("data-mode", "motor", !!d.motor)' in code
+
+
+def test_the_motor_blocks_clear_the_dial_when_the_phone_is_upright():
+    """Upright on a phone they sit in the dial square's corners, outside the rim, where the
+    room is a triangle. Worked out from the numbers in gar.js: the inner end of a value at
+    its full width must be further from the dial's centre than the diamond's tip, the
+    outermost thing on the dial."""
+    import math
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    consts = {k: float(v) for k, v in re.findall(r"\b(DIAL|CH|M_LBL) = (\d+)[;,]", code)}
+    assert set(consts) == {"DIAL", "CH", "M_LBL"}, consts
+    tall = re.search(r'name: "tall".*?motor: motorBlocks\(8, DIAL - 8, CH \+ 2, '
+                     r'CH \+ DIAL - 2, (\d+), (\d+)\)', code, re.S)
+    assert tall, "the upright layout's motor blocks have moved; recheck this geometry"
+    w, size = float(tall.group(1)), float(tall.group(2))
+    r = consts["DIAL"] / 2
+    tip = max(float(n) for n in re.findall(
+        r"-(\d+)", re.search(r'id="mark-diamond".*?points="([^"]+)"', _page()).group(1)))
+    x_inner = -r + 8 + w
+    # top block: the value's baseline and its cap top; the bottom block mirrors it
+    base = -r + 2 + consts["M_LBL"] + 2 + size * 0.8
+    for y in (base, base - size * 0.72):
+        assert math.hypot(x_inner, y) > tip + 4, \
+            "a %d px motor value reaches the dial (r=%.0f)" % (size, math.hypot(x_inner, y))
 
 
 def test_the_band_shows_sog_until_the_race_and_the_mark_during_it():
@@ -428,7 +464,9 @@ def test_every_gar_colour_has_a_night_value_and_it_is_red():
 def test_every_reading_class_on_the_page_has_a_colour():
     page = _bare(_page())
     css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
-    for cls in set(re.findall(r'class="g-val (?:c-val )?([a-z]+)"', page)):
+    classes = set(re.findall(r'class="g-val (?:[cm]-val )?([a-z]+)"', page))
+    assert {"rpm", "cur", "ctrl", "mot"} <= classes, "the motor readings were not found"
+    for cls in classes:
         assert re.search(r"#gar [^{]*\.%s\b[^{]*\{[^}]*fill: var\(--" % cls, css), \
             ".%s has no colour" % cls
 

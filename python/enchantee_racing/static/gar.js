@@ -93,22 +93,39 @@
   var CW = 150, CH = 92;         // a corner block
   var BAND = 130;                // the band's height under the dial
   var BAND_W = 270;              // its width beside it
+  var M_LBL = 14;                // a motor block's label size
+
+  // The four motor blocks, under the top corners and above the bottom ones, between the
+  // given top and bottom edges. Each is a label then a value of `size`, fitted to `w`.
+  function motorBlocks(left, right, top, bottom, w, size) {
+    var h = M_LBL + 2 + size;
+    return { w: w, size: size,
+             at: { tl: [left, top], tr: [right, top],
+                   bl: [left, bottom - h], br: [right, bottom - h] } };
+  }
 
   var LAYOUTS = [
     { name: "tall", w: DIAL, h: CH + DIAL + CH + BAND,
       dial: [DIAL / 2, CH + DIAL / 2],
       corners: { tl: [8, 0], tr: [DIAL - 8, 0],
                  bl: [8, CH + DIAL], br: [DIAL - 8, CH + DIAL] },
+      // Inside the dial's square, in the four corners outside the rim. Small, because
+      // that is all the room there is: 30 at 66 wide keeps a four-digit rpm clear of the
+      // mark diamond's tip by about ten units.
+      motor: motorBlocks(8, DIAL - 8, CH + 2, CH + DIAL - 2, 66, 30),
       band: { x: 0, y: CH + DIAL + CH, w: DIAL, h: BAND, vertical: false } },
     { name: "wide", w: DIAL + 2 * CW, h: DIAL + BAND,
       dial: [CW + DIAL / 2, DIAL / 2],
       corners: { tl: [8, 12], tr: [DIAL + 2 * CW - 8, 12],
                  bl: [8, DIAL - CH - 12], br: [DIAL + 2 * CW - 8, DIAL - CH - 12] },
+      // The columns beside the dial, which are empty between their two corners.
+      motor: motorBlocks(8, DIAL + 2 * CW - 8, 12 + CH + 10, DIAL - CH - 12 - 10, CW - 16, 44),
       band: { x: 0, y: DIAL, w: DIAL + 2 * CW, h: BAND, vertical: false } },
     { name: "side", w: DIAL + 2 * CW + BAND_W, h: DIAL,
       dial: [CW + DIAL / 2, DIAL / 2],
       corners: { tl: [8, 12], tr: [DIAL + 2 * CW - 8, 12],
                  bl: [8, DIAL - CH - 12], br: [DIAL + 2 * CW - 8, DIAL - CH - 12] },
+      motor: motorBlocks(8, DIAL + 2 * CW - 8, 12 + CH + 10, DIAL - CH - 12 - 10, CW - 16, 44),
       band: { x: DIAL + 2 * CW, y: 0, w: BAND_W, h: DIAL, vertical: true } }
   ];
 
@@ -172,6 +189,19 @@
         place(t, 0, 80, anchor);
         setFit(t, CW - 16, 60);
       });
+    });
+
+    // Each motor block: the same against the outside edge, smaller.
+    var m = best.motor;
+    Object.keys(m.at).forEach(function (k) {
+      var g = $("m-" + k);
+      g.setAttribute("transform", "translate(" + m.at[k] + ")");
+      var anchor = g.getAttribute("data-side") === "left" ? "start" : "end";
+      var lbl = g.querySelector(".m-lbl"), val = g.querySelector(".m-val");
+      place(lbl, 0, M_LBL, anchor);
+      lbl.setAttribute("font-size", M_LBL);
+      place(val, 0, M_LBL + 2 + m.size * 0.8, anchor);
+      setFit(val, m.w, m.size);
     });
 
     arrangeBand(best.band);
