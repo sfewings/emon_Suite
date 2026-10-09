@@ -351,11 +351,13 @@ class WebInterface:
                         'error': 'Cannot delete active recording'
                     }), 400
 
-                # Delete associated files
-                plots_dir = self.plots_dir / str(recording_id)
-                if plots_dir.exists():
-                    import shutil
-                    shutil.rmtree(plots_dir)
+                # Delete associated files: the generated plots and exports, and
+                # the crew's photos, which nothing else would ever remove
+                import shutil
+                for files_dir in (self.plots_dir / str(recording_id),
+                                  self.uploads_dir / str(recording_id)):
+                    if files_dir.exists():
+                        shutil.rmtree(files_dir)
 
                 # Delete from database
                 self.database.delete_recording(recording_id)

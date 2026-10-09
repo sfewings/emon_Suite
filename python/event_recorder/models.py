@@ -67,9 +67,16 @@ class Database:
             logger.info("WAL mode enabled for crash resilience")
 
     @contextmanager
-    def get_connection(self):
+    def get_connection(self, foreign_keys: bool = True):
         """
         Context manager for database connections.
+
+        Args:
+            foreign_keys: Enforce foreign keys on this connection. SQLite
+                ignores every REFERENCES and ON DELETE CASCADE in the schema
+                unless each connection turns this on, which until TR-9 none
+                did: deleting a recording left all of its data behind. Only
+                migrations turn it off (see _migrate_database).
 
         Yields:
             sqlite3.Connection: Database connection
@@ -80,6 +87,8 @@ class Database:
         """
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row  # Enable column access by name
+        if foreign_keys:
+            conn.execute("PRAGMA foreign_keys=ON")
         try:
             yield conn
             conn.commit()
@@ -96,8 +105,22 @@ class Database:
 
         SQLite doesn't support ALTER TABLE to modify CHECK constraints, so
         migrations that change constraints require table recreation.
+
+        Foreign keys are off for all of it. Recreating a table renames the old
+        one and drops it, and with foreign keys on, the drop cascades:
+        recreating `recordings` would delete every recording's data.
+
+        Turning them off is not enough on its own. Since SQLite 3.26 a rename
+        also rewrites the REFERENCES in every child table to the new name,
+        whatever foreign_keys says, so the rename-and-drop left the children
+        pointing at a table that no longer exists. Nothing noticed while
+        foreign keys were never enforced; with them enforced, every insert into
+        recording_data fails. legacy_alter_table stops the rewrite, and
+        _repair_dangling_references() mends databases it already happened to.
         """
-        with self.get_connection() as conn:
+        with self.get_connection(foreign_keys=False) as conn:
+            conn.execute("PRAGMA legacy_alter_table=ON")
+
             # Check if the recordings table CHECK constraint includes 'processed'
             cursor = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='recordings'"
@@ -161,6 +184,68 @@ class Database:
                     ON recording_exports(recording_id)
                 """)
                 logger.info("Migration complete: recording_exports table added")
+
+            self._repair_dangling_references(conn)
+
+            # Rows left behind by deletes made before foreign keys were
+            # enforced. Done once: it scans recording_data, which is the bulk
+            # of the file on the Pi's SD card.
+            cursor = conn.execute(
+                "SELECT value FROM service_settings WHERE key = 'orphans_removed'"
+            )
+            if not cursor.fetchone():
+                for table in ('recording_data', 'recording_images', 'recording_exports'):
+                    removed = conn.execute(f"""
+                        DELETE FROM {table}
+                        WHERE recording_id NOT IN (SELECT id FROM recordings)
+                    """).rowcount
+                    if removed:
+                        logger.info(f"Migration: removed {removed} orphaned {table} rows")
+                conn.execute(
+                    "INSERT INTO service_settings (key, value) VALUES ('orphans_removed', ?)",
+                    (datetime.utcnow().isoformat(),)
+                )
+
+    DANGLING_REFERENCE = 'REFERENCES "recordings_old"'
+
+    def _repair_dangling_references(self, conn):
+        """
+        Point child tables back at `recordings` after the 'processed'
+        migration repointed them at the `recordings_old` it then dropped.
+
+        Only the text of the constraint is wrong; the rows are fine. So this
+        edits the stored CREATE TABLE statements in place, the way SQLite's
+        documentation describes for changing a constraint, rather than copying
+        recording_data, which on the Pi is most of the file. The schema
+        version is bumped so the change is reread, and the database is
+        checked before the transaction is allowed to commit.
+        """
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE ?",
+            (f'%{self.DANGLING_REFERENCE}%',)
+        ).fetchall()
+        if not rows:
+            return
+        tables = [row['name'] for row in rows]
+        logger.warning(
+            f"Repairing foreign keys left pointing at the dropped recordings_old: "
+            f"{', '.join(tables)}"
+        )
+
+        version = conn.execute("PRAGMA schema_version").fetchone()[0]
+        conn.execute("PRAGMA writable_schema=ON")
+        conn.execute(
+            f"""UPDATE sqlite_master SET sql = replace(sql, ?, 'REFERENCES recordings')
+                WHERE type='table' AND name IN ({','.join('?' * len(tables))})""",
+            (self.DANGLING_REFERENCE, *tables)
+        )
+        conn.execute(f"PRAGMA schema_version={version + 1}")
+        conn.execute("PRAGMA writable_schema=OFF")
+
+        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        if result != 'ok':
+            raise sqlite3.DatabaseError(f"integrity check after repair: {result}")
+        logger.info("Foreign key repair complete")
 
     def init_database(self):
         """Create database schema with all tables and indexes."""
@@ -417,7 +502,24 @@ class Database:
         Args:
             messages: List of tuples (recording_id, timestamp, topic, payload)
         """
+        if not messages:
+            return
         with self.get_connection() as conn:
+            # Rows for a recording that no longer exists are dropped rather
+            # than allowed to fail the batch. The buffer keeps a failed batch
+            # and retries it, so one such row would block every recording's
+            # data from then on.
+            ids = {m[0] for m in messages}
+            existing = {row[0] for row in conn.execute(
+                f"SELECT id FROM recordings WHERE id IN ({','.join('?' * len(ids))})",
+                tuple(ids)
+            )}
+            if existing != ids:
+                logger.warning(
+                    f"Dropping buffered messages for deleted recording(s) "
+                    f"{sorted(ids - existing)}"
+                )
+                messages = [m for m in messages if m[0] in existing]
             conn.executemany("""
                 INSERT INTO recording_data (recording_id, timestamp, topic, payload)
                 VALUES (?, ?, ?, ?)
