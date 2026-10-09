@@ -85,6 +85,20 @@ services:
     depends_on:
       - wordpress_db
 
+  # The Pi's nginx paths on http://localhost:8000: /race/ (the racing app, run on the
+  # host), /race/log/ and /events/ (this recorder). For the Log link and the event
+  # page's back link, which only behave as on the boat when served as on the boat.
+  front:
+    image: nginx:1.27-alpine
+    container_name: event_recorder_dev_front
+    profiles: [front]
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - recorder
+
   # Run by wordpress-setup.sh, not started with the others
   wpcli:
     image: wordpress:cli-2

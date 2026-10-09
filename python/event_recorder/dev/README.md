@@ -77,8 +77,24 @@ what is above it.
 <http://localhost:5000/log/> is the page the crew will use from the racing app. With no
 `?id=` it opens what FR-28 chooses: the anchor recording if one is running, otherwise
 the latest unpublished outing. Open it in two browser windows to see two devices
-editing at once. The back link to the racing app only appears at `/race/log/`, which
-needs the nginx route this rig does not have yet.
+editing at once.
+
+## The racing app and the Pi's paths
+
+The back link and the racing app's Log link only behave as on the boat when served at
+the boat's paths. The `front` profile is an nginx with them on <http://localhost:8000>:
+`/race/` to the racing app, `/race/log/` and `/events/` to this recorder.
+
+```bash
+docker compose -f dev/docker-compose.yml --profile front up -d
+# and the racing app on the host, from python/enchantee_racing/, reachable from Docker:
+../venv/Scripts/python.exe app.py --broker localhost --host 0.0.0.0
+```
+
+Then <http://localhost:8000/race/gar>: Log is the fourth cell, with a red dot while a
+recording runs (replay a sail to see it), and the event page it opens has "‹ GAR" at
+the top, back to where it came from. Restart the racing app after changing its
+templates or `mqtt_client.py`; `static/` is live.
 
 ## Run the tests
 

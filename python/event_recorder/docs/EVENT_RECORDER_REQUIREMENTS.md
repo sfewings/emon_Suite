@@ -84,8 +84,8 @@ The editor:
 - [x] **FR-24:** Post draft held as blocks, rendered once for preview and publish
 - [x] **FR-25:** Ship's log default layout
 - [ ] **FR-26:** Log lines filled in from the data
-- [ ] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
-- [ ] **FR-28:** Which recording the event page opens
+- [x] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
+- [x] **FR-28:** Which recording the event page opens
 - [x] **FR-29:** Photo and note capture
 - [x] **FR-30:** Categories and crew from the site, offered not typed
 - [ ] **FR-31:** Live while recording
@@ -877,11 +877,14 @@ from the recording, shown filled in, and remain editable
 ### FR-27: Event Page at `/race/log/`
 
 **Priority:** Must Have
-**Status:** 🔨 In progress (2026-10-09). Done: the page at `/log/` (`event_page.py`,
-`web_ui/log/`) with title, crew, time, wind, short description, story, categories,
-preview and publish; per-field autosave; the switcher; the back link (shown at
-`/race/log/` only); photo and note capture (FR-29). To come: the nginx route and the
-racing app's link (racing DESIGN 9.13). Tests: `tests/test_event_page.py`
+**Status:** ✅ Implemented (2026-10-09). The page at `/log/` (`event_page.py`,
+`web_ui/log/`) with title, crew, time, wind, short description, story, photos, notes,
+categories, preview and publish; per-field autosave; the switcher; the back link
+(shown at `/race/log/` only). The nginx route `/race/log/` is in
+`provisioning/enchantee/etc/nginx/sites-available/default`, and the racing app's Log
+link and recording dot are built (racing DESIGN 9.13). Tests:
+`tests/test_event_page.py`; the dev rig's `front` profile serves the Pi's paths on
+localhost:8000. Not yet tried on the boat's iPad or a phone
 
 **Progress notes:**
 
@@ -989,7 +992,11 @@ time, where the crew edits the post for the current sail. It replaces `upload.ht
 ### FR-28: Which Recording the Event Page Opens
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09). `RecordingService.editor_choice()`,
+`recordings.event_key`, `editor_default: true` on `anchor_track_recording`; tests
+`tests/test_editor_choice.py`. One refinement to rule 3: the default event is preferred
+only among recordings from the same outing (started within 12 hours of the newest), so a
+week-old unpublished anchor recording never displaces today's sail
 **Description:** With no `id`, the event page opens the recording a sail on Enchantee is
 most likely to be, without asking
 
@@ -1881,7 +1888,7 @@ Suggested order, each step useful without the next:
 
 - [x] Step 1: foundations (2026-10-09), plus the dev rig, `dev/README.md`
 - [x] Step 2: draft and renderer (2026-10-09), ship's log the default
-- [ ] Step 3: event page and Log link
+- [x] Step 3: event page and Log link (2026-10-09)
 - [ ] Step 4: computed lines and live mode
 
 ---
