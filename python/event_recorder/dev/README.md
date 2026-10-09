@@ -34,8 +34,9 @@ From `python/enchantee_racing/`, with the venv that has paho and the built pyemo
 About three minutes. It starts at the mooring, so it fires both of the boat's triggers:
 `track_recording` and `anchor_track_recording` start within a few seconds of each other,
 and the anchor one stops by itself when the boat is back. `track_recording` waits for 60 s
-of stationary GPS that never comes once the replay ends, and stays active until the
-recorder restarts, when recovery marks it stopped.
+of stationary GPS that never comes once the replay ends, and stays active. Restarting the
+recorder does not end it (TR-14): recordings carry on across a restart, and one is only
+closed by recovery once its data is more than six hours old. Stop it from the dashboard.
 
 Recordings are stamped with the time they were made, not the log's time, so a 60x replay
 is a three-minute recording dated today. Use `--speed 4` or lower when the recording's
@@ -110,6 +111,7 @@ MSYS_NO_PATHCONV=1 docker exec -e TZ=UTC -w /app event_recorder_dev \
                      event_recorder/tests/test_event_page.py \
                      event_recorder/tests/test_photos_notes.py \
                      event_recorder/tests/test_suggestions.py \
+                     event_recorder/tests/test_resume.py \
                      event_recorder/tests/test_chart_map.py \
                      event_recorder/tests/test_gps_position.py
 ```

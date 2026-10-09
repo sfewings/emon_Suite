@@ -104,7 +104,8 @@ class RecordingService:
         """Create a recording and start recording its topics."""
         recording_id = self.database.create_recording(name, description,
                                                       trigger_type=trigger_type,
-                                                      event_key=event_key)
+                                                      event_key=event_key,
+                                                      record_topics=topics or [])
         if self.data_recorder:
             self.data_recorder.start_recording(recording_id, topics or [])
         with self._lock:
@@ -131,8 +132,31 @@ class RecordingService:
             return True
         return False
 
+    def suspend_all(self):
+        """
+        On shutdown: save what is buffered and stop listening, but leave every
+        recording in progress active, to be resumed when the service starts
+        again (recovery_manager). A restart mid-sail, an edit on the jetty or
+        a container update, used to end the sail's recording here, and the
+        anchor trigger will not start another away from the mooring, so the
+        rest of the sail went unrecorded.
+        """
+        for recording_id in self.active_recording_ids():
+            logger.info(f"Leaving recording {recording_id} active, to resume on restart")
+            try:
+                if self.data_recorder:
+                    self.data_recorder.stop_recording(recording_id)
+            except Exception as e:
+                logger.error(f"Could not flush recording {recording_id}: {e}")
+
+    def resume(self, recording_id: int, topics: List[str]):
+        """Record an active recording's topics again, after a restart."""
+        if self.data_recorder:
+            self.data_recorder.start_recording(recording_id, topics)
+        logger.info(f"Resumed recording {recording_id}")
+
     def stop_all(self):
-        """End every recording this process is recording, on shutdown."""
+        """End every recording this process is recording."""
         for recording_id in self.active_recording_ids():
             logger.info(f"Stopping active recording {recording_id}")
             try:

@@ -197,6 +197,9 @@ class EventRecorderService:
             # Setup event monitors from configuration
             self._setup_event_monitors()
 
+            # Recordings interrupted by the last shutdown or a power cut
+            self._resume_recordings()
+
             # Start MQTT recording status publisher
             self._start_status_publisher()
 
@@ -234,7 +237,59 @@ class EventRecorderService:
             self.database.update_recording(recording_id, status=RecordingStatus.STOPPED)
 
         summary = self.recovery_manager.auto_recover(on_process_callback=process_callback)
+        # Resumed once MQTT and the triggers are up (_resume_recordings)
+        self._to_resume = summary.get('resume_ids', [])
         logger.info(f"Recovery complete: {summary}")
+
+    def _resume_recordings(self):
+        """
+        Carry on the recordings a restart or a power cut interrupted.
+
+        Each records its own topics again. A triggered one is handed back to
+        its trigger, so the trigger's stop condition ends it as it would have:
+        the anchor recording when the boat is back on the mooring, which may
+        be at once if it already is. One whose event is no longer in the
+        config has nothing that would ever stop it, so it is ended where its
+        data ends instead.
+        """
+        for recording_id in getattr(self, '_to_resume', []):
+            recording = self.database.get_recording(recording_id)
+            if not recording or recording['status'] != RecordingStatus.ACTIVE:
+                continue
+            key = recording.get('event_key')
+            config = self.config.get_enabled_event_configs().get(key) if key else None
+
+            topics = json.loads(recording['record_topics']) if recording.get('record_topics') else None
+            if topics is None and config:
+                topics = config.get('record_topics', [])
+
+            triggered = key not in (None, 'manual')
+            if topics is None or (triggered and config is None):
+                logger.warning(f"Recording {recording_id}: cannot resume (event '{key}' not "
+                               f"in the config); ending it at its last data")
+                self.database.update_recording(
+                    recording_id, status=RecordingStatus.STOPPED,
+                    end_time=self.database.last_data_time(recording_id) or datetime.utcnow())
+                continue
+
+            if triggered:
+                earlier = self.active_recordings.get(key)
+                if earlier is not None:
+                    # Two of one event cannot both be running; keep the later
+                    logger.warning(f"Recording {earlier}: superseded by {recording_id} of the "
+                                   f"same event; ending it")
+                    self.recordings.stop(earlier)
+                if not self.trigger_monitor.resume_monitor(key, recording_id):
+                    # Its monitor failed to set up: nothing would ever stop it
+                    logger.warning(f"Recording {recording_id}: no monitor '{key}' to resume "
+                                   f"with; ending it at its last data")
+                    self.database.update_recording(
+                        recording_id, status=RecordingStatus.STOPPED,
+                        end_time=self.database.last_data_time(recording_id) or datetime.utcnow())
+                    continue
+                self.active_recordings[key] = recording_id
+
+            self.recordings.resume(recording_id, topics)
 
     def _setup_event_monitors(self):
         """Setup GPS trigger monitors from event configurations."""
@@ -511,9 +566,10 @@ class EventRecorderService:
         logger.info("Stopping event recorder service")
         self.running = False
 
-        # Every recording in progress, the ones started from the web UI as
-        # well as the triggered ones, which until TR-10 were all this ended
-        self.recordings.stop_all()
+        # Every recording in progress is left active, its buffer saved, to be
+        # resumed when the service starts again. Ending them here lost the
+        # rest of any sail the service was restarted during.
+        self.recordings.suspend_all()
         self.active_recordings.clear()
 
         # Shutdown status publisher

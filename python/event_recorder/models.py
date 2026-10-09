@@ -413,6 +413,11 @@ class Database:
         it afterwards: the name is the post title, which the crew now edit.
         """
         columns = {row[1] for row in conn.execute("PRAGMA table_info(recordings)")}
+        # The topics a recording records, JSON, so that one interrupted by a
+        # restart or a power cut can be resumed recording the same things.
+        # Older rows have none; resuming takes them from the event config.
+        if 'record_topics' not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN record_topics TEXT")
         if 'event_key' in columns:
             return
         logger.info("Migrating: adding recordings.event_key")
@@ -579,7 +584,7 @@ class Database:
 
     def create_recording(self, name: str, description: str = "",
                         trigger_type: str = "gps_movement",
-                        event_key: str = None) -> int:
+                        event_key: str = None, record_topics: List[str] = None) -> int:
         """
         Create a new recording session.
 
@@ -588,16 +593,18 @@ class Database:
             description: Optional description
             trigger_type: Type of trigger (default: gps_movement)
             event_key: The event config key that started it, or 'manual' (FR-28)
+            record_topics: What it records, kept so it can be resumed
 
         Returns:
             int: Recording ID
         """
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO recordings (name, description, status, start_time, trigger_type, event_key)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO recordings (name, description, status, start_time, trigger_type,
+                                        event_key, record_topics)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (name, description, RecordingStatus.ACTIVE, datetime.utcnow(), trigger_type,
-                  event_key))
+                  event_key, json.dumps(record_topics) if record_topics is not None else None))
             recording_id = cursor.lastrowid
             logger.info(f"Created recording {recording_id}: {name}")
             return recording_id
@@ -812,6 +819,13 @@ class Database:
                 WHERE recording_id = ?
             """, (recording_id,))
             return cursor.fetchone()['count']
+
+    def last_data_time(self, recording_id: int) -> Optional[datetime]:
+        """When the recording last received anything, or None if never."""
+        with self.get_connection() as conn:
+            value = conn.execute("SELECT MAX(timestamp) FROM recording_data WHERE recording_id = ?",
+                                 (recording_id,)).fetchone()[0]
+        return datetime.fromisoformat(str(value)) if value else None
 
     def get_recording_photo_count(self, recording_id: int) -> int:
         """Count user-uploaded photos for a recording."""

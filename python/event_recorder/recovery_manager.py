@@ -6,7 +6,7 @@ or complete processing based on current GPS position and recording state.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Callable
 from .models import Artefacts, Database, PostState, RecordingStatus
 
@@ -20,6 +20,11 @@ class RecoveryManager:
     On startup, checks for interrupted recordings and determines appropriate
     recovery action based on current conditions.
     """
+
+    # An interrupted recording whose last data is this recent is resumed: a
+    # restart or a power cut mid-sail. Longer than this and it is not the
+    # same outing, so it is ended where its data ends.
+    RESUME_WITHIN = timedelta(hours=6)
 
     def __init__(self, database: Database):
         """
@@ -55,30 +60,42 @@ class RecoveryManager:
         if active_recordings:
             logger.info(f"Found {len(active_recordings)} interrupted active recordings")
 
+        # A recording still active was interrupted, by a restart or a power cut:
+        # the service leaves recordings active on shutdown for exactly this. One
+        # that was recording recently carries on (main.py resumes it and hands it
+        # back to its trigger, whose stop condition then ends it as usual). Until
+        # this, every interruption ended the recording, and the anchor trigger
+        # will not start another away from the mooring, so a restart mid-sail
+        # lost the rest of the sail.
+        now = datetime.utcnow()
         for recording in active_recordings:
             recording_id = recording['id']
-            start_time = recording['start_time']
+            last = self.database.last_data_time(recording_id)
+            started = recording['start_time']
+            if not isinstance(started, datetime):
+                started = datetime.fromisoformat(str(started))
 
-            # Check how much data was recorded
-            message_count = self.database.get_recording_data_count(recording_id)
-
-            if message_count == 0:
-                # No data recorded, mark as failed
+            if now - (last or started) <= self.RESUME_WITHIN:
+                logger.info(f"Recording {recording_id}: interrupted, resuming")
+                recovery_actions['resume'].append(recording_id)
+            elif last is None:
                 logger.warning(f"Recording {recording_id}: no data recorded, marking as failed")
                 self.database.update_recording(
                     recording_id,
                     status=RecordingStatus.FAILED,
-                    end_time=datetime.utcnow(),
+                    end_time=now,
                     error_message="No data recorded before interruption"
                 )
                 recovery_actions['failed'].append(recording_id)
             else:
-                # Has data, move to processing
-                logger.info(f"Recording {recording_id}: has {message_count} messages, marking for processing")
+                # Silent too long to be the same outing: ended where its data
+                # ends, not now, so it does not claim the hours the Pi was off
+                logger.info(f"Recording {recording_id}: last data {last}, too long ago to resume; "
+                            f"stopped there")
                 self.database.update_recording(
                     recording_id,
                     status=RecordingStatus.STOPPED,
-                    end_time=datetime.utcnow()
+                    end_time=last
                 )
                 recovery_actions['process'].append(recording_id)
 
@@ -232,7 +249,10 @@ class RecoveryManager:
         summary = {
             'resumed': 0,
             'processed': 0,
-            'failed': len(recovery_actions['failed'])
+            'failed': len(recovery_actions['failed']),
+            # For the caller to resume once MQTT and the triggers are up; it
+            # counts 'resumed' as it does (main._resume_recordings)
+            'resume_ids': recovery_actions['resume'],
         }
 
         # Process recordings that need it

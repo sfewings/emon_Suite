@@ -78,6 +78,7 @@ Foundations, needed by the editor and worth doing on their own:
 - [x] **TR-11:** Publishing runs in the background and updates its own post
 - [x] **TR-12:** Recording, artefact and post state kept apart
 - [x] **TR-13:** Web UI runs on iOS 12
+- [x] **TR-14:** Recordings survive a restart or a power cut
 
 The editor:
 
@@ -1462,11 +1463,11 @@ by the GPS triggers and by the Flask routes alike
 - Verified on the dev rig: a manual recording and a Frostbite replay ran together, the
   status showed both, the anchor recording stopped itself, and `docker stop` ended the
   manual and movement recordings through `stop_all()`.
-- **Not changed, and worth a decision later:** a clean shutdown ends the recordings in
-  progress, so restarting the container mid-sail (an edit on the jetty, a deploy) ends
-  that sail's recording. The anchor trigger will not start a new one away from the
-  mooring (the cold-start guard in FR-1), so the rest of the sail goes unrecorded.
-  After a power cut, by contrast, recovery can resume an active recording.
+- **Left for later at the time, since done as TR-14:** a clean shutdown ended the
+  recordings in progress, so restarting the container mid-sail ended that sail's
+  recording. This note originally said a power cut, by contrast, let recovery resume an
+  active recording. That was wrong: `should_resume_recording()` was never called, and
+  recovery ended every interrupted recording too.
 
 ---
 
@@ -1589,6 +1590,46 @@ field. The editor needs them separately
 - Verified on the dev rig: the migration ran on the day's database, the published
   recording came out `published`, and recovery queued only the two never-processed
   recordings rather than all of them.
+
+---
+
+### TR-14: Recordings Survive a Restart or a Power Cut
+
+**Priority:** Must Have
+**Status:** ✅ Implemented (2026-10-09), asked for after a restart during the first
+iPhone test ended the recording being tested
+**Description:** A recording in progress carries on after the service restarts, whether
+the restart was clean (an edit on the jetty, a container update) or a power cut
+
+**Acceptance Criteria:**
+
+- [x] A clean shutdown saves what is buffered and leaves every recording in progress
+      active (`RecordingService.suspend_all()`), as a power cut leaves them
+- [x] On start, recovery resumes an active recording whose last data is within
+      `RESUME_WITHIN` (6 hours), including one interrupted before any data arrived
+- [x] A resumed recording records its own topics again: `recordings.record_topics`,
+      stored at start; older rows take them from their event config
+- [x] A triggered recording is handed back to its trigger in its recording state
+      (`GPSTriggerMonitor.resume_monitor()`), so the trigger's own stop condition ends
+      it: the anchor recording when the boat is back on the mooring
+- [x] One silent for longer than that is ended at its last data, not at restart time,
+      so it does not claim the hours the Pi was off; one that never recorded anything
+      has failed, as before
+- [x] One whose event is no longer in the config, which nothing would ever stop, is
+      ended at its last data; of two active recordings of one event, the later carries on
+- [x] `tests/test_resume.py`
+
+**Implementation Notes:**
+
+- Until this, nothing resumed. A clean shutdown ended recordings (`stop_all`), and
+  recovery ended any a power cut left active: `should_resume_recording()` existed but
+  was never called. The anchor trigger's cold-start guard (FR-1) then refuses to start
+  another away from the mooring, so any interruption mid-sail lost the rest of it.
+- A resumed recording is not added to `recordings_this_run`: its earlier rows were
+  written on the previous run's clock, which the clock-step repair has no measure of.
+- Verified on the dev rig mid-replay: on `docker restart`, "Leaving recording 9 active",
+  then on start "Monitor 'track_recording': resumed with recording 9", and recording 9
+  went on from 576 rows to over 1,278 with no new recording started.
 
 ---
 
