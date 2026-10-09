@@ -17,6 +17,7 @@ from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
 from .models import Database, RecordingStatus, ImageType
+from .recording_service import RecordingError, RecordingService
 from .wordpress_publisher import WordPressPublisher
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,8 @@ class WebInterface:
                  uploads_dir: str = "/data/uploads",
                  host: str = "0.0.0.0", port: int = 5000,
                  charts_config: Optional[Dict] = None,
-                 plot_defaults: Optional[Dict] = None):
+                 plot_defaults: Optional[Dict] = None,
+                 recording_service: Optional[RecordingService] = None):
         """
         Initialize web interface.
 
@@ -49,6 +51,10 @@ class WebInterface:
                 data processor so a reprocess from here draws the same as one
                 the service starts itself. Not to be confused with the
                 per-request plot_config, which lists the plots to draw.
+            recording_service: What every route that changes a recording
+                calls (TR-10). main.py passes the service's own; without one,
+                as in the tests, a service that records nothing is built here
+                from the arguments above.
         """
         self.database = database
         self.service_manager = service_manager
@@ -59,6 +65,15 @@ class WebInterface:
         self.plot_defaults = plot_defaults
         self.host = host
         self.port = port
+
+        self.recordings = recording_service or RecordingService(
+            database,
+            plots_dir=plots_dir,
+            uploads_dir=uploads_dir,
+            charts_config=charts_config,
+            plot_defaults=plot_defaults,
+            wordpress_publisher=wordpress_publisher,
+        )
 
         # Ensure directories exist
         self.plots_dir.mkdir(parents=True, exist_ok=True)
@@ -166,12 +181,12 @@ class WebInterface:
                 }
 
                 # Add service manager status if available
+                # Counted from what is being recorded, so recordings started
+                # here count as well as the triggered ones main.py tracks
+                status['active_recordings'] = len(self.recordings.active_recording_ids())
                 if self.service_manager:
-                    status['active_recordings'] = len(self.service_manager.active_recordings)
                     status['buffer_status'] = self.service_manager.data_recorder.get_buffer_status()
                     status['monitor_status'] = self.service_manager.trigger_monitor.get_monitor_status()
-                else:
-                    status['active_recordings'] = 0
 
                 # Database stats
                 db_stats = self.database.get_database_stats()
@@ -287,12 +302,7 @@ class WebInterface:
                 description = data.get('description', '')
                 topics = data.get('topics', ['gps/#', 'battery/#'])
 
-                # Create recording
-                recording_id = self.database.create_recording(name, description)
-
-                # Start recording if service manager available
-                if self.service_manager:
-                    self.service_manager.data_recorder.start_recording(recording_id, topics)
+                recording_id = self.recordings.start(name, description, topics)
 
                 return jsonify({
                     'success': True,
@@ -339,34 +349,14 @@ class WebInterface:
         def delete_recording(recording_id):
             """Delete a recording."""
             try:
-                # Check if recording exists
-                recording = self.database.get_recording(recording_id)
-                if not recording:
-                    return jsonify({'success': False, 'error': 'Recording not found'}), 404
-
-                # Don't allow deleting active recordings
-                if recording['status'] == RecordingStatus.ACTIVE:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Cannot delete active recording'
-                    }), 400
-
-                # Delete associated files: the generated plots and exports, and
-                # the crew's photos, which nothing else would ever remove
-                import shutil
-                for files_dir in (self.plots_dir / str(recording_id),
-                                  self.uploads_dir / str(recording_id)):
-                    if files_dir.exists():
-                        shutil.rmtree(files_dir)
-
-                # Delete from database
-                self.database.delete_recording(recording_id)
-
+                self.recordings.delete(recording_id)
                 return jsonify({
                     'success': True,
                     'message': f'Recording {recording_id} deleted'
                 })
 
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
             except Exception as e:
                 logger.error(f"Delete recording error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
@@ -375,60 +365,15 @@ class WebInterface:
         def stop_recording(recording_id):
             """Manually stop a recording."""
             try:
-                recording = self.database.get_recording(recording_id)
-                if not recording:
-                    return jsonify({'success': False, 'error': 'Recording not found'}), 404
-
-                if recording['status'] != RecordingStatus.ACTIVE:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Recording is not active (status: {recording["status"]})'
-                    }), 400
-
-                # Stop recording if service manager available
-                if self.service_manager:
-                    self.service_manager.data_recorder.stop_recording(recording_id)
-
-                # Update database
-                self.database.update_recording(
-                    recording_id,
-                    status=RecordingStatus.STOPPED,
-                    end_time=datetime.utcnow()
-                )
-
-                # Auto-process if setting is enabled (mirrors _on_trigger_stop in main.py)
-                auto_processing = False
-                if self.database.get_setting('auto_process_on_stop', 'false') == 'true':
-                    plots_dir = str(self.plots_dir)
-                    database = self.database
-                    charts_config = self.charts_config
-                    plot_defaults = self.plot_defaults
-
-                    def _auto_process():
-                        try:
-                            from .data_processor import DataProcessor
-                            processor = DataProcessor(database, plots_dir,
-                                                      charts_config, plot_defaults)
-                            processor.process_recording(recording_id)
-                            logger.info(f"Auto-processing complete for recording {recording_id}")
-                        except Exception as e:
-                            logger.error(f"Auto-processing failed for recording {recording_id}: {e}")
-
-                    t = threading.Thread(
-                        target=_auto_process,
-                        daemon=True,
-                        name=f"AutoProcess-{recording_id}"
-                    )
-                    t.start()
-                    auto_processing = True
-                    logger.info(f"Auto-processing started for recording {recording_id}")
-
+                auto_processing = self.recordings.stop(recording_id)
                 return jsonify({
                     'success': True,
                     'message': f'Recording {recording_id} stopped',
                     'auto_processing': auto_processing
                 })
 
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
             except Exception as e:
                 logger.error(f"Stop recording error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
@@ -458,16 +403,10 @@ class WebInterface:
         def process_recording(recording_id):
             """Process recording (generate plots and export files)."""
             try:
-                data = request.get_json() or {}
-                plot_config = data.get('plot_config', [])
-                export_config = data.get('export_config', None)
-
-                # Import here to avoid circular dependency
-                from .data_processor import DataProcessor
-
-                processor = DataProcessor(self.database, str(self.plots_dir),
-                                          self.charts_config, self.plot_defaults)
-                results = processor.process_recording(recording_id, plot_config, export_config)
+                data = request.get_json(silent=True) or {}
+                results = self.recordings.process(recording_id,
+                                                  data.get('plot_config', []),
+                                                  data.get('export_config', None))
 
                 if results['status'] == 'success':
                     return jsonify({
@@ -489,20 +428,11 @@ class WebInterface:
         def reset_recording_status(recording_id):
             """Reset recording status from failed or published back to processed."""
             try:
-                recording = self.database.get_recording(recording_id)
-                if not recording:
-                    return jsonify({'success': False, 'error': 'Recording not found'}), 404
-
-                if recording['status'] not in (RecordingStatus.FAILED, RecordingStatus.PUBLISHED):
-                    return jsonify({
-                        'success': False,
-                        'error': f"Cannot reset from status '{recording['status']}'"
-                    }), 400
-
-                self.database.update_recording(recording_id, status=RecordingStatus.PROCESSED)
-                logger.info(f"Recording {recording_id} reset to processed (was {recording['status']})")
+                self.recordings.reset_to_processed(recording_id)
                 return jsonify({'success': True, 'message': f'Recording reset to processed'})
 
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
             except Exception as e:
                 logger.error(f"Reset recording status error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
@@ -511,167 +441,21 @@ class WebInterface:
         def publish_recording(recording_id):
             """Publish recording to WordPress."""
             try:
-                # Check WordPress publisher configured
-                if not self.wordpress_publisher:
-                    return jsonify({
-                        'success': False,
-                        'error': 'WordPress publisher not configured'
-                    }), 400
-
-                # Get recording
-                recording = self.database.get_recording(recording_id)
-                if not recording:
-                    return jsonify({'success': False, 'error': 'Recording not found'}), 404
-
-                # One request to see whether the site can be reached at all,
-                # before sending it a few dozen files. Publishing from a phone
-                # hotspot with a stale resolver spent seven minutes failing
-                # every upload in turn, each with its own retries, and said
-                # only that publishing had failed. The status is left alone
-                # here: the boat being off the air is not a fault in the
-                # recording, and it should publish on the next attempt without
-                # having to be reset first.
-                reachable, detail = self.wordpress_publisher.test_connection()
-                if not reachable:
-                    logger.error(
-                        f"Not publishing recording {recording_id}: {detail}"
-                    )
-                    return jsonify({
-                        'success': False,
-                        'error': f'Cannot reach WordPress: {detail}'
-                    }), 503
-
-                # Get images
-                images = self.database.get_recording_images(recording_id)
-                if not images:
-                    return jsonify({
-                        'success': False,
-                        'error': 'No images found for recording'
-                    }), 400
-
-                # Prepare image list with full paths
-                image_list = []
-                for img in images:
-                    img_path = Path(img['image_path'])
-
-                    if img_path.exists():
-                        image_list.append({
-                            'path': str(img_path),
-                            'caption': img.get('caption', ''),
-                            'image_type': img.get('image_type', ImageType.PLOT)
-                        })
-                    else:
-                        logger.warning(f"Image file not found: {img_path}")
-
-                if not image_list:
-                    return jsonify({
-                        'success': False,
-                        'error': 'No image files found'
-                    }), 400
-
-                # Parse request body for options
-                # (Note: image_list may be trimmed further below if statistics JSON is found)
-                data = request.get_json() or {}
-                category = data.get('category', 'Track Logs')
-                template = data.get('template', None)
-
-                # Determine default publish mode from the main config's publish_status.
-                # publish_status: "publish" → auto_publish=True (post goes live immediately)
-                # publish_status: "draft"   → auto_publish=False (post saved as draft)
-                # The request body can still override this with an explicit auto_publish value.
-                default_auto_publish = False
-                if self.service_manager:
-                    try:
-                        wp_cfg = self.service_manager.config.get_wordpress_config()
-                        if wp_cfg:
-                            default_auto_publish = wp_cfg.get('publish_status', 'draft') == 'publish'
-                    except Exception:
-                        pass
-                auto_publish = data.get('auto_publish', default_auto_publish)
-
-                # Load statistics JSON sidecar if present; exclude the PNG from uploads
-                statistics = None
-                stats_json_path = self.plots_dir / str(recording_id) / 'statistics_summary.json'
-                if stats_json_path.exists():
-                    try:
-                        with open(stats_json_path) as f:
-                            statistics = json.load(f)
-                        # Remove the statistics PNG — it will be rendered as an HTML table instead
-                        image_list = [
-                            img for img in image_list
-                            if Path(img['path']).name != 'statistics_summary.png'
-                        ]
-                        logger.info("Loaded statistics JSON; statistics_summary.png excluded from upload")
-                    except Exception as e:
-                        logger.warning(f"Could not load statistics JSON: {e}")
-
-                # Collect folium HTML map files; exclude matching PNGs from uploads
-                # so the interactive map replaces the static screenshot in the post
-                map_htmls = []
-                plots_dir_rec = self.plots_dir / str(recording_id)
-                for html_file in sorted(plots_dir_rec.glob('*.html')):
-                    map_htmls.append(str(html_file))
-                    image_list = [
-                        img for img in image_list
-                        if Path(img['path']).stem != html_file.stem
-                    ]
-                if map_htmls:
-                    logger.info(
-                        f"Found {len(map_htmls)} map HTML file(s); "
-                        "matching PNG(s) excluded from upload"
-                    )
-
-                # Collect export files for this recording
-                export_list = []
-                for exp in self.database.get_recording_exports(recording_id):
-                    exp_path = Path(exp['file_path'])
-                    if exp_path.exists():
-                        export_list.append({
-                            'path': str(exp_path),
-                            'label': exp.get('label', exp['export_type'].upper()),
-                            'export_type': exp['export_type']
-                        })
-
-                # Publish to WordPress
-                logger.info(f"Publishing recording {recording_id} to WordPress")
-                post = self.wordpress_publisher.publish_recording(
-                    recording_data=recording,
-                    images=image_list,
-                    exports=export_list,
-                    statistics=statistics,
-                    map_htmls=map_htmls,
-                    template=template,
-                    category=category,
-                    auto_publish=auto_publish
+                data = request.get_json(silent=True) or {}
+                post = self.recordings.publish(
+                    recording_id,
+                    category=data.get('category', 'Track Logs'),
+                    template=data.get('template', None),
+                    auto_publish=data.get('auto_publish', None)
                 )
+                return jsonify({
+                    'success': True,
+                    'post': post,
+                    'failed_uploads': post.get('failed_uploads', [])
+                })
 
-                if post:
-                    # Update recording with WordPress URL
-                    self.database.update_recording(
-                        recording_id,
-                        status=RecordingStatus.PUBLISHED,
-                        wordpress_url=post['link']
-                    )
-
-                    logger.info(f"Recording published: {post['link']}")
-                    return jsonify({
-                        'success': True,
-                        'post': post,
-                        'failed_uploads': post.get('failed_uploads', [])
-                    })
-                else:
-                    # Mark as failed
-                    self.database.update_recording(
-                        recording_id,
-                        status=RecordingStatus.FAILED,
-                        error_message="WordPress publishing failed"
-                    )
-
-                    return jsonify({
-                        'success': False,
-                        'error': 'Failed to create WordPress post'
-                    }), 500
-
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
             except Exception as e:
                 logger.error(f"Publish recording error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500

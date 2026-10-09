@@ -74,7 +74,7 @@ The Event Recorder is an autonomous service that monitors GPS position via MQTT,
 Foundations, needed by the editor and worth doing on their own:
 
 - [x] **TR-9:** Foreign keys enforced, and deleting a recording removes all of it
-- [ ] **TR-10:** One recording service behind the triggers and the routes
+- [x] **TR-10:** One recording service behind the triggers and the routes
 - [ ] **TR-11:** Publishing runs in the background and updates its own post
 - [ ] **TR-12:** Recording, artefact and post state kept apart
 - [x] **TR-13:** Web UI runs on iOS 12
@@ -1291,24 +1291,49 @@ ignores it unless each connection turns foreign keys on, and `get_connection()` 
 ### TR-10: One Recording Service Behind the Triggers and the Routes
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09)
 **Description:** Start, stop, process and publish each happen in exactly one place, called
 by the GPS triggers and by the Flask routes alike
 
 **Acceptance Criteria:**
 
-- [ ] A recording service owns start, stop, auto-process, publish and the draft
-- [ ] `_on_trigger_start()` / `_on_trigger_stop()` in `main.py` and the manual start and
-      stop routes in `web_interface.py` call it rather than repeating its steps
-- [ ] Routes only parse the request and shape the response
+- [x] `recording_service.py`: `RecordingService` owns start, stop, stop-all, process,
+      background process, reset, delete and publish. The draft joins it with FR-24
+- [x] `_on_trigger_start()` / `_on_trigger_stop()` in `main.py` and the start, stop,
+      process, reset, delete and publish routes in `web_interface.py` call it rather than
+      repeating its steps
+- [x] Routes only parse the request and shape the response. A refusal is a
+      `RecordingError` carrying the HTTP status the route returns
+- [x] `tests/test_recording_service.py`
 
 **Implementation Notes:**
 
-- Duplication today: auto-process exists in both `main.py` and the stop route; the
-  publish route holds about 170 lines of publishing logic.
-- A real bug comes from the split: a manually started recording never enters
-  `_recordings_this_run`, so the clock-step repair does not cover it, and
-  `service.stop()` does not end it on shutdown.
+- Duplication before: auto-process existed in both `main.py` and the stop route; the
+  publish route held about 170 lines of publishing logic. Both are now in the service,
+  with the publish logic moved unchanged (TR-11 reworks it).
+- **The bugs the split caused, now fixed:**
+  - A manually started recording never entered `_recordings_this_run`, so the
+    clock-step repair skipped it. The set is now the service's, and every start adds
+    to it.
+  - `service.stop()` ended only triggered recordings on shutdown. `stop_all()` ends
+    whatever the data recorder is recording.
+  - `/api/status` counted only triggered recordings as active. It now counts what is
+    being recorded.
+  - Manual recordings were stored with `trigger_type` `gps_movement`, the
+    `create_recording()` default. They are now `manual`.
+- A trigger can fire its stop after the crew has stopped the same recording from the web
+  UI. The service refuses to stop a recording that is not active, and the trigger
+  handler takes that as the answer: the recording keeps the end time the crew gave it.
+- `WebInterface` takes the service as `recording_service`; without one, as in the
+  tests, it builds a service that records nothing.
+- Verified on the dev rig: a manual recording and a Frostbite replay ran together, the
+  status showed both, the anchor recording stopped itself, and `docker stop` ended the
+  manual and movement recordings through `stop_all()`.
+- **Not changed, and worth a decision later:** a clean shutdown ends the recordings in
+  progress, so restarting the container mid-sail (an edit on the jetty, a deploy) ends
+  that sail's recording. The anchor trigger will not start a new one away from the
+  mooring (the cold-start guard in FR-1), so the rest of the sail goes unrecorded.
+  After a power cut, by contrast, recovery can resume an active recording.
 
 ---
 
