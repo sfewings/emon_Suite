@@ -37,6 +37,19 @@ plots:
   style: "seaborn-v0_8"
   linewidth: 0.9
 
+# Categories the event page ticks for a recording before anyone touches them
+# (event_recorder FR-30). Each is untickable on the page. The rule types are in
+# post_suggestions.py; a new rule of an existing type, another island or club,
+# needs only a line here.
+post:
+  categories:
+    - {name: "Track Logs", when: always}
+    - {name: "Ship's Log", when: moved, metres: 200}           # the boat went somewhere
+    - {name: "Twilight",   when: weekday_evening, after: "16:00"}   # boat time, Mon to Fri
+    - {name: "Club event", when: race_started}                # enchantee_racing logged a start
+    - {name: "Rottnest",   when: track_enters,
+       bbox: [-32.03, 115.44, -31.98, 115.56]}                # south, west, north, east
+
 wordpress:
   default_site:
     site_url: "${WP_SITE_URL}"

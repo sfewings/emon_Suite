@@ -896,6 +896,41 @@ class Database:
             """, (recording_id,))
             return [dict(row) for row in cursor.fetchall()]
 
+    # === Questions the category rules ask (FR-30) ===
+    # Answered in SQL, so a recording's fixes are never loaded into Python to
+    # answer a yes or no
+
+    def track_extent(self, recording_id: int, topic: str) -> Optional[Tuple[float, float, float, float]]:
+        """(south, west, north, east) of a recording's fixes, or None if it has none."""
+        with self.get_connection() as conn:
+            row = conn.execute("""
+                SELECT MIN(json_extract(payload, '$.lat')), MIN(json_extract(payload, '$.lon')),
+                       MAX(json_extract(payload, '$.lat')), MAX(json_extract(payload, '$.lon'))
+                FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND json_valid(payload)
+            """, (recording_id, topic)).fetchone()
+            return tuple(row) if row and row[0] is not None else None
+
+    def has_fix_within(self, recording_id: int, topic: str,
+                       south: float, west: float, north: float, east: float) -> bool:
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT 1 FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND json_valid(payload)
+                  AND json_extract(payload, '$.lat') BETWEEN ? AND ?
+                  AND json_extract(payload, '$.lon') BETWEEN ? AND ?
+                LIMIT 1
+            """, (recording_id, topic, south, north, west, east)).fetchone() is not None
+
+    def has_payload(self, recording_id: int, topic: str, fragment: str) -> bool:
+        """Whether any message on `topic` contains `fragment`."""
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT 1 FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND instr(payload, ?) > 0
+                LIMIT 1
+            """, (recording_id, topic, fragment)).fetchone() is not None
+
     def position_near(self, recording_id: int, when: datetime,
                       window: timedelta) -> Optional[Tuple[float, float]]:
         """

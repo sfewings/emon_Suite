@@ -87,7 +87,7 @@ The editor:
 - [ ] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
 - [ ] **FR-28:** Which recording the event page opens
 - [x] **FR-29:** Photo and note capture
-- [ ] **FR-30:** Categories and crew from the site, offered not typed
+- [x] **FR-30:** Categories and crew from the site, offered not typed
 - [ ] **FR-31:** Live while recording
 
 ---
@@ -1088,7 +1088,30 @@ each one tap from the top of the event page, each placed on the track by its tim
 ### FR-30: Categories and Crew Offered, Not Typed
 
 **Priority:** Should Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09). `post_suggestions.py`; rules under `post:` in
+`event_recorder_config.yml`; tests `tests/test_suggestions.py`
+
+**Implementation Notes:**
+
+- **Learning the site:** `RecordingService.refresh_from_site()` runs at start and every
+  30 minutes, in its own thread so a slow hotspot never holds the main loop. When the
+  site answers it caches the category list (most used first) and the crew counts from
+  the first paragraph of the latest 100 Ship's Log posts, in the service settings
+  `wp_categories` and `wp_crew_counts`, which is what the page uses at sea.
+- **A crew line** is a first paragraph whose every part is one to three capitalised
+  words; "2:20-4:20" or a sentence is not one. A part whose later words are names that
+  sail alone is split: "Nagako, Catherine Steve" is three people.
+- **Rules are config, rule types are code.** `always`, `moved` (fixes spanning more
+  than `metres`), `weekday_evening` (boat time, +8), `race_started` (a `race/event` of
+  type `start`), `track_enters` (`bbox`). All are answered in SQL with `json_extract`,
+  and the answer is cached for a minute per recording, as the page asks every 5 s.
+- **A recording nobody wrote up** publishes with its suggested categories: publishing
+  now uses the draft the page would show, stored or not.
+- **Categories are never created** by the publisher. A name the site does not have is
+  left off the post with a warning. Category names are still stored as names, matched
+  case-insensitively (and unescaped, as a guard) against the site's.
+- Verified on the dev rig: on start the recorder learnt the local blog's 10 categories
+  and Henry and Steve from the crew line of the ship's-log post published in FR-24.
 **Description:** Categories are chosen from the site's real list, with likely ones already
 ticked; crew names are offered from those used before
 

@@ -16,11 +16,12 @@ import json
 import logging
 import shutil
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from . import photos, post_renderer
+from . import photos, post_renderer, post_suggestions
 from .models import Artefacts, Database, ImageType, PostState, RecordingStatus
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,8 @@ class RecordingService:
                  plot_defaults: Optional[Dict] = None,
                  wordpress_publisher=None,
                  wordpress_config: Optional[Callable[[], Dict]] = None,
-                 event_configs: Optional[Callable[[], Dict]] = None):
+                 event_configs: Optional[Callable[[], Dict]] = None,
+                 post_config: Optional[Callable[[], Dict]] = None):
         """
         Args:
             database: Database instance
@@ -70,6 +72,10 @@ class RecordingService:
         # Returns the enabled event configs, {key: config}. A callable, like
         # wordpress_config, because the config reloads while the service runs.
         self.event_configs = event_configs
+        # Returns the service config's `post` section: the category rules
+        # (FR-30). A callable, as the others, because the config reloads.
+        self.post_config = post_config
+        self._suggestion_cache = {}
 
         # Recordings started by this process. Only these can have been written
         # on a clock that has since been corrected (main._check_for_clock_step).
@@ -346,8 +352,10 @@ class RecordingService:
                 except Exception:
                     pass
 
-        draft = self.database.get_draft(recording_id)
-        blocks = draft['blocks'] if draft else self.default_blocks()
+        # The draft as the page would show it, stored or not, so a recording
+        # nobody wrote up still goes out with its suggested categories (FR-30)
+        draft = self.get_draft(recording_id)
+        blocks = draft['blocks']
 
         # The post's state from here on, never the recording's (TR-12). Set
         # only now, after the refusals above, which leave the post as it was.
@@ -593,7 +601,7 @@ class RecordingService:
         return {
             'title': recording['name'],
             'excerpt': recording.get('description') or '',
-            'categories': ['Track Logs'],
+            'categories': self.suggested_categories(recording),
             'crew': [],
             'story': '',
             'wind': '',
@@ -757,12 +765,61 @@ class RecordingService:
         return list(self.KNOWN_CATEGORIES)
 
     def crew_suggestions(self) -> List[str]:
-        """Names from earlier drafts, the most often sailed first (FR-26)."""
-        counts = {}
-        for draft in self.database.get_all_drafts():
-            for name in draft.get('crew') or []:
-                counts[name] = counts.get(name, 0) + 1
-        return sorted(counts, key=lambda name: (-counts[name], name.lower()))
+        """
+        Names to offer, the most often sailed first (FR-26, FR-30): from the
+        crew lines of past Ship's Log posts, cached from the site, and from
+        earlier drafts here.
+        """
+        drafts = post_suggestions.count_names(
+            draft.get('crew') or [] for draft in self.database.get_all_drafts())
+        site = post_suggestions.load_json_setting(self.database, 'wp_crew_counts', {})
+        return post_suggestions.merge_counts(site, drafts)
+
+    # The rules read the recording's data, and the page asks every 5 s; a
+    # minute is as fresh as a suggestion needs to be
+    SUGGESTION_SECONDS = 60
+
+    def suggested_categories(self, recording: Dict) -> List[str]:
+        """The categories the config's rules tick for this recording (FR-30)."""
+        rules = (self.post_config() or {}).get('categories') if self.post_config else None
+        if not rules:
+            return ['Track Logs']
+        key = recording['id']
+        now = time.monotonic()
+        cached = self._suggestion_cache.get(key)
+        if cached and now - cached[0] < self.SUGGESTION_SECONDS:
+            return list(cached[1])
+        names = post_suggestions.suggest_categories(rules, recording, self.database)
+        self._suggestion_cache[key] = (now, names)
+        return list(names)
+
+    def refresh_from_site(self) -> bool:
+        """
+        Learn the site's categories and past crew while it can be reached
+        (FR-30): at the dock, or on a hotspot. Kept in the service settings,
+        so the page has them at sea. Returns whether the site was reached.
+        """
+        if not self.wordpress_publisher:
+            return False
+        try:
+            reachable, detail = self.wordpress_publisher.test_connection()
+            if not reachable:
+                logger.debug(f"Site not reachable for refresh: {detail}")
+                return False
+            categories = self.wordpress_publisher.list_categories()
+            if categories:
+                self.database.set_setting('wp_categories', json.dumps(categories))
+            contents = self.wordpress_publisher.post_contents("Ship's Log")
+            lines = [post_suggestions.crew_line(c) for c in contents]
+            counts = post_suggestions.count_names(line for line in lines if line)
+            if counts:
+                self.database.set_setting('wp_crew_counts', json.dumps(counts))
+            logger.info(f"Learnt {len(categories)} categories and {len(counts)} crew names "
+                        f"from the site")
+            return True
+        except Exception as e:
+            logger.warning(f"Could not refresh from the site: {e}")
+            return False
 
     def page_state(self, recording_id: Optional[int],
                    media_url: Callable[[str], str]) -> Dict:

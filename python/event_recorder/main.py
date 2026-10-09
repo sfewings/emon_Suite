@@ -131,6 +131,7 @@ class EventRecorderService:
             wordpress_publisher=self.wordpress_publisher,
             wordpress_config=self.config.get_wordpress_config,
             event_configs=self.config.get_enabled_event_configs,
+            post_config=lambda: self.config.get('post', {}),
         )
 
         # Initialize web interface
@@ -458,12 +459,30 @@ class EventRecorderService:
             except Exception as e:
                 logger.error(f"Could not correct recording {recording_id}: {e}")
 
+    SITE_REFRESH_SECONDS = 30 * 60
+
+    def _refresh_from_site(self):
+        """In a thread of its own: from a hotspot it can take a minute to fail,
+        and the clock-step check in this loop is not to wait for it."""
+        if self.wordpress_publisher is None:
+            return
+        threading.Thread(target=self.recordings.refresh_from_site, daemon=True,
+                         name="SiteRefresh").start()
+
     def _run_main_loop(self):
         """Main service loop."""
         check_interval = 60  # Check every 60 seconds
+        last_site_refresh = None
 
         while self.running:
             try:
+                # Learn the site's categories and crew whenever it can be
+                # reached (FR-30): first thing, then every half hour
+                if (last_site_refresh is None
+                        or time.monotonic() - last_site_refresh > self.SITE_REFRESH_SECONDS):
+                    last_site_refresh = time.monotonic()
+                    self._refresh_from_site()
+
                 time.sleep(check_interval)
 
                 # Check whether the clock has been corrected under us

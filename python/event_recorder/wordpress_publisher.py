@@ -610,9 +610,13 @@ class WordPressPublisher:
             if response.status_code == 200:
                 categories = response.json()
 
-                # Check for exact match
+                # Check for exact match. Unescaped first as a guard: the REST
+                # API gives "Ship's Log" as it is on both the dev blog and
+                # enchantee.org, but WordPress stores some term names escaped
+                # (wp-cli's lookup by name misses it), and with categories no
+                # longer created (FR-30) a missed match would drop it silently
                 for category in categories:
-                    if category['name'].lower() == category_name.lower():
+                    if html_module.unescape(category['name']).lower() == category_name.lower():
                         logger.debug(f"Found category '{category_name}': ID={category['id']}")
                         return category['id']
 
@@ -681,6 +685,28 @@ class WordPressPublisher:
         matches = response.json()
         return matches[0] if len(matches) == 1 else None
 
+    def list_categories(self) -> List[str]:
+        """The site's category names, unescaped, most used first (FR-30)."""
+        response = self._retry_request(
+            'GET', self._api_url('categories') + '&per_page=100&orderby=count&order=desc')
+        response.raise_for_status()
+        return [html_module.unescape(c['name']) for c in response.json()
+                if c.get('name') and c['name'] != 'Uncategorized']
+
+    def post_contents(self, category_name: str, count: int = 100) -> List[str]:
+        """
+        The rendered content of the latest `count` posts in a category, for
+        the crew lines at their top (FR-30). Empty if there is no such category.
+        """
+        category_id = self.get_category_id(category_name, create=False)
+        if not category_id:
+            return []
+        response = self._retry_request(
+            'GET', self._api_url('posts') +
+            f'&categories={category_id}&per_page={count}&_fields=content')
+        response.raise_for_status()
+        return [p.get('content', {}).get('rendered', '') for p in response.json()]
+
     def create_post(
         self,
         title: str,
@@ -731,9 +757,14 @@ class WordPressPublisher:
             if categories:
                 category_ids = []
                 for cat_name in categories:
-                    cat_id = self.get_category_id(cat_name, create=True)
+                    # Never created from a name (FR-30): the event page offers
+                    # the site's own list, so a name not on it is a mistake to
+                    # report, not a category to add to enchantee.org
+                    cat_id = self.get_category_id(cat_name, create=False)
                     if cat_id:
                         category_ids.append(cat_id)
+                    else:
+                        logger.warning(f"No category '{cat_name}' on the site; left off the post")
 
                 if category_ids:
                     post_data['categories'] = category_ids
