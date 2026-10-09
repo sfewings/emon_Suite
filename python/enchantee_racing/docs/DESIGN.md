@@ -1353,6 +1353,14 @@ most people use, flip which face the HUD cell opens first.
   dimmed, because COG from a GPS velocity at walking pace swings by tens of degrees.
   `/api/state` carries it as `leeway`, beside `position`. It is not one of `FIELDS`,
   because `/hud/data` keeps its ported shape.
+- Leeway is **also a line on the dial**: thin, in the leeway digit's colour, out of the
+  bow at the leeway angle and past the rim. The dial is heading-up, so this line is the
+  track over the ground, COG drawn where the hull shows the heading. Since the mark
+  diamond is placed off the heading too, the line on the diamond means the boat is making
+  good for the mark, set and leeway included, which no single number on the screen says.
+  It is thin where the needles are solid and drawn under them, and that shape is what
+  separates it at night, when every marker is a red. Same stale rule as the digit, and
+  gone with it below 1 kt. The digit stays: a few degrees is easier read than judged.
 - The colours are the HUD's, on black, and the night theme applies. A white Garmin face
   at night would undo 9.7. At night the two sectors become a bright red and a dark red,
   and the half of the dial each sits on still tells them apart.

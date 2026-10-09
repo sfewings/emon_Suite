@@ -16,7 +16,8 @@
     is labelled T or M, because every angle here is true (DESIGN 9.3); the colours are the
     HUD's, on black, with the night theme like every other screen; TWA is a pointer on the
     rim as well as a number; the inner circle carries leeway (COG - HDG) where the Garmin
-    shows drift, which needs speed through the water and this boat has no log.
+    shows drift, which needs speed through the water and this boat has no log, and leeway
+    is also a thin line out of the bow, which is the track over the ground.
   - Added: SOG in the band underneath, which becomes the mark band while racing, with the
     mark itself drawn on the dial; and the SevCon readings in the four corners while the
     motor turns, the same swap the HUD makes with its wind panels.
@@ -76,6 +77,17 @@
           <rect class="box" x="-64" y="20" width="128" height="68" rx="4"/>
           <text class="g-val aws" id="aws" x="0" y="64" text-anchor="middle" font-size="42">--.-</text>
           <text class="g-lbl" x="0" y="82" text-anchor="middle" font-size="12">AWS kt</text>
+
+          <!-- Leeway again, as a line out of the bow at that angle. The dial is heading-up,
+               so the line is where the boat is going over the ground; the mark diamond is
+               placed off the heading too, so the line on the diamond is making good for
+               the mark (DESIGN 9.12). Thin, and under the needles, which matter more. It
+               runs past the rim so it is not lost in the 0 tick. The halo underneath is
+               the outline the other markers get from their stroke. -->
+          <g id="lwy-line" class="leeway off">
+            <line class="halo" x1="0" y1="-112" x2="0" y2="-214"/>
+            <line x1="0" y1="-112" x2="0" y2="-214"/>
+          </g>
 
           <!-- Over everything else on the dial, mark last, which is the thing being steered
                for. Each is drawn pointing at the bow and rotated by gar.js. -->

@@ -299,6 +299,7 @@
   };
 
   var needles = {
+    lwy: new Needle("lwy-line"),
     awa: new Needle("awa-needle"),
     twa: new Needle("twa-pointer"),
     mark: new Needle("mark-diamond")
@@ -325,6 +326,7 @@
 
     // Leeway is blanked by the server below a knot, where COG is noise (DESIGN 9.12).
     reading($("lwy"), d.leeway, fmtSigned, "---");
+    needles.lwy.set(live(d.leeway) ? d.leeway.v : null, d.leeway && d.leeway.age > STALE_S);
 
     needles.awa.set(live(f.awa) ? f.awa.v : null, f.awa && f.awa.age > STALE_S);
     needles.twa.set(live(f.twa) ? f.twa.v : null, f.twa && f.twa.age > STALE_S);

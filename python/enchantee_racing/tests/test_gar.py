@@ -200,7 +200,7 @@ def test_the_band_shows_sog_until_the_race_and_the_mark_during_it():
 
 def test_the_dial_carries_the_needle_the_pointer_and_the_mark_hidden_until_known():
     page = _page()
-    for node in ("awa-needle", "twa-pointer", "mark-diamond"):
+    for node in ("lwy-line", "awa-needle", "twa-pointer", "mark-diamond"):
         assert re.search(r'<g id="%s" class="[a-z]+ off">' % node, page), node
     for reading in ("lwy", "aws"):
         assert 'id="%s"' % reading in page, reading
@@ -227,6 +227,31 @@ def test_the_mark_is_placed_off_the_heading_and_blanks_with_the_fix():
     assert "norm180(nav.bearing - hdg.v)" in code
     assert "var nav = (racing && r.nav) || null;" in code
     assert "needles.mark.set(markAngle, false)" in code
+
+
+def test_leeway_is_also_a_line_on_the_dial_in_the_leeway_colour():
+    """The track over the ground, out of the bow at the leeway angle (DESIGN 9.12). The
+    same number as the digit in the inner circle, so the same colour and the same stale
+    rule, and it goes when the server blanks leeway below a knot. Under the needles and
+    the diamond, which matter more than it does."""
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    assert 'lwy: new Needle("lwy-line")' in code
+    assert ("needles.lwy.set(live(d.leeway) ? d.leeway.v : null, "
+            "d.leeway && d.leeway.age > STALE_S)") in code
+
+    page = _page()
+    assert page.index('id="lwy-line"') < page.index('id="awa-needle"'), \
+        "the leeway line is drawn over the needles"
+
+    css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
+    digit = re.search(r"#gar \.lwy\s*\{[^}]*fill: (var\(--\w+\))", css).group(1)
+    line = re.search(r"#gar \.leeway line\s*\{[^}]*stroke: (var\(--\w+\))", css).group(1)
+    assert line == digit, "the line and the digit are one reading in two colours"
+    for other in ("needle polygon", "pointer polygon", "diamond polygon"):
+        colour = re.search(r"#gar \.%s\s*\{[^}]*fill: (var\(--\w+\))" % other, css).group(1)
+        assert colour != line, "the leeway line is the colour of the %s" % other
+    assert re.search(r"#gar [^{]*\.leeway\.stale[^{]*\{[^}]*opacity", css), \
+        "a stale leeway line does not dim"
 
 
 def test_the_needles_take_the_short_way_round():
