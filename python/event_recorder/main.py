@@ -130,6 +130,7 @@ class EventRecorderService:
             plot_defaults=self.config.get_plot_config(),
             wordpress_publisher=self.wordpress_publisher,
             wordpress_config=self.config.get_wordpress_config,
+            event_configs=self.config.get_enabled_event_configs,
         )
 
         # Initialize web interface
@@ -292,7 +293,8 @@ class EventRecorderService:
             recording_name,
             config.get('description', ''),
             topics=config.get('record_topics', []),
-            trigger_type=config.get('start_condition', {}).get('type', 'unknown')
+            trigger_type=config.get('start_condition', {}).get('type', 'unknown'),
+            event_key=event_name
         )
 
         self.active_recordings[monitor_id] = recording_id

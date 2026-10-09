@@ -7,6 +7,7 @@ with power-outage resilience via WAL mode.
 
 import sqlite3
 import json
+import re
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -259,6 +260,7 @@ class Database:
                 conn.execute(self.POST_DRAFTS_SQL)
 
             self._split_status(conn)
+            self._add_event_key(conn)
 
             # Rows left behind by deletes made before foreign keys were
             # enforced. Done once: it scans recording_data, which is the bulk
@@ -385,6 +387,30 @@ class Database:
         conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FAILED}'
                          WHERE status = 'failed'
                            AND COALESCE(error_message, '') NOT LIKE 'No data recorded%'""")
+
+    def _add_event_key(self, conn):
+        """
+        FR-28: which event started a recording, as its key in the event
+        config ('anchor_track_recording'), or 'manual'.
+
+        Recordings made before this have it only as the start of their name,
+        "anchor_track_recording - 2026-10-07 18:03:28", so they are filled in
+        from that once, when the column is added. Nothing reads the name for
+        it afterwards: the name is the post title, which the crew now edit.
+        """
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(recordings)")}
+        if 'event_key' in columns:
+            return
+        logger.info("Migrating: adding recordings.event_key")
+        conn.execute("ALTER TABLE recordings ADD COLUMN event_key TEXT")
+        for row in conn.execute("SELECT id, name, trigger_type FROM recordings").fetchall():
+            if row['trigger_type'] == 'manual':
+                key = 'manual'
+            else:
+                match = re.match(r'([a-z0-9_]+) - \d{4}-\d{2}-\d{2}', row['name'] or '')
+                key = match.group(1) if match else None
+            if key:
+                conn.execute("UPDATE recordings SET event_key = ? WHERE id = ?", (key, row['id']))
 
     DANGLING_REFERENCE = 'REFERENCES "recordings_old"'
 
@@ -531,13 +557,15 @@ class Database:
 
             conn.execute(self.POST_DRAFTS_SQL)
             self._split_status(conn)
+            self._add_event_key(conn)
 
             logger.info("Database schema created successfully")
 
     # === Recording Operations ===
 
     def create_recording(self, name: str, description: str = "",
-                        trigger_type: str = "gps_movement") -> int:
+                        trigger_type: str = "gps_movement",
+                        event_key: str = None) -> int:
         """
         Create a new recording session.
 
@@ -545,15 +573,17 @@ class Database:
             name: Recording name
             description: Optional description
             trigger_type: Type of trigger (default: gps_movement)
+            event_key: The event config key that started it, or 'manual' (FR-28)
 
         Returns:
             int: Recording ID
         """
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO recordings (name, description, status, start_time, trigger_type)
-                VALUES (?, ?, ?, ?, ?)
-            """, (name, description, RecordingStatus.ACTIVE, datetime.utcnow(), trigger_type))
+                INSERT INTO recordings (name, description, status, start_time, trigger_type, event_key)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, description, RecordingStatus.ACTIVE, datetime.utcnow(), trigger_type,
+                  event_key))
             recording_id = cursor.lastrowid
             logger.info(f"Created recording {recording_id}: {name}")
             return recording_id

@@ -16,7 +16,7 @@ import json
 import logging
 import shutil
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -43,7 +43,8 @@ class RecordingService:
                  charts_config: Optional[Dict] = None,
                  plot_defaults: Optional[Dict] = None,
                  wordpress_publisher=None,
-                 wordpress_config: Optional[Callable[[], Dict]] = None):
+                 wordpress_config: Optional[Callable[[], Dict]] = None,
+                 event_configs: Optional[Callable[[], Dict]] = None):
         """
         Args:
             database: Database instance
@@ -66,6 +67,9 @@ class RecordingService:
         self.plot_defaults = plot_defaults
         self.wordpress_publisher = wordpress_publisher
         self.wordpress_config = wordpress_config
+        # Returns the enabled event configs, {key: config}. A callable, like
+        # wordpress_config, because the config reloads while the service runs.
+        self.event_configs = event_configs
 
         # Recordings started by this process. Only these can have been written
         # on a clock that has since been corrected (main._check_for_clock_step).
@@ -90,10 +94,11 @@ class RecordingService:
     # === Start and stop ===
 
     def start(self, name: str, description: str = "", topics: List[str] = None,
-              trigger_type: str = "manual") -> int:
+              trigger_type: str = "manual", event_key: str = "manual") -> int:
         """Create a recording and start recording its topics."""
         recording_id = self.database.create_recording(name, description,
-                                                      trigger_type=trigger_type)
+                                                      trigger_type=trigger_type,
+                                                      event_key=event_key)
         if self.data_recorder:
             self.data_recorder.start_recording(recording_id, topics or [])
         with self._lock:
@@ -488,6 +493,67 @@ class RecordingService:
 
         return {'images': images, 'statistics': statistics,
                 'map_htmls': map_htmls, 'exports': exports}
+
+    # === Which recording the event page opens (FR-28) ===
+
+    # Recordings started this close together are one outing: the boat's two
+    # triggers both fire for every sail, a few seconds apart
+    SAME_OUTING = timedelta(hours=12)
+
+    def editor_default_keys(self) -> set:
+        """Event keys marked `editor_default: true` in the event config."""
+        if not self.event_configs:
+            return set()
+        try:
+            return {key for key, config in self.event_configs().items()
+                    if config.get('editor_default')}
+        except Exception as e:
+            logger.warning(f"Could not read the event config for editor_default: {e}")
+            return set()
+
+    def editor_choice(self) -> Dict:
+        """
+        The recording the event page opens with no id, and the others it
+        could have opened, for the switcher.
+
+        1. An active recording of an editor_default event
+        2. Otherwise the most recent active recording
+        3. Otherwise the newest unpublished recording, preferring an
+           editor_default one from the same outing. Only the same outing: a
+           week-old unpublished anchor recording is not what today's crew want.
+
+        Returns:
+            {'recording': dict or None, 'candidates': [dict, ...]}, the
+            candidates being the active recordings, or the unpublished ones
+            from the chosen recording's outing
+        """
+        defaults = self.editor_default_keys()
+        recordings = self.database.get_all_recordings(limit=200)
+
+        active = [r for r in recordings if r['status'] == RecordingStatus.ACTIVE]
+        if active:
+            pool = active
+        else:
+            pool = [r for r in recordings
+                    if r['status'] == RecordingStatus.STOPPED
+                    and r['post_state'] not in PostState.OWNED_BY_WORDPRESS]
+            if pool:
+                newest = self._started(pool[0])
+                pool = [r for r in pool if newest - self._started(r) <= self.SAME_OUTING]
+        if not pool:
+            return {'recording': None, 'candidates': []}
+
+        # get_all_recordings is newest first, and sorted() keeps that order
+        # among equals, so this is: default event first, then most recent
+        pool = sorted(pool, key=lambda r: r.get('event_key') not in defaults)
+        return {'recording': pool[0], 'candidates': pool}
+
+    @staticmethod
+    def _started(recording: Dict) -> datetime:
+        value = recording['start_time']
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(str(value))
 
     # === Drafts (FR-24) ===
 
