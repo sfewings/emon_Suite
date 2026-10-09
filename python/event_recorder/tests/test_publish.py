@@ -43,7 +43,8 @@ class FakeWordPress:
 
     def publish_recording(self, recording_data, images, exports=None, statistics=None,
                           map_htmls=None, template=None, category="Track Logs",
-                          auto_publish=False, post_id=None, progress=None):
+                          auto_publish=False, post_id=None, progress=None,
+                          blocks=None, draft=None):
         if self.gate:
             self.gate.wait(5)
         for i in range(len(images)):

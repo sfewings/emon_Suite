@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from . import post_renderer
 from .models import Artefacts, Database, ImageType, PostState, RecordingStatus
 
 logger = logging.getLogger(__name__)
@@ -313,19 +314,10 @@ class RecordingService:
         if not images:
             raise RecordingError('No images found for recording', 400)
 
-        image_list = []
-        for img in images:
-            img_path = Path(img['image_path'])
-            if img_path.exists():
-                image_list.append({
-                    'path': str(img_path),
-                    'caption': img.get('caption', ''),
-                    'image_type': img.get('image_type', ImageType.PLOT)
-                })
-            else:
-                logger.warning(f"Image file not found: {img_path}")
-
-        if not image_list:
+        inputs = self._gather(recording_id)
+        # The statistics table and the interactive map stand in for their
+        # PNGs, so a recording with only those still has something to post
+        if not (inputs['images'] or inputs['statistics'] or inputs['map_htmls']):
             raise RecordingError('No image files found', 400)
 
         # Default publish mode from the main config's publish_status:
@@ -341,48 +333,8 @@ class RecordingService:
                 except Exception:
                     pass
 
-        recording_plots = self.plots_dir / str(recording_id)
-
-        # Statistics JSON sidecar if present; the PNG is left out of the
-        # uploads because the post renders the numbers as an HTML table
-        statistics = None
-        stats_json_path = recording_plots / 'statistics_summary.json'
-        if stats_json_path.exists():
-            try:
-                with open(stats_json_path) as f:
-                    statistics = json.load(f)
-                image_list = [
-                    img for img in image_list
-                    if Path(img['path']).name != 'statistics_summary.png'
-                ]
-                logger.info("Loaded statistics JSON; statistics_summary.png excluded from upload")
-            except Exception as e:
-                logger.warning(f"Could not load statistics JSON: {e}")
-
-        # Folium HTML maps; the matching PNGs are left out so the interactive
-        # map replaces the static screenshot in the post
-        map_htmls = []
-        for html_file in sorted(recording_plots.glob('*.html')):
-            map_htmls.append(str(html_file))
-            image_list = [
-                img for img in image_list
-                if Path(img['path']).stem != html_file.stem
-            ]
-        if map_htmls:
-            logger.info(
-                f"Found {len(map_htmls)} map HTML file(s); "
-                "matching PNG(s) excluded from upload"
-            )
-
-        export_list = []
-        for exp in self.database.get_recording_exports(recording_id):
-            exp_path = Path(exp['file_path'])
-            if exp_path.exists():
-                export_list.append({
-                    'path': str(exp_path),
-                    'label': exp.get('label', exp['export_type'].upper()),
-                    'export_type': exp['export_type']
-                })
+        draft = self.database.get_draft(recording_id)
+        blocks = draft['blocks'] if draft else self.default_blocks()
 
         # The post's state from here on, never the recording's (TR-12). Set
         # only now, after the refusals above, which leave the post as it was.
@@ -391,15 +343,17 @@ class RecordingService:
         try:
             post = self.wordpress_publisher.publish_recording(
                 recording_data=recording,
-                images=image_list,
-                exports=export_list,
-                statistics=statistics,
-                map_htmls=map_htmls,
+                images=inputs['images'],
+                exports=inputs['exports'],
+                statistics=inputs['statistics'],
+                map_htmls=inputs['map_htmls'],
                 template=template,
                 category=category,
                 auto_publish=auto_publish,
                 post_id=post_id,
-                progress=progress
+                progress=progress,
+                blocks=blocks,
+                draft=draft
             )
         except Exception as e:
             self.database.set_post_state(recording_id, PostState.PUBLISH_FAILED,
@@ -481,6 +435,154 @@ class RecordingService:
                 f"publish again.", 409)
         logger.info(f"{link} is gone from WordPress; publishing recording "
                     f"{recording_id} as a new post")
+
+    def _gather(self, recording_id: int) -> Dict:
+        """
+        What a post is made from, as files on the Pi: images (plots and
+        photos), the statistics, the folium maps and the exports. Shared by
+        publish and preview, so the preview is drawn from what would go out.
+        """
+        images = []
+        for img in self.database.get_recording_images(recording_id):
+            img_path = Path(img['image_path'])
+            if img_path.exists():
+                images.append({
+                    'path': str(img_path),
+                    'caption': img.get('caption', ''),
+                    'image_type': img.get('image_type', ImageType.PLOT)
+                })
+            else:
+                logger.warning(f"Image file not found: {img_path}")
+
+        recording_plots = self.plots_dir / str(recording_id)
+
+        # Statistics JSON sidecar if present; the PNG is left out because the
+        # post renders the numbers as an HTML table
+        statistics = None
+        stats_json_path = recording_plots / 'statistics_summary.json'
+        if stats_json_path.exists():
+            try:
+                with open(stats_json_path) as f:
+                    statistics = json.load(f)
+                images = [img for img in images
+                          if Path(img['path']).name != 'statistics_summary.png']
+            except Exception as e:
+                logger.warning(f"Could not load statistics JSON: {e}")
+
+        # Folium HTML maps; the matching PNGs are left out so the interactive
+        # map replaces the static screenshot in the post
+        map_htmls = []
+        for html_file in sorted(recording_plots.glob('*.html')):
+            map_htmls.append(str(html_file))
+            images = [img for img in images if Path(img['path']).stem != html_file.stem]
+
+        exports = []
+        for exp in self.database.get_recording_exports(recording_id):
+            exp_path = Path(exp['file_path'])
+            if exp_path.exists():
+                exports.append({
+                    'path': str(exp_path),
+                    'label': exp.get('label', exp['export_type'].upper()),
+                    'export_type': exp['export_type']
+                })
+
+        return {'images': images, 'statistics': statistics,
+                'map_htmls': map_htmls, 'exports': exports}
+
+    # === Drafts (FR-24) ===
+
+    def layout(self) -> str:
+        """The layout a new draft starts from: 'track_log' until FR-25 is approved."""
+        name = self.database.get_setting('post_layout', 'track_log')
+        return name if name in post_renderer.LAYOUTS else 'track_log'
+
+    def default_blocks(self) -> List[Dict]:
+        return [dict(block) for block in post_renderer.LAYOUTS[self.layout()]]
+
+    def get_draft(self, recording_id: int) -> Dict:
+        """
+        The recording's draft: the stored one, or what a new one would start
+        as. `stored` says which. Nothing is written until the first edit.
+        """
+        recording = self._get(recording_id)
+        draft = self.database.get_draft(recording_id)
+        if draft:
+            draft['stored'] = True
+            return draft
+        return {
+            'title': recording['name'],
+            'excerpt': recording.get('description') or '',
+            'categories': ['Track Logs'],
+            'crew': [],
+            'story': '',
+            'wind': '',
+            'blocks': self.default_blocks(),
+            'revision': 0,
+            'stored': False,
+        }
+
+    def save_draft(self, recording_id: int, changes: Dict, base_revision: int) -> Dict:
+        """
+        Apply changes to the draft, if it is still at `base_revision`.
+
+        Refused (409) when another save has happened since, and when
+        WordPress already has the post (Q5). Unknown fields are refused
+        (400), so a typo is an error rather than a change that vanishes.
+        """
+        recording = self._get(recording_id)
+        if recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
+            raise RecordingError('Recording is already published; change the post in WordPress', 409)
+
+        unknown = set(changes) - set(self.database.DRAFT_FIELDS)
+        if unknown:
+            raise RecordingError(f"Not draft fields: {', '.join(sorted(unknown))}", 400)
+        for field in ('categories', 'crew', 'blocks'):
+            if field in changes and not isinstance(changes[field], list):
+                raise RecordingError(f"{field} must be a list", 400)
+        for block in changes.get('blocks', []):
+            if not isinstance(block, dict) or block.get('type') not in post_renderer.BLOCK_TYPES:
+                raise RecordingError(f"Not a block: {block}", 400)
+
+        draft = self.get_draft(recording_id)
+        draft.update(changes)
+        revision = self.database.save_draft(recording_id, draft, base_revision)
+        if revision is None:
+            current = self.get_draft(recording_id)
+            raise RecordingError(
+                f"The draft was changed elsewhere (now revision {current['revision']}, "
+                f"this edit was based on {base_revision})", 409)
+        return self.get_draft(recording_id)
+
+    def preview(self, recording_id: int, media_url: Callable[[str], str],
+                layout: Optional[str] = None) -> str:
+        """
+        The post as it would be published, drawn by the same renderer from
+        the same inputs, with image and download URLs on the Pi.
+
+        Args:
+            media_url: Turns a file path into the URL the Pi serves it at
+            layout: Draw this layout instead of the draft's blocks, to
+                compare (FR-25)
+        """
+        recording = self._get(recording_id)
+        inputs = self._gather(recording_id)
+        draft = self.get_draft(recording_id)
+        if layout:
+            if layout not in post_renderer.LAYOUTS:
+                raise RecordingError(f"No layout '{layout}'", 400)
+            blocks = post_renderer.LAYOUTS[layout]
+        else:
+            blocks = draft['blocks']
+
+        media = [dict(img, url=media_url(img['path']), large_url=media_url(img['path']),
+                      id=None) for img in inputs['images']]
+        downloads = [{'url': media_url(exp['path']), 'label': exp['label'],
+                      'export_type': exp['export_type']} for exp in inputs['exports']]
+        ctx = post_renderer.PostContext(recording, media=media,
+                                        statistics=inputs['statistics'],
+                                        map_htmls=inputs['map_htmls'],
+                                        downloads=downloads, draft=draft)
+        return post_renderer.render(blocks, ctx)
 
     # === Helpers ===
 

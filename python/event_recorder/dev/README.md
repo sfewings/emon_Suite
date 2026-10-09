@@ -64,6 +64,14 @@ MSYS_NO_PATHCONV=1 docker compose run --rm -T wpcli wp post list --post_type=pos
 MSYS_NO_PATHCONV=1 docker compose run --rm -T wpcli wp post update 21 --post_title="Edited"
 ```
 
+## Preview a post
+
+Process a recording from the dashboard, then open
+<http://localhost:5000/preview?id=5> (any recording id). The links at the top switch
+between the recording's draft and the two layouts, Track Log (today's post) and Ship's
+Log (FR-25). The dashed line is the more-break: the enchantee.org home page shows only
+what is above it.
+
 ## Run the tests
 
 ```bash
@@ -73,6 +81,7 @@ MSYS_NO_PATHCONV=1 docker exec -e TZ=UTC -w /app event_recorder_dev \
                      event_recorder/tests/test_recording_service.py \
                      event_recorder/tests/test_publish.py \
                      event_recorder/tests/test_status_split.py \
+                     event_recorder/tests/test_post_renderer.py \
                      event_recorder/tests/test_chart_map.py \
                      event_recorder/tests/test_gps_position.py
 ```

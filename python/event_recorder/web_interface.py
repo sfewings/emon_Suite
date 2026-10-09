@@ -23,6 +23,50 @@ from .wordpress_publisher import WordPressPublisher
 logger = logging.getLogger(__name__)
 
 
+def _preview_page(recording_id: int, title: str, content: str, layout: Optional[str]) -> str:
+    """
+    The rendered post in a page of its own. Plain styling close to a
+    WordPress single post, not the red-shadow theme itself, which FR-24
+    leaves for the event page. The more-break, a comment the reader never
+    sees, is drawn as a line, because what sits above it is all the
+    enchantee.org home page shows.
+    """
+    import html as html_lib
+    shown = content.replace(
+        '<!--more-->',
+        '<div class="more-break">home page shows only what is above this line</div>')
+    choices = []
+    for value, label in ((None, 'Draft'), ('track_log', 'Track Log'), ('ship_log', "Ship's Log")):
+        href = f"preview?id={recording_id}" + (f"&layout={value}" if value else '')
+        cls = ' class="here"' if value == layout else ''
+        choices.append(f'<a{cls} href="{href}">{label}</a>')
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview: {html_lib.escape(title)}</title>
+<style>
+body {{ margin: 0; background: #f4f1ec; color: #222;
+       font: 17px/1.6 Georgia, "Times New Roman", serif; }}
+.bar {{ background: #7a1a1a; color: #fff; padding: 10px 16px;
+       font: 15px/1.4 -apple-system, "Segoe UI", sans-serif; }}
+.bar a {{ color: #fff; margin-right: 14px; }}
+.bar a.here {{ font-weight: bold; text-decoration: none; }}
+article {{ max-width: 760px; margin: 0 auto; padding: 16px; background: #fff; }}
+h1 {{ font-size: 1.7em; line-height: 1.25; }}
+figure {{ margin: 1em 0; }}
+img {{ max-width: 100%; height: auto; }}
+figcaption {{ font-size: 0.85em; color: #555; text-align: center; }}
+.more-break {{ border-top: 2px dashed #7a1a1a; color: #7a1a1a; margin: 2em 0;
+              font: 13px sans-serif; text-transform: uppercase; }}
+</style></head>
+<body>
+<div class="bar">Preview &middot; {' '.join(choices)}</div>
+<article><h1>{html_lib.escape(title)}</h1>
+{shown}
+</article>
+</body></html>"""
+
+
 class WebInterface:
     """Web interface for event recorder service."""
 
@@ -107,6 +151,19 @@ class WebInterface:
             img['url'] = f"plots/{recording_id}/{filename}"
 
         return img
+
+    def _file_url(self, path: str) -> str:
+        """
+        Where the Pi serves a recording's file, relative to the root: the
+        crew's photos, a plot, or an export download.
+        """
+        path = Path(path)
+        recording_id = path.parent.name
+        if self.uploads_dir in path.parents:
+            return f"uploads/{recording_id}/{path.name}"
+        if path.suffix.lower() in ('.csv', '.gpx', '.kml'):
+            return f"exports/{recording_id}/{path.name}"
+        return f"plots/{recording_id}/{path.name}"
 
     def _export_with_url(self, exp: dict) -> dict:
         """Add web-accessible download URL to export record."""
@@ -465,6 +522,57 @@ class WebInterface:
             except Exception as e:
                 logger.error(f"Publish recording error: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/api/recordings/<int:recording_id>/draft', methods=['GET'])
+        def get_draft(recording_id):
+            """The recording's post draft, stored or as a new one would start (FR-24)."""
+            try:
+                return jsonify({'success': True, 'draft': self.recordings.get_draft(recording_id)})
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
+            except Exception as e:
+                logger.error(f"Get draft error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/api/recordings/<int:recording_id>/draft', methods=['PUT'])
+        def save_draft(recording_id):
+            """Change draft fields. Body: {"revision": n, "changes": {...}}. 409 if
+            another save has happened since revision n, with the current draft."""
+            try:
+                data = request.get_json(silent=True) or {}
+                if 'revision' not in data or not isinstance(data.get('changes'), dict):
+                    return jsonify({'success': False,
+                                    'error': 'Body needs "revision" and a "changes" object'}), 400
+                draft = self.recordings.save_draft(recording_id, data['changes'],
+                                                   int(data['revision']))
+                return jsonify({'success': True, 'draft': draft})
+            except RecordingError as e:
+                body = {'success': False, 'error': str(e)}
+                if e.status == 409:
+                    body['draft'] = self.recordings.get_draft(recording_id)
+                return jsonify(body), e.status
+            except Exception as e:
+                logger.error(f"Save draft error: {e}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/preview')
+        def preview_post():
+            """
+            The post as it would be published, as a page (FR-24). At the root,
+            not under /recordings/<id>/, so the relative image URLs in it
+            resolve here and behind the /events/ prefix alike.
+            ?id=<recording>  &layout=track_log|ship_log to compare layouts
+            """
+            try:
+                recording_id = int(request.args.get('id', 0))
+                layout = request.args.get('layout') or None
+                content = self.recordings.preview(recording_id, self._file_url, layout)
+                draft = self.recordings.get_draft(recording_id)
+                return _preview_page(recording_id, draft['title'], content, layout)
+            except RecordingError as e:
+                return jsonify({'success': False, 'error': str(e)}), e.status
+            except ValueError:
+                return jsonify({'success': False, 'error': 'id must be a recording id'}), 400
 
         @self.app.route('/api/recordings/<int:recording_id>/publish', methods=['GET'])
         def publish_progress(recording_id):

@@ -317,6 +317,16 @@ class Database:
             conn.execute("ALTER TABLE post_drafts ADD COLUMN post_state TEXT NOT NULL DEFAULT 'none'")
             conn.execute("ALTER TABLE post_drafts ADD COLUMN post_error TEXT")
 
+        # FR-24: the draft itself. JSON in TEXT for the lists. `revision`
+        # counts saves, so a save based on an older one can be refused
+        # rather than silently undo another device's edit.
+        if 'blocks' not in columns('post_drafts'):
+            logger.info("Migrating: adding the draft to post_drafts")
+            for column in ("title TEXT", "excerpt TEXT", "categories TEXT", "crew TEXT",
+                           "story TEXT", "wind TEXT", "blocks TEXT",
+                           "revision INTEGER NOT NULL DEFAULT 0"):
+                conn.execute(f"ALTER TABLE post_drafts ADD COLUMN {column}")
+
         def set_post_state(where, state, error_sql='NULL'):
             conn.execute(f"""
                 INSERT INTO post_drafts (recording_id, post_state, post_error)
@@ -1008,6 +1018,44 @@ class Database:
                     wp_status = excluded.wp_status,
                     updated_at = excluded.updated_at
             """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
+
+    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks')
+    DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks')
+
+    def get_draft(self, recording_id: int) -> Optional[Dict]:
+        """The stored draft (FR-24), lists decoded, or None if never saved."""
+        ref = self.get_post_draft(recording_id)
+        if not ref or ref.get('blocks') is None:
+            return None
+        draft = {field: ref.get(field) for field in self.DRAFT_FIELDS}
+        for field in self.DRAFT_JSON_FIELDS:
+            draft[field] = json.loads(draft[field]) if draft[field] else []
+        draft['revision'] = ref['revision']
+        return draft
+
+    def save_draft(self, recording_id: int, draft: Dict, base_revision: int) -> Optional[int]:
+        """
+        Store a whole draft, if nobody has saved since `base_revision`.
+
+        Returns the new revision, or None when the stored draft has moved on,
+        in which case nothing is written. The check and the write are one
+        statement, so two devices saving at once cannot both win.
+        """
+        values = [json.dumps(draft.get(f) or []) if f in self.DRAFT_JSON_FIELDS
+                  else draft.get(f) for f in self.DRAFT_FIELDS]
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
+                         (recording_id,))
+            sets = ', '.join(f"{f} = ?" for f in self.DRAFT_FIELDS)
+            changed = conn.execute(
+                f"""UPDATE post_drafts SET {sets}, revision = revision + 1, updated_at = ?
+                    WHERE recording_id = ? AND revision = ?""",
+                (*values, datetime.utcnow(), recording_id, base_revision)
+            ).rowcount
+            if not changed:
+                return None
+            return conn.execute("SELECT revision FROM post_drafts WHERE recording_id = ?",
+                                (recording_id,)).fetchone()[0]
 
     def set_post_state(self, recording_id: int, state: str, error: str = None):
         """Set where the recording's post has got to (TR-12), with the error if it failed."""

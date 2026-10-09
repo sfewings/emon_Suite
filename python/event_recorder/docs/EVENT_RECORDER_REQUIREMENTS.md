@@ -81,7 +81,7 @@ Foundations, needed by the editor and worth doing on their own:
 
 The editor:
 
-- [ ] **FR-24:** Post draft held as blocks, rendered once for preview and publish
+- [x] **FR-24:** Post draft held as blocks, rendered once for preview and publish
 - [ ] **FR-25:** Ship's log default layout
 - [ ] **FR-26:** Log lines filled in from the data
 - [ ] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
@@ -727,35 +727,69 @@ none of this was visible from outside.
 ### FR-24: Post Draft Held as Blocks
 
 **Priority:** Must Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-09), with the differences noted below
 **Description:** Each recording that is going to become a post has a draft, stored as an
 ordered list of blocks rather than as HTML, and a single renderer turns that draft into
 WordPress block markup for both the preview and the published post
 
 **Acceptance Criteria:**
 
-- [ ] New table `post_drafts`, one row per recording: `recording_id`, `title`, `excerpt`,
-      `categories` (JSON list of WordPress ids), `crew` (JSON list), `blocks` (JSON),
-      `featured_image_id`, `revision`, `wp_post_id`, `wp_modified`, `updated_at`
-- [ ] Two kinds of block:
-  - **Content blocks**, which hold what the crew wrote or added: `paragraph`,
-        `photo`, `note`, `more`
-  - **Auto blocks**, which hold only a reference and are rendered from the recording's
-        current data each time: `log_lines`, `route_map`, `statistics`,
-        `interactive_map`, `charts`, `downloads`
-- [ ] Auto blocks can be moved and removed like any other block, and are re-rendered on
-      every preview, so a draft started during a recording shows current numbers
-- [ ] One renderer replaces `_build_post_content()`. The preview and the publish call the
-      same function; they differ only in whether image URLs point at the Pi or at the
-      WordPress media library
-- [ ] The renderer writes delimited core blocks (`<!-- wp:paragraph -->`,
-      `<!-- wp:image {"id":N,"sizeSlug":"large"} -->` with `class="wp-image-N"` and the
-      1024 px URL, `<!-- wp:table -->`, `<!-- wp:more -->`, `<!-- wp:html -->`), the same
-      markup the hand-written posts carry
-- [ ] A recording with no draft publishes exactly as it does today; the draft is created
-      on first edit, from the FR-25 layout
+- [x] `post_drafts` gains the draft: `title`, `excerpt`, `categories` (JSON),
+      `crew` (JSON), `story`, `wind`, `blocks` (JSON), `revision`. `wp_post_id`,
+      `wp_modified`, `post_state` came with TR-11 and TR-12
+- [x] Two kinds of block, in `post_renderer.py`:
+  - **Content blocks:** `paragraph`, `photo`, `note`, `more`
+  - **Auto blocks:** `track_summary`, `crew_photos`, `log_lines`, `story`, `photos`,
+        `route_map`, `statistics`, `interactive_map`, `charts`, `downloads`
+- [x] Auto blocks are references, re-rendered from current data on every preview and
+      publish, and can be moved or removed like any other
+- [x] `post_renderer.render()` replaces `_build_post_content()`, which now calls it.
+      Preview and publish draw from the same gathered inputs
+      (`RecordingService._gather()`); they differ only in the URLs and attachment ids
+      in the `PostContext`
+- [x] Delimited core blocks: `wp:paragraph`, `wp:heading`, `wp:image` (with an
+      attachment id: `{"id":N,"sizeSlug":"large"}`, `wp-image-N` and the 1024 px URL),
+      `wp:list`, `wp:more`, `wp:html`
+- [x] A recording with no draft publishes as today: the Track Log layout is the default
+      until FR-25 is approved. The draft is stored on first edit
+- [x] `GET/PUT /api/recordings/<id>/draft`. A save names the revision it is based on
+      and is refused (409, with the current draft) if another has happened since
+- [x] `GET /preview?id=<id>[&layout=track_log|ship_log]`: the post as a page
+- [x] `tests/test_post_renderer.py`
+
+**Differences from the specification:**
+
+- **Statistics are a `wp:html` block, not `wp:table`.** A core table block cannot keep
+  the inline styles the posts' table has, so it would have looked different. Revisit if
+  the table should take the theme's own styling.
+- **Categories are stored as names, not WordPress ids,** because the publisher resolves
+  names today. FR-30, which brings the site's real category list, is the place to
+  switch.
+- **`story` and `wind` are draft fields** with auto blocks that read them, rather than
+  paragraph blocks. That fits FR-27's one Story textarea; a `paragraph` block exists for
+  text placed anywhere else.
+- **The preview is plain-styled, not the red-shadow theme.** Vendoring the theme CSS
+  needs it fetched from enchantee.org; that is left for the event page (FR-27). The
+  preview draws the more-break as a dashed line so what the home page shows is visible.
+- **No `featured_image_id` yet.** The existing rule (last crew photo, else the route
+  map) is kept until FR-27 has a way to choose.
 
 **Implementation Notes:**
+
+- **Verified identical to today's post.** Recording 5 on the dev rig, rendered by the
+  pre-FR-24 builder taken from git and by the Track Log layout, with block comments and
+  editor classes stripped: identical to a reader, 61,289 characters each, a crew photo
+  with an escaped caption included. The only intended difference appears once images are
+  uploaded: the large size and the attachment id, so WordPress adds `srcset`.
+- **Verified against WordPress:** a ship's-log draft published to the dev rig's blog
+  (post 58), and WordPress's own `parse_blocks()` reads it as `core/paragraph` x5,
+  `core/image`, `core/more`, then the data sections, with the title and three
+  categories from the draft. Whether the block editor opens every block without a
+  validation warning needs a browser; not yet checked.
+- The publisher's content helpers moved to `post_renderer.py` (`local_time`,
+  `format_duration`, `apply_template`, `pop_primary_route_map`,
+  `statistics_table_html`, `extract_folium_embed`); the publisher keeps thin
+  delegating methods for its callers.
 
 - The current output is raw HTML with only `wp:more` and `wp:html` delimited, so
   wp-admin opens it as one Classic block. The 7-Oct post shows what follows: the classic
