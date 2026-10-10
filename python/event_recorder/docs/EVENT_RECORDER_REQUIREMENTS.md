@@ -84,7 +84,7 @@ The editor:
 
 - [x] **FR-24:** Post draft held as blocks, rendered once for preview and publish
 - [x] **FR-25:** Ship's log default layout
-- [ ] **FR-26:** Log lines filled in from the data
+- [x] **FR-26:** Log lines filled in from the data
 - [x] **FR-27:** Event page at `/race/log/`, for a phone and the HUD iPad
 - [x] **FR-28:** Which recording the event page opens
 - [x] **FR-29:** Photo and note capture
@@ -856,7 +856,27 @@ recorder's data below the more-break instead of in front of the story
 ### FR-26: Log Lines Filled In From the Data
 
 **Priority:** Should Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-10). `post_suggestions.wind_line()`,
+`RecordingService.computed_lines()`; tests `tests/test_log_lines.py`
+
+**Implementation Notes:**
+
+- **Wind:** circular mean of `anemometer/windDirection/2` on sixteen points, and the
+  10th to 90th percentile of `windSpeed/2`, rounded. Blank under 60 samples or 10
+  minutes of data, or when the mean direction vector is shorter than 0.6 (roughly a
+  spread of 55 degrees either side). Checked against a replayed Frostbite race: the
+  whole recording averaged 277 degrees, steadiness 0.96, speeds 8.2 to 12.9 kts, so
+  "W 8-13 kts"; the 245 degrees of the first readings were at the mooring.
+- **Crew text or the recording's.** `wind` and the new `time_line` draft field hold what
+  the crew typed; empty means the recording's, which every draft carries as
+  `draft['computed']` (never stored, cached for a minute). The page shows the
+  recording's value until it is typed over, with where it came from beneath, and a
+  "Reset to the recording's" link once it has been. Saving the recording's own value,
+  or nothing, saves as no text of the crew's, so the line keeps following the data;
+  while recording, the time keeps moving on.
+- **Distance** is in nautical miles in the statistics table. It is not added to the log
+  lines, which keep the three the hand-written posts have.
+- **Crew** suggestions came with FR-30.
 **Description:** The three lines typed at the top of every hand-written post are worked out
 from the recording, shown filled in, and remain editable
 

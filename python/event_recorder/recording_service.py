@@ -76,6 +76,7 @@ class RecordingService:
         # (FR-30). A callable, as the others, because the config reloads.
         self.post_config = post_config
         self._suggestion_cache = {}
+        self._computed_cache = {}
 
         # Recordings started by this process. Only these can have been written
         # on a clock that has since been corrected (main._check_for_clock_step).
@@ -621,19 +622,45 @@ class RecordingService:
         draft = self.database.get_draft(recording_id)
         if draft:
             draft['stored'] = True
-            return draft
-        return {
-            'title': recording['name'],
-            'excerpt': self.written_description(recording),
-            'categories': self.suggested_categories(recording),
-            'crew': [],
-            'story': '',
-            'wind': '',
-            'notes': [],
-            'blocks': self.default_blocks(),
-            'revision': 0,
-            'stored': False,
-        }
+        else:
+            draft = {
+                'title': recording['name'],
+                'excerpt': self.written_description(recording),
+                'categories': self.suggested_categories(recording),
+                'crew': [],
+                'story': '',
+                'wind': '',
+                'time_line': '',
+                'notes': [],
+                'blocks': self.default_blocks(),
+                'revision': 0,
+                'stored': False,
+            }
+        # What the recording says, for any line the crew have not typed over
+        # (FR-26). Not a draft field: never stored, worked out afresh.
+        draft['computed'] = self.computed_lines(recording)
+        return draft
+
+    # Worked out from the recording's data, and the page asks every 5 s
+    COMPUTED_SECONDS = 60
+
+    def computed_lines(self, recording: Dict) -> Dict:
+        """
+        The time and wind lines as the recording has them (FR-26): "5:30-8:20"
+        and "NNE 12-14 kts". While recording, the time runs to now.
+        """
+        key = recording['id']
+        now = time.monotonic()
+        cached = self._computed_cache.get(key)
+        if cached and now - cached[0] < self.COMPUTED_SECONDS:
+            return dict(cached[1])
+        timing = dict(recording)
+        if recording['status'] == RecordingStatus.ACTIVE:
+            timing['end_time'] = datetime.utcnow()
+        lines = {'time_line': post_renderer.log_time_line(timing),
+                 'wind': post_suggestions.wind_line(self.database, key)}
+        self._computed_cache[key] = (now, lines)
+        return dict(lines)
 
     def written_description(self, recording: Dict) -> str:
         """

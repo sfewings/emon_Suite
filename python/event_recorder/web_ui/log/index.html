@@ -65,16 +65,23 @@
     <datalist id="crew-names"></datalist>
   </div>
 
+  <!-- FR-26: worked out from the recording until the crew type over them, and back to
+       the recording's with Reset. -->
   <div class="field">
-    <span class="label">Time</span>
-    <span id="time-line" class="readout"></span>
+    <label class="label" for="time_line">Time <span class="saved" data-saved="time_line"></span></label>
+    <input id="time_line" data-field="time_line" type="text" autocomplete="off" placeholder="5:30-8:20">
+    <span class="source" data-source="time_line"></span>
+    <button class="link" type="button" data-reset="time_line" hidden>Reset to the recording's</button>
+    <span class="other" data-other="time_line"></span>
   </div>
 
-  <label class="field">
-    <span class="label">Wind <span class="saved" data-saved="wind"></span></span>
+  <div class="field">
+    <label class="label" for="wind">Wind <span class="saved" data-saved="wind"></span></label>
     <input id="wind" data-field="wind" type="text" autocomplete="off" placeholder="NNE 12-14 kts">
+    <span class="source" data-source="wind"></span>
+    <button class="link" type="button" data-reset="wind" hidden>Reset to the anemometer's</button>
     <span class="other" data-other="wind"></span>
-  </label>
+  </div>
 
   <label class="field">
     <span class="label">Short description <span class="saved" data-saved="excerpt"></span></span>

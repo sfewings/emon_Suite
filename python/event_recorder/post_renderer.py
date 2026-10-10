@@ -245,17 +245,21 @@ def _utc(value) -> Optional[datetime]:
 def _log_lines(block, ctx, state):
     """
     The lines at the top of every hand-written post: crew, time, wind, each
-    its own paragraph (FR-25). The crew come from the draft; the wind is the
-    draft's until FR-26 works it out from the data.
+    its own paragraph (FR-25). The crew come from the draft; the time and the
+    wind are the crew's where they typed them and the recording's otherwise
+    (FR-26).
     """
     out = ''
     crew = ctx.draft.get('crew') or []
     if crew:
         out += _paragraph(html.escape(', '.join(crew)))
-    time_line = block.get('time') or log_time_line(ctx.recording)
+    # The crew's line where they typed one, else the recording's (FR-26)
+    computed = ctx.draft.get('computed') or {}
+    time_line = (block.get('time') or ctx.draft.get('time_line')
+                 or computed.get('time_line') or log_time_line(ctx.recording))
     if time_line:
         out += _paragraph(html.escape(time_line))
-    wind = block.get('wind') or ctx.draft.get('wind')
+    wind = block.get('wind') or ctx.draft.get('wind') or computed.get('wind')
     if wind:
         out += _paragraph(html.escape(wind))
     return out
@@ -485,7 +489,9 @@ def statistics_table_html(statistics: Dict) -> str:
         'start_time':        ('Start Time',        ''),
         'end_time':          ('End Time',          ''),
         'duration':          ('Duration',          ''),
-        'distance_km':       ('Distance',          'km'),
+        # Nautical miles, as the speeds beside it are knots and the
+        # hand-written posts use knots (FR-26). Converted below.
+        'distance_km':       ('Distance',          'nm'),
         # knots, not km/h: these come straight off gps/speed, which the
         # charts label knots too. Labelled km/h they disagreed with the
         # distance and duration beside them by a factor of 1.9.
@@ -500,6 +506,8 @@ def statistics_table_html(statistics: Dict) -> str:
 
     def make_row(key, value):
         label, unit = label_map.get(key, (key.replace('_', ' ').title(), ''))
+        if key == 'distance_km' and isinstance(value, (int, float)):
+            value = float(value) / 1.852
         if isinstance(value, float):
             formatted = f"{value:.2f}"
         else:

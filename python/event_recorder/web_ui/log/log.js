@@ -9,7 +9,29 @@
 (function () {
     'use strict';
 
-    var TEXT_FIELDS = ['title', 'wind', 'excerpt', 'story'];
+    var TEXT_FIELDS = ['title', 'time_line', 'wind', 'excerpt', 'story'];
+
+    // FR-26: worked out from the recording until the crew type over them. The draft
+    // holds the crew's text, empty meaning "the recording's"; draft.computed holds
+    // the recording's.
+    var COMPUTED = { time_line: 'from the recording', wind: 'from the anemometer' };
+
+    function isComputed(field) { return COMPUTED.hasOwnProperty(field); }
+
+    function computedValue(field) {
+        var computed = (state && state.draft.computed) || {};
+        return isComputed(field) ? (computed[field] || '') : '';
+    }
+
+    function showSource(field) {
+        if (!isComputed(field)) return;
+        var typed = !!state.draft[field];
+        var source = document.querySelector('[data-source="' + field + '"]');
+        var reset = document.querySelector('[data-reset="' + field + '"]');
+        source.textContent = typed ? '' :
+            (computedValue(field) ? COMPUTED[field] : 'Not enough data to tell yet');
+        reset.hidden = !typed || locked();
+    }
     var SAVE_AFTER_MS = 1500;
     var POLL_MS = 5000;
     var PUBLISH_POLL_MS = 2000;
@@ -111,7 +133,8 @@
         for (var i = 0; i < TEXT_FIELDS.length; i++) {
             var field = TEXT_FIELDS[i];
             var input = $(field);
-            var theirs = draft[field] || '';
+            // Time and wind: the crew's where they typed one, else the recording's
+            var theirs = draft[field] || computedValue(field);
             var revision = revisions[field] || 0;
             if (first) {
                 input.value = theirs;
@@ -119,10 +142,14 @@
             } else if (revision > (known[field] || 0)) {
                 if (theirs !== input.value) overtaken(field, input, theirs);
                 known[field] = revision;
+            } else if (isComputed(field) && !draft[field] && !dirty[field] &&
+                       document.activeElement !== input) {
+                // Still the recording's, which moves on while it records
+                input.value = theirs;
             }
             input.disabled = locked();
+            showSource(field);
         }
-        $('time-line').textContent = state.time_line || '';
         showCrew();
         showCategories();
         showPhotos();
@@ -317,6 +344,11 @@
 
     function save(field, value) {
         if (value === undefined) value = $(field).value;
+        // The recording's own value, or nothing, saves as no text of the crew's,
+        // so the line goes on following the data (FR-26)
+        if (isComputed(field) && (!value.trim() || value.trim() === computedValue(field))) {
+            value = '';
+        }
         clearTimeout(timers[field]);
         var changes = {};
         changes[field] = value;
@@ -334,6 +366,10 @@
             state.draft = body.draft;
             known[field] = (body.draft.field_revisions || {})[field] || 0;
             mark(field, 'Saved');
+            if (isComputed(field)) {
+                if (!value) $(field).value = computedValue(field);
+                showSource(field);
+            }
             var other = document.querySelector('[data-other="' + field + '"]');
             if (other) other.innerHTML = '';
         }).catch(function () {
@@ -377,6 +413,11 @@
 
     function bindTextFields() {
         REPLACEABLE.forEach(selectAllOnFocus);
+        // Back to the recording's line (FR-26)
+        Object.keys(COMPUTED).forEach(function (field) {
+            document.querySelector('[data-reset="' + field + '"]')
+                .addEventListener('click', function () { save(field, ''); });
+        });
         TEXT_FIELDS.forEach(function (field) {
             var input = $(field);
             input.addEventListener('input', function () {

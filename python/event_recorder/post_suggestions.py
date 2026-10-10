@@ -101,6 +101,56 @@ _RULES = {
 }
 
 
+# === Wind (FR-26) ===
+
+# The true wind the racing app reads, from the anemometer sketch
+WIND_DIRECTION_TOPIC = 'anemometer/windDirection/2'
+WIND_SPEED_TOPIC = 'anemometer/windSpeed/2'
+
+# Less than this much wind data is not a day's wind
+WIND_MIN_SPAN = timedelta(minutes=10)
+WIND_MIN_SAMPLES = 60
+
+# How settled the direction must be to name one: the length of the mean of the
+# unit vectors, 1 for a wind that never moved and 0 for one from everywhere.
+# 0.6 is roughly a spread of 55 degrees either side.
+WIND_MIN_STEADINESS = 0.6
+
+COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+           'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+
+
+def wind_line(database, recording_id: int) -> str:
+    """
+    The wind as the hand-written posts give it, "NNE 12-14 kts", worked out
+    from the recorded true wind, or '' when the data cannot say.
+
+    Direction is the circular mean, named on sixteen points: an arithmetic
+    mean of 350 and 10 would be 180. Speed is the 10th to 90th percentile, so
+    a gust or a lull at the mooring does not set the range. Blank rather than
+    guessed when there is too little wind data, or the direction wandered too
+    far to name one quarter.
+    """
+    directions = database.numeric_series(recording_id, WIND_DIRECTION_TOPIC)
+    speeds = [v for _, v in database.numeric_series(recording_id, WIND_SPEED_TOPIC)]
+    if len(directions) < WIND_MIN_SAMPLES or not speeds:
+        return ''
+    if directions[-1][0] - directions[0][0] < WIND_MIN_SPAN:
+        return ''
+
+    east = sum(math.sin(math.radians(v)) for _, v in directions) / len(directions)
+    north = sum(math.cos(math.radians(v)) for _, v in directions) / len(directions)
+    if math.hypot(east, north) < WIND_MIN_STEADINESS:
+        return ''
+    bearing = math.degrees(math.atan2(east, north)) % 360
+    name = COMPASS[int((bearing + 11.25) // 22.5) % 16]
+
+    speeds.sort()
+    low = round(speeds[int(0.1 * (len(speeds) - 1))])
+    high = round(speeds[int(0.9 * (len(speeds) - 1))])
+    return f"{name} {low} kts" if low == high else f"{name} {low}-{high} kts"
+
+
 # === Crew ===
 
 _SPLIT = re.compile(r'\s*(?:,|&|\band\b)\s*', re.IGNORECASE)

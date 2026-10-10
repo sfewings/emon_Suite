@@ -340,6 +340,10 @@ class Database:
         # happened
         if 'notes' not in columns('post_drafts'):
             conn.execute("ALTER TABLE post_drafts ADD COLUMN notes TEXT")
+        # FR-26: the crew's own time line, when they have typed over the one
+        # worked out from the recording. Empty means the recording's.
+        if 'time_line' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN time_line TEXT")
         if 'taken_at' not in columns('recording_images'):
             conn.execute("ALTER TABLE recording_images ADD COLUMN taken_at TIMESTAMP")
 
@@ -936,6 +940,16 @@ class Database:
                 LIMIT 1
             """, (recording_id, topic, south, north, west, east)).fetchone() is not None
 
+    def numeric_series(self, recording_id: int, topic: str) -> List[Tuple[datetime, float]]:
+        """(timestamp, value) for a topic carrying bare numbers, oldest first (FR-26)."""
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT timestamp, CAST(payload AS REAL) FROM recording_data
+                WHERE recording_id = ? AND topic = ?
+                ORDER BY timestamp
+            """, (recording_id, topic)).fetchall()
+        return [(datetime.fromisoformat(str(t)), v) for t, v in rows if v is not None]
+
     def has_payload(self, recording_id: int, topic: str, fragment: str) -> bool:
         """Whether any message on `topic` contains `fragment`."""
         with self.get_connection() as conn:
@@ -1167,7 +1181,8 @@ class Database:
                     updated_at = excluded.updated_at
             """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
 
-    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks', 'notes')
+    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks', 'notes',
+                    'time_line')
     DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks', 'notes')
 
     def get_draft(self, recording_id: int) -> Optional[Dict]:
