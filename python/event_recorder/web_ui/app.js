@@ -217,11 +217,6 @@ async function loadActiveRecordings() {
                                 onclick="viewRecording(${rec.id})">
                             ${Icons.view} View
                         </button>
-                        <a href="upload?recording_id=${rec.id}"
-                           class="btn btn-sm btn-primary" target="_blank"
-                           title="Open mobile photo upload page">
-                            ${Icons.camera} Upload Photo
-                        </a>
                     </div>
                 </div>
             `).join('');
@@ -784,159 +779,14 @@ async function saveAutoProcessSetting(enabled) {
     }
 }
 
-async function viewRecording(recordingId) {
-    try {
-        const response = await fetch(`api/recordings/${recordingId}`);
-        const data = await response.json();
-
-        if (!data.success) {
-            showToast('Failed to load recording', 'error');
-            return;
-        }
-
-        const rec = data.recording;
-
-        // Build modal content
-        let modalContent = `
-            <div class="recording-details">
-                <h4>${escapeHtml(rec.name)}</h4>
-                <p><strong>Status:</strong> <span class="badge badge-${getStatusColor(rec.stage)}">${rec.stage}</span>${rec.artefacts === 'stale' ? ' plots out of date: reprocess' : ''}</p>
-                ${rec.post_error ? `<p><strong>Publishing:</strong> ${escapeHtml(rec.post_error)}</p>` : ''}
-                <p><strong>Started:</strong> ${formatDateTime(rec.start_time)}</p>
-                ${rec.end_time ? `<p><strong>Ended:</strong> ${formatDateTime(rec.end_time)}</p>` : ''}
-                ${rec.description ? `<p><strong>Description:</strong> ${escapeHtml(rec.description)}</p>` : ''}
-                <p><strong>Messages:</strong> ${(rec.message_count || 0).toLocaleString()}</p>
-                <p><strong>Topics:</strong> ${rec.topics.length}</p>
-                <ul>
-                    ${rec.topics.map(t => `<li><code>${t}</code></li>`).join('')}
-                </ul>
-        `;
-
-        // Separate user-uploaded photos from generated plots
-        const userPhotos = (rec.images || []).filter(img => img.image_type === 'user_upload');
-        const plots = (rec.images || []).filter(img => img.image_type !== 'user_upload');
-
-        // Show user-uploaded photos with by-line captions
-        if (userPhotos.length > 0) {
-            modalContent += `
-                <h5>Uploaded Photos</h5>
-                <div class="images-grid">
-                    ${userPhotos.map(img => `
-                        <div class="image-item">
-                            <img src="${img.url}" alt="${escapeHtml(img.caption || 'Photo')}"
-                                 onclick="window.open('${img.url}', '_blank')">
-                            ${img.caption
-                                ? `<p style="font-style:italic; color:#555;">${escapeHtml(img.caption)}</p>`
-                                : '<p style="color:#999;">No caption</p>'}
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Show generated plots
-        if (plots.length > 0) {
-            modalContent += `
-                <h5>Generated Plots</h5>
-                <div class="images-grid">
-                    ${plots.map(img => `
-                        <div class="image-item">
-                            <img src="${img.url}" alt="${escapeHtml(img.caption || 'Plot')}"
-                                 onclick="window.open('${img.url}', '_blank')">
-                            <p>${escapeHtml(img.caption || 'Plot')}</p>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Show download links for exported files
-        if (rec.exports && rec.exports.length > 0) {
-            modalContent += `<h5 style="margin-top: 1.5rem;">Downloads</h5>
-                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
-                    ${rec.exports.map(exp => `
-                        <a href="${escapeHtml(exp.url)}" download
-                           class="btn btn-sm btn-secondary">
-                            ${escapeHtml(exp.label || exp.export_type.toUpperCase())}
-                            <span style="opacity:0.7;">(${exp.export_type.toUpperCase()})</span>
-                        </a>
-                    `).join('')}
-                </div>`;
-        }
-
-        // Show WordPress publish link if published
-        if (rec.wordpress_url) {
-            modalContent += `
-                <p style="margin-top: 1rem;">
-                    <strong>WordPress:</strong>
-                    <a href="${escapeHtml(rec.wordpress_url)}" target="_blank">${escapeHtml(rec.wordpress_url)}</a>
-                </p>
-            `;
-        }
-
-        // Action buttons
-        modalContent += '<div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">';
-
-        // Name, description and photos can be changed at any stage up to
-        // publishing; the API refuses them once the post is out.
-        if (rec.stage !== 'published') {
-            modalContent += `
-                <a href="upload?recording_id=${rec.id}" target="_blank"
-                   class="btn btn-primary">
-                    ${Icons.camera} Edit / Add Photo
-                </a>
-            `;
-        }
-
-        if (rec.stage === 'stopped') {
-            modalContent += `
-                <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
-                    ${Icons.process} Process
-                </button>
-            `;
-        }
-
-        if (rec.stage === 'processed') {
-            modalContent += `
-                <button class="btn btn-success" onclick="closeModal(); reprocessRecording(${rec.id})">
-                    ${Icons.process} Reprocess
-                </button>
-            `;
-        }
-
-        if (['stopped', 'processing', 'processed'].includes(rec.stage)) {
-            modalContent += `
-                <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
-                    ${Icons.publish} Publish to WordPress
-                </button>
-            `;
-        }
-
-        // A failed process or publish, cleared so it can be tried again. A
-        // published recording no longer needs this to publish again (TR-11)
-        if (rec.stage === 'failed' && rec.status !== 'failed') {
-            modalContent += `
-                <button class="btn btn-secondary" onclick="closeModal(); resetRecordingToProcessed(${rec.id})">
-                    &#8635; Clear the failure
-                </button>
-            `;
-        }
-
-        modalContent += '</div>';
-
-        modalContent += '</div>';
-
-        document.getElementById('modalTitle').textContent = 'Recording Details';
-        document.getElementById('modalBody').innerHTML = modalContent;
-        showModal();
-
-    } catch (error) {
-        console.error('Failed to view recording:', error);
-        showToast('Failed to load recording details', 'error');
-    }
+// A recording opens on the Log page, the same page the crew use from the racing app:
+// title, crew, time, wind, categories, description, photos and notes, editable until
+// it is published, with this dashboard's own tools at the bottom (from=events). One
+// page to edit a recording on, rather than this modal and that page drifting apart.
+function viewRecording(recordingId) {
+    location.assign(`log/?id=${recordingId}&from=events`);
 }
 
-// === Modal ===
 function showModal() {
     document.getElementById('recordingModal').classList.add('active');
 }

@@ -290,6 +290,30 @@ def test_the_page_has_no_preview_button(client):
     assert 'id="preview"' not in client.get("/log/").get_data(as_text=True)
 
 
+# === One page to edit a recording on ===
+
+def test_the_old_photo_page_now_lands_on_the_log_page(client):
+    response = client.get("/upload?recording_id=5")
+    assert response.status_code == 302
+    # Relative, so behind /events/ it resolves to /events/log/
+    assert response.headers["Location"] in ("log/?id=5&from=events",
+                                            "/log/?id=5&from=events")
+    assert client.get("/static/upload.html").status_code == 404
+
+
+def test_the_dashboard_opens_a_recording_on_the_log_page():
+    from pathlib import Path
+    app_js = (Path(__file__).resolve().parent.parent / "web_ui" / "app.js").read_text(encoding="utf-8")
+    assert "location.assign(`log/?id=${recordingId}&from=events`)" in app_js
+    assert "upload?recording_id" not in app_js
+
+
+def test_the_dashboards_tools_are_on_the_page_but_hidden_unless_from_the_dashboard(client):
+    page = client.get("/log/").get_data(as_text=True)
+    assert '<section id="admin" class="admin" hidden>' in page
+    assert 'id="admin-delete"' in page
+
+
 def test_titles_typed_into_drafts_before_this_move_onto_their_recordings(tmp_path):
     import sqlite3
     path = tmp_path / "old.db"

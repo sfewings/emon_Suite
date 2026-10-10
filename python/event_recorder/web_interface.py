@@ -12,7 +12,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
+from flask import Flask, redirect, render_template, request, jsonify, send_from_directory, send_file
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
@@ -213,8 +213,15 @@ class WebInterface:
 
         @self.app.route('/upload')
         def upload_page():
-            """Serve mobile photo upload page."""
-            return render_template('upload.html')
+            """
+            The old photo page, retired for the Log page, which has photos,
+            notes and everything else about the post. A bookmark to it lands
+            there, for the same recording. Relative, so it resolves under the
+            /events/ prefix as well as on this port.
+            """
+            recording_id = request.args.get('recording_id', type=int)
+            target = f"log/?id={recording_id}&from=events" if recording_id else "log/"
+            return redirect(target, code=302)
 
         # === Static files ===
         @self.app.route('/static/<path:filename>')

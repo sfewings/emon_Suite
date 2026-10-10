@@ -400,6 +400,7 @@
                 history.replaceState(null, '', '?' + params.toString());
             }
             show(first || changed);
+            if (first || changed) showAdmin();
         }).catch(function () {
             $('state').textContent = 'Offline: retrying';
         });
@@ -709,6 +710,78 @@
         });
     }
 
+    // === The dashboard's tools (from=events) ===
+
+    var fromDashboard = params.get('from') === 'events';
+
+    function adminApi(path, options) {
+        // The dashboard's API: one up from log/, which is where the dashboard is
+        // whenever this section is shown
+        return api('../api/recordings/' + recordingId + path, options);
+    }
+
+    function showAdmin() {
+        if (!fromDashboard || !recordingId) return;
+        adminApi('').then(function (body) {
+            if (!body.success) return;
+            var rec = body.recording;
+            $('admin').hidden = false;
+            $('admin-facts').textContent = [
+                rec.stage + (rec.artefacts === 'stale' ? ' (charts out of date)' : ''),
+                (rec.message_count || 0).toLocaleString() + ' messages',
+                (rec.topics || []).length + ' topics',
+                'started ' + started(rec.start_time) + (rec.end_time ? ', stopped ' + started(rec.end_time) : '')
+            ].join(' · ') + (rec.error_message ? '. ' + rec.error_message : '');
+
+            var html = '';
+            (rec.exports || []).forEach(function (exp) {
+                html += '<li><a href="../' + escapeHtml(exp.url) + '" download>' +
+                    escapeHtml(exp.label || exp.export_type) + ' (' + escapeHtml(exp.export_type.toUpperCase()) +
+                    ')</a></li>';
+            });
+            $('admin-downloads').innerHTML = html;
+
+            var active = rec.status === 'active';
+            $('admin-reprocess').disabled = active;
+            $('admin-delete').disabled = active;
+            $('admin-delete').title = active ? 'Stop the recording first' : '';
+            $('admin-clear').hidden = !(rec.stage === 'failed' && rec.status !== 'failed');
+        });
+    }
+
+    function bindAdmin() {
+        if (!fromDashboard) return;
+        function busy(text) { $('admin-status').textContent = text; }
+
+        $('admin-reprocess').addEventListener('click', function () {
+            busy('Drawing the charts…');
+            this.disabled = true;
+            adminApi('/process', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: '{}' })
+                .then(function (body) {
+                    busy(body.success ? 'Charts drawn' : 'Could not draw the charts: ' + body.error);
+                    showAdmin();
+                    refresh();
+                });
+        });
+        $('admin-clear').addEventListener('click', function () {
+            adminApi('/reset', { method: 'POST' }).then(function (body) {
+                busy(body.success ? 'Cleared' : body.error);
+                showAdmin();
+                refresh();
+            });
+        });
+        $('admin-delete').addEventListener('click', function () {
+            // A real confirmation: this is the dashboard, at a desk, and it cannot be undone
+            if (!confirm('Delete "' + state.recording.name + '", with its data, charts and photos? ' +
+                         'This cannot be undone.')) return;
+            adminApi('', { method: 'DELETE' }).then(function (body) {
+                if (body.success) location.assign('../');
+                else busy('Not deleted: ' + body.error);
+            });
+        });
+    }
+
     // === Publishing ===
 
     function startPublish(asDraft) {
@@ -751,6 +824,7 @@
     bindNotes();
     bindPublish();
     bindSwitcher();
+    bindAdmin();
     load(true);
     setInterval(refresh, POLL_MS);
 }());

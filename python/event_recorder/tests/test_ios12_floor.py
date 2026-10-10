@@ -25,11 +25,12 @@ JS_TOO_NEW = {
     r"structuredClone": "structuredClone (Safari 15.4)",
 }
 
-# Pages written before the floor was applied here, and only for flexbox gap, which
-# iOS 12 ignores rather than failing on: items lose their spacing and nothing breaks.
-# Both are being replaced by the event page (FR-27), so they are not worth reworking.
-# Anything new is held to the full floor.
-FLEX_GAP_LEGACY = {"style.css", "upload.html"}
+# The dashboard's stylesheet, written before the floor was applied here, and only for
+# flexbox gap, which iOS 12 ignores rather than failing on: items lose their spacing and
+# nothing breaks. Editing a recording is the event page's now (FR-27), which is held to
+# the full floor; upload.html, the other exception, has been retired for it. Anything
+# new is held to the full floor.
+FLEX_GAP_LEGACY = {"style.css"}
 
 
 def _without_strings_and_comments(js):

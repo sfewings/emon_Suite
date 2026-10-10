@@ -929,6 +929,25 @@ localhost:8000. Not yet tried on the boat's iPad or a phone
   them selects all of it, so typing replaces it. A field the crew have saved has a
   revision and is left alone. The selection is made just after focus, and the focusing
   tap's mouseup is cancelled, because iOS Safari otherwise places the caret over it.
+- **After the second round of testing (2026-10-10):**
+  - **One title and one description.** The post's title is the recording's name and its
+    short description the recording's description, read and written as one wherever
+    they appear: the Log page, the dashboard, its lists, the picker. A title typed into a
+    draft before this was moved onto its recording once. An empty title is ignored
+    rather than saved, since the page saves while a title is cleared to be retyped.
+  - **The picker is the Title field's.** A button beside the title, a transparent native
+    select over it, lists recordings by title with their start in the device's time:
+    the outing's, and any still recording or unpublished from the last fourteen days.
+  - **No Preview button.** In the Home Screen app it opened a page with no way back.
+    `/preview` and `log/preview` stay, for the dashboard and the dev rig.
+  - **One page to edit a recording on.** The dashboard's View opens the Log page
+    (`log/?id=<id>&from=events`), with "‹ Recordings" back to the dashboard, instead of
+    its own modal, which had become a second, drifting editor. Opened from the
+    dashboard, the page adds the dashboard's tools at the bottom: the recording's facts,
+    its downloads, Draw the charts again, Clear the failure, and Delete with a
+    confirmation. They use the dashboard's API one up from `log/`, and are never shown
+    from the racing app. `upload.html` is retired; `/upload?recording_id=` redirects to
+    the Log page for that recording.
 - **The trigger's description is not the crew's.** A triggered recording starts with its
   event's config description ("Record when vessel departs from home anchor..."), which
   had become the default short description and, through the story's fallback, the

@@ -171,6 +171,12 @@ input:disabled, textarea:disabled { background: #ece8e2; color: #666; }
 .photo-edit .button { margin-top: 8px; }
 .photo-edit .link { margin-right: 16px; }
 
+.admin { margin-top: 40px; padding-top: 12px; border-top: 2px solid #d8d2c8; }
+.admin h2 { font-size: 18px; margin: 0 0 8px; }
+.downloads { padding-left: 20px; }
+.downloads li { margin: 6px 0; }
+.link.danger { color: #b00020; }
+
 .hint { color: #555; font-size: 15px; margin: 4px 0; }
 .notice { background: #fff4d6; padding: 10px 12px; border-radius: 8px; }
 

@@ -141,6 +141,20 @@
   <p id="publish-why" class="hint"></p>
   <button id="publish-draft" class="link" type="button">Send to WordPress as a draft instead</button>
   <p id="post" class="hint"></p>
+
+  <!-- The dashboard's own tools, shown only when the page was opened from it
+       (?from=events): never on the racing app's screens, where a Delete has no
+       business being one tap from a wet finger. They use the dashboard's API, one up
+       from log/, which is where the dashboard is whenever this is shown. -->
+  <section id="admin" class="admin" hidden>
+    <h2>Recording</h2>
+    <p id="admin-facts" class="hint"></p>
+    <ul id="admin-downloads" class="downloads"></ul>
+    <button id="admin-reprocess" class="button secondary" type="button">Draw the charts again</button>
+    <button id="admin-clear" class="button secondary" type="button" hidden>Clear the failure</button>
+    <p id="admin-status" class="hint"></p>
+    <button id="admin-delete" class="link danger" type="button">Delete this recording</button>
+  </section>
 </main>
 
 <p id="empty" class="notice" hidden>No recording to write up yet. One starts when the boat leaves the mooring.</p>
