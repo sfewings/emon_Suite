@@ -37,7 +37,7 @@ import threading
 from typing import Any, Callable, Optional
 
 from engine import nav
-from store import Store, parse_number
+from store import RECORDING_KEY, Store, parse_number
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +67,12 @@ what makes next season's replay tests possible (DESIGN 11.9)."""
 POSITION_TOPIC = "gps/position/0"
 """Handled apart from TOPICS because its payload is a JSON object, not a bare number."""
 
-SUBSCRIPTIONS = tuple(sorted(TOPICS)) + (POSITION_TOPIC,)
+RECORDING_TOPIC = "event_recorder/recording/+/status"
+"""event_recorder's status for each recording in progress, once a second (its FR-22). Only
+whether one is running is used, for the dot on the Log link (DESIGN 9.13). A wildcard,
+because the recording id is in the topic."""
+
+SUBSCRIPTIONS = tuple(sorted(TOPICS)) + (POSITION_TOPIC, RECORDING_TOPIC)
 
 DEFAULT_BROKER = "localhost"
 DEFAULT_PORT = 1883
@@ -133,6 +138,16 @@ def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] =
         for event in store.on_position(position, ts):
             if on_events is not None:
                 on_events(event)
+        return True
+
+    if topic.startswith("event_recorder/recording/") and topic.endswith("/status"):
+        try:
+            status = json.loads(payload if isinstance(payload, str) else payload.decode())
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            return False
+        if not isinstance(status, dict):
+            return False
+        store.set(RECORDING_KEY, status, ts)
         return True
 
     key = TOPICS.get(topic)

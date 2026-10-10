@@ -217,11 +217,6 @@ async function loadActiveRecordings() {
                                 onclick="viewRecording(${rec.id})">
                             ${Icons.view} View
                         </button>
-                        <a href="upload?recording_id=${rec.id}"
-                           class="btn btn-sm btn-primary" target="_blank"
-                           title="Open mobile photo upload page">
-                            ${Icons.camera} Upload Photo
-                        </a>
                     </div>
                 </div>
             `).join('');
@@ -237,19 +232,23 @@ async function loadActiveRecordings() {
 async function loadServiceStatus() {
     if (!serviceStatus) return;
 
+    // No optional chaining here or anywhere in this file: the boat's iPad is on
+    // iOS 12, where it is a syntax error that stops the whole script (TR-13).
+    const buffer = serviceStatus.buffer_status || {};
+
     // MQTT Status
-    const mqttConnected = serviceStatus.buffer_status?.connected || false;
+    const mqttConnected = buffer.connected || false;
     document.getElementById('mqttStatus').innerHTML = mqttConnected
         ? '<span class="status-online">✓ Connected</span>'
         : '<span class="status-offline">✗ Disconnected</span>';
 
     // Buffer Size
-    const bufferSize = serviceStatus.buffer_status?.buffer_size || 0;
-    const maxBuffer = serviceStatus.buffer_status?.max_buffer_size || 1000;
+    const bufferSize = buffer.buffer_size || 0;
+    const maxBuffer = buffer.max_buffer_size || 1000;
     document.getElementById('bufferSize').textContent = `${bufferSize} / ${maxBuffer}`;
 
     // Subscribed Topics
-    const topics = serviceStatus.buffer_status?.subscribed_topics || [];
+    const topics = buffer.subscribed_topics || [];
     document.getElementById('subscribedTopics').textContent = topics.length;
 
     // Active Monitors
@@ -288,8 +287,8 @@ async function loadRecentRecordings() {
                             ${(rec.message_count || 0).toLocaleString()} messages
                         </span>
                     </div>
-                    <span class="badge badge-${getStatusColor(rec.status)}">
-                        ${rec.status}
+                    <span class="badge badge-${getStatusColor(rec.stage)}">
+                        ${rec.stage}
                     </span>
                 </div>
             `).join('');
@@ -304,7 +303,8 @@ async function loadRecentRecordings() {
 // === Recordings View ===
 async function loadRecordings() {
     try {
-        const statusFilter = document.getElementById('statusFilter')?.value || '';
+        const filterSelect = document.getElementById('statusFilter');
+        const statusFilter = (filterSelect && filterSelect.value) || '';
         const url = statusFilter
             ? `api/recordings?status=${statusFilter}`
             : 'api/recordings';
@@ -335,8 +335,8 @@ async function loadRecordings() {
                                 <td>${rec.id}</td>
                                 <td>${escapeHtml(rec.name)}</td>
                                 <td>
-                                    <span class="badge badge-${getStatusColor(rec.status)}">
-                                        ${rec.status}
+                                    <span class="badge badge-${getStatusColor(rec.stage)}">
+                                        ${rec.stage}${rec.artefacts === 'stale' ? ' (out of date)' : ''}
                                     </span>
                                 </td>
                                 <td>${formatDateTime(rec.start_time)}</td>
@@ -346,13 +346,13 @@ async function loadRecordings() {
                                             onclick="viewRecording(${rec.id})">
                                         ${Icons.view} View
                                     </button>
-                                    ${rec.status === 'stopped' ? `
+                                    ${rec.stage === 'stopped' ? `
                                         <button class="btn btn-sm btn-success"
                                                 onclick="processRecording(${rec.id})">
                                             ${Icons.process} Process
                                         </button>
                                     ` : ''}
-                                    ${['stopped', 'processing', 'processed'].includes(rec.status) ? `
+                                    ${['stopped', 'processing', 'processed'].includes(rec.stage) ? `
                                         <button class="btn btn-sm btn-wp"
                                                 onclick="publishRecording(${rec.id})">
                                             ${Icons.publish} Publish
@@ -591,6 +591,8 @@ async function publishRecording(recordingId) {
     showToast('Publishing to WordPress...', 'info');
 
     try {
+        // Publishing runs in the background on the recorder (TR-11): this
+        // starts it, then follows it until it is done or failed
         const response = await fetch(`api/recordings/${recordingId}/publish`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -600,25 +602,55 @@ async function publishRecording(recordingId) {
         });
 
         const data = await response.json();
-
-        if (data.success) {
-            const failed = data.failed_uploads || [];
-            if (failed.length) {
-                showToast(`Published, but ${failed.length} file(s) did not upload: ${failed.join(', ')}`, 'error');
-            } else {
-                showToast('Published to WordPress successfully', 'success');
-            }
-            if (data.post && data.post.link) {
-                showToast(`Post URL: ${data.post.link}`, 'info');
-            }
-            loadRecordings();
-        } else {
+        if (!data.success) {
             showToast(`Publish failed: ${data.error}`, 'error');
+            return;
         }
+        followPublish(recordingId, data.job.step);
     } catch (error) {
         console.error('Failed to publish recording:', error);
         showToast('Failed to publish to WordPress', 'error');
     }
+}
+
+async function followPublish(recordingId, lastStep) {
+    let job;
+    try {
+        const response = await fetch(`api/recordings/${recordingId}/publish`);
+        job = (await response.json()).job;
+    } catch (error) {
+        // The recorder carries on publishing whether or not this page can
+        // see it, so a missed poll is retried rather than reported as failure
+        setTimeout(() => followPublish(recordingId, lastStep), 2000);
+        return;
+    }
+    if (!job) {
+        showToast('Lost track of the publish: the recorder may have restarted', 'error');
+        return;
+    }
+
+    if (job.state === 'running') {
+        if (job.step !== lastStep) {
+            showToast(job.step, 'info');
+        }
+        setTimeout(() => followPublish(recordingId, job.step), 2000);
+        return;
+    }
+
+    if (job.state === 'done') {
+        const failed = job.post.failed_uploads || [];
+        if (failed.length) {
+            showToast(`Published, but ${failed.length} file(s) did not upload: ${failed.join(', ')}`, 'error');
+        } else {
+            showToast('Published to WordPress successfully', 'success');
+        }
+        if (job.post.link) {
+            showToast(`Post URL: ${job.post.link}`, 'info');
+        }
+    } else {
+        showToast(`Publish failed: ${job.error}`, 'error');
+    }
+    loadRecordings();
 }
 
 async function resetRecordingToProcessed(recordingId) {
@@ -667,7 +699,7 @@ async function loadWordPressSettings() {
     if (!container) return;
 
     // Use cached serviceStatus if available
-    const wp = serviceStatus?.wordpress;
+    const wp = serviceStatus && serviceStatus.wordpress;
 
     if (wp && wp.configured) {
         container.innerHTML = `
@@ -747,156 +779,14 @@ async function saveAutoProcessSetting(enabled) {
     }
 }
 
-async function viewRecording(recordingId) {
-    try {
-        const response = await fetch(`api/recordings/${recordingId}`);
-        const data = await response.json();
-
-        if (!data.success) {
-            showToast('Failed to load recording', 'error');
-            return;
-        }
-
-        const rec = data.recording;
-
-        // Build modal content
-        let modalContent = `
-            <div class="recording-details">
-                <h4>${escapeHtml(rec.name)}</h4>
-                <p><strong>Status:</strong> <span class="badge badge-${getStatusColor(rec.status)}">${rec.status}</span></p>
-                <p><strong>Started:</strong> ${formatDateTime(rec.start_time)}</p>
-                ${rec.end_time ? `<p><strong>Ended:</strong> ${formatDateTime(rec.end_time)}</p>` : ''}
-                ${rec.description ? `<p><strong>Description:</strong> ${escapeHtml(rec.description)}</p>` : ''}
-                <p><strong>Messages:</strong> ${(rec.message_count || 0).toLocaleString()}</p>
-                <p><strong>Topics:</strong> ${rec.topics.length}</p>
-                <ul>
-                    ${rec.topics.map(t => `<li><code>${t}</code></li>`).join('')}
-                </ul>
-        `;
-
-        // Separate user-uploaded photos from generated plots
-        const userPhotos = (rec.images || []).filter(img => img.image_type === 'user_upload');
-        const plots = (rec.images || []).filter(img => img.image_type !== 'user_upload');
-
-        // Show user-uploaded photos with by-line captions
-        if (userPhotos.length > 0) {
-            modalContent += `
-                <h5>Uploaded Photos</h5>
-                <div class="images-grid">
-                    ${userPhotos.map(img => `
-                        <div class="image-item">
-                            <img src="${img.url}" alt="${escapeHtml(img.caption || 'Photo')}"
-                                 onclick="window.open('${img.url}', '_blank')">
-                            ${img.caption
-                                ? `<p style="font-style:italic; color:#555;">${escapeHtml(img.caption)}</p>`
-                                : '<p style="color:#999;">No caption</p>'}
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Show generated plots
-        if (plots.length > 0) {
-            modalContent += `
-                <h5>Generated Plots</h5>
-                <div class="images-grid">
-                    ${plots.map(img => `
-                        <div class="image-item">
-                            <img src="${img.url}" alt="${escapeHtml(img.caption || 'Plot')}"
-                                 onclick="window.open('${img.url}', '_blank')">
-                            <p>${escapeHtml(img.caption || 'Plot')}</p>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Show download links for exported files
-        if (rec.exports && rec.exports.length > 0) {
-            modalContent += `<h5 style="margin-top: 1.5rem;">Downloads</h5>
-                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
-                    ${rec.exports.map(exp => `
-                        <a href="${escapeHtml(exp.url)}" download
-                           class="btn btn-sm btn-secondary">
-                            ${escapeHtml(exp.label || exp.export_type.toUpperCase())}
-                            <span style="opacity:0.7;">(${exp.export_type.toUpperCase()})</span>
-                        </a>
-                    `).join('')}
-                </div>`;
-        }
-
-        // Show WordPress publish link if published
-        if (rec.wordpress_url) {
-            modalContent += `
-                <p style="margin-top: 1rem;">
-                    <strong>WordPress:</strong>
-                    <a href="${escapeHtml(rec.wordpress_url)}" target="_blank">${escapeHtml(rec.wordpress_url)}</a>
-                </p>
-            `;
-        }
-
-        // Action buttons
-        modalContent += '<div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">';
-
-        // Name, description and photos can be changed at any stage up to
-        // publishing; the API refuses them once the post is out.
-        if (rec.status !== 'published') {
-            modalContent += `
-                <a href="upload?recording_id=${rec.id}" target="_blank"
-                   class="btn btn-primary">
-                    ${Icons.camera} Edit / Add Photo
-                </a>
-            `;
-        }
-
-        if (rec.status === 'stopped') {
-            modalContent += `
-                <button class="btn btn-success" onclick="closeModal(); processRecording(${rec.id})">
-                    ${Icons.process} Process
-                </button>
-            `;
-        }
-
-        if (rec.status === 'processed') {
-            modalContent += `
-                <button class="btn btn-success" onclick="closeModal(); reprocessRecording(${rec.id})">
-                    ${Icons.process} Reprocess
-                </button>
-            `;
-        }
-
-        if (['stopped', 'processing', 'processed'].includes(rec.status)) {
-            modalContent += `
-                <button class="btn btn-wp" onclick="closeModal(); publishRecording(${rec.id})">
-                    ${Icons.publish} Publish to WordPress
-                </button>
-            `;
-        }
-
-        if (['failed', 'published'].includes(rec.status)) {
-            modalContent += `
-                <button class="btn btn-secondary" onclick="closeModal(); resetRecordingToProcessed(${rec.id})">
-                    &#8635; Reset to Processed
-                </button>
-            `;
-        }
-
-        modalContent += '</div>';
-
-        modalContent += '</div>';
-
-        document.getElementById('modalTitle').textContent = 'Recording Details';
-        document.getElementById('modalBody').innerHTML = modalContent;
-        showModal();
-
-    } catch (error) {
-        console.error('Failed to view recording:', error);
-        showToast('Failed to load recording details', 'error');
-    }
+// A recording opens on the Log page, the same page the crew use from the racing app:
+// title, crew, time, wind, categories, description, photos and notes, editable until
+// it is published, with this dashboard's own tools at the bottom (from=events). One
+// page to edit a recording on, rather than this modal and that page drifting apart.
+function viewRecording(recordingId) {
+    location.assign(`log/?id=${recordingId}&from=events`);
 }
 
-// === Modal ===
 function showModal() {
     document.getElementById('recordingModal').classList.add('active');
 }
@@ -906,7 +796,8 @@ function closeModal() {
 }
 
 // Close modal on background click
-document.getElementById('recordingModal')?.addEventListener('click', (e) => {
+var recordingModal = document.getElementById('recordingModal');
+if (recordingModal) recordingModal.addEventListener('click', (e) => {
     if (e.target.id === 'recordingModal') {
         closeModal();
     }
@@ -980,6 +871,8 @@ function getStatusColor(status) {
         'active': 'success',
         'stopped': 'info',
         'processing': 'warning',
+        'processed': 'info',
+        'publishing': 'warning',
         'published': 'success',
         'failed': 'danger'
     };

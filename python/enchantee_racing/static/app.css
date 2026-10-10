@@ -517,6 +517,9 @@ button.warn { border-color: var(--warn); color: var(--warn); }
 /* The screen you are on. Marked rather than hidden, so the row never changes shape. */
 #nav .here { color: var(--ink); box-shadow: inset 0 3px 0 0 var(--sog); }
 #nav .off { opacity: .3; pointer-events: none; }
+/* Recording now (DESIGN 9.13): a dot before the label, red in day and night alike,
+   because it means the same thing in both */
+#nav a.log.rec::before { content: "\25CF"; color: #e53935; margin-right: .35em; }
 
 /* The rounding side, on the same line as the mark name rather than in the secondary row,
    because it belongs to the mark you are looking at (DESIGN 9.2). */

@@ -1,0 +1,376 @@
+"""FR-27: the event page at /log.
+
+Run in the dev container (dev/README.md):
+    python -m pytest event_recorder/tests/test_event_page.py
+
+The page's own script is checked for iOS 12 by test_ios12_floor.py. These cover what it
+talks to: the state it is shown, the per-field saves, publishing, and the preview and
+files it links to, all under /log so the page works at /race/log/ unchanged.
+"""
+
+import threading
+import time
+from datetime import datetime, timedelta
+
+import pytest
+
+from event_recorder.models import Artefacts, Database, ImageType, PostState, RecordingStatus
+from event_recorder.recording_service import RecordingService
+from event_recorder.web_interface import WebInterface
+
+EVENTS = {"anchor_track_recording": {"editor_default": True}, "track_recording": {}}
+
+
+class QuietWordPress:
+    """Enough of a publisher for the publish route, remembering what it was asked."""
+
+    def __init__(self):
+        self.calls = []
+
+    def test_connection(self):
+        return True, "ok"
+
+    def publish_recording(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"id": 9, "link": "http://localhost:8080/?p=9",
+                "status": "publish" if kwargs["auto_publish"] else "draft",
+                "modified_gmt": "t", "failed_uploads": []}
+
+
+@pytest.fixture
+def db(tmp_path):
+    return Database(str(tmp_path / "rec.db"))
+
+
+@pytest.fixture
+def wp():
+    return QuietWordPress()
+
+
+@pytest.fixture
+def service(db, wp, tmp_path):
+    return RecordingService(db, plots_dir=str(tmp_path / "plots"),
+                            uploads_dir=str(tmp_path / "uploads"),
+                            wordpress_publisher=wp, event_configs=lambda: EVENTS)
+
+
+@pytest.fixture
+def client(db, service, tmp_path):
+    return WebInterface(database=db, plots_dir=str(tmp_path / "plots"),
+                        uploads_dir=str(tmp_path / "uploads"),
+                        recording_service=service).app.test_client()
+
+
+def _recording(db, key, status=RecordingStatus.STOPPED, hours_ago=1, **fields):
+    rid = db.create_recording(f"{key} - 2026-10-09 17:30:00", event_key=key)
+    start = datetime.utcnow() - timedelta(hours=hours_ago)
+    db.update_recording(rid, status=status, start_time=start,
+                        end_time=None if status == RecordingStatus.ACTIVE else start + timedelta(hours=1),
+                        **fields)
+    return rid
+
+
+def _state(client, rid=None):
+    return client.get("/log/api/state" + (f"?id={rid}" if rid else "")).get_json()
+
+
+def _save(client, rid, **changes):
+    return client.put(f"/log/api/draft/{rid}", json={"changes": changes})
+
+
+def test_the_page_and_its_assets_are_served_under_log(client):
+    page = client.get("/log/")
+    assert page.status_code == 200
+    html = page.get_data(as_text=True)
+    # All relative, so the page works at /race/log/ and /events/log/ alike
+    assert 'href="assets/log.css"' in html and 'src="assets/log.js"' in html
+    assert client.get("/log/assets/log.js").status_code == 200
+
+
+def test_with_nothing_recorded_the_page_says_so(client):
+    body = _state(client)
+    assert body["success"] and body["recording"] is None
+
+
+def test_the_page_opens_the_outings_anchor_recording(client, db):
+    anchor = _recording(db, "anchor_track_recording", status=RecordingStatus.ACTIVE, hours_ago=2)
+    track = _recording(db, "track_recording", status=RecordingStatus.ACTIVE)
+
+    body = _state(client)
+
+    assert body["recording"]["id"] == anchor
+    assert [c["id"] for c in body["candidates"]] == [anchor, track]
+    # Recording, so no publishing yet, and the time runs to now
+    assert body["can_publish"] is False
+    assert body["elapsed_seconds"] >= 2 * 3600 - 5
+    assert "-" in body["time_line"]
+
+
+def test_an_id_opens_that_recording_and_it_joins_the_switcher(client, db):
+    old = _recording(db, "track_recording", hours_ago=24 * 30)
+    _recording(db, "anchor_track_recording")
+
+    body = _state(client, old)
+
+    assert body["recording"]["id"] == old
+    assert old in [c["id"] for c in body["candidates"]]
+
+
+def test_two_devices_editing_different_fields_keep_both(client, db):
+    rid = _recording(db, "anchor_track_recording")
+
+    _save(client, rid, title="Twilight with Ed")          # the phone
+    draft = _save(client, rid, story="Out to Pt Walter.").get_json()["draft"]   # the iPad
+
+    assert (draft["title"], draft["story"]) == ("Twilight with Ed", "Out to Pt Walter.")
+    assert draft["field_revisions"] == {"title": 1, "story": 2}
+
+
+def test_two_devices_editing_one_field_keep_the_later(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    _save(client, rid, title="Phone")
+    draft = _save(client, rid, title="iPad").get_json()["draft"]
+
+    assert draft["title"] == "iPad"
+    # The phone saved at revision 1 and now sees 2: it was overtaken, and shows its text
+    assert draft["field_revisions"]["title"] == 2
+
+
+def test_the_first_save_keeps_the_rest_of_the_new_draft(client, db):
+    rid = _recording(db, "anchor_track_recording", description="Course 3")
+    draft = _save(client, rid, crew=["Henry", "Steve"]).get_json()["draft"]
+
+    assert draft["stored"] is True
+    assert draft["excerpt"] == "Course 3" and draft["crew"] == ["Henry", "Steve"]
+    assert draft["blocks"][0] == {"type": "log_lines"}
+
+
+def test_saves_at_the_same_moment_all_land(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    fields = ["title", "wind", "excerpt", "story"]
+    threads = [threading.Thread(target=_save, args=(client, rid), kwargs={f: f.upper()})
+               for f in fields]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    draft = _state(client, rid)["draft"]
+    assert [draft[f] for f in fields] == ["TITLE", "WIND", "EXCERPT", "STORY"]
+    assert sorted(draft["field_revisions"].values()) == [1, 2, 3, 4]
+
+
+def test_once_wordpress_has_the_post_the_page_cannot_change_it(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    db.set_post_state(rid, PostState.WP_DRAFT)
+    assert _save(client, rid, title="x").status_code == 409
+    assert _state(client, rid)["can_publish"] is False
+
+
+def test_crew_are_suggested_from_earlier_drafts_most_sailed_first(client, db):
+    for crew in (["Henry", "Steve"], ["Steve", "Ed"], ["Steve"]):
+        _save(client, _recording(db, "anchor_track_recording"), crew=crew)
+    assert _state(client)["crew_suggestions"] == ["Steve", "Ed", "Henry"]
+
+
+def _wait_for_job(client, rid):
+    for _ in range(100):
+        job = _state(client, rid)["publish_job"]
+        if job and job["state"] != "running":
+            return job
+        time.sleep(0.05)
+    raise AssertionError("publish never finished")
+
+
+def test_publishing_from_the_page_draws_the_charts_first_when_needed(
+        client, db, service, wp, tmp_path, monkeypatch):
+    rid = _recording(db, "anchor_track_recording")
+    photo = tmp_path / "kite.jpg"
+    photo.write_bytes(b"jpg")
+    db.add_image(rid, str(photo), ImageType.USER_UPLOAD, "")
+    drawn = []
+
+    def process(recording_id, *args):
+        drawn.append(recording_id)
+        db.update_recording(recording_id, artefacts=Artefacts.FRESH)
+        return {"status": "success"}
+    monkeypatch.setattr(service, "process", process)
+
+    assert client.post(f"/log/api/publish/{rid}", json={}).status_code == 202
+    job = _wait_for_job(client, rid)
+
+    assert job["state"] == "done", job
+    assert drawn == [rid]
+    assert wp.calls[0]["blocks"][0] == {"type": "log_lines"}
+
+
+def test_send_as_a_wordpress_draft(client, db, wp, tmp_path):
+    rid = _recording(db, "anchor_track_recording", artefacts=Artefacts.FRESH)
+    photo = tmp_path / "kite.jpg"
+    photo.write_bytes(b"jpg")
+    db.add_image(rid, str(photo), ImageType.USER_UPLOAD, "")
+
+    client.post(f"/log/api/publish/{rid}", json={"draft": True})
+    _wait_for_job(client, rid)
+
+    assert wp.calls[0]["auto_publish"] is False
+    assert db.get_recording(rid)["post_state"] == PostState.WP_DRAFT
+
+
+def test_the_preview_and_its_images_work_under_log(client, db, tmp_path):
+    rid = _recording(db, "anchor_track_recording", artefacts=Artefacts.FRESH)
+    plot = tmp_path / "plots" / str(rid) / "route_map_0.png"
+    plot.parent.mkdir(parents=True)
+    plot.write_bytes(b"png")
+    db.add_image(rid, str(plot), ImageType.PLOT, "Route Map")
+
+    page = client.get(f"/log/preview?id={rid}").get_data(as_text=True)
+    assert f'src="plots/{rid}/route_map_0.png"' in page
+    # ...which, from /log/preview, is /log/plots/...
+    assert client.get(f"/log/plots/{rid}/route_map_0.png").data == b"png"
+
+
+# === One title and one description, everywhere ===
+
+def test_a_title_typed_on_the_page_is_the_recordings_name_everywhere(client, db):
+    rid = _recording(db, "anchor_track_recording")
+
+    _save(client, rid, title="Sunday race, course 3")
+
+    assert db.get_recording(rid)["name"] == "Sunday race, course 3"
+    listed = client.get("/api/recordings").get_json()["recordings"]
+    assert [r["name"] for r in listed if r["id"] == rid] == ["Sunday race, course 3"]
+    assert [c["name"] for c in _state(client, rid)["candidates"] if c["id"] == rid] == \
+        ["Sunday race, course 3"]
+
+
+def test_a_title_changed_on_the_dashboard_is_the_pages_title(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    _save(client, rid, title="From the page")
+
+    client.put(f"/api/recordings/{rid}", json={"name": "From the dashboard"})
+
+    assert _state(client, rid)["draft"]["title"] == "From the dashboard"
+
+
+def test_clearing_the_title_to_retype_it_does_not_wipe_the_name(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    _save(client, rid, title="Twilight")
+    _save(client, rid, title="   ")
+    assert db.get_recording(rid)["name"] == "Twilight"
+
+
+def test_the_short_description_is_the_recordings_description(client, db):
+    rid = _recording(db, "anchor_track_recording")
+
+    _save(client, rid, excerpt="Out to Pt Walter and back")
+    assert db.get_recording(rid)["description"] == "Out to Pt Walter and back"
+
+    client.put(f"/api/recordings/{rid}", json={"description": "Changed on the dashboard"})
+    assert _state(client, rid)["draft"]["excerpt"] == "Changed on the dashboard"
+
+
+def test_the_picker_offers_the_last_fortnights_unpublished_recordings_by_title(client, db):
+    today = _recording(db, "anchor_track_recording", hours_ago=1)
+    last_week = _recording(db, "anchor_track_recording", hours_ago=24 * 6)
+    published = _recording(db, "anchor_track_recording", hours_ago=24 * 3)
+    db.set_post_state(published, PostState.PUBLISHED)
+    old = _recording(db, "anchor_track_recording", hours_ago=24 * 30)
+    _save(client, last_week, title="Rottnest weekend")
+
+    candidates = _state(client, today)["candidates"]
+
+    ids = [c["id"] for c in candidates]
+    assert ids[0] == today and last_week in ids
+    assert published not in ids and old not in ids
+    assert "Rottnest weekend" in [c["name"] for c in candidates]
+
+
+def test_the_page_has_no_preview_button(client):
+    assert 'id="preview"' not in client.get("/log/").get_data(as_text=True)
+
+
+# === One page to edit a recording on ===
+
+def test_the_old_photo_page_now_lands_on_the_log_page(client):
+    response = client.get("/upload?recording_id=5")
+    assert response.status_code == 302
+    # Relative, so behind /events/ it resolves to /events/log/
+    assert response.headers["Location"] in ("log/?id=5&from=events",
+                                            "/log/?id=5&from=events")
+    assert client.get("/static/upload.html").status_code == 404
+
+
+def test_the_dashboard_opens_a_recording_on_the_log_page():
+    from pathlib import Path
+    app_js = (Path(__file__).resolve().parent.parent / "web_ui" / "app.js").read_text(encoding="utf-8")
+    assert "location.assign(`log/?id=${recordingId}&from=events`)" in app_js
+    assert "upload?recording_id" not in app_js
+
+
+def test_the_dashboards_tools_are_on_the_page_but_hidden_unless_from_the_dashboard(client):
+    page = client.get("/log/").get_data(as_text=True)
+    assert '<section id="admin" class="admin" hidden>' in page
+    assert 'id="admin-delete"' in page
+
+
+def test_titles_typed_into_drafts_before_this_move_onto_their_recordings(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    db = Database(str(path))
+    rid = db.create_recording("anchor_track_recording - 2026-10-09 18:03:28")
+    conn = sqlite3.connect(path)
+    conn.execute("DELETE FROM service_settings WHERE key = 'titles_unified'")
+    conn.execute("INSERT INTO post_drafts (recording_id, title, excerpt, blocks) "
+                 "VALUES (?, 'Terra15 software team', 'A small bit of rain', '[]')", (rid,))
+    conn.commit()
+    conn.close()
+
+    rec = Database(str(path)).get_recording(rid)
+
+    assert (rec["name"], rec["description"]) == ("Terra15 software team", "A small bit of rain")
+
+
+# === The event's own description is not the crew's ===
+
+CONFIG_TEXT = "Record when vessel departs from home anchor and stop when it returns"
+DESCRIBED = {"anchor_track_recording": {"editor_default": True, "description": CONFIG_TEXT}}
+
+
+@pytest.fixture
+def described(db, wp, tmp_path):
+    return RecordingService(db, plots_dir=str(tmp_path / "plots"),
+                            uploads_dir=str(tmp_path / "uploads"),
+                            wordpress_publisher=wp, event_configs=lambda: DESCRIBED)
+
+
+def test_a_new_drafts_short_description_is_empty_not_the_triggers_description(db, described):
+    rid = _recording(db, "anchor_track_recording", description=CONFIG_TEXT)
+    assert described.get_draft(rid)["excerpt"] == ""
+
+
+def test_the_triggers_description_stays_out_of_the_post(db, described, wp, tmp_path):
+    rid = _recording(db, "anchor_track_recording", description=CONFIG_TEXT,
+                     artefacts=Artefacts.FRESH)
+    photo = tmp_path / "kite.jpg"
+    photo.write_bytes(b"jpg")
+    db.add_image(rid, str(photo), ImageType.USER_UPLOAD, "")
+
+    preview = described.preview(rid, lambda path: path)
+    described.publish(rid)
+
+    assert CONFIG_TEXT not in preview
+    assert wp.calls[0]["recording_data"]["description"] == ""
+    # ...so the publisher's own fallback excerpt is the one used
+    assert wp.calls[0]["draft"]["excerpt"] == ""
+
+
+def test_a_description_the_crew_wrote_is_kept(db, described):
+    rid = _recording(db, "anchor_track_recording",
+                     description="Henry, Steve. Out to Pt Walter and back.")
+    assert described.get_draft(rid)["excerpt"] == "Henry, Steve. Out to Pt Walter and back."
+    assert "Out to Pt Walter" in described.preview(rid, lambda path: path)
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-v"]))

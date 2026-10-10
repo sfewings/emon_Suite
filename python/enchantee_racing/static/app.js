@@ -631,6 +631,7 @@
         // The theme comes with the state, so a change made on any device or any screen
         // reaches this one within half a second (static/theme.js).
         if (window.Theme) window.Theme.apply(state.theme);
+        if (window.LogDot) window.LogDot.apply(state.recording);
         announceChanges(state.race);
       })
       .catch(function () { if (++failures > 3) el.pip.classList.add("down"); });

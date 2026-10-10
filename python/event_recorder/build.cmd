@@ -5,7 +5,7 @@ REM Must be run from event_recorder directory
 setlocal enabledelayedexpansion
 
 set IMAGE_NAME=sfewings32/emon_event_recorder
-set VERSION=0.1.0
+set VERSION=0.4.0
 
 echo ================================
 echo Event Recorder - Docker Build

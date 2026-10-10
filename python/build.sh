@@ -27,7 +27,7 @@ ALL_CONTAINERS=(
 
 DOCKERFILE_event_recorder="event_recorder/Dockerfile"
 IMAGE_event_recorder="sfewings32/emon_event_recorder"
-VERSION_event_recorder="0.1.0"
+VERSION_event_recorder="0.4.0"
 
 DOCKERFILE_settings_web="emon_settings_web/Dockerfile"
 IMAGE_settings_web="sfewings32/emon_settings_web"

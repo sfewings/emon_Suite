@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<!--
+  Event page (FR-27): the post for the current sail, from a phone or the racing app's
+  iPad. Served by event_recorder at /log/ and reached through nginx at /race/log/, so it
+  opens inside the racing app's Home Screen window (racing DESIGN 9.13).
+
+  Every URL here is relative: assets/, api/, preview. The back link is the only thing
+  that reaches outside log/, and log.js shows it only at /race/log/.
+
+  iOS 12 floor, as the racing app: no optional chaining, no flexbox gap, no clamp(), and
+  inputs of at least 16 px, or iOS zooms the page on every focus. tests/test_ios12_floor.py
+  checks this directory.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Log</title>
+<link rel="stylesheet" href="assets/log.css">
+</head>
+<body>
+
+<header id="bar">
+  <a id="back" href="../gar" hidden>&lsaquo; GAR</a>
+  <span id="state">Loading&hellip;</span>
+</header>
+
+<main id="page" hidden>
+
+  <p id="locked" class="notice" hidden></p>
+
+  <!-- FR-29. The photo button is a label for the file input rather than a button that
+       clicks it: a label's tap reaches a hidden file input on every iOS, a scripted
+       click does not. On iOS, accept="image/*" offers the camera or the library and
+       hands over HEIC as JPEG. -->
+  <div id="capture" class="capture">
+    <label class="button big" for="photo-input">&#128247; Photo</label>
+    <input id="photo-input" class="offscreen" type="file" accept="image/*" multiple>
+  </div>
+  <p id="capture-status" class="hint"></p>
+
+  <!-- The title is the recording's own name, shown the same on the dashboard, so it is
+       also how another recording is chosen: the button beside it lists them by title.
+       A transparent native select over the button, so a tap opens the phone's picker. -->
+  <div class="field">
+    <label class="label" for="title">Title <span class="saved" data-saved="title"></span></label>
+    <div class="title-row">
+      <input id="title" data-field="title" type="text" autocomplete="off">
+      <span id="pick" class="pick" hidden>&#9662;
+        <select id="switcher" aria-label="Open another recording"></select>
+      </span>
+    </div>
+    <span class="other" data-other="title"></span>
+  </div>
+
+  <div class="field">
+    <span class="label">Crew <span class="saved" data-saved="crew"></span></span>
+    <div id="crew" class="chips"></div>
+    <input id="crew-add" type="text" list="crew-names" autocomplete="off"
+           placeholder="Add a name" aria-label="Add a crew name">
+    <datalist id="crew-names"></datalist>
+  </div>
+
+  <!-- FR-26: worked out from the recording until the crew type over them, and back to
+       the recording's with Reset. -->
+  <div class="field">
+    <label class="label" for="time_line">Time <span class="saved" data-saved="time_line"></span></label>
+    <input id="time_line" data-field="time_line" type="text" autocomplete="off" placeholder="5:30-8:20">
+    <span class="source" data-source="time_line"></span>
+    <button class="link" type="button" data-reset="time_line" hidden>Reset to the recording's</button>
+    <span class="other" data-other="time_line"></span>
+  </div>
+
+  <div class="field">
+    <label class="label" for="wind">Wind <span class="saved" data-saved="wind"></span></label>
+    <input id="wind" data-field="wind" type="text" autocomplete="off" placeholder="NNE 12-14 kts">
+    <span class="source" data-source="wind"></span>
+    <button class="link" type="button" data-reset="wind" hidden>Reset to the anemometer's</button>
+    <span class="other" data-other="wind"></span>
+  </div>
+
+  <!-- FR-31: the track so far, kept up to date while recording. A width and a height
+       as well as the viewBox: iOS 12 sizes an SVG with only a viewBox at 300 px wide
+       (racing CLAUDE.md). -->
+  <div class="field" id="track-field" hidden>
+    <span class="label">Track <span id="track-numbers" class="numbers"></span></span>
+    <svg id="track" width="100%" height="220" viewBox="0 0 400 220"
+         preserveAspectRatio="xMidYMid meet" aria-label="The track so far"></svg>
+  </div>
+
+  <label class="field">
+    <span class="label">Short description <span class="saved" data-saved="excerpt"></span></span>
+    <input id="excerpt" data-field="excerpt" type="text" autocomplete="off">
+    <span class="other" data-other="excerpt"></span>
+  </label>
+
+  <label class="field">
+    <span class="label">Story <span class="saved" data-saved="story"></span></span>
+    <textarea id="story" data-field="story" rows="6"
+              placeholder="A blank line starts a new paragraph"></textarea>
+    <span class="other" data-other="story"></span>
+  </label>
+
+  <div class="field">
+    <span class="label">Photos <span class="saved" data-saved="photos"></span></span>
+    <div id="photos" class="photos"></div>
+    <div id="photo-edit" class="photo-edit" hidden>
+      <img id="photo-edit-img" alt="">
+      <input id="photo-caption" type="text" autocomplete="off" placeholder="Caption (optional)"
+             aria-label="Caption">
+      <button id="photo-caption-save" class="button" type="button">Save caption</button>
+      <button id="photo-remove" class="link" type="button">Remove photo</button>
+      <button id="photo-close" class="link" type="button">Done</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="label">Categories <span class="saved" data-saved="categories"></span></span>
+    <div id="categories" class="chips"></div>
+  </div>
+
+  <div class="actions">
+    <button id="publish" class="button" type="button">Publish</button>
+  </div>
+  <p id="publish-why" class="hint"></p>
+  <button id="publish-draft" class="link" type="button">Send to WordPress as a draft instead</button>
+  <button id="publish-cancel" class="link" type="button" hidden>Don't publish when it stops</button>
+  <p id="post" class="hint"></p>
+
+  <!-- From the racing app only: Event Recorder, for stopping or deleting a recording.
+       target="_blank", so a Home Screen app opens it in Safari, not in its own window,
+       where the dashboard's controls have no business being. -->
+  <p id="recorder" class="hint" hidden>
+    <a id="recorder-link" target="_blank" rel="noopener">Stop or delete it in Event Recorder &#8599;</a>
+  </p>
+
+  <!-- The dashboard's own tools, shown only when the page was opened from it
+       (?from=events): never on the racing app's screens, where a Delete has no
+       business being one tap from a wet finger. They use the dashboard's API, one up
+       from log/, which is where the dashboard is whenever this is shown. -->
+  <section id="admin" class="admin" hidden>
+    <h2>Recording</h2>
+    <p id="admin-facts" class="hint"></p>
+    <ul id="admin-downloads" class="downloads"></ul>
+    <button id="admin-stop" class="button secondary" type="button" hidden>Stop the recording</button>
+    <button id="admin-reprocess" class="button secondary" type="button">Draw the charts again</button>
+    <button id="admin-clear" class="button secondary" type="button" hidden>Clear the failure</button>
+    <p id="admin-status" class="hint"></p>
+    <button id="admin-delete" class="link danger" type="button">Delete this recording</button>
+  </section>
+</main>
+
+<p id="empty" class="notice" hidden>No recording to write up yet. One starts when the boat leaves the mooring.</p>
+
+<script src="assets/log.js"></script>
+</body>
+</html>

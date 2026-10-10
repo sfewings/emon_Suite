@@ -1,0 +1,69 @@
+# Development copy of provisioning/enchantee/config/event_recorder_config.yml.
+#
+# Differences, and why:
+# - The broker is the host's, reached from the container as host.docker.internal: the
+#   racing app's replay broker on 1883.
+# - The chart basemap comes from the racing app on the host's 5002, if one is running.
+#   When it is not, route maps fall back to plain lat/lon axes, as on the boat.
+# - WordPress comes from dev/.env, which wordpress-setup.sh writes for the local
+#   blog on localhost:8080. Without it every value is empty and the publisher is
+#   off. Nothing here can reach enchantee.org.
+
+service:
+  name: "Event Recorder (dev)"
+  mqtt_broker: "host.docker.internal"
+  mqtt_port: 1883
+  database_path: "/data/recordings.db"
+  plots_dir: "/data/plots"
+  timezone: "Australia/Perth"
+
+recording:
+  buffer_flush_interval: 5
+  max_buffer_size: 1000
+  min_recording_duration: 30
+  max_recording_duration: 86400
+  auto_publish: false
+
+charts:
+  enabled: true
+  base_url: "http://host.docker.internal:5002"
+  cache_dir: ""
+  timeout: 5
+
+plots:
+  dpi: 150
+  default_width: 12
+  default_height: 6
+  style: "seaborn-v0_8"
+  linewidth: 0.9
+
+# Categories the event page ticks for a recording before anyone touches them
+# (event_recorder FR-30). Each is untickable on the page. The rule types are in
+# post_suggestions.py; a new rule of an existing type, another island or club,
+# needs only a line here.
+post:
+  categories:
+    - {name: "Track Logs", when: always}
+    - {name: "Ship's Log", when: moved, metres: 200}           # the boat went somewhere
+    - {name: "Twilight",   when: weekday_evening, after: "16:00"}   # boat time, Mon to Fri
+    - {name: "Club event", when: race_started}                # enchantee_racing logged a start
+    - {name: "Rottnest",   when: track_enters,
+       bbox: [-32.03, 115.44, -31.98, 115.56]}                # south, west, north, east
+
+wordpress:
+  default_site:
+    site_url: "${WP_SITE_URL}"
+    username: "${WP_USERNAME}"
+    app_password: "${WP_APP_PASSWORD}"
+    category: "Track Logs"
+    publish_status: "publish"            # as on the boat
+    max_upload_mb: 25
+
+web:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

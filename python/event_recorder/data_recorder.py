@@ -211,6 +211,7 @@ class DataRecorder:
             for recording_id, rec_info in self.active_recordings.items():
                 if rec_info['enabled'] and self._topic_matches(topic, rec_info['topics']):
                     self.buffer.add_message(recording_id, topic, payload, timestamp)
+                    rec_info['count'] += 1
                     logger.debug(f"Recorded message: {topic} -> recording {recording_id}")
 
     def _topic_matches(self, topic: str, topic_patterns: List[str]) -> bool:
@@ -268,13 +269,14 @@ class DataRecorder:
 
         return True
 
-    def start_recording(self, recording_id: int, topics: List[str]):
+    def start_recording(self, recording_id: int, topics: List[str], initial_count: int = 0):
         """
         Start recording from specified MQTT topics.
 
         Args:
             recording_id: Recording ID
             topics: List of MQTT topic patterns to record
+            initial_count: Messages it already has, when it is resumed
         """
         with self.recordings_lock:
             if recording_id in self.active_recordings:
@@ -283,7 +285,12 @@ class DataRecorder:
 
             self.active_recordings[recording_id] = {
                 'topics': topics,
-                'enabled': True
+                'enabled': True,
+                # Counted as they arrive (FR-31), so the once-a-second status
+                # does not count the recording's rows in the database each time:
+                # that COUNT(*) competed with the writer and stalled a stop for
+                # 23 s on the dev rig
+                'count': initial_count,
             }
 
             # Subscribe to new topics
@@ -364,6 +371,12 @@ class DataRecorder:
                 self.mqtt_client.unsubscribe(topic)
                 self.subscribed_topics.remove(topic)
                 logger.info(f"Unsubscribed from topic: {topic}")
+
+    def message_count(self, recording_id: int) -> Optional[int]:
+        """Messages recorded so far, or None if it is not being recorded here."""
+        with self.recordings_lock:
+            info = self.active_recordings.get(recording_id)
+            return info['count'] if info else None
 
     def get_active_recordings(self) -> List[int]:
         """

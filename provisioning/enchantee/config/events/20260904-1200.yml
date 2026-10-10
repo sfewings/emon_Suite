@@ -131,13 +131,18 @@ events:
         {plots}
 
 
- # Example: Anchor-based track recording (disabled by default)
-  # Records when vessel leaves a fixed home location and stops when it returns.
-  # Useful for a fixed base (garage, depot, marina) where departures/arrivals
-  # define the start and end of an activity rather than movement detection.
+  # Anchor-based track recording: starts when the vessel leaves the mooring and
+  # stops when it is back. One recording spans the whole outing, which is what a
+  # blog post describes, so it is the one the post editor opens (editor_default).
+  # track_recording, above, records the same sail by movement and can split a day
+  # at every long stop.
   anchor_track_recording:
     enabled: true
     name: "Anchor-Based Recording"
+    # The event page (/race/log/) opens this event's recording when more than one
+    # is running (event_recorder FR-28). A flag rather than a key in the code,
+    # because these files are versioned by date and an event can be renamed.
+    editor_default: true
     description: "Record when vessel departs from home anchor and stop when it returns"
 
     monitor_topics:
@@ -181,6 +186,7 @@ events:
       - "bms/+"                          # Battery management system
       - "pth/#"                          # Pressure, temperature, humidity data
       - "rssi/#"                         # Signal strength data
+      - "race/#"                         # Race events from enchantee_racing: starts, roundings, finish (FR-30)
 
     # Plot generation configuration
     plots:

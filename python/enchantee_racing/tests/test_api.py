@@ -712,7 +712,7 @@ def test_the_state_payload_survives_being_read_while_fixes_arrive():
             if payload["race"] is None or payload["position"] is None:
                 failures.append(payload)
             elif set(payload) != {"now", "motor", "fields", "position", "leeway",
-                                  "heel", "race", "theme"}:
+                                  "heel", "recording", "race", "theme"}:
                 failures.append(payload)
     finally:
         stop.set()

@@ -1463,6 +1463,7 @@
         // Day or night, from the same poll, so this page is in whatever the boat is in
         // however it was arrived at (static/theme.js).
         if (window.Theme) window.Theme.apply(state.theme);
+        if (window.LogDot) window.LogDot.apply(state.recording);
       })
       .catch(function () { /* a dropout self-heals on the next poll (DESIGN 2) */ });
   }

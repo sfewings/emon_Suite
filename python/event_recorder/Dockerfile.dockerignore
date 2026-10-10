@@ -1,0 +1,18 @@
+# Read by Docker because it sits beside event_recorder/Dockerfile, which build.sh passes
+# with --file. The .dockerignore in this directory is never read: the build context is
+# python/, not this directory, the same trap enchantee_racing records in its CLAUDE.md.
+# Paths are relative to that context root.
+#
+# This image goes to a public registry, and `COPY event_recorder/` takes everything not
+# listed here.
+
+# Local data from the development rig (dev/README.md) and the test stack: databases,
+# replayed recordings, uploaded photos
+event_recorder/dev/
+event_recorder/test_event_recorder/data/
+
+event_recorder/**/__pycache__/
+event_recorder/**/*.db
+event_recorder/**/*.db-wal
+event_recorder/**/*.db-shm
+event_recorder/**/.env

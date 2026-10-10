@@ -25,6 +25,7 @@ from .models import Database, RecordingStatus
 from .config_manager import ConfigManager
 from .data_recorder import DataRecorder
 from .trigger_monitor import GPSTriggerMonitor
+from .recording_service import RecordingError, RecordingService
 from .recovery_manager import RecoveryManager
 from .web_interface import WebInterface
 from .wordpress_publisher import WordPressPublisher
@@ -118,6 +119,21 @@ class EventRecorderService:
         else:
             self.wordpress_publisher = None
 
+        # Every start, stop, process and publish goes through this, from the
+        # triggers below and from the web interface alike (TR-10)
+        self.recordings = RecordingService(
+            self.database,
+            data_recorder=self.data_recorder,
+            plots_dir=str(self.data_dir / "plots"),
+            uploads_dir=str(self.data_dir / "uploads"),
+            charts_config=self.config.get('charts', {}),
+            plot_defaults=self.config.get_plot_config(),
+            wordpress_publisher=self.wordpress_publisher,
+            wordpress_config=self.config.get_wordpress_config,
+            event_configs=self.config.get_enabled_event_configs,
+            post_config=lambda: self.config.get('post', {}),
+        )
+
         # Initialize web interface
         self.web_interface = WebInterface(
             database=self.database,
@@ -127,19 +143,21 @@ class EventRecorderService:
             uploads_dir=str(self.data_dir / "uploads"),
             port=5000,
             charts_config=self.config.get('charts', {}),
-            plot_defaults=self.config.get_plot_config()
+            plot_defaults=self.config.get_plot_config(),
+            recording_service=self.recordings
         )
         self.web_thread = None
 
-        # Active recordings tracking: {monitor_id: recording_id}
+        # Triggered recordings by monitor: {monitor_id: recording_id}. Only
+        # the triggers need this, to know which recording a stop belongs to;
+        # what is recording overall is the service's to say.
         self.active_recordings = {}
 
-        # Recordings this run started, and a pair of readings to measure the
-        # clock against. Only recordings made since the service started can
-        # have been written on a wrong clock, so only these are ever moved;
-        # everything already in the database was written on some other run and
-        # is not ours to correct.
-        self._recordings_this_run = set()
+        # A pair of readings to measure the clock against. Only recordings
+        # made since the service started can have been written on a wrong
+        # clock, so only those (self.recordings.recordings_this_run) are ever
+        # moved; everything already in the database was written on some other
+        # run and is not ours to correct.
         self._clock_reference = (time.time(), time.monotonic())
 
         # Running flag
@@ -179,6 +197,9 @@ class EventRecorderService:
             # Setup event monitors from configuration
             self._setup_event_monitors()
 
+            # Recordings interrupted by the last shutdown or a power cut
+            self._resume_recordings()
+
             # Start MQTT recording status publisher
             self._start_status_publisher()
 
@@ -216,7 +237,59 @@ class EventRecorderService:
             self.database.update_recording(recording_id, status=RecordingStatus.STOPPED)
 
         summary = self.recovery_manager.auto_recover(on_process_callback=process_callback)
+        # Resumed once MQTT and the triggers are up (_resume_recordings)
+        self._to_resume = summary.get('resume_ids', [])
         logger.info(f"Recovery complete: {summary}")
+
+    def _resume_recordings(self):
+        """
+        Carry on the recordings a restart or a power cut interrupted.
+
+        Each records its own topics again. A triggered one is handed back to
+        its trigger, so the trigger's stop condition ends it as it would have:
+        the anchor recording when the boat is back on the mooring, which may
+        be at once if it already is. One whose event is no longer in the
+        config has nothing that would ever stop it, so it is ended where its
+        data ends instead.
+        """
+        for recording_id in getattr(self, '_to_resume', []):
+            recording = self.database.get_recording(recording_id)
+            if not recording or recording['status'] != RecordingStatus.ACTIVE:
+                continue
+            key = recording.get('event_key')
+            config = self.config.get_enabled_event_configs().get(key) if key else None
+
+            topics = json.loads(recording['record_topics']) if recording.get('record_topics') else None
+            if topics is None and config:
+                topics = config.get('record_topics', [])
+
+            triggered = key not in (None, 'manual')
+            if topics is None or (triggered and config is None):
+                logger.warning(f"Recording {recording_id}: cannot resume (event '{key}' not "
+                               f"in the config); ending it at its last data")
+                self.database.update_recording(
+                    recording_id, status=RecordingStatus.STOPPED,
+                    end_time=self.database.last_data_time(recording_id) or datetime.utcnow())
+                continue
+
+            if triggered:
+                earlier = self.active_recordings.get(key)
+                if earlier is not None:
+                    # Two of one event cannot both be running; keep the later
+                    logger.warning(f"Recording {earlier}: superseded by {recording_id} of the "
+                                   f"same event; ending it")
+                    self.recordings.stop(earlier)
+                if not self.trigger_monitor.resume_monitor(key, recording_id):
+                    # Its monitor failed to set up: nothing would ever stop it
+                    logger.warning(f"Recording {recording_id}: no monitor '{key}' to resume "
+                                   f"with; ending it at its last data")
+                    self.database.update_recording(
+                        recording_id, status=RecordingStatus.STOPPED,
+                        end_time=self.database.last_data_time(recording_id) or datetime.utcnow())
+                    continue
+                self.active_recordings[key] = recording_id
+
+            self.recordings.resume(recording_id, topics)
 
     def _setup_event_monitors(self):
         """Setup GPS trigger monitors from event configurations."""
@@ -271,24 +344,16 @@ class EventRecorderService:
         # and what becomes the blog post's title. The timestamps stored against
         # the recording stay UTC.
         recording_name = f"{event_name} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        recording_description = config.get('description', '')
 
-        recording_id = self.database.create_recording(
+        recording_id = self.recordings.start(
             recording_name,
-            recording_description,
-            trigger_type=config.get('start_condition', {}).get('type', 'unknown')
+            config.get('description', ''),
+            topics=config.get('record_topics', []),
+            trigger_type=config.get('start_condition', {}).get('type', 'unknown'),
+            event_key=event_name
         )
 
-        logger.info(f"Created recording {recording_id}: {recording_name}")
-
-        # Start recording MQTT topics
-        record_topics = config.get('record_topics', [])
-        self.data_recorder.start_recording(recording_id, record_topics)
-
-        # Track active recording
         self.active_recordings[monitor_id] = recording_id
-        self._recordings_this_run.add(recording_id)
-
         return recording_id
 
     def _on_trigger_stop(self, monitor_id: str, recording_id: int):
@@ -301,51 +366,24 @@ class EventRecorderService:
         """
         logger.info(f"STOP TRIGGER: monitor={monitor_id}, recording={recording_id}")
 
-        # Stop recording
-        self.data_recorder.stop_recording(recording_id)
+        if monitor_id in self.active_recordings:
+            del self.active_recordings[monitor_id]
 
-        # Update recording status
-        self.database.update_recording(
-            recording_id,
-            status=RecordingStatus.STOPPED,
-            end_time=datetime.utcnow()
-        )
+        # The crew may have stopped it from the web UI already. The service
+        # refuses a recording that is not active, and that is the right answer
+        # here too: it is already stopped, with the time they stopped it.
+        try:
+            self.recordings.stop(recording_id)
+        except RecordingError as e:
+            logger.info(f"Recording {recording_id} not stopped by trigger: {e}")
+            return
 
-        # Get stats
         message_count = self.database.get_recording_data_count(recording_id)
         topics = self.database.get_recording_topics(recording_id)
 
         logger.info(f"Recording {recording_id} completed:")
         logger.info(f"  Messages: {message_count}")
         logger.info(f"  Topics: {len(topics)}")
-
-        # Remove from active recordings
-        if monitor_id in self.active_recordings:
-            del self.active_recordings[monitor_id]
-
-        # Auto-process if setting is enabled
-        if self.database.get_setting('auto_process_on_stop', 'false') == 'true':
-            t = threading.Thread(
-                target=self._auto_process_recording,
-                args=(recording_id,),
-                daemon=True,
-                name=f"AutoProcess-{recording_id}"
-            )
-            t.start()
-            logger.info(f"Auto-processing started for recording {recording_id}")
-
-    def _auto_process_recording(self, recording_id: int):
-        """Background thread: process a recording after it stops."""
-        try:
-            logger.info(f"Auto-processing recording {recording_id}")
-            from .data_processor import DataProcessor
-            processor = DataProcessor(self.database, str(self.data_dir / "plots"),
-                                      self.config.get('charts', {}),
-                                      self.config.get_plot_config())
-            processor.process_recording(recording_id)
-            logger.info(f"Auto-processing complete for recording {recording_id}")
-        except Exception as e:
-            logger.error(f"Auto-processing failed for recording {recording_id}: {e}")
 
     def _start_status_publisher(self):
         """Connect a dedicated MQTT client and start the 1-second status publisher thread."""
@@ -409,8 +447,12 @@ class EventRecorderService:
             minutes, seconds = divmod(remainder, 60)
             duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-            message_count = self.database.get_recording_data_count(recording_id)
+            # From the recorder's own count, not COUNT(*) over the recording's
+            # rows every second, which competed with the writer: "database is
+            # locked", and a stop that took 23 s on the dev rig (FR-31)
+            message_count = self.data_recorder.message_count(recording_id)
             photo_count = self.database.get_recording_photo_count(recording_id)
+            live = self.recordings.live.summary(recording_id)
 
             payload = {
                 'recording_id': recording_id,
@@ -419,6 +461,8 @@ class EventRecorderService:
                 'duration_seconds': duration_seconds,
                 'message_count': message_count,
                 'photo_count': photo_count,
+                'distance_nm': live['distance_nm'],
+                'max_sog': live['max_sog'],
                 'start_time': str(recording.get('start_time', '')),
                 'status': 'active',
             }
@@ -466,7 +510,7 @@ class EventRecorderService:
             f"Recordings started before this were written on the old clock."
         )
 
-        for recording_id in sorted(self._recordings_this_run):
+        for recording_id in sorted(self.recordings.recordings_this_run):
             try:
                 moved = self.database.shift_recording_times(recording_id, step)
                 logger.warning(
@@ -476,12 +520,30 @@ class EventRecorderService:
             except Exception as e:
                 logger.error(f"Could not correct recording {recording_id}: {e}")
 
+    SITE_REFRESH_SECONDS = 30 * 60
+
+    def _refresh_from_site(self):
+        """In a thread of its own: from a hotspot it can take a minute to fail,
+        and the clock-step check in this loop is not to wait for it."""
+        if self.wordpress_publisher is None:
+            return
+        threading.Thread(target=self.recordings.refresh_from_site, daemon=True,
+                         name="SiteRefresh").start()
+
     def _run_main_loop(self):
         """Main service loop."""
         check_interval = 60  # Check every 60 seconds
+        last_site_refresh = None
 
         while self.running:
             try:
+                # Learn the site's categories and crew whenever it can be
+                # reached (FR-30): first thing, then every half hour
+                if (last_site_refresh is None
+                        or time.monotonic() - last_site_refresh > self.SITE_REFRESH_SECONDS):
+                    last_site_refresh = time.monotonic()
+                    self._refresh_from_site()
+
                 time.sleep(check_interval)
 
                 # Check whether the clock has been corrected under us
@@ -489,6 +551,10 @@ class EventRecorderService:
 
                 # Check for configuration changes
                 self.config.check_and_reload()
+
+                # Recordings that stopped while WordPress was out of reach,
+                # waiting to publish as asked on the Log page
+                self.recordings.publish_pending()
 
                 # Log status
                 if self.active_recordings:
@@ -510,15 +576,11 @@ class EventRecorderService:
         logger.info("Stopping event recorder service")
         self.running = False
 
-        # Stop all active recordings
-        for monitor_id, recording_id in list(self.active_recordings.items()):
-            logger.info(f"Stopping active recording {recording_id}")
-            self.data_recorder.stop_recording(recording_id)
-            self.database.update_recording(
-                recording_id,
-                status=RecordingStatus.STOPPED,
-                end_time=datetime.utcnow()
-            )
+        # Every recording in progress is left active, its buffer saved, to be
+        # resumed when the service starts again. Ending them here lost the
+        # rest of any sail the service was restarted during.
+        self.recordings.suspend_all()
+        self.active_recordings.clear()
 
         # Shutdown status publisher
         if self._status_mqtt_client:

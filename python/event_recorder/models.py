@@ -7,6 +7,7 @@ with power-outage resilience via WAL mode.
 
 import sqlite3
 import json
+import re
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,13 +18,76 @@ logger = logging.getLogger(__name__)
 
 
 class RecordingStatus:
-    """Recording status constants."""
+    """
+    The recording's own life, in `recordings.status` (TR-12).
+
+    ACTIVE, STOPPED and FAILED are the only values written. FAILED means the
+    recording itself failed (nothing was recorded), never that processing or
+    publishing did: those are Artefacts.FAILED and PostState.PUBLISH_FAILED.
+
+    PROCESSING, PROCESSED and PUBLISHED are what this one field used to say
+    about the artefacts and the post as well. The table's CHECK constraint
+    still allows them, and _split_status() rewrites any it finds, but nothing
+    writes them now. They remain as the names of display stages (stage_of).
+    """
     ACTIVE = 'active'
     STOPPED = 'stopped'
     PROCESSING = 'processing'
     PROCESSED = 'processed'
     PUBLISHED = 'published'
     FAILED = 'failed'
+
+
+class Artefacts:
+    """The plots, statistics and exports, in `recordings.artefacts` (TR-12)."""
+    NONE = 'none'
+    PROCESSING = 'processing'
+    FRESH = 'fresh'
+    # Processed, then the recording changed: more data after an early
+    # process, or its times moved by the clock-step repair
+    STALE = 'stale'
+    FAILED = 'failed'
+
+
+class PostState:
+    """The WordPress post, in `post_drafts.post_state` (TR-12)."""
+    NONE = 'none'
+    PUBLISHING = 'publishing'
+    WP_DRAFT = 'wp_draft'
+    PUBLISHED = 'published'
+    PUBLISH_FAILED = 'publish_failed'
+
+    # WordPress owns the post in these, so the recording is locked (Q5)
+    OWNED_BY_WORDPRESS = (WP_DRAFT, PUBLISHED)
+
+
+def stage_of(recording: Dict) -> str:
+    """
+    One label for where a recording has got to, for lists and filters.
+
+    Derived from the three states, never stored, so it cannot disagree with
+    them. The values are the ones the single status field used to hold, plus
+    'publishing', so the existing dashboard reads it unchanged.
+    """
+    post = recording.get('post_state') or PostState.NONE
+    if recording['status'] == RecordingStatus.ACTIVE:
+        return 'active'
+    if recording['status'] == RecordingStatus.FAILED:
+        return 'failed'
+    if post == PostState.PUBLISHING:
+        return 'publishing'
+    if post in PostState.OWNED_BY_WORDPRESS:
+        return 'published'
+    if post == PostState.PUBLISH_FAILED:
+        return 'failed'
+    artefacts = recording.get('artefacts') or Artefacts.NONE
+    if artefacts == Artefacts.PROCESSING:
+        return 'processing'
+    if artefacts in (Artefacts.FRESH, Artefacts.STALE):
+        return 'processed'
+    if artefacts == Artefacts.FAILED:
+        return 'failed'
+    return 'stopped'
 
 
 class ImageType:
@@ -67,9 +131,16 @@ class Database:
             logger.info("WAL mode enabled for crash resilience")
 
     @contextmanager
-    def get_connection(self):
+    def get_connection(self, foreign_keys: bool = True):
         """
         Context manager for database connections.
+
+        Args:
+            foreign_keys: Enforce foreign keys on this connection. SQLite
+                ignores every REFERENCES and ON DELETE CASCADE in the schema
+                unless each connection turns this on, which until TR-9 none
+                did: deleting a recording left all of its data behind. Only
+                migrations turn it off (see _migrate_database).
 
         Yields:
             sqlite3.Connection: Database connection
@@ -80,6 +151,8 @@ class Database:
         """
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row  # Enable column access by name
+        if foreign_keys:
+            conn.execute("PRAGMA foreign_keys=ON")
         try:
             yield conn
             conn.commit()
@@ -96,8 +169,22 @@ class Database:
 
         SQLite doesn't support ALTER TABLE to modify CHECK constraints, so
         migrations that change constraints require table recreation.
+
+        Foreign keys are off for all of it. Recreating a table renames the old
+        one and drops it, and with foreign keys on, the drop cascades:
+        recreating `recordings` would delete every recording's data.
+
+        Turning them off is not enough on its own. Since SQLite 3.26 a rename
+        also rewrites the REFERENCES in every child table to the new name,
+        whatever foreign_keys says, so the rename-and-drop left the children
+        pointing at a table that no longer exists. Nothing noticed while
+        foreign keys were never enforced; with them enforced, every insert into
+        recording_data fails. legacy_alter_table stops the rewrite, and
+        _repair_dangling_references() mends databases it already happened to.
         """
-        with self.get_connection() as conn:
+        with self.get_connection(foreign_keys=False) as conn:
+            conn.execute("PRAGMA legacy_alter_table=ON")
+
             # Check if the recordings table CHECK constraint includes 'processed'
             cursor = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='recordings'"
@@ -162,6 +249,298 @@ class Database:
                 """)
                 logger.info("Migration complete: recording_exports table added")
 
+            self._repair_dangling_references(conn)
+
+            # Add post_drafts table if missing (TR-11)
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='post_drafts'"
+            )
+            if not cursor.fetchone():
+                logger.info("Migrating: adding post_drafts table")
+                conn.execute(self.POST_DRAFTS_SQL)
+
+            self._split_status(conn)
+            self._add_event_key(conn)
+            self._unify_title_and_description(conn)
+            self._index_by_topic(conn)
+
+            # Rows left behind by deletes made before foreign keys were
+            # enforced. Done once: it scans recording_data, which is the bulk
+            # of the file on the Pi's SD card.
+            cursor = conn.execute(
+                "SELECT value FROM service_settings WHERE key = 'orphans_removed'"
+            )
+            if not cursor.fetchone():
+                for table in ('recording_data', 'recording_images', 'recording_exports'):
+                    removed = conn.execute(f"""
+                        DELETE FROM {table}
+                        WHERE recording_id NOT IN (SELECT id FROM recordings)
+                    """).rowcount
+                    if removed:
+                        logger.info(f"Migration: removed {removed} orphaned {table} rows")
+                conn.execute(
+                    "INSERT INTO service_settings (key, value) VALUES ('orphans_removed', ?)",
+                    (datetime.utcnow().isoformat(),)
+                )
+
+    # One row per recording that has been, or is going to be, a post. TR-11
+    # needs only the WordPress side: which post it is, and when WordPress last
+    # changed it, so a republish updates that post rather than making another,
+    # and refuses to overwrite edits made in wp-admin since. FR-24 adds the
+    # draft itself to this table.
+    POST_DRAFTS_SQL = """
+        CREATE TABLE IF NOT EXISTS post_drafts (
+            recording_id INTEGER PRIMARY KEY,
+            wp_post_id INTEGER,
+            wp_modified TEXT,
+            wp_status TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+        )
+    """
+
+    def _split_status(self, conn):
+        """
+        TR-12: give the artefacts and the post states of their own, and move
+        what the single status said about them into those.
+
+        Columns are added rather than the table rebuilt, so the old status
+        values stay allowed by its CHECK constraint; they are rewritten here
+        and nothing writes them again. Runs on every start and does nothing
+        once there is nothing left to move.
+        """
+        def columns(table):
+            return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+        if 'artefacts' not in columns('recordings'):
+            logger.info("Migrating: adding recordings.artefacts and processed_at")
+            conn.execute("ALTER TABLE recordings ADD COLUMN artefacts TEXT NOT NULL DEFAULT 'none'")
+            conn.execute("ALTER TABLE recordings ADD COLUMN processed_at TIMESTAMP")
+        if 'post_state' not in columns('post_drafts'):
+            logger.info("Migrating: adding post_drafts.post_state and post_error")
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN post_state TEXT NOT NULL DEFAULT 'none'")
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN post_error TEXT")
+
+        # FR-24: the draft itself. JSON in TEXT for the lists. `revision`
+        # counts saves, so a save based on an older one can be refused
+        # rather than silently undo another device's edit.
+        if 'blocks' not in columns('post_drafts'):
+            logger.info("Migrating: adding the draft to post_drafts")
+            for column in ("title TEXT", "excerpt TEXT", "categories TEXT", "crew TEXT",
+                           "story TEXT", "wind TEXT", "blocks TEXT",
+                           "revision INTEGER NOT NULL DEFAULT 0"):
+                conn.execute(f"ALTER TABLE post_drafts ADD COLUMN {column}")
+
+        # FR-27: the revision at which each field last changed, JSON
+        # {field: revision}, so the event page can save one field without
+        # disturbing another device's edit of a different one
+        if 'field_revisions' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN field_revisions TEXT")
+
+        # FR-29: the crew's one-line notes, JSON [{ts, lat, lon, text}], and
+        # when each photo was taken, so both can be told in the order they
+        # happened
+        if 'notes' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN notes TEXT")
+        # FR-26: the crew's own time line, when they have typed over the one
+        # worked out from the recording. Empty means the recording's.
+        if 'time_line' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN time_line TEXT")
+        # Publish when the recording stops: 'publish' or 'draft', asked for on
+        # the Log page while it was still recording; empty for not
+        if 'publish_on_stop' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN publish_on_stop TEXT")
+        if 'taken_at' not in columns('recording_images'):
+            conn.execute("ALTER TABLE recording_images ADD COLUMN taken_at TIMESTAMP")
+
+        def set_post_state(where, state, error_sql='NULL'):
+            conn.execute(f"""
+                INSERT INTO post_drafts (recording_id, post_state, post_error)
+                SELECT id, '{state}', {error_sql} FROM recordings WHERE {where}
+                ON CONFLICT(recording_id) DO UPDATE SET
+                    post_state = excluded.post_state, post_error = excluded.post_error
+            """)
+
+        # A post id stored by TR-11 with no state yet: that post is out
+        untracked = """wp_post_id IS NOT NULL AND post_state = 'none'"""
+
+        moved = conn.execute("""
+            SELECT COUNT(*) FROM recordings
+            WHERE status IN ('processing', 'processed', 'published')
+               OR (status = 'failed' AND COALESCE(error_message, '') NOT LIKE 'No data recorded%')
+        """).fetchone()[0] + conn.execute(
+            f"SELECT COUNT(*) FROM post_drafts WHERE {untracked}").fetchone()[0]
+        if not moved:
+            return
+        logger.info(f"Migrating: splitting the status of {moved} recordings")
+
+        conn.execute(f"""
+            UPDATE post_drafts SET post_state = CASE
+                WHEN wp_status IN ('draft', 'pending') THEN '{PostState.WP_DRAFT}'
+                ELSE '{PostState.PUBLISHED}' END
+            WHERE {untracked}
+        """)
+
+        # A post that went out: processed, and published. 'processed' with a
+        # link is one too: the old way to republish, or add a photo to a
+        # published recording, was to reset it to processed first.
+        set_post_state("status = 'published'", PostState.PUBLISHED)
+        set_post_state("""status = 'processed' AND wordpress_url IS NOT NULL
+                          AND id NOT IN (SELECT recording_id FROM post_drafts
+                                         WHERE post_state != 'none')""",
+                       PostState.PUBLISHED)
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FRESH}'
+                         WHERE status = 'published'""")
+
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FRESH}'
+                         WHERE status = 'processed'""")
+
+        # Processing that was interrupted: as if never started
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.NONE}'
+                         WHERE status = 'processing'""")
+
+        # 'failed' meant three things. A publish that failed was processed
+        # first; the message the publisher left says which one it was.
+        publish_failed = "status = 'failed' AND error_message LIKE '%WordPress%'"
+        set_post_state(publish_failed, PostState.PUBLISH_FAILED, 'error_message')
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FRESH}'
+                         WHERE {publish_failed}""")
+
+        # Only a recording with nothing in it failed as a recording (recovery
+        # says so in those words). Any other failure was processing's.
+        conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FAILED}'
+                         WHERE status = 'failed'
+                           AND COALESCE(error_message, '') NOT LIKE 'No data recorded%'""")
+
+    TOPIC_INDEX_SQL = """
+        CREATE INDEX IF NOT EXISTS idx_recording_data_recording_topic_time
+        ON recording_data(recording_id, topic, timestamp)
+    """
+
+    def _index_by_topic(self, conn):
+        """
+        Index recording_data by recording, topic and time together.
+
+        The wind line, the live track, a note's position and the category
+        rules all ask for one topic of one recording, often in time order.
+        Indexed on recording alone, each read every row of the recording,
+        150,000 for a race, to keep a few thousand, and sorted them: seconds
+        a query on the Pi, and a ten-second Log page on the dev rig. With
+        this it reads only the rows it wants.
+
+        The recording-only index is dropped: this one starts with
+        recording_id, so it serves those lookups (and the cascade on delete)
+        as well, and a second index would only slow recording down. Built
+        once, on the first start after this change; on a full database that
+        start takes a little longer.
+        """
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='idx_recording_data_recording_topic_time'").fetchone()
+        if not exists:
+            logger.info("Migrating: indexing recording_data by recording, topic and time "
+                        "(once; may take a while on a large database)")
+            conn.execute(self.TOPIC_INDEX_SQL)
+        conn.execute("DROP INDEX IF EXISTS idx_recording_data_recording_id")
+
+    def _unify_title_and_description(self, conn):
+        """
+        Once: a title or short description typed into a draft before they
+        became the recording's own name and description goes onto the
+        recording, so nothing the crew wrote is lost by the change.
+        """
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(post_drafts)")}
+        if 'title' not in columns:
+            return
+        if conn.execute("SELECT 1 FROM service_settings WHERE key = 'titles_unified'").fetchone():
+            return
+        moved = conn.execute("""
+            UPDATE recordings SET name = (
+                SELECT d.title FROM post_drafts d WHERE d.recording_id = recordings.id)
+            WHERE id IN (SELECT recording_id FROM post_drafts
+                         WHERE title IS NOT NULL AND trim(title) != '')
+        """).rowcount
+        moved += conn.execute("""
+            UPDATE recordings SET description = (
+                SELECT d.excerpt FROM post_drafts d WHERE d.recording_id = recordings.id)
+            WHERE id IN (SELECT recording_id FROM post_drafts
+                         WHERE excerpt IS NOT NULL AND trim(excerpt) != '')
+        """).rowcount
+        if moved:
+            logger.info(f"Migration: {moved} draft titles and descriptions moved onto recordings")
+        conn.execute("INSERT INTO service_settings (key, value) VALUES ('titles_unified', ?)",
+                     (datetime.utcnow().isoformat(),))
+
+    def _add_event_key(self, conn):
+        """
+        FR-28: which event started a recording, as its key in the event
+        config ('anchor_track_recording'), or 'manual'.
+
+        Recordings made before this have it only as the start of their name,
+        "anchor_track_recording - 2026-10-07 18:03:28", so they are filled in
+        from that once, when the column is added. Nothing reads the name for
+        it afterwards: the name is the post title, which the crew now edit.
+        """
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(recordings)")}
+        # The topics a recording records, JSON, so that one interrupted by a
+        # restart or a power cut can be resumed recording the same things.
+        # Older rows have none; resuming takes them from the event config.
+        if 'record_topics' not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN record_topics TEXT")
+        if 'event_key' in columns:
+            return
+        logger.info("Migrating: adding recordings.event_key")
+        conn.execute("ALTER TABLE recordings ADD COLUMN event_key TEXT")
+        for row in conn.execute("SELECT id, name, trigger_type FROM recordings").fetchall():
+            if row['trigger_type'] == 'manual':
+                key = 'manual'
+            else:
+                match = re.match(r'([a-z0-9_]+) - \d{4}-\d{2}-\d{2}', row['name'] or '')
+                key = match.group(1) if match else None
+            if key:
+                conn.execute("UPDATE recordings SET event_key = ? WHERE id = ?", (key, row['id']))
+
+    DANGLING_REFERENCE = 'REFERENCES "recordings_old"'
+
+    def _repair_dangling_references(self, conn):
+        """
+        Point child tables back at `recordings` after the 'processed'
+        migration repointed them at the `recordings_old` it then dropped.
+
+        Only the text of the constraint is wrong; the rows are fine. So this
+        edits the stored CREATE TABLE statements in place, the way SQLite's
+        documentation describes for changing a constraint, rather than copying
+        recording_data, which on the Pi is most of the file. The schema
+        version is bumped so the change is reread, and the database is
+        checked before the transaction is allowed to commit.
+        """
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE ?",
+            (f'%{self.DANGLING_REFERENCE}%',)
+        ).fetchall()
+        if not rows:
+            return
+        tables = [row['name'] for row in rows]
+        logger.warning(
+            f"Repairing foreign keys left pointing at the dropped recordings_old: "
+            f"{', '.join(tables)}"
+        )
+
+        version = conn.execute("PRAGMA schema_version").fetchone()[0]
+        conn.execute("PRAGMA writable_schema=ON")
+        conn.execute(
+            f"""UPDATE sqlite_master SET sql = replace(sql, ?, 'REFERENCES recordings')
+                WHERE type='table' AND name IN ({','.join('?' * len(tables))})""",
+            (self.DANGLING_REFERENCE, *tables)
+        )
+        conn.execute(f"PRAGMA schema_version={version + 1}")
+        conn.execute("PRAGMA writable_schema=OFF")
+
+        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        if result != 'ok':
+            raise sqlite3.DatabaseError(f"integrity check after repair: {result}")
+        logger.info("Foreign key repair complete")
+
     def init_database(self):
         """Create database schema with all tables and indexes."""
         with self.get_connection() as conn:
@@ -194,11 +573,9 @@ class Database:
                 )
             """)
 
-            # Indexes for performance
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_recording_data_recording_id
-                ON recording_data(recording_id)
-            """)
+            # Indexes for performance. One topic of one recording, in time
+            # order, is what nearly every read asks for; see _index_by_topic
+            conn.execute(self.TOPIC_INDEX_SQL)
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_recording_data_timestamp
                 ON recording_data(timestamp)
@@ -264,12 +641,19 @@ class Database:
                 )
             """)
 
+            conn.execute(self.POST_DRAFTS_SQL)
+            self._split_status(conn)
+            self._add_event_key(conn)
+            self._unify_title_and_description(conn)
+            self._index_by_topic(conn)
+
             logger.info("Database schema created successfully")
 
     # === Recording Operations ===
 
     def create_recording(self, name: str, description: str = "",
-                        trigger_type: str = "gps_movement") -> int:
+                        trigger_type: str = "gps_movement",
+                        event_key: str = None, record_topics: List[str] = None) -> int:
         """
         Create a new recording session.
 
@@ -277,15 +661,19 @@ class Database:
             name: Recording name
             description: Optional description
             trigger_type: Type of trigger (default: gps_movement)
+            event_key: The event config key that started it, or 'manual' (FR-28)
+            record_topics: What it records, kept so it can be resumed
 
         Returns:
             int: Recording ID
         """
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO recordings (name, description, status, start_time, trigger_type)
-                VALUES (?, ?, ?, ?, ?)
-            """, (name, description, RecordingStatus.ACTIVE, datetime.utcnow(), trigger_type))
+                INSERT INTO recordings (name, description, status, start_time, trigger_type,
+                                        event_key, record_topics)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (name, description, RecordingStatus.ACTIVE, datetime.utcnow(), trigger_type,
+                  event_key, json.dumps(record_topics) if record_topics is not None else None))
             recording_id = cursor.lastrowid
             logger.info(f"Created recording {recording_id}: {name}")
             return recording_id
@@ -324,6 +712,20 @@ class Database:
             conn.execute(query, values)
             logger.info(f"Updated recording {recording_id}: {kwargs}")
 
+    # A recording with its post's state beside it, so a reader has all three
+    # of TR-12's states in one row, and the stage derived from them
+    RECORDING_SELECT = """
+        SELECT r.*, COALESCE(d.post_state, 'none') AS post_state,
+               d.post_error, d.wp_post_id
+        FROM recordings r LEFT JOIN post_drafts d ON d.recording_id = r.id
+    """
+
+    @staticmethod
+    def _recording(row) -> Dict:
+        recording = dict(row)
+        recording['stage'] = stage_of(recording)
+        return recording
+
     def get_recording(self, recording_id: int) -> Optional[Dict]:
         """
         Get recording by ID.
@@ -335,11 +737,10 @@ class Database:
             Dict with recording data or None if not found
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT * FROM recordings WHERE id = ?
-            """, (recording_id,))
+            cursor = conn.execute(
+                self.RECORDING_SELECT + " WHERE r.id = ?", (recording_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._recording(row) if row else None
 
     def get_recordings_by_status(self, status: str) -> List[Dict]:
         """
@@ -352,11 +753,10 @@ class Database:
             List of recording dicts
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT * FROM recordings WHERE status = ?
-                ORDER BY start_time DESC
-            """, (status,))
-            return [dict(row) for row in cursor.fetchall()]
+            cursor = conn.execute(
+                self.RECORDING_SELECT + " WHERE r.status = ? ORDER BY r.start_time DESC",
+                (status,))
+            return [self._recording(row) for row in cursor.fetchall()]
 
     def get_all_recordings(self, limit: int = 100, offset: int = 0) -> List[Dict]:
         """
@@ -370,12 +770,10 @@ class Database:
             List of recording dicts
         """
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT * FROM recordings
-                ORDER BY start_time DESC
-                LIMIT ? OFFSET ?
-            """, (limit, offset))
-            return [dict(row) for row in cursor.fetchall()]
+            cursor = conn.execute(
+                self.RECORDING_SELECT + " ORDER BY r.start_time DESC LIMIT ? OFFSET ?",
+                (limit, offset))
+            return [self._recording(row) for row in cursor.fetchall()]
 
     def delete_recording(self, recording_id: int):
         """
@@ -417,7 +815,24 @@ class Database:
         Args:
             messages: List of tuples (recording_id, timestamp, topic, payload)
         """
+        if not messages:
+            return
         with self.get_connection() as conn:
+            # Rows for a recording that no longer exists are dropped rather
+            # than allowed to fail the batch. The buffer keeps a failed batch
+            # and retries it, so one such row would block every recording's
+            # data from then on.
+            ids = {m[0] for m in messages}
+            existing = {row[0] for row in conn.execute(
+                f"SELECT id FROM recordings WHERE id IN ({','.join('?' * len(ids))})",
+                tuple(ids)
+            )}
+            if existing != ids:
+                logger.warning(
+                    f"Dropping buffered messages for deleted recording(s) "
+                    f"{sorted(ids - existing)}"
+                )
+                messages = [m for m in messages if m[0] in existing]
             conn.executemany("""
                 INSERT INTO recording_data (recording_id, timestamp, topic, payload)
                 VALUES (?, ?, ?, ?)
@@ -474,6 +889,13 @@ class Database:
             """, (recording_id,))
             return cursor.fetchone()['count']
 
+    def last_data_time(self, recording_id: int) -> Optional[datetime]:
+        """When the recording last received anything, or None if never."""
+        with self.get_connection() as conn:
+            value = conn.execute("SELECT MAX(timestamp) FROM recording_data WHERE recording_id = ?",
+                                 (recording_id,)).fetchone()[0]
+        return datetime.fromisoformat(str(value)) if value else None
+
     def get_recording_photo_count(self, recording_id: int) -> int:
         """Count user-uploaded photos for a recording."""
         with self.get_connection() as conn:
@@ -506,7 +928,8 @@ class Database:
     # === Image Operations ===
 
     def add_image(self, recording_id: int, image_path: str,
-                 image_type: str = ImageType.PLOT, caption: str = None) -> int:
+                 image_type: str = ImageType.PLOT, caption: str = None,
+                 taken_at: datetime = None) -> int:
         """
         Add image to recording.
 
@@ -515,16 +938,28 @@ class Database:
             image_path: Path to image file
             image_type: 'plot' or 'user_upload'
             caption: Optional caption
+            taken_at: When a photo was taken, UTC (FR-29)
 
         Returns:
             int: Image ID
         """
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO recording_images (recording_id, image_path, image_type, caption)
-                VALUES (?, ?, ?, ?)
-            """, (recording_id, image_path, image_type, caption))
+                INSERT INTO recording_images (recording_id, image_path, image_type, caption, taken_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (recording_id, image_path, image_type, caption, taken_at))
             return cursor.lastrowid
+
+    def get_image(self, image_id: int) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM recording_images WHERE id = ?",
+                               (image_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_image_caption(self, image_id: int, caption: str):
+        with self.get_connection() as conn:
+            conn.execute("UPDATE recording_images SET caption = ? WHERE id = ?",
+                         (caption, image_id))
 
     def get_recording_images(self, recording_id: int) -> List[Dict]:
         """
@@ -543,6 +978,75 @@ class Database:
                 ORDER BY created_at
             """, (recording_id,))
             return [dict(row) for row in cursor.fetchall()]
+
+    # === Questions the category rules ask (FR-30) ===
+    # Answered in SQL, so a recording's fixes are never loaded into Python to
+    # answer a yes or no
+
+    def track_extent(self, recording_id: int, topic: str) -> Optional[Tuple[float, float, float, float]]:
+        """(south, west, north, east) of a recording's fixes, or None if it has none."""
+        with self.get_connection() as conn:
+            row = conn.execute("""
+                SELECT MIN(json_extract(payload, '$.lat')), MIN(json_extract(payload, '$.lon')),
+                       MAX(json_extract(payload, '$.lat')), MAX(json_extract(payload, '$.lon'))
+                FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND json_valid(payload)
+            """, (recording_id, topic)).fetchone()
+            return tuple(row) if row and row[0] is not None else None
+
+    def has_fix_within(self, recording_id: int, topic: str,
+                       south: float, west: float, north: float, east: float) -> bool:
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT 1 FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND json_valid(payload)
+                  AND json_extract(payload, '$.lat') BETWEEN ? AND ?
+                  AND json_extract(payload, '$.lon') BETWEEN ? AND ?
+                LIMIT 1
+            """, (recording_id, topic, south, north, west, east)).fetchone() is not None
+
+    def positions_since(self, recording_id: int, topic: str,
+                        after: Optional[datetime]) -> List[Tuple[datetime, float, float]]:
+        """(timestamp, lat, lon) of fixes after `after` (or all), oldest first (FR-31)."""
+        stamp = after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT timestamp, json_extract(payload, '$.lat'), json_extract(payload, '$.lon')
+                FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND timestamp > ? AND json_valid(payload)
+                ORDER BY timestamp
+            """, (recording_id, topic, stamp)).fetchall()
+        return [(datetime.fromisoformat(str(t)), float(lat), float(lon))
+                for t, lat, lon in rows if lat is not None and lon is not None]
+
+    def max_value_since(self, recording_id: int, topic: str,
+                        after: Optional[datetime]) -> Optional[float]:
+        """The largest bare number on a topic after `after` (or ever) (FR-31)."""
+        stamp = after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT MAX(CAST(payload AS REAL)) FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND timestamp > ?
+            """, (recording_id, topic, stamp)).fetchone()[0]
+
+    def numeric_series(self, recording_id: int, topic: str) -> List[Tuple[datetime, float]]:
+        """(timestamp, value) for a topic carrying bare numbers, oldest first (FR-26)."""
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT timestamp, CAST(payload AS REAL) FROM recording_data
+                WHERE recording_id = ? AND topic = ?
+                ORDER BY timestamp
+            """, (recording_id, topic)).fetchall()
+        return [(datetime.fromisoformat(str(t)), v) for t, v in rows if v is not None]
+
+    def has_payload(self, recording_id: int, topic: str, fragment: str) -> bool:
+        """Whether any message on `topic` contains `fragment`."""
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT 1 FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND instr(payload, ?) > 0
+                LIMIT 1
+            """, (recording_id, topic, fragment)).fetchone() is not None
 
     def delete_image(self, image_id: int):
         """
@@ -603,6 +1107,13 @@ class Database:
             conn.executemany(
                 "UPDATE recording_data SET timestamp = ? WHERE id = ?",
                 [(shifted(r['timestamp']), r['id']) for r in data]
+            )
+
+            # Plots drawn before the move carry the old times
+            conn.execute(
+                f"UPDATE recordings SET artefacts = '{Artefacts.STALE}' "
+                f"WHERE id = ? AND artefacts = '{Artefacts.FRESH}'",
+                (recording_id,)
             )
 
             return len(data)
@@ -692,6 +1203,170 @@ class Database:
         """Delete export record (does not delete the file on disk)."""
         with self.get_connection() as conn:
             conn.execute("DELETE FROM recording_exports WHERE id = ?", (export_id,))
+
+    # === Post Draft Operations ===
+
+    def get_post_draft(self, recording_id: int) -> Optional[Dict]:
+        """The recording's post_drafts row, or None if it has never been a post."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM post_drafts WHERE recording_id = ?", (recording_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def save_post_ref(self, recording_id: int, wp_post_id: int,
+                      wp_modified: str, wp_status: str):
+        """Record which WordPress post a recording is, as WordPress last left it."""
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO post_drafts (recording_id, wp_post_id, wp_modified, wp_status, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(recording_id) DO UPDATE SET
+                    wp_post_id = excluded.wp_post_id,
+                    wp_modified = excluded.wp_modified,
+                    wp_status = excluded.wp_status,
+                    updated_at = excluded.updated_at
+            """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
+
+    # `notes` is still a column, from when the page took notes (FR-29); no longer a field
+    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks',
+                    'time_line')
+    DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks')
+
+    def get_draft(self, recording_id: int) -> Optional[Dict]:
+        """The stored draft (FR-24), lists decoded, or None if never saved."""
+        ref = self.get_post_draft(recording_id)
+        if not ref or ref.get('blocks') is None:
+            return None
+        draft = {field: ref.get(field) for field in self.DRAFT_FIELDS}
+        for field in self.DRAFT_JSON_FIELDS:
+            draft[field] = json.loads(draft[field]) if draft[field] else []
+        draft['revision'] = ref['revision']
+        draft['field_revisions'] = json.loads(ref['field_revisions']) if ref.get('field_revisions') else {}
+        return draft
+
+    def get_all_drafts(self) -> List[Dict]:
+        """Every stored draft, for what the crew have written before (FR-26, FR-30)."""
+        with self.get_connection() as conn:
+            ids = [row[0] for row in conn.execute(
+                "SELECT recording_id FROM post_drafts WHERE blocks IS NOT NULL")]
+        return [self.get_draft(rid) for rid in ids]
+
+    def save_draft_fields(self, recording_id: int, start: Dict, changes: Dict) -> int:
+        """
+        Change some fields of a draft, whoever else has changed others (FR-27).
+
+        The event page saves one field at a time from more than one device.
+        Each field records the revision it last changed at; a save touches
+        only its own fields, so the phone's title and the iPad's story never
+        undo each other. Two saves of the same field: the later one stands,
+        and the field's revision tells the other device it was overtaken.
+
+        Args:
+            start: The whole draft to begin from if none is stored yet
+            changes: {field: value}, draft fields only; or a function given
+                the stored draft's fields that returns them, for a change
+                that depends on what is stored
+
+        Returns:
+            The draft's new revision
+        """
+        with self.get_connection() as conn:
+            # The write lock before the read: two saves at once would
+            # otherwise both read revision n and both write n + 1
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM post_drafts WHERE recording_id = ?",
+                (recording_id,)).fetchone()
+            if callable(changes):
+                if row is None or row['blocks'] is None:
+                    stored = dict(start)
+                else:
+                    stored = {f: row[f] for f in self.DRAFT_FIELDS}
+                    for f in self.DRAFT_JSON_FIELDS:
+                        stored[f] = json.loads(stored[f]) if stored[f] else []
+                changes = changes(stored)
+            if row is None or row['blocks'] is None:
+                conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
+                             (recording_id,))
+                fields = dict(start, **changes)
+                revisions = {}
+                revision = (row['revision'] if row else 0) + 1
+            else:
+                fields = dict(changes)
+                revisions = json.loads(row['field_revisions']) if row['field_revisions'] else {}
+                revision = row['revision'] + 1
+            for field in changes:
+                revisions[field] = revision
+
+            names = [f for f in self.DRAFT_FIELDS if f in fields]
+            values = [json.dumps(fields[f] or []) if f in self.DRAFT_JSON_FIELDS else fields[f]
+                      for f in names]
+            sets = ''.join(f"{f} = ?, " for f in names)
+            conn.execute(
+                f"""UPDATE post_drafts SET {sets}revision = ?, field_revisions = ?, updated_at = ?
+                    WHERE recording_id = ?""",
+                (*values, revision, json.dumps(revisions), datetime.utcnow(), recording_id))
+            return revision
+
+    def save_draft(self, recording_id: int, draft: Dict, base_revision: int) -> Optional[int]:
+        """
+        Store a whole draft, if nobody has saved since `base_revision`.
+
+        Returns the new revision, or None when the stored draft has moved on,
+        in which case nothing is written. The check and the write are one
+        statement, so two devices saving at once cannot both win.
+        """
+        values = [json.dumps(draft.get(f) or []) if f in self.DRAFT_JSON_FIELDS
+                  else draft.get(f) for f in self.DRAFT_FIELDS]
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
+                         (recording_id,))
+            sets = ', '.join(f"{f} = ?" for f in self.DRAFT_FIELDS)
+            changed = conn.execute(
+                f"""UPDATE post_drafts SET {sets}, revision = revision + 1, updated_at = ?
+                    WHERE recording_id = ? AND revision = ?""",
+                (*values, datetime.utcnow(), recording_id, base_revision)
+            ).rowcount
+            if not changed:
+                return None
+            return conn.execute("SELECT revision FROM post_drafts WHERE recording_id = ?",
+                                (recording_id,)).fetchone()[0]
+
+    def set_publish_on_stop(self, recording_id: int, mode: Optional[str]):
+        """Ask for the recording to be published when it stops ('publish' or 'draft'), or not."""
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
+                         (recording_id,))
+            conn.execute("UPDATE post_drafts SET publish_on_stop = ? WHERE recording_id = ?",
+                         (mode, recording_id))
+
+    def publish_on_stop(self, recording_id: int) -> Optional[str]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT publish_on_stop FROM post_drafts WHERE recording_id = ?",
+                               (recording_id,)).fetchone()
+            return row[0] if row else None
+
+    def pending_publishes(self) -> List[Tuple[int, str]]:
+        """Stopped recordings still waiting to be published as asked: (id, mode)."""
+        with self.get_connection() as conn:
+            return [(r[0], r[1]) for r in conn.execute("""
+                SELECT d.recording_id, d.publish_on_stop FROM post_drafts d
+                JOIN recordings r ON r.id = d.recording_id
+                WHERE d.publish_on_stop IS NOT NULL AND r.status = 'stopped'
+            """)]
+
+    def set_post_state(self, recording_id: int, state: str, error: str = None):
+        """Set where the recording's post has got to (TR-12), with the error if it failed."""
+        with self.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO post_drafts (recording_id, post_state, post_error, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(recording_id) DO UPDATE SET
+                    post_state = excluded.post_state,
+                    post_error = excluded.post_error,
+                    updated_at = excluded.updated_at
+            """, (recording_id, state, error, datetime.utcnow()))
 
     # === Service Settings Operations ===
 

@@ -169,6 +169,25 @@ server {
     }
     location = /race { return 301 /race/; }
 
+    # The post editor (event_recorder FR-27, enchantee_racing DESIGN 9.13): the
+    # recorder's /log/, served inside /race/ although it is not the racing app's.
+    # The racing app's Home Screen manifest is scoped to /race/, and a link out of
+    # that scope opens on the phone in an overlay browser with a Done button (DESIGN
+    # 9.8.1). Inside it, the editor opens in the same full-screen window as GAR, Map
+    # and Race, and its back link is an ordinary relative one. The longer prefix
+    # outranks /race/ above, so the order of the two blocks does not matter.
+    location /race/log/ {
+        proxy_pass http://127.0.0.1:5000/log/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $http_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # photo uploads from the phone, as on /events/
+        client_max_body_size 100m;
+    }
+    location = /race/log { return 301 /race/log/; }
+
     # Shortcut, so the crew can type enchantee.local/hud and get the instruments.
     #
     # This is an exact match, so it takes precedence over the catch-all `location /`

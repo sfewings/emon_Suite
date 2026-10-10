@@ -18,6 +18,7 @@ import app as app_module  # noqa: E402
 import mqtt_client  # noqa: E402
 from engine import course as course_module  # noqa: E402
 from engine import nav, race  # noqa: E402
+import store as store_module  # noqa: E402
 from store import Store  # noqa: E402
 
 CONFIG = app_module.load_config()
@@ -964,12 +965,15 @@ def test_every_page_carries_the_same_three_screen_navigation():
     The order is pinned too: the instruments (GAR, or HUD on the HUD), Map, Race. The two
     screens used on every sail come first and the one used on race days only comes last
     (DESIGN 9.6).
+
+    Then Log, which is not a screen of this app: it leaves for event_recorder's post editor
+    (DESIGN 9.13), so it comes after the three it is not one of.
     """
     for path, nav in _navs().items():
         labels = [text.strip() for text in re.findall(r">([A-Za-z]+)<", nav)]
         # The instruments cell reads GAR everywhere but on the HUD, its second face.
         first = "HUD" if path == "/hud" else "GAR"
-        assert labels == [first, "Map", "Race"], (path, labels)
+        assert labels == [first, "Map", "Race", "Log"], (path, labels)
         # Nothing is disabled any more: Map used to carry class="off" because there was no
         # map, and DESIGN 9.6 said to show it disabled until there was.
         assert 'class="off"' not in nav, "%s still disables an entry" % path
@@ -987,6 +991,33 @@ def test_every_page_carries_the_same_three_screen_navigation():
     assert 'href="."' in navs["/hud"] and 'href="map"' in navs["/hud"]
     assert 'href="."' in navs["/map"] and 'href="gar"' in navs["/map"]
     assert 'href="."' in navs["/gar"] and 'href="map"' in navs["/gar"]
+
+    # Log says where it came from, so the post editor's back link returns there. log/, not
+    # ../log/: from /race/gar that would be /log/, outside the app and the nginx route.
+    for path, screen in (("/", "race"), ("/gar", "gar"), ("/map", "map"), ("/hud", "hud")):
+        assert f'href="log/?from={screen}"' in navs[path], path
+
+
+def test_the_log_link_lights_while_the_recorder_is_recording():
+    """The dot on Log is server state, as the theme is (DESIGN 9.13): the recorder's
+    once-a-second status, and silence past RECORDING_STALE_S puts it out, so a recorder
+    that has stopped cannot leave it lit."""
+    clock = [1000.0]
+    store = Store(clock=lambda: clock[0])
+    assert store.state()["recording"] == {"active": False}
+
+    status = json.dumps({"recording_id": 7, "status": "active", "duration": "00:12:00"})
+    assert mqtt_client.handle_message(store, "event_recorder/recording/7/status", status)
+    assert store.state()["recording"] == {"active": True}
+
+    clock[0] += store_module.RECORDING_STALE_S + 1
+    assert store.state()["recording"] == {"active": False}
+
+    # And the three pages that read /api/state apply it, beside the theme
+    for page in ("static/app.js", "static/gar.js", "static/map.js"):
+        assert "LogDot.apply(" in (ROOT / page).read_text(encoding="utf-8"), page
+    for template in ("templates/index.html", "templates/map.html", "templates/gar.html"):
+        assert 'src="static/logdot.js"' in (ROOT / template).read_text(encoding="utf-8"), template
 
 
 def test_selecting_a_course_lands_on_the_panel_with_the_hooters():

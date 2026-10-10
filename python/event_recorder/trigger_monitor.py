@@ -242,6 +242,30 @@ class GPSTriggerMonitor:
 
         logger.info(f"Added monitor '{monitor_id}'")
 
+    def resume_monitor(self, monitor_id: str, recording_id: int) -> bool:
+        """
+        Put a monitor back in the middle of a recording it started before a
+        restart or a power cut, so that its own stop condition ends it: the
+        anchor recording when the boat is back on the mooring, as if the
+        service had never stopped.
+
+        Returns:
+            False when there is no such monitor (its event was renamed or
+            disabled since), for the caller to decide what to do instead
+        """
+        with self.monitors_lock:
+            if monitor_id not in self.monitor_states:
+                return False
+            self.monitor_states[monitor_id].update({
+                'state': TriggerState.TRIGGERED,
+                'recording_id': recording_id,
+                'last_position': None,
+                'condition_start_time': None,
+                'stationary_start_time': None,
+            })
+        logger.info(f"Monitor '{monitor_id}': resumed with recording {recording_id}")
+        return True
+
     def remove_monitor(self, monitor_id: str):
         """
         Remove GPS movement monitor.

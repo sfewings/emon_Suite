@@ -1,0 +1,122 @@
+# Event recorder on a Windows (or any Docker) development machine. See README.md here.
+#
+# The broker is not in this file. It is the racing app's replay broker, which is also
+# what replay.py publishes to, so a replayed sail reaches the recorder exactly as the
+# boat's own traffic would:
+#
+#   docker compose -f ../../enchantee_racing/tests/replay/docker-compose.yml up -d
+#
+# Event definitions are the boat's own, mounted read-only from provisioning, so the
+# triggers being tested are the ones that run on enchantee. The service config is a dev
+# copy (config/) with no WordPress credentials in it: nothing here can publish to
+# enchantee.org.
+#
+# WordPress is a profile, for when publishing is what is being tested. It is a local
+# blog on http://localhost:8080 that dev/wordpress-setup.sh installs and gives the
+# recorder an application password for, through dev/.env:
+#
+#   docker compose -f dev/docker-compose.yml --profile wordpress up -d
+#   sh dev/wordpress-setup.sh
+
+services:
+  recorder:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile
+    image: event_recorder_dev
+    container_name: event_recorder_dev
+    ports:
+      - "5000:5000"
+    volumes:
+      - ..:/app/event_recorder
+      - ./config/event_recorder_config.yml:/config/event_recorder_config.yml:ro
+      - ../../../provisioning/enchantee/config/events:/config/events:ro
+      # A volume on Docker's own disk, not a Windows folder: SQLite reading
+      # through Docker Desktop's folder sharing made a cold Log page take ten
+      # seconds that take 0.3 here, and the Pi keeps its database on its own
+      # disk too. Look inside with docker exec, or docker cp a file out.
+      - recorder_data:/data
+    environment:
+      - TZ=Australia/Perth
+      # From dev/.env, written by wordpress-setup.sh. Empty without it, which
+      # leaves the publisher off.
+      - WP_SITE_URL=${WP_SITE_URL:-}
+      - WP_USERNAME=${WP_USERNAME:-}
+      - WP_APP_PASSWORD=${WP_APP_PASSWORD:-}
+    command:
+      - python
+      - -m
+      - event_recorder.main
+      - --config
+      - /config/event_recorder_config.yml
+      - --events-dir
+      - /config/events
+      - --data-dir
+      - /data
+    restart: "no"
+
+  wordpress_db:
+    # MySQL 8, as test_event_recorder uses. MariaDB 11 fails to start under Docker
+    # Desktop on Windows, whose kernel has io_uring disabled.
+    image: mysql:8.0
+    container_name: event_recorder_dev_wpdb
+    profiles: [wordpress]
+    environment:
+      - MYSQL_ROOT_PASSWORD=dev
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_USER=wordpress
+      - MYSQL_PASSWORD=wordpress
+    volumes:
+      - wordpress_db:/var/lib/mysql
+    # No published port: the host already has a MySQL on 3306
+
+  wordpress:
+    image: wordpress:6
+    container_name: event_recorder_dev_wp
+    profiles: [wordpress]
+    ports:
+      - "8080:80"
+    environment:
+      - WORDPRESS_DB_HOST=wordpress_db
+      - WORDPRESS_DB_USER=wordpress
+      - WORDPRESS_DB_PASSWORD=wordpress
+      - WORDPRESS_DB_NAME=wordpress
+      # Application passwords need HTTPS unless the site says it is local
+      - WP_ENVIRONMENT_TYPE=local
+    volumes:
+      - wordpress_html:/var/www/html
+      - ../test_event_recorder/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
+    depends_on:
+      - wordpress_db
+
+  # The Pi's nginx paths on http://localhost:8000: /race/ (the racing app, run on the
+  # host), /race/log/ and /events/ (this recorder). For the Log link and the event
+  # page's back link, which only behave as on the boat when served as on the boat.
+  front:
+    image: nginx:1.27-alpine
+    container_name: event_recorder_dev_front
+    profiles: [front]
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - recorder
+
+  # Run by wordpress-setup.sh, not started with the others
+  wpcli:
+    image: wordpress:cli-2
+    profiles: [tools]
+    user: "33:33"
+    environment:
+      - WORDPRESS_DB_HOST=wordpress_db
+      - WORDPRESS_DB_USER=wordpress
+      - WORDPRESS_DB_PASSWORD=wordpress
+      - WORDPRESS_DB_NAME=wordpress
+    volumes:
+      - wordpress_html:/var/www/html
+
+volumes:
+  recorder_data:
+  wordpress_db:
+  wordpress_html:
