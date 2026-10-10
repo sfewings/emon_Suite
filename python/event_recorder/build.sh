@@ -6,7 +6,7 @@ set -e
 
 # Configuration
 IMAGE_NAME="sfewings32/emon_event_recorder"
-VERSION="0.1.0"
+VERSION="0.4.0"
 PLATFORMS="linux/amd64,linux/arm64,linux/arm/v7"
 
 # Colors for output

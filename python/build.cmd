@@ -20,7 +20,7 @@ set ALL_CONTAINERS=event_recorder settings_web enchantee_racing serial_to_mqtt m
 
 set DOCKERFILE_event_recorder=event_recorder\Dockerfile
 set IMAGE_event_recorder=sfewings32/emon_event_recorder
-set VERSION_event_recorder=0.1.0
+set VERSION_event_recorder=0.4.0
 
 set DOCKERFILE_settings_web=emon_settings_web\Dockerfile
 set IMAGE_settings_web=sfewings32/emon_settings_web
