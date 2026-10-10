@@ -28,6 +28,17 @@
   function fmtSigned(v) { return String(Math.round(v)); }
   function fmt3(v)      { return ("00" + ((((Math.round(v) % 360) + 360) % 360))).slice(-3); }
 
+  // The direction's name on sixteen points, for TWD's label: "TWD WSW" over "245". In the
+  // label rather than the value, which is fitted to its corner's width, so adding three
+  // letters there would shrink the digits the crew actually read. The same table and
+  // rounding as event_recorder's wind line, so the post and the dial name a wind alike.
+  var COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                 "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  function compass(v) {
+    var deg = ((v % 360) + 360) % 360;
+    return COMPASS[Math.floor((deg + 11.25) / 22.5) % 16];
+  }
+
   function el(name, attrs, parent) {
     var node = document.createElementNS(SVG, name);
     Object.keys(attrs).forEach(function (k) { node.setAttribute(k, attrs[k]); });
@@ -412,6 +423,14 @@
     Object.keys(CORNERS).forEach(function (k) {
       reading($(k), f[k], CORNERS[k], BLANK[k] || "---");
     });
+    // The name only while the reading is fresh: once TWD dims, a name beside it would
+    // still read as current
+    // and only if the page has the label: static/ is served live while templates are
+    // cached until a restart, and a Home Screen app can hold an old page, so this
+    // script can meet a gar.html from before the label had an id
+    var twdFresh = live(f.twd) && !(f.twd.age > STALE_S);
+    var twdLabel = $("twd-lbl");
+    if (twdLabel) put(twdLabel, twdFresh ? "TWD " + compass(f.twd.v) : "TWD");
     reading($("aws"), f.aws, fmt1, "--.-");
 
     // Leeway is blanked by the server below a knot, where COG is noise (DESIGN 9.12).

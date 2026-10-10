@@ -294,6 +294,28 @@ def test_the_svg_has_a_size_and_not_only_a_viewbox():
     assert 'svg.setAttribute("width"' in code and 'svg.setAttribute("height"' in code
 
 
+def test_twd_is_named_on_sixteen_points_in_its_label():
+    """TWD's label reads "TWD WSW" over "245" (DESIGN 9.12). The name goes in the label,
+    not the value, which is fitted to its corner's width and would shrink to make room.
+    The table and rounding are event_recorder's wind line's, so the dial and the post name
+    a wind alike, and the name goes when the reading is stale."""
+    assert re.search(r'<text class="g-lbl c-lbl" id="twd-lbl">TWD</text>', _page())
+
+    code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
+    table = re.search(r"var COMPASS = \[(.*?)\];", code, re.S)
+    assert table, "no compass table"
+    names = re.findall(r'"([A-Z]+)"', table.group(1))
+    assert names == ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                     "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    # Each name centred on its point: N runs from 348.75 to 11.25
+    assert "Math.floor((deg + 11.25) / 22.5) % 16" in code
+    assert 'put(twdLabel, twdFresh ? "TWD " + compass(f.twd.v) : "TWD")' in code
+    # A page from before the label had an id (a cached template, a Home Screen app
+    # holding an old page) must not stop the dial being painted
+    assert 'if (twdLabel)' in code
+    assert "f.twd.age > STALE_S" in code
+
+
 def test_the_screen_is_kept_awake():
     page = _page()
     assert re.search(r'<video id="wake"[^>]*\bmuted\b[^>]*\bloop\b[^>]*\bplaysinline\b', page)

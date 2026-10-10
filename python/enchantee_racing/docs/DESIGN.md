@@ -1428,6 +1428,13 @@ HUD.
   and the diamond follow 9.4 and 9.5: m below 500 m, nm above, and blank (not dimmed)
   once the fix is more than 5 s old.
 
+**TWD by name (2026-10-10).** TWD's label carries the direction on sixteen points, "TWD
+WSW" over "245", asked for from the boat. In the label, not the value: the value is
+fitted to its corner's width, so three more letters there would shrink the digits the
+crew read. The table and the rounding are event_recorder's wind line's (its FR-26), so
+the dial and the post name a wind alike. The name goes when TWD is stale, as a name
+beside a dimmed number would still read as current.
+
 **Layout.** One SVG holds the dial, the corners and the band, so everything scales
 together and no reading has to be fitted against its neighbours. `gar.js` has three
 arrangements: corners above and below the dial with the band under it (phones upright);
