@@ -66,7 +66,9 @@ class WordPressPublisher:
         self.max_retries = max_retries
         self.max_upload_bytes = max_upload_mb * 1048576 if max_upload_mb else 0
 
-        logger.info(f"WordPressPublisher initialized for {self.site_url}, {self.username}, {app_password})")
+        # Never the application password: this line went into the Docker log,
+        # which is kept on the Pi and read over shoulders
+        logger.info(f"WordPressPublisher initialized for {self.site_url} as {self.username}")
 
     def _api_url(self, endpoint: str) -> str:
         """
