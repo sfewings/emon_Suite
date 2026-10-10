@@ -6,7 +6,7 @@ enchantee.org alike.
 Two kinds of block:
 
 - Content blocks hold what the crew wrote or added: 'paragraph', 'photo',
-  'note', 'more'.
+  'more'.
 - Auto blocks hold only a reference, and are drawn from the recording's
   current data every time: 'track_summary', 'crew_photos', 'log_lines',
   'photos', 'statistics', 'route_map', 'interactive_map', 'charts',
@@ -210,20 +210,12 @@ def _crew_photos(block, ctx, state):
 def _photos(block, ctx, state):
     """
     Crew photos as the hand-written posts show them, captioned only when
-    typed, with the crew's notes among them as paragraphs: all in the order
-    they happened (FR-29). Undated photos keep their upload order, last.
+    typed, in the order they were taken (FR-29). Undated photos keep their
+    upload order, last.
     """
-    items = [(_utc(m.get('taken_at')), 0, i, 'photo', m) for i, m in enumerate(ctx.photos)]
-    items += [(_utc(n.get('ts')), 1, i, 'note', n)
-              for i, n in enumerate(ctx.draft.get('notes') or []) if n.get('text')]
-    items.sort(key=lambda item: (item[0] is None, item[0] or datetime.min, item[1], item[2]))
-    out = ''
-    for _, _, _, kind, thing in items:
-        if kind == 'photo':
-            out += _image(thing, thing.get('caption', ''), default_alt='Photo')
-        else:
-            out += _paragraph(html.escape(thing['text']))
-    return out
+    items = [(_utc(m.get('taken_at')), i, m) for i, m in enumerate(ctx.photos)]
+    items.sort(key=lambda item: (item[0] is None, item[0] or datetime.min, item[1]))
+    return ''.join(_image(m, m.get('caption', ''), default_alt='Photo') for _, _, m in items)
 
 
 def _utc(value) -> Optional[datetime]:
@@ -282,10 +274,6 @@ def _photo_block(block, ctx, state):
     if media is None:
         return ''
     return _image(media, block.get('caption', media.get('caption', '')), default_alt='Photo')
-
-
-def _note_block(block, ctx, state):
-    return _paragraph(html.escape(block.get('text', '')))
 
 
 def _statistics(block, ctx, state):
@@ -351,7 +339,6 @@ _RENDERERS = {
     'story': _story,
     'paragraph': _paragraph_block,
     'photo': _photo_block,
-    'note': _note_block,
     'statistics': _statistics,
     'route_map': _route_map,
     'more': _more,

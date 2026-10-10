@@ -1,13 +1,11 @@
-"""FR-29: photo and note capture from the event page.
+"""FR-29: photos from the event page. (Notes were removed from the page on 2026-10-10.)
 
 Run in the dev container (dev/README.md):
-    python -m pytest event_recorder/tests/test_photos_notes.py
+    python -m pytest event_recorder/tests/test_photos.py
 """
 
 import io
-import json
 import re
-import threading
 from datetime import datetime, timedelta
 
 import pytest
@@ -153,68 +151,40 @@ def test_once_published_photos_cannot_be_added_or_changed(client, db, rid):
     assert client.delete(f"/log/api/photos/{rid}/{image_id}").status_code == 409
 
 
-def _fix(db, rid, when, lat, lon):
-    db.add_messages_batch([(rid, when, "gps/position/0",
-                            json.dumps({"lat": lat, "lon": lon, "ts": 0}))])
-
-
-def test_a_note_is_placed_where_the_boat_was_when_it_was_opened(client, db, rid):
-    opened = datetime(2026, 10, 9, 9, 30, 0)
-    _fix(db, rid, opened - timedelta(seconds=40), -32.0001, 115.8001)
-    _fix(db, rid, opened + timedelta(seconds=5), -32.0050, 115.8050)    # the nearest
-
-    response = client.post(f"/log/api/notes/{rid}",
-                           json={"text": "Dolphins at the bridge", "ts": "2026-10-09T09:30:00.000Z"})
-
-    note = response.get_json()["note"]
-    assert (note["ts"], note["lat"], note["lon"]) == ("2026-10-09T09:30:00Z", -32.005, 115.805)
-    assert client.get(f"/log/api/state?id={rid}").get_json()["draft"]["notes"] == [note]
-
-
-def test_a_note_far_from_any_fix_has_no_position(client, db, rid):
-    _fix(db, rid, datetime(2026, 10, 9, 8, 0, 0), -32.0, 115.8)
-    note = client.post(f"/log/api/notes/{rid}", json={
-        "text": "Kite up", "ts": "2026-10-09T09:30:00Z"}).get_json()["note"]
-    assert note["lat"] is None and note["lon"] is None
-
-
-@pytest.mark.parametrize("text", ["", "   ", "x" * 501])
-def test_a_note_is_some_words_on_one_line(client, rid, text):
-    assert client.post(f"/log/api/notes/{rid}", json={"text": text}).status_code == 400
-
-
-def test_notes_are_kept_in_the_order_they_happened(client, rid):
-    for ts, text in (("2026-10-09T09:40:00Z", "second"), ("2026-10-09T09:10:00Z", "first")):
-        client.post(f"/log/api/notes/{rid}", json={"text": text, "ts": ts})
-    notes = client.get(f"/log/api/state?id={rid}").get_json()["draft"]["notes"]
-    assert [n["text"] for n in notes] == ["first", "second"]
-
-
-def test_notes_added_from_two_devices_at_once_are_both_kept(client, rid):
-    threads = [threading.Thread(target=client.post, args=(f"/log/api/notes/{rid}",),
-                                kwargs={"json": {"text": f"note {i}"}}) for i in range(6)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    notes = client.get(f"/log/api/state?id={rid}").get_json()["draft"]["notes"]
-    assert sorted(n["text"] for n in notes) == [f"note {i}" for i in range(6)]
-
-
-def test_the_post_tells_photos_and_notes_in_the_order_they_happened():
-    media = [{"url": "kite.jpg", "image_type": "user_upload", "path": "/u/kite.jpg",
-              "caption": "", "taken_at": "2026-10-09 09:20:00"},
-             {"url": "sunset.jpg", "image_type": "user_upload", "path": "/u/sunset.jpg",
-              "caption": "", "taken_at": "2026-10-09 10:45:00"}]
-    notes = [{"ts": "2026-10-09T09:05:00Z", "text": "Left the mooring"},
-             {"ts": "2026-10-09T09:50:00Z", "text": "Dolphins at the bridge"}]
+def test_the_post_shows_photos_in_the_order_they_were_taken():
+    media = [{"url": "sunset.jpg", "image_type": "user_upload", "path": "/u/sunset.jpg",
+              "caption": "", "taken_at": "2026-10-09 10:45:00"},
+             {"url": "kite.jpg", "image_type": "user_upload", "path": "/u/kite.jpg",
+              "caption": "", "taken_at": "2026-10-09 09:20:00"}]
     ctx = PostContext({"start_time": "2026-10-09 09:00:00", "end_time": "2026-10-09 11:00:00"},
-                      media=media, draft={"notes": notes})
+                      media=media)
 
     above = render(LAYOUT_SHIP_LOG, ctx).split("<!--more-->")[0]
-    order = [above.index(s) for s in ("Left the mooring", "kite.jpg",
-                                      "Dolphins at the bridge", "sunset.jpg")]
-    assert order == sorted(order)
+
+    assert above.index("kite.jpg") < above.index("sunset.jpg")
+
+
+# === Notes, removed from the page (2026-10-10) ===
+
+def test_the_page_takes_no_notes(client, rid):
+    page = client.get("/log/").get_data(as_text=True)
+    assert "note-button" not in page and 'id="notes"' not in page
+    assert client.post(f"/log/api/notes/{rid}", json={"text": "x"}).status_code in (404, 405)
+
+
+def test_notes_already_stored_stay_out_of_the_post(client, db, rid):
+    """The column stays, from when the page took notes; what is in it is not shown."""
+    import sqlite3
+    service_db = db
+    service_db.save_draft_fields(rid, {"blocks": LAYOUT_SHIP_LOG}, {"story": "Out and back"})
+    conn = sqlite3.connect(str(db.db_path))
+    conn.execute("""UPDATE post_drafts SET notes = '[{"ts": "2026-10-09T09:05:00Z", "text": "Old note"}]'
+                    WHERE recording_id = ?""", (rid,))
+    conn.commit()
+    conn.close()
+
+    assert "Old note" not in client.get(f"/log/preview?id={rid}").get_data(as_text=True)
+    assert "notes" not in client.get(f"/log/api/state?id={rid}").get_json()["draft"]
 
 
 if __name__ == "__main__":

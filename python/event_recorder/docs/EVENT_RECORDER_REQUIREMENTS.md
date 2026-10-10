@@ -1110,7 +1110,11 @@ most likely to be, without asking
 
 **Priority:** Must Have
 **Status:** ✅ Implemented (2026-10-09). `photos.py`, `event_page.py`, `web_ui/log/`;
-tests `tests/test_photos_notes.py`
+tests `tests/test_photos.py`. **Notes removed 2026-10-10**, at the owner's decision after
+testing: useful, but not enough to justify the clutter on the page. The Note button, the
+note line, the Notes section, the `log/api/notes` route, placing a note on the track,
+and notes in the post are gone; `post_drafts.notes` remains as a column, unread. Photos
+are unchanged. The notes on notes below are kept as the record of what was built.
 
 **Implementation Notes:**
 

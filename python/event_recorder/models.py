@@ -1044,48 +1044,6 @@ class Database:
                 LIMIT 1
             """, (recording_id, topic, fragment)).fetchone() is not None
 
-    def position_near(self, recording_id: int, when: datetime,
-                      window: timedelta) -> Optional[Tuple[float, float]]:
-        """
-        The recorded (lat, lon) nearest `when` (naive UTC), if a fix lies
-        within `window` of it (FR-29, placing a note on the track).
-
-        gps/position/0 first: lat and lon from one fix. The separate
-        latitude and longitude topics are the fallback, as everywhere else.
-        """
-        stamp = when.strftime('%Y-%m-%d %H:%M:%S.%f')
-
-        def nearest(conn, topic):
-            best = None
-            for comparison, order in (('<=', 'DESC'), ('>=', 'ASC')):
-                row = conn.execute(
-                    f"""SELECT timestamp, payload FROM recording_data
-                        WHERE recording_id = ? AND topic = ? AND timestamp {comparison} ?
-                        ORDER BY timestamp {order} LIMIT 1""",
-                    (recording_id, topic, stamp)).fetchone()
-                if row is None:
-                    continue
-                at = datetime.fromisoformat(str(row['timestamp']))
-                gap = abs(at - when)
-                if gap <= window and (best is None or gap < best[0]):
-                    best = (gap, row['payload'])
-            return best[1] if best else None
-
-        with self.get_connection() as conn:
-            payload = nearest(conn, 'gps/position/0')
-            if payload:
-                try:
-                    fix = json.loads(payload)
-                    return float(fix['lat']), float(fix['lon'])
-                except (ValueError, KeyError, TypeError):
-                    pass
-            lat = nearest(conn, 'gps/latitude/0')
-            lon = nearest(conn, 'gps/longitude/0')
-            try:
-                return (float(lat), float(lon)) if lat and lon else None
-            except ValueError:
-                return None
-
     def delete_image(self, image_id: int):
         """
         Delete image record.
@@ -1266,9 +1224,10 @@ class Database:
                     updated_at = excluded.updated_at
             """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
 
-    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks', 'notes',
+    # `notes` is still a column, from when the page took notes (FR-29); no longer a field
+    DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks',
                     'time_line')
-    DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks', 'notes')
+    DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks')
 
     def get_draft(self, recording_id: int) -> Optional[Dict]:
         """The stored draft (FR-24), lists decoded, or None if never saved."""
@@ -1289,19 +1248,6 @@ class Database:
                 "SELECT recording_id FROM post_drafts WHERE blocks IS NOT NULL")]
         return [self.get_draft(rid) for rid in ids]
 
-    def append_draft_note(self, recording_id: int, start: Dict, note: Dict) -> int:
-        """
-        Add a note to the draft (FR-29). The notes are read and written in one
-        transaction, so two devices adding notes at the same moment both keep
-        theirs, which saving the whole list from each would not.
-        """
-        def add(stored):
-            notes = list(stored.get('notes') or [])
-            notes.append(note)
-            notes.sort(key=lambda n: n.get('ts') or '')
-            return {'notes': notes}
-        return self.save_draft_fields(recording_id, start, add)
-
     def save_draft_fields(self, recording_id: int, start: Dict, changes: Dict) -> int:
         """
         Change some fields of a draft, whoever else has changed others (FR-27).
@@ -1316,7 +1262,7 @@ class Database:
             start: The whole draft to begin from if none is stored yet
             changes: {field: value}, draft fields only; or a function given
                 the stored draft's fields that returns them, for a change
-                that depends on what is stored (append_draft_note)
+                that depends on what is stored
 
         Returns:
             The draft's new revision

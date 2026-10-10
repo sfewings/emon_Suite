@@ -37,16 +37,6 @@
   <div id="capture" class="capture">
     <label class="button big" for="photo-input">&#128247; Photo</label>
     <input id="photo-input" class="offscreen" type="file" accept="image/*" multiple>
-    <button id="note-button" class="button big" type="button">&#9998; Note</button>
-  </div>
-  <div id="note-entry" class="field" hidden>
-    <input id="note-text" type="text" maxlength="500" autocomplete="off"
-           placeholder="Dolphins at the bridge" aria-label="Note">
-    <span id="note-at" class="hint"></span>
-    <div>
-      <button id="note-save" class="button" type="button">Add note</button>
-      <button id="note-cancel" class="link" type="button">Cancel</button>
-    </div>
   </div>
   <p id="capture-status" class="hint"></p>
 
@@ -111,11 +101,6 @@
               placeholder="A blank line starts a new paragraph"></textarea>
     <span class="other" data-other="story"></span>
   </label>
-
-  <div class="field">
-    <span class="label">Notes <span class="saved" data-saved="notes"></span></span>
-    <div id="notes"></div>
-  </div>
 
   <div class="field">
     <span class="label">Photos <span class="saved" data-saved="photos"></span></span>

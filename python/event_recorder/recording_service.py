@@ -17,7 +17,7 @@ import logging
 import shutil
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -639,7 +639,6 @@ class RecordingService:
                 'story': '',
                 'wind': '',
                 'time_line': '',
-                'notes': [],
                 'blocks': self.default_blocks(),
                 'revision': 0,
                 'stored': False,
@@ -784,7 +783,6 @@ class RecordingService:
     # === Photos and notes (FR-29) ===
 
     PHOTO_TYPES = {'jpg', 'jpeg', 'png', 'gif', 'heic', 'heif'}
-    NOTE_LENGTH = 500
 
     def _refuse_if_owned(self, recording_id: int) -> Dict:
         recording = self._get(recording_id)
@@ -834,46 +832,6 @@ class RecordingService:
         image = self._photo(image_id)
         photos.remove(Path(image['image_path']))
         self.database.delete_image(image_id)
-
-    def add_note(self, recording_id: int, text: str, ts: Optional[str] = None) -> Dict:
-        """
-        Add a one-line note (FR-29). `ts` is when the crew opened the note
-        field, as the phone saw it (ISO 8601): the moment it is about, not
-        the moment typing finished. Placed on the recorded track at that time.
-        """
-        self._refuse_if_owned(recording_id)
-        text = (text or '').strip()
-        if not text:
-            raise RecordingError('A note needs some words', 400)
-        if len(text) > self.NOTE_LENGTH:
-            raise RecordingError(f'A note is one line: {self.NOTE_LENGTH} characters at most', 400)
-
-        when = self._parse_utc(ts) or datetime.utcnow()
-        position = self.position_at(recording_id, when)
-        note = {'ts': when.strftime('%Y-%m-%dT%H:%M:%SZ'), 'text': text,
-                'lat': position[0] if position else None,
-                'lon': position[1] if position else None}
-        self.database.append_draft_note(recording_id, self.get_draft(recording_id), note)
-        return note
-
-    @staticmethod
-    def _parse_utc(text: Optional[str]) -> Optional[datetime]:
-        if not text:
-            return None
-        try:
-            stamp = datetime.fromisoformat(str(text).replace('Z', '+00:00'))
-        except ValueError:
-            return None
-        if stamp.tzinfo:
-            stamp = stamp.astimezone(timezone.utc).replace(tzinfo=None)
-        return stamp
-
-    # How far from a fix a note can be and still be placed at it
-    NOTE_FIX_WINDOW = timedelta(minutes=2)
-
-    def position_at(self, recording_id: int, when: datetime) -> Optional[tuple]:
-        """The recorded position nearest `when` (UTC), within two minutes, or None."""
-        return self.database.position_near(recording_id, when, self.NOTE_FIX_WINDOW)
 
     # enchantee.org's categories as surveyed on 2026-10-09, for the event page
     # until FR-30 fetches the live list; offered in this order

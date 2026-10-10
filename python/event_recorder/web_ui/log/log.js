@@ -183,7 +183,6 @@
         showCrew();
         showCategories();
         showPhotos();
-        showNotes();
         showTrack();
         $('capture').hidden = locked();
     }
@@ -307,31 +306,6 @@
                             points: track.map(function (p) { return x(p) + ',' + y(p); }).join(' ') });
         shape('circle', { 'class': 'start', r: 5, cx: x(first), cy: y(first) });
         shape('circle', { 'class': 'now', r: 6, cx: x(last), cy: y(last) });
-    }
-
-    function noteTime(ts) {
-        var d = new Date(ts);
-        if (isNaN(d.getTime())) return '';
-        var m = d.getMinutes();
-        return d.getHours() + ':' + (m < 10 ? '0' : '') + m;
-    }
-
-    function showNotes() {
-        // Not while one is being edited here: the poll would replace the text under
-        // the crew's fingers
-        if ($('notes').contains(document.activeElement)) return;
-        var notes = state.draft.notes || [];
-        var html = '';
-        for (var i = 0; i < notes.length; i++) {
-            html += '<div class="note" data-index="' + i + '">' +
-                '<span class="when">' + noteTime(notes[i].ts) + '</span>' +
-                '<input type="text" value="' + escapeHtml(notes[i].text) + '"' +
-                (locked() ? ' disabled' : '') + ' aria-label="Note">' +
-                (locked() ? '' : '<button type="button" class="link" data-act="story">Move into story</button>' +
-                 '<button type="button" class="link" data-act="remove">Remove</button>') +
-                '</div>';
-        }
-        $('notes').innerHTML = html || '<span class="hint">None yet</span>';
     }
 
     function showActions() {
@@ -561,7 +535,7 @@
         });
     }
 
-    // === Photos and notes (FR-29) ===
+    // === Photos (FR-29) ===
 
     function status(text) { $('capture-status').textContent = text; }
 
@@ -630,83 +604,6 @@
                     $('photo-edit').hidden = true;
                     refresh();
                 });
-        });
-    }
-
-    function bindNotes() {
-        var openedAt = null;
-        var entry = $('note-entry');
-        var text = $('note-text');
-
-        $('note-button').addEventListener('click', function () {
-            // The moment the note is about is now, when it was thought of, not when
-            // the typing is finished
-            openedAt = new Date();
-            $('note-at').textContent = 'at ' + noteTime(openedAt.toISOString());
-            entry.hidden = false;
-            text.focus();
-        });
-        function close() {
-            entry.hidden = true;
-            text.value = '';
-            openedAt = null;
-        }
-        function add() {
-            if (!text.value.trim()) return close();
-            $('note-save').disabled = true;
-            api('api/notes/' + recordingId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text.value, ts: openedAt.toISOString() })
-            }).then(function (body) {
-                $('note-save').disabled = false;
-                if (!body.success) {
-                    status('Not added: ' + body.error);
-                    return;
-                }
-                close();
-                status('Note added');
-                refresh();
-            }).catch(function () {
-                $('note-save').disabled = false;
-                status('Not added: no connection. The note is still there to try again.');
-            });
-        }
-        $('note-save').addEventListener('click', add);
-        $('note-cancel').addEventListener('click', close);
-        text.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                add();
-            }
-        });
-
-        // Changing, removing or moving a note saves the notes field as a whole
-        function saveNotes(notes) {
-            state.draft.notes = notes;
-            return save('notes', notes);
-        }
-        $('notes').addEventListener('change', function (e) {
-            var row = e.target.closest ? e.target.closest('.note') : null;
-            if (!row) return;
-            var notes = (state.draft.notes || []).slice();
-            var i = parseInt(row.getAttribute('data-index'), 10);
-            notes[i] = Object.assign({}, notes[i], { text: e.target.value });
-            saveNotes(notes);
-        });
-        $('notes').addEventListener('click', function (e) {
-            var act = e.target.getAttribute('data-act');
-            var row = e.target.closest ? e.target.closest('.note') : null;
-            if (!act || !row) return;
-            var notes = (state.draft.notes || []).slice();
-            var i = parseInt(row.getAttribute('data-index'), 10);
-            var note = notes.splice(i, 1)[0];
-            if (act === 'story') {
-                var story = $('story');
-                story.value = story.value.replace(/\s+$/, '') + (story.value.trim() ? '\n\n' : '') + note.text;
-                save('story');
-            }
-            saveNotes(notes).then(function () { showNotes(); });
         });
     }
 
@@ -821,7 +718,6 @@
     bindCrew();
     bindCategories();
     bindPhotos();
-    bindNotes();
     bindPublish();
     bindSwitcher();
     bindAdmin();

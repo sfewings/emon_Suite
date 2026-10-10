@@ -76,7 +76,7 @@ def create_event_page(web) -> Blueprint:
         except Exception as e:
             return failed('save', e)
 
-    # === Photos and notes (FR-29) ===
+    # === Photos (FR-29) ===
 
     @page.route('/api/photos/<int:recording_id>', methods=['POST'])
     def add_photo(recording_id):
@@ -111,19 +111,6 @@ def create_event_page(web) -> Blueprint:
             return refused(e)
         except Exception as e:
             return failed('remove photo', e)
-
-    @page.route('/api/notes/<int:recording_id>', methods=['POST'])
-    def add_note(recording_id):
-        """Body: {"text": ..., "ts": ISO time the note field was opened}. Notes are
-        changed and removed through the draft's `notes` field."""
-        try:
-            data = request.get_json(silent=True) or {}
-            note = service.add_note(recording_id, data.get('text', ''), data.get('ts'))
-            return jsonify({'success': True, 'note': note})
-        except RecordingError as e:
-            return refused(e)
-        except Exception as e:
-            return failed('note', e)
 
     @page.route('/api/publish/<int:recording_id>', methods=['POST'])
     def publish(recording_id):

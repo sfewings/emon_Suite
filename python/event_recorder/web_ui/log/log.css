@@ -161,9 +161,6 @@ input:disabled, textarea:disabled { background: #ece8e2; color: #666; }
 .capture .big:last-child { margin-right: 0; }
 .offscreen { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 
-.note { margin-bottom: 12px; }
-.note .when { display: block; font-size: 14px; color: #555; }
-.note .link { margin-right: 16px; }
 
 .photos figure { margin: 0; cursor: pointer; }
 .photo-edit { margin-top: 12px; }
