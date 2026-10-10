@@ -83,6 +83,15 @@
     <span class="other" data-other="wind"></span>
   </div>
 
+  <!-- FR-31: the track so far, kept up to date while recording. A width and a height
+       as well as the viewBox: iOS 12 sizes an SVG with only a viewBox at 300 px wide
+       (racing CLAUDE.md). -->
+  <div class="field" id="track-field" hidden>
+    <span class="label">Track <span id="track-numbers" class="numbers"></span></span>
+    <svg id="track" width="100%" height="220" viewBox="0 0 400 220"
+         preserveAspectRatio="xMidYMid meet" aria-label="The track so far"></svg>
+  </div>
+
   <label class="field">
     <span class="label">Short description <span class="saved" data-saved="excerpt"></span></span>
     <input id="excerpt" data-field="excerpt" type="text" autocomplete="off">

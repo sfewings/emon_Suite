@@ -93,8 +93,10 @@
     function showHeader() {
         var rec = state.recording;
         var text;
+        var live = state.live || {};
         if (rec.status === 'active') {
-            text = '<span class="rec">&#9679; REC</span> ' + clock(state.elapsed_seconds);
+            text = '<span class="rec">&#9679; REC</span> ' + clock(state.elapsed_seconds) +
+                (live.distance_nm ? ' &middot; ' + live.distance_nm.toFixed(1) + ' nm' : '');
         } else if (rec.stage === 'published') {
             text = 'Published';
         } else if (rec.stage === 'publishing') {
@@ -154,6 +156,7 @@
         showCategories();
         showPhotos();
         showNotes();
+        showTrack();
         $('capture').hidden = locked();
     }
 
@@ -232,6 +235,50 @@
                  '</span>' : '') + '</figure>';
         }
         $('photos').innerHTML = html || '<span class="hint">None yet</span>';
+    }
+
+    // FR-31: the track so far, drawn flat. At the boat's latitude a degree of
+    // longitude is shorter than one of latitude, so it is scaled by cos(latitude)
+    // or the river comes out half again as wide as it is.
+    function showTrack() {
+        var live = state.live || {};
+        var track = live.track || [];
+        $('track-field').hidden = track.length < 2;
+        if (track.length < 2) return;
+
+        var numbers = [live.distance_nm.toFixed(1) + ' nm'];
+        if (live.max_sog != null) numbers.push('top ' + live.max_sog.toFixed(1) + ' kt');
+        $('track-numbers').textContent = numbers.join(' · ');
+
+        var south = 90, north = -90, west = 180, east = -180;
+        for (var i = 0; i < track.length; i++) {
+            south = Math.min(south, track[i][0]); north = Math.max(north, track[i][0]);
+            west = Math.min(west, track[i][1]); east = Math.max(east, track[i][1]);
+        }
+        var squeeze = Math.cos((north + south) / 2 * Math.PI / 180);
+        var width = Math.max((east - west) * squeeze, 1e-6);
+        var height = Math.max(north - south, 1e-6);
+        var pad = 12, boxW = 400 - 2 * pad, boxH = 220 - 2 * pad;
+        var scale = Math.min(boxW / width, boxH / height);
+        var offX = pad + (boxW - width * scale) / 2, offY = pad + (boxH - height * scale) / 2;
+
+        function x(p) { return (offX + (p[1] - west) * squeeze * scale).toFixed(1); }
+        function y(p) { return (offY + (north - p[0]) * scale).toFixed(1); }
+
+        // Built with createElementNS rather than innerHTML, which older Safari does
+        // not honour on SVG elements
+        var svg = $('track');
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        function shape(name, attrs) {
+            var el = document.createElementNS('http://www.w3.org/2000/svg', name);
+            for (var key in attrs) el.setAttribute(key, attrs[key]);
+            svg.appendChild(el);
+        }
+        var first = track[0], last = track[track.length - 1];
+        shape('polyline', { 'class': 'line',
+                            points: track.map(function (p) { return x(p) + ',' + y(p); }).join(' ') });
+        shape('circle', { 'class': 'start', r: 5, cx: x(first), cy: y(first) });
+        shape('circle', { 'class': 'now', r: 6, cx: x(last), cy: y(last) });
     }
 
     function noteTime(ts) {

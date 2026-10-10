@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from . import photos, post_renderer, post_suggestions
+from .live_summary import LiveSummaries
 from .models import Artefacts, Database, ImageType, PostState, RecordingStatus
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,9 @@ class RecordingService:
         self.post_config = post_config
         self._suggestion_cache = {}
         self._computed_cache = {}
+        # Distance, top speed and the track so far, kept up to date cheaply
+        # while a recording runs (FR-31)
+        self.live = LiveSummaries(database)
 
         # Recordings started by this process. Only these can have been written
         # on a clock that has since been corrected (main._check_for_clock_step).
@@ -153,7 +157,10 @@ class RecordingService:
     def resume(self, recording_id: int, topics: List[str]):
         """Record an active recording's topics again, after a restart."""
         if self.data_recorder:
-            self.data_recorder.start_recording(recording_id, topics)
+            # Counted once, here, so the status can go on from the right number
+            self.data_recorder.start_recording(
+                recording_id, topics,
+                initial_count=self.database.get_recording_data_count(recording_id))
         logger.info(f"Resumed recording {recording_id}")
 
     def stop_all(self):
@@ -246,6 +253,7 @@ class RecordingService:
                 shutil.rmtree(files_dir)
 
         self.database.delete_recording(recording_id)
+        self.live.forget(recording_id)
 
     # === Publishing ===
 
@@ -941,6 +949,8 @@ class RecordingService:
                 'start_time', 'end_time', 'event_key', 'wordpress_url')},
             'elapsed_seconds': int((self._started_end(timing) - self._started(recording))
                                    .total_seconds()),
+            # Distance, top speed and the track so far (FR-31)
+            'live': self.live.summary(rid),
             'time_line': post_renderer.log_time_line(timing),
             'draft': draft,
             'photos': photo_list,
@@ -972,6 +982,10 @@ class RecordingService:
         """
         recording = self._get(recording_id)
         inputs = self._gather(recording_id)
+        if inputs['statistics'] is None:
+            # Not processed yet, perhaps still recording: what the live
+            # summary knows, so the preview has numbers (FR-31)
+            inputs['statistics'] = self._live_statistics(recording)
         draft = self.get_draft(recording_id)
         if layout:
             if layout not in post_renderer.LAYOUTS:
@@ -989,6 +1003,21 @@ class RecordingService:
                                         map_htmls=inputs['map_htmls'],
                                         downloads=downloads, draft=draft)
         return post_renderer.render(blocks, ctx)
+
+    def _live_statistics(self, recording: Dict) -> Optional[Dict]:
+        live = self.live.summary(recording['id'])
+        if not live['track']:
+            return None
+        timing = dict(recording)
+        if recording['status'] == RecordingStatus.ACTIVE:
+            timing['end_time'] = datetime.utcnow()
+        stats = {'duration': post_renderer.format_duration(timing.get('start_time'),
+                                                           timing.get('end_time')),
+                 # km, as the processed statistics have it; shown as nm
+                 'distance_km': live['distance_nm'] * 1.852}
+        if live['max_sog'] is not None:
+            stats['max_speed'] = live['max_sog']
+        return stats
 
     # === Helpers ===
 

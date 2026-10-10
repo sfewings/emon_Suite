@@ -447,8 +447,12 @@ class EventRecorderService:
             minutes, seconds = divmod(remainder, 60)
             duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-            message_count = self.database.get_recording_data_count(recording_id)
+            # From the recorder's own count, not COUNT(*) over the recording's
+            # rows every second, which competed with the writer: "database is
+            # locked", and a stop that took 23 s on the dev rig (FR-31)
+            message_count = self.data_recorder.message_count(recording_id)
             photo_count = self.database.get_recording_photo_count(recording_id)
+            live = self.recordings.live.summary(recording_id)
 
             payload = {
                 'recording_id': recording_id,
@@ -457,6 +461,8 @@ class EventRecorderService:
                 'duration_seconds': duration_seconds,
                 'message_count': message_count,
                 'photo_count': photo_count,
+                'distance_nm': live['distance_nm'],
+                'max_sog': live['max_sog'],
                 'start_time': str(recording.get('start_time', '')),
                 'status': 'active',
             }

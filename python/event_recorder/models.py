@@ -940,6 +940,30 @@ class Database:
                 LIMIT 1
             """, (recording_id, topic, south, north, west, east)).fetchone() is not None
 
+    def positions_since(self, recording_id: int, topic: str,
+                        after: Optional[datetime]) -> List[Tuple[datetime, float, float]]:
+        """(timestamp, lat, lon) of fixes after `after` (or all), oldest first (FR-31)."""
+        stamp = after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT timestamp, json_extract(payload, '$.lat'), json_extract(payload, '$.lon')
+                FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND timestamp > ? AND json_valid(payload)
+                ORDER BY timestamp
+            """, (recording_id, topic, stamp)).fetchall()
+        return [(datetime.fromisoformat(str(t)), float(lat), float(lon))
+                for t, lat, lon in rows if lat is not None and lon is not None]
+
+    def max_value_since(self, recording_id: int, topic: str,
+                        after: Optional[datetime]) -> Optional[float]:
+        """The largest bare number on a topic after `after` (or ever) (FR-31)."""
+        stamp = after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT MAX(CAST(payload AS REAL)) FROM recording_data
+                WHERE recording_id = ? AND topic = ? AND timestamp > ?
+            """, (recording_id, topic, stamp)).fetchone()[0]
+
     def numeric_series(self, recording_id: int, topic: str) -> List[Tuple[datetime, float]]:
         """(timestamp, value) for a topic carrying bare numbers, oldest first (FR-26)."""
         with self.get_connection() as conn:

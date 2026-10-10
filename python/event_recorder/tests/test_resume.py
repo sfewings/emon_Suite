@@ -36,7 +36,7 @@ class FakeRecorder:
     def __init__(self):
         self.recording, self.stopped = {}, []
 
-    def start_recording(self, recording_id, topics):
+    def start_recording(self, recording_id, topics, initial_count=0):
         self.recording[recording_id] = topics
 
     def stop_recording(self, recording_id):

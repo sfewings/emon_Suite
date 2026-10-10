@@ -57,6 +57,12 @@ input[type="text"], textarea, select {
 textarea { resize: vertical; min-height: 9em; }
 input:disabled, textarea:disabled { background: #ece8e2; color: #666; }
 
+#track { display: block; background: #fff; border: 1px solid #b9b2a8; border-radius: 8px; }
+#track .line { fill: none; stroke: #7a1a1a; stroke-width: 2.5; stroke-linejoin: round; }
+#track .start { fill: #2e7d32; }
+#track .now { fill: #e53935; }
+.numbers { font-weight: normal; color: #555; margin-left: 6px; }
+
 .source { display: block; font-size: 14px; color: #555; margin-top: 4px; }
 .source:empty { display: none; }
 

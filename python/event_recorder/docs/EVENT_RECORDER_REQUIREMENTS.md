@@ -89,7 +89,7 @@ The editor:
 - [x] **FR-28:** Which recording the event page opens
 - [x] **FR-29:** Photo and note capture
 - [x] **FR-30:** Categories and crew from the site, offered not typed
-- [ ] **FR-31:** Live while recording
+- [x] **FR-31:** Live while recording
 
 ---
 
@@ -1186,7 +1186,33 @@ ticked; crew names are offered from those used before
 ### FR-31: Live While Recording
 
 **Priority:** Could Have
-**Status:** 📋 Specified (2026-10-09)
+**Status:** ✅ Implemented (2026-10-10), with one difference noted below.
+`live_summary.py`; tests `tests/test_live.py`
+
+**Implementation Notes:**
+
+- **The summary is incremental.** `LiveSummaries` keeps, per recording, the distance,
+  top speed and a thinned track (a point every 20 m or 60 s, ending always at the latest
+  fix), and each refresh reads only the fixes since the last one, at most every 10 s.
+  Steps implying more than 30 kt are GPS jumps and left out of the distance. On a
+  replayed Frostbite race: 8.1 nm, top 6.4 kt, 776 track points, ending 15 m from the
+  configured mooring.
+- **The status no longer counts rows.** The data recorder counts each recording's
+  messages as they arrive (seeded with one count when a recording is resumed), and the
+  once-a-second status reads that. The `COUNT(*)` over `recording_data` it replaced is
+  what caused "database is locked" and a 23 s stop on the first dev-rig replay; none
+  since. The status also carries `distance_nm` and `max_sog`.
+- **On the event page:** the header reads "● REC 1:23 · 4.2 nm", and a Track section
+  draws the track so far, scaled by the cosine of the latitude so the river is not
+  stretched, green at the start and red where the boat is now. The SVG is built with
+  `createElementNS` and given a width and height, for iOS 12.
+- **In the preview:** a recording not yet processed has statistics from the summary
+  (duration, distance, top speed), shown in nm and knots like the processed ones.
+- **Difference from the specification:** the track is drawn on a plain background, not
+  over the racing app's offline chart. Reusing `geo.js` would tie the event page to the
+  racing app's static files, which are reachable from `/race/log/` but not from
+  `/events/log/` or the recorder's own port. The processed route map still draws the
+  chart.
 **Description:** The draft and its preview are useful while the recording is still running
 
 **Acceptance Criteria:**
@@ -1966,7 +1992,7 @@ Suggested order, each step useful without the next:
 - [x] Step 1: foundations (2026-10-09), plus the dev rig, `dev/README.md`
 - [x] Step 2: draft and renderer (2026-10-09), ship's log the default
 - [x] Step 3: event page and Log link (2026-10-09)
-- [ ] Step 4: computed lines and live mode
+- [x] Step 4: computed lines and live mode (2026-10-10)
 
 ---
 
