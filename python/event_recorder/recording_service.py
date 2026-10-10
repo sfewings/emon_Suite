@@ -678,18 +678,35 @@ class RecordingService:
         The time and wind lines as the recording has them (FR-26): "5:30-8:20"
         and "NNE 12-14 kts". While recording, the time runs to now.
         """
-        key = recording['id']
+        def work():
+            timing = dict(recording)
+            if recording['status'] == RecordingStatus.ACTIVE:
+                timing['end_time'] = datetime.utcnow()
+            return {'time_line': post_renderer.log_time_line(timing),
+                    'wind': post_suggestions.wind_line(self.database, recording['id'])}
+        return dict(self._cached(self._computed_cache, recording, self.COMPUTED_SECONDS, work))
+
+    def _cached(self, cache: Dict, recording: Dict, seconds: float, work):
+        """
+        `work()`'s answer for a recording, from `cache` while it still holds.
+
+        While recording, an answer holds for `seconds`: the data is still
+        arriving. Once stopped, the data cannot change, so the answer holds for
+        as long as the recording is the same, its status, start and end: it is
+        worked out again if the recording is resumed, when it stops and its end
+        moves, or if the clock-step repair moves its times. Before this a
+        finished recording was worked out afresh every minute the page was open.
+        """
+        identity = (recording['status'], str(recording.get('start_time')),
+                    str(recording.get('end_time')))
         now = time.monotonic()
-        cached = self._computed_cache.get(key)
-        if cached and now - cached[0] < self.COMPUTED_SECONDS:
-            return dict(cached[1])
-        timing = dict(recording)
-        if recording['status'] == RecordingStatus.ACTIVE:
-            timing['end_time'] = datetime.utcnow()
-        lines = {'time_line': post_renderer.log_time_line(timing),
-                 'wind': post_suggestions.wind_line(self.database, key)}
-        self._computed_cache[key] = (now, lines)
-        return dict(lines)
+        cached = cache.get(recording['id'])
+        if cached and cached[1] == identity:
+            if recording['status'] != RecordingStatus.ACTIVE or now - cached[0] < seconds:
+                return cached[2]
+        answer = work()
+        cache[recording['id']] = (now, identity, answer)
+        return answer
 
     def written_description(self, recording: Dict) -> str:
         """
@@ -892,14 +909,9 @@ class RecordingService:
         rules = (self.post_config() or {}).get('categories') if self.post_config else None
         if not rules:
             return ['Track Logs']
-        key = recording['id']
-        now = time.monotonic()
-        cached = self._suggestion_cache.get(key)
-        if cached and now - cached[0] < self.SUGGESTION_SECONDS:
-            return list(cached[1])
-        names = post_suggestions.suggest_categories(rules, recording, self.database)
-        self._suggestion_cache[key] = (now, names)
-        return list(names)
+        return list(self._cached(
+            self._suggestion_cache, recording, self.SUGGESTION_SECONDS,
+            lambda: post_suggestions.suggest_categories(rules, recording, self.database)))
 
     def refresh_from_site(self) -> bool:
         """

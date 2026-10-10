@@ -31,7 +31,11 @@ services:
       - ..:/app/event_recorder
       - ./config/event_recorder_config.yml:/config/event_recorder_config.yml:ro
       - ../../../provisioning/enchantee/config/events:/config/events:ro
-      - ./data:/data
+      # A volume on Docker's own disk, not a Windows folder: SQLite reading
+      # through Docker Desktop's folder sharing made a cold Log page take ten
+      # seconds that take 0.3 here, and the Pi keeps its database on its own
+      # disk too. Look inside with docker exec, or docker cp a file out.
+      - recorder_data:/data
     environment:
       - TZ=Australia/Perth
       # From dev/.env, written by wordpress-setup.sh. Empty without it, which
@@ -113,5 +117,6 @@ services:
       - wordpress_html:/var/www/html
 
 volumes:
+  recorder_data:
   wordpress_db:
   wordpress_html:

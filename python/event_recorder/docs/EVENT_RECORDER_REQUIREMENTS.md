@@ -929,6 +929,21 @@ localhost:8000. Not yet tried on the boat's iPad or a phone
   them selects all of it, so typing replaces it. A field the crew have saved has a
   revision and is left alone. The selection is made just after focus, and the focusing
   tap's mouseup is cancelled, because iOS Safari otherwise places the caret over it.
+- **Speed (2026-10-10).** A cold Log page took ten seconds on the dev rig and adding a
+  note seven. Measured: every read of one topic of one recording (the wind line, the live
+  track, a note's position, the category rules) walked all of the recording's rows, the
+  table being indexed on recording alone, and sorted what it kept; and a finished
+  recording's wind line and categories were worked out again every minute. Now:
+  - `recording_data` is indexed on `(recording_id, topic, timestamp)`, built once by
+    migration, which also drops the recording-only index it makes redundant. The wind
+    query went from 0.18 s to 0.02 s on a container's own disk.
+  - A finished recording's computed lines and suggested categories are kept for as long
+    as its status, start and end are unchanged; an active one still refreshes each
+    minute. `tests/test_speed.py` pins the index, the query plans and the caching.
+  - The dev rig's data moved from a Windows folder shared into Docker to a Docker volume:
+    that sharing made SQLite about twenty times slower, and it is not how the Pi has it.
+  - Result on the rig: a cold Log page 0.25 s (was 11.5), warm 0.02 to 0.04 s, adding a
+    note 0.3 s (was about 7).
 - **After the second round of testing (2026-10-10):**
   - **One title and one description.** The post's title is the recording's name and its
     short description the recording's description, read and written as one wherever

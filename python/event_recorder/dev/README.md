@@ -9,7 +9,7 @@ replayed sail instead of the boat. Nothing here touches the Pi or enchantee.org.
 | Broker | the racing app's replay broker, `enchantee_replay_mqtt`, on 1883 |
 | Event triggers | the boat's own, `provisioning/enchantee/config/events/`, mounted read-only |
 | Service config | `dev/config/event_recorder_config.yml`: host broker, no WordPress credentials |
-| Data | `dev/data/` (git-ignored): the database, plots and uploads |
+| Data | the `dev_recorder_data` Docker volume: the database, plots and uploads. On Docker's own disk, not a Windows folder, which made SQLite twenty times slower and a cold Log page ten seconds. `docker exec event_recorder_dev ls /data` to look, `docker cp` to take a file out |
 | A sail | `replay.py` publishing a recorded day into the broker |
 
 Commands below are from `python/event_recorder/` in Git Bash unless they say otherwise.
@@ -114,6 +114,7 @@ MSYS_NO_PATHCONV=1 docker exec -e TZ=UTC -w /app event_recorder_dev \
                      event_recorder/tests/test_resume.py \
                      event_recorder/tests/test_log_lines.py \
                      event_recorder/tests/test_live.py \
+                     event_recorder/tests/test_speed.py \
                      event_recorder/tests/test_chart_map.py \
                      event_recorder/tests/test_gps_position.py
 ```
@@ -134,9 +135,12 @@ per request, so a browser reload is enough.
 ## Start again from nothing
 
 ```bash
-docker compose -f dev/docker-compose.yml down
-rm dev/data/recordings.db*      # the database only; plots/ and uploads/ are beside it
+docker compose -f dev/docker-compose.yml stop recorder
+docker volume rm dev_recorder_data      # the recordings, plots, photos and chart cache
+docker compose -f dev/docker-compose.yml up -d recorder
 ```
+
+The WordPress blog has volumes of its own and is not touched by this.
 
 ## Stop
 

@@ -262,6 +262,7 @@ class Database:
             self._split_status(conn)
             self._add_event_key(conn)
             self._unify_title_and_description(conn)
+            self._index_by_topic(conn)
 
             # Rows left behind by deletes made before foreign keys were
             # enforced. Done once: it scans recording_data, which is the bulk
@@ -407,6 +408,37 @@ class Database:
                          WHERE status = 'failed'
                            AND COALESCE(error_message, '') NOT LIKE 'No data recorded%'""")
 
+    TOPIC_INDEX_SQL = """
+        CREATE INDEX IF NOT EXISTS idx_recording_data_recording_topic_time
+        ON recording_data(recording_id, topic, timestamp)
+    """
+
+    def _index_by_topic(self, conn):
+        """
+        Index recording_data by recording, topic and time together.
+
+        The wind line, the live track, a note's position and the category
+        rules all ask for one topic of one recording, often in time order.
+        Indexed on recording alone, each read every row of the recording,
+        150,000 for a race, to keep a few thousand, and sorted them: seconds
+        a query on the Pi, and a ten-second Log page on the dev rig. With
+        this it reads only the rows it wants.
+
+        The recording-only index is dropped: this one starts with
+        recording_id, so it serves those lookups (and the cascade on delete)
+        as well, and a second index would only slow recording down. Built
+        once, on the first start after this change; on a full database that
+        start takes a little longer.
+        """
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='idx_recording_data_recording_topic_time'").fetchone()
+        if not exists:
+            logger.info("Migrating: indexing recording_data by recording, topic and time "
+                        "(once; may take a while on a large database)")
+            conn.execute(self.TOPIC_INDEX_SQL)
+        conn.execute("DROP INDEX IF EXISTS idx_recording_data_recording_id")
+
     def _unify_title_and_description(self, conn):
         """
         Once: a title or short description typed into a draft before they
@@ -537,11 +569,9 @@ class Database:
                 )
             """)
 
-            # Indexes for performance
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_recording_data_recording_id
-                ON recording_data(recording_id)
-            """)
+            # Indexes for performance. One topic of one recording, in time
+            # order, is what nearly every read asks for; see _index_by_topic
+            conn.execute(self.TOPIC_INDEX_SQL)
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_recording_data_timestamp
                 ON recording_data(timestamp)
@@ -611,6 +641,7 @@ class Database:
             self._split_status(conn)
             self._add_event_key(conn)
             self._unify_title_and_description(conn)
+            self._index_by_topic(conn)
 
             logger.info("Database schema created successfully")
 
