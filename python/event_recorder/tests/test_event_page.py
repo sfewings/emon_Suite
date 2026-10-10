@@ -230,6 +230,83 @@ def test_the_preview_and_its_images_work_under_log(client, db, tmp_path):
     assert client.get(f"/log/plots/{rid}/route_map_0.png").data == b"png"
 
 
+# === One title and one description, everywhere ===
+
+def test_a_title_typed_on_the_page_is_the_recordings_name_everywhere(client, db):
+    rid = _recording(db, "anchor_track_recording")
+
+    _save(client, rid, title="Sunday race, course 3")
+
+    assert db.get_recording(rid)["name"] == "Sunday race, course 3"
+    listed = client.get("/api/recordings").get_json()["recordings"]
+    assert [r["name"] for r in listed if r["id"] == rid] == ["Sunday race, course 3"]
+    assert [c["name"] for c in _state(client, rid)["candidates"] if c["id"] == rid] == \
+        ["Sunday race, course 3"]
+
+
+def test_a_title_changed_on_the_dashboard_is_the_pages_title(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    _save(client, rid, title="From the page")
+
+    client.put(f"/api/recordings/{rid}", json={"name": "From the dashboard"})
+
+    assert _state(client, rid)["draft"]["title"] == "From the dashboard"
+
+
+def test_clearing_the_title_to_retype_it_does_not_wipe_the_name(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    _save(client, rid, title="Twilight")
+    _save(client, rid, title="   ")
+    assert db.get_recording(rid)["name"] == "Twilight"
+
+
+def test_the_short_description_is_the_recordings_description(client, db):
+    rid = _recording(db, "anchor_track_recording")
+
+    _save(client, rid, excerpt="Out to Pt Walter and back")
+    assert db.get_recording(rid)["description"] == "Out to Pt Walter and back"
+
+    client.put(f"/api/recordings/{rid}", json={"description": "Changed on the dashboard"})
+    assert _state(client, rid)["draft"]["excerpt"] == "Changed on the dashboard"
+
+
+def test_the_picker_offers_the_last_fortnights_unpublished_recordings_by_title(client, db):
+    today = _recording(db, "anchor_track_recording", hours_ago=1)
+    last_week = _recording(db, "anchor_track_recording", hours_ago=24 * 6)
+    published = _recording(db, "anchor_track_recording", hours_ago=24 * 3)
+    db.set_post_state(published, PostState.PUBLISHED)
+    old = _recording(db, "anchor_track_recording", hours_ago=24 * 30)
+    _save(client, last_week, title="Rottnest weekend")
+
+    candidates = _state(client, today)["candidates"]
+
+    ids = [c["id"] for c in candidates]
+    assert ids[0] == today and last_week in ids
+    assert published not in ids and old not in ids
+    assert "Rottnest weekend" in [c["name"] for c in candidates]
+
+
+def test_the_page_has_no_preview_button(client):
+    assert 'id="preview"' not in client.get("/log/").get_data(as_text=True)
+
+
+def test_titles_typed_into_drafts_before_this_move_onto_their_recordings(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    db = Database(str(path))
+    rid = db.create_recording("anchor_track_recording - 2026-10-09 18:03:28")
+    conn = sqlite3.connect(path)
+    conn.execute("DELETE FROM service_settings WHERE key = 'titles_unified'")
+    conn.execute("INSERT INTO post_drafts (recording_id, title, excerpt, blocks) "
+                 "VALUES (?, 'Terra15 software team', 'A small bit of rain', '[]')", (rid,))
+    conn.commit()
+    conn.close()
+
+    rec = Database(str(path)).get_recording(rid)
+
+    assert (rec["name"], rec["description"]) == ("Terra15 software team", "A small bit of rain")
+
+
 # === The event's own description is not the crew's ===
 
 CONFIG_TEXT = "Record when vessel departs from home anchor and stop when it returns"

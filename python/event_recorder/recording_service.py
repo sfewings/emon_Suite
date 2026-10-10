@@ -644,10 +644,31 @@ class RecordingService:
                 'revision': 0,
                 'stored': False,
             }
+        # The title is the recording's name, and the short description its
+        # description: one of each, shown and changed the same everywhere,
+        # the dashboard and its lists included, not a copy in the draft that
+        # drifts from them
+        draft['title'] = recording['name']
+        draft['excerpt'] = self.written_description(recording)
         # What the recording says, for any line the crew have not typed over
         # (FR-26). Not a draft field: never stored, worked out afresh.
         draft['computed'] = self.computed_lines(recording)
         return draft
+
+    def _write_through(self, recording_id: int, changes: Dict):
+        """
+        A title or short description saved as part of the draft is the
+        recording's name or description. An empty title leaves the name as
+        it was: the page saves as it goes, including while a title is
+        cleared to be retyped, and a recording needs a name.
+        """
+        fields = {}
+        if 'title' in changes and (changes['title'] or '').strip():
+            fields['name'] = changes['title'].strip()
+        if 'excerpt' in changes:
+            fields['description'] = (changes['excerpt'] or '').strip()
+        if fields:
+            self.database.update_recording(recording_id, **fields)
 
     # Worked out from the recording's data, and the page asks every 5 s
     COMPUTED_SECONDS = 60
@@ -713,6 +734,8 @@ class RecordingService:
             raise RecordingError(
                 f"The draft was changed elsewhere (now revision {current['revision']}, "
                 f"this edit was based on {base_revision})", 409)
+        # Only once the save has been accepted
+        self._write_through(recording_id, changes)
         return self.get_draft(recording_id)
 
     def save_draft_fields(self, recording_id: int, changes: Dict) -> Dict:
@@ -723,6 +746,7 @@ class RecordingService:
         two edits of one field stands.
         """
         self._check_draft_changes(recording_id, changes)
+        self._write_through(recording_id, changes)
         self.database.save_draft_fields(recording_id, self.get_draft(recording_id), changes)
         return self.get_draft(recording_id)
 
@@ -940,9 +964,7 @@ class RecordingService:
             })
         photo_list.sort(key=lambda p: p['taken_at'])
 
-        candidates = choice['candidates']
-        if all(c['id'] != rid for c in candidates):
-            candidates = [recording] + candidates
+        candidates = self._pickable(recording, choice['candidates'])
         return {
             'recording': {key: recording.get(key) for key in (
                 'id', 'name', 'status', 'stage', 'artefacts', 'post_state', 'post_error',
@@ -962,6 +984,29 @@ class RecordingService:
             'can_publish': (bool(self.wordpress_publisher) and not active
                             and recording['post_state'] not in PostState.OWNED_BY_WORDPRESS),
         }
+
+    # How far back the page's recording picker offers unpublished recordings
+    PICKER_DAYS = 14
+    PICKER_MAX = 20
+
+    def _pickable(self, current: Dict, chosen: List[Dict]) -> List[Dict]:
+        """
+        What the Title field's picker offers, by title: the recording open now,
+        FR-28's candidates (the outing's recordings), then anything else still
+        recording or unpublished from the last two weeks, newest first.
+        """
+        cutoff = datetime.utcnow() - timedelta(days=self.PICKER_DAYS)
+        others = [r for r in self.database.get_all_recordings(limit=200)
+                  if r['status'] == RecordingStatus.ACTIVE
+                  or (r['status'] == RecordingStatus.STOPPED
+                      and r['post_state'] not in PostState.OWNED_BY_WORDPRESS
+                      and self._started(r) >= cutoff)]
+        picked, seen = [], set()
+        for r in [current] + list(chosen) + others:
+            if r['id'] not in seen:
+                seen.add(r['id'])
+                picked.append(r)
+        return picked[:self.PICKER_MAX]
 
     def _started_end(self, recording: Dict) -> datetime:
         end = recording.get('end_time')

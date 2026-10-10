@@ -261,6 +261,7 @@ class Database:
 
             self._split_status(conn)
             self._add_event_key(conn)
+            self._unify_title_and_description(conn)
 
             # Rows left behind by deletes made before foreign keys were
             # enforced. Done once: it scans recording_data, which is the bulk
@@ -405,6 +406,34 @@ class Database:
         conn.execute(f"""UPDATE recordings SET status = 'stopped', artefacts = '{Artefacts.FAILED}'
                          WHERE status = 'failed'
                            AND COALESCE(error_message, '') NOT LIKE 'No data recorded%'""")
+
+    def _unify_title_and_description(self, conn):
+        """
+        Once: a title or short description typed into a draft before they
+        became the recording's own name and description goes onto the
+        recording, so nothing the crew wrote is lost by the change.
+        """
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(post_drafts)")}
+        if 'title' not in columns:
+            return
+        if conn.execute("SELECT 1 FROM service_settings WHERE key = 'titles_unified'").fetchone():
+            return
+        moved = conn.execute("""
+            UPDATE recordings SET name = (
+                SELECT d.title FROM post_drafts d WHERE d.recording_id = recordings.id)
+            WHERE id IN (SELECT recording_id FROM post_drafts
+                         WHERE title IS NOT NULL AND trim(title) != '')
+        """).rowcount
+        moved += conn.execute("""
+            UPDATE recordings SET description = (
+                SELECT d.excerpt FROM post_drafts d WHERE d.recording_id = recordings.id)
+            WHERE id IN (SELECT recording_id FROM post_drafts
+                         WHERE excerpt IS NOT NULL AND trim(excerpt) != '')
+        """).rowcount
+        if moved:
+            logger.info(f"Migration: {moved} draft titles and descriptions moved onto recordings")
+        conn.execute("INSERT INTO service_settings (key, value) VALUES ('titles_unified', ?)",
+                     (datetime.utcnow().isoformat(),))
 
     def _add_event_key(self, conn):
         """
@@ -581,6 +610,7 @@ class Database:
             conn.execute(self.POST_DRAFTS_SQL)
             self._split_status(conn)
             self._add_event_key(conn)
+            self._unify_title_and_description(conn)
 
             logger.info("Database schema created successfully")
 

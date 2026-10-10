@@ -58,13 +58,24 @@
     // === The way back to the racing app ===
 
     var SCREENS = { gar: ['../gar', 'GAR'], map: ['../map', 'Map'],
-                    race: ['../', 'Race'], hud: ['../hud', 'HUD'] };
+                    race: ['../', 'Race'], hud: ['../hud', 'HUD'],
+                    // The recorder's dashboard, which opens this page for a recording
+                    events: ['../', 'Recordings'] };
 
     function setUpBack() {
-        // Only inside the racing app's /race/ scope: at /events/log/ or on the
-        // recorder's own port these relative links would land somewhere else
-        if (location.pathname.indexOf('/race/log/') === -1) return;
-        var screen = SCREENS[params.get('from')] || SCREENS.gar;
+        var from = params.get('from');
+        var screen;
+        if (from === 'events') {
+            // The dashboard is this service's own root, one up from log/, wherever
+            // it is served: /events/, or the recorder's own port
+            screen = SCREENS.events;
+        } else if (location.pathname.indexOf('/race/log/') !== -1) {
+            // The racing app's screens, only inside its /race/ scope: from
+            // /events/log/ or the recorder's port these links would land elsewhere
+            screen = SCREENS[from] || SCREENS.gar;
+        } else {
+            return;
+        }
         var back = $('back');
         back.href = screen[0];
         back.innerHTML = '&lsaquo; ' + screen[1];
@@ -106,21 +117,36 @@
         }
         $('state').innerHTML = text;
 
+        showPicker();
+    }
+
+    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    // When a recording started, in this device's time: stored as UTC
+    function started(utc) {
+        var d = new Date(String(utc || '').replace(' ', 'T').slice(0, 19) + 'Z');
+        if (isNaN(d.getTime())) return '';
+        var m = d.getMinutes();
+        return DAYS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1) + ' ' +
+            d.getHours() + ':' + (m < 10 ? '0' : '') + m;
+    }
+
+    // The recordings to choose from, by their titles, beside the Title field. Not
+    // while the select is open: replacing its options would close it under the finger.
+    function showPicker() {
         var switcher = $('switcher');
-        var candidates = state.candidates;
-        switcher.hidden = candidates.length < 2;
-        if (candidates.length > 1) {
-            var html = '';
-            for (var i = 0; i < candidates.length; i++) {
-                var c = candidates[i];
-                var when = (c.start_time || '').slice(11, 16);
-                var label = (i + 1) + ' of ' + candidates.length + ': ' +
-                    (c.event_key || 'recording').replace(/_/g, ' ') + ' ' + when;
-                html += '<option value="' + c.id + '"' + (c.id === rec.id ? ' selected' : '') +
-                    '>' + escapeHtml(label) + '</option>';
-            }
-            switcher.innerHTML = html;
+        var candidates = state.candidates || [];
+        $('pick').hidden = candidates.length < 2;
+        if (candidates.length < 2 || document.activeElement === switcher) return;
+        var html = '';
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            var label = c.name + ' (' + started(c.start_time) +
+                (c.status === 'active' ? ', recording' : '') + ')';
+            html += '<option value="' + c.id + '"' +
+                (c.id === state.recording.id ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
         }
+        switcher.innerHTML = html;
     }
 
     function escapeHtml(text) {
@@ -144,9 +170,11 @@
             } else if (revision > (known[field] || 0)) {
                 if (theirs !== input.value) overtaken(field, input, theirs);
                 known[field] = revision;
-            } else if (isComputed(field) && !draft[field] && !dirty[field] &&
-                       document.activeElement !== input) {
-                // Still the recording's, which moves on while it records
+            } else if (!dirty[field] && document.activeElement !== input &&
+                       theirs !== input.value) {
+                // Changed without this page: a computed line moving on while it
+                // records, or a title or description edited on the dashboard,
+                // which are the recording's own name and description
                 input.value = theirs;
             }
             input.disabled = locked();
@@ -330,7 +358,6 @@
         $('locked').hidden = !locked();
         $('locked').textContent = locked()
             ? 'This post is on enchantee.org now, so it is changed there rather than here.' : '';
-        $('preview').href = 'preview?id=' + rec.id;
 
         var link = rec.wordpress_url;
         $('post').innerHTML = link
@@ -416,6 +443,13 @@
             if (isComputed(field)) {
                 if (!value) $(field).value = computedValue(field);
                 showSource(field);
+            }
+            if (field === 'title') {
+                // The picker lists recordings by title: this one's has just changed
+                (state.candidates || []).forEach(function (c) {
+                    if (c.id === state.recording.id) c.name = body.draft.title;
+                });
+                showPicker();
             }
             var other = document.querySelector('[data-other="' + field + '"]');
             if (other) other.innerHTML = '';

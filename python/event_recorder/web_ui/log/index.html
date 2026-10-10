@@ -24,7 +24,6 @@
 <header id="bar">
   <a id="back" href="../gar" hidden>&lsaquo; GAR</a>
   <span id="state">Loading&hellip;</span>
-  <select id="switcher" hidden aria-label="Recording"></select>
 </header>
 
 <main id="page" hidden>
@@ -51,11 +50,19 @@
   </div>
   <p id="capture-status" class="hint"></p>
 
-  <label class="field">
-    <span class="label">Title <span class="saved" data-saved="title"></span></span>
-    <input id="title" data-field="title" type="text" autocomplete="off">
+  <!-- The title is the recording's own name, shown the same on the dashboard, so it is
+       also how another recording is chosen: the button beside it lists them by title.
+       A transparent native select over the button, so a tap opens the phone's picker. -->
+  <div class="field">
+    <label class="label" for="title">Title <span class="saved" data-saved="title"></span></label>
+    <div class="title-row">
+      <input id="title" data-field="title" type="text" autocomplete="off">
+      <span id="pick" class="pick" hidden>&#9662;
+        <select id="switcher" aria-label="Open another recording"></select>
+      </span>
+    </div>
     <span class="other" data-other="title"></span>
-  </label>
+  </div>
 
   <div class="field">
     <span class="label">Crew <span class="saved" data-saved="crew"></span></span>
@@ -129,7 +136,6 @@
   </div>
 
   <div class="actions">
-    <a id="preview" class="button secondary" href="preview">Preview</a>
     <button id="publish" class="button" type="button">Publish</button>
   </div>
   <p id="publish-why" class="hint"></p>

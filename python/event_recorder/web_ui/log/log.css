@@ -34,7 +34,30 @@ body {
 }
 #state { flex: 1; font-variant-numeric: tabular-nums; }
 #state .rec { color: #ff8a80; }
-#switcher { font-size: 16px; max-width: 45%; }
+
+/* The title, and beside it the button that lists the other recordings by title */
+.title-row { display: flex; }
+.title-row input { flex: 1; min-width: 0; }
+.pick {
+    position: relative;
+    flex: 0 0 48px;
+    margin-left: 8px;
+    border: 1px solid #b9b2a8;
+    border-radius: 8px;
+    background: #fff;
+    color: #7a1a1a;
+    font-size: 20px;
+    line-height: 44px;
+    text-align: center;
+}
+/* Over the whole button, invisible: the tap is the select's, and opens the picker.
+   top/left/width/height rather than inset, which iOS 12 does not have. */
+.pick select {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0;
+    font-size: 16px;
+}
 
 main, #empty { max-width: 720px; margin: 0 auto; padding: 8px 16px 48px; }
 
