@@ -125,7 +125,15 @@
   </div>
   <p id="publish-why" class="hint"></p>
   <button id="publish-draft" class="link" type="button">Send to WordPress as a draft instead</button>
+  <button id="publish-cancel" class="link" type="button" hidden>Don't publish when it stops</button>
   <p id="post" class="hint"></p>
+
+  <!-- From the racing app only: Event Recorder, for stopping or deleting a recording.
+       target="_blank", so a Home Screen app opens it in Safari, not in its own window,
+       where the dashboard's controls have no business being. -->
+  <p id="recorder" class="hint" hidden>
+    <a id="recorder-link" target="_blank" rel="noopener">Stop or delete it in Event Recorder &#8599;</a>
+  </p>
 
   <!-- The dashboard's own tools, shown only when the page was opened from it
        (?from=events): never on the racing app's screens, where a Delete has no
@@ -135,6 +143,7 @@
     <h2>Recording</h2>
     <p id="admin-facts" class="hint"></p>
     <ul id="admin-downloads" class="downloads"></ul>
+    <button id="admin-stop" class="button secondary" type="button" hidden>Stop the recording</button>
     <button id="admin-reprocess" class="button secondary" type="button">Draw the charts again</button>
     <button id="admin-clear" class="button secondary" type="button" hidden>Clear the failure</button>
     <p id="admin-status" class="hint"></p>

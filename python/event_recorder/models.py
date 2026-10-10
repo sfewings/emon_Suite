@@ -346,6 +346,10 @@ class Database:
         # worked out from the recording. Empty means the recording's.
         if 'time_line' not in columns('post_drafts'):
             conn.execute("ALTER TABLE post_drafts ADD COLUMN time_line TEXT")
+        # Publish when the recording stops: 'publish' or 'draft', asked for on
+        # the Log page while it was still recording; empty for not
+        if 'publish_on_stop' not in columns('post_drafts'):
+            conn.execute("ALTER TABLE post_drafts ADD COLUMN publish_on_stop TEXT")
         if 'taken_at' not in columns('recording_images'):
             conn.execute("ALTER TABLE recording_images ADD COLUMN taken_at TIMESTAMP")
 
@@ -1328,6 +1332,29 @@ class Database:
                 return None
             return conn.execute("SELECT revision FROM post_drafts WHERE recording_id = ?",
                                 (recording_id,)).fetchone()[0]
+
+    def set_publish_on_stop(self, recording_id: int, mode: Optional[str]):
+        """Ask for the recording to be published when it stops ('publish' or 'draft'), or not."""
+        with self.get_connection() as conn:
+            conn.execute("INSERT OR IGNORE INTO post_drafts (recording_id) VALUES (?)",
+                         (recording_id,))
+            conn.execute("UPDATE post_drafts SET publish_on_stop = ? WHERE recording_id = ?",
+                         (mode, recording_id))
+
+    def publish_on_stop(self, recording_id: int) -> Optional[str]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT publish_on_stop FROM post_drafts WHERE recording_id = ?",
+                               (recording_id,)).fetchone()
+            return row[0] if row else None
+
+    def pending_publishes(self) -> List[Tuple[int, str]]:
+        """Stopped recordings still waiting to be published as asked: (id, mode)."""
+        with self.get_connection() as conn:
+            return [(r[0], r[1]) for r in conn.execute("""
+                SELECT d.recording_id, d.publish_on_stop FROM post_drafts d
+                JOIN recordings r ON r.id = d.recording_id
+                WHERE d.publish_on_stop IS NOT NULL AND r.status = 'stopped'
+            """)]
 
     def set_post_state(self, recording_id: int, state: str, error: str = None):
         """Set where the recording's post has got to (TR-12), with the error if it failed."""

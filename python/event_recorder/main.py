@@ -552,6 +552,10 @@ class EventRecorderService:
                 # Check for configuration changes
                 self.config.check_and_reload()
 
+                # Recordings that stopped while WordPress was out of reach,
+                # waiting to publish as asked on the Log page
+                self.recordings.publish_pending()
+
                 # Log status
                 if self.active_recordings:
                     logger.info(f"Active recordings: {len(self.active_recordings)}")

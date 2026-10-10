@@ -929,6 +929,21 @@ localhost:8000. Not yet tried on the boat's iPad or a phone
   them selects all of it, so typing replaces it. A field the crew have saved has a
   revision and is left alone. The selection is made just after focus, and the focusing
   tap's mouseup is cancelled, because iOS Safari otherwise places the caret over it.
+- **Publish when the recording stops (2026-10-10).** While recording, Publish reads
+  "Publish when the recording stops", and the draft link likewise; "Don't publish when it
+  stops" takes it back. The request is `post_drafts.publish_on_stop` ('publish' or
+  'draft'), on the server, so it holds whichever device asked and whether a page is open
+  when the recording stops. `RecordingService.stop()` then starts the publish (which
+  draws the charts, so auto-process is not started too); asked after it has stopped, it
+  publishes at once. If WordPress cannot be reached (503), the request stays and
+  `publish_pending()`, from the main loop, tries again every five minutes; any other
+  outcome settles it, so it never retries forever. A recording ended by recovery, after
+  six silent hours, is not published by it. Tests: `tests/test_publish_on_stop.py`.
+- **Event Recorder from the racing app (2026-10-10).** At `/race/log/` the page links to
+  this recording on the recorder's side (`../../events/log/?id=<id>&from=events`), with
+  `target="_blank"` so a Home Screen app opens it in Safari rather than in its own
+  window, for stopping or deleting a recording. The dashboard's tools there gained
+  **Stop the recording**, with a confirmation, shown while it records.
 - **Speed (2026-10-10).** A cold Log page took ten seconds on the dev rig and adding a
   note seven. Measured: every read of one topic of one recording (the wind line, the live
   track, a note's position, the category rules) walked all of the recording's rows, the

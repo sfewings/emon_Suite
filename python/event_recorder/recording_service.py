@@ -89,6 +89,8 @@ class RecordingService:
         # mid-publish loses the job, not the post, which is found again by
         # its stored id on the next attempt.
         self._publish_jobs = {}
+        # When each recording waiting to publish was last tried
+        self._pending_tries = {}
         self._lock = threading.Lock()
 
     @property
@@ -131,6 +133,20 @@ class RecordingService:
                 f"Recording is not active (status: {recording['status']})", 400)
 
         self._end(recording_id)
+
+        # Asked to publish when it stopped: the publish draws the charts itself,
+        # so auto-processing is not started as well, to draw them twice at once
+        mode = self.database.publish_on_stop(recording_id)
+        if mode and self.wordpress_publisher:
+            logger.info(f"Recording {recording_id} stopped: publishing as asked ({mode})")
+            self._pending_tries[recording_id] = time.monotonic()
+            try:
+                self.start_publish(recording_id, **self._publish_options(mode))
+            except RecordingError as e:
+                # The stop has happened whatever publishing makes of it; the
+                # request stays, for publish_pending to try again
+                logger.warning(f"Recording {recording_id}: could not start publishing: {e}")
+            return False
 
         if self.database.get_setting('auto_process_on_stop', 'false') == 'true':
             self.process_in_background(recording_id)
@@ -309,12 +325,73 @@ class RecordingService:
             except Exception as e:
                 logger.error(f"Publishing recording {recording_id} failed: {e}")
                 outcome = {'state': 'failed', 'error': str(e), 'status': 500}
+            # A request to publish when it stopped is settled by anything but
+            # WordPress being out of reach, which is worth waiting out. Before
+            # the job says it has finished, so nothing reading the two sees a
+            # publish that is done but still asked for.
+            if outcome.get('status') != 503 and self.database.publish_on_stop(recording_id):
+                self.database.set_publish_on_stop(recording_id, None)
             with self._lock:
                 job.update(outcome, finished_at=datetime.utcnow().isoformat())
 
         threading.Thread(target=run, daemon=True,
                          name=f"Publish-{recording_id}").start()
         return self.publish_job(recording_id)
+
+    # === Publish when the recording stops ===
+
+    PUBLISH_MODES = ('publish', 'draft')
+    # How often to try again, once stopped, while WordPress cannot be reached
+    PENDING_RETRY_SECONDS = 300
+
+    def set_publish_on_stop(self, recording_id: int, mode: Optional[str]) -> Optional[str]:
+        """
+        Publish when the recording stops, as 'publish' or 'draft'; or None to
+        stop asking. Held on the server, so it holds whichever device asked
+        and whether or not a page is open when the recording stops. A
+        recording already stopped is published there and then.
+        """
+        recording = self._get(recording_id)
+        if mode is not None and mode not in self.PUBLISH_MODES:
+            raise RecordingError(f"Not a way to publish: {mode}", 400)
+        if mode is not None:
+            if not self.wordpress_publisher:
+                raise RecordingError('WordPress publisher not configured', 400)
+            if recording['post_state'] in PostState.OWNED_BY_WORDPRESS:
+                raise RecordingError('Recording is already published; change the post in WordPress', 409)
+            if recording['status'] != RecordingStatus.ACTIVE:
+                # Stopped in the meantime: no reason to wait
+                self.start_publish(recording_id, **self._publish_options(mode))
+                return None
+        self.database.set_publish_on_stop(recording_id, mode)
+        return mode
+
+    @staticmethod
+    def _publish_options(mode: str) -> Dict:
+        return {'auto_publish': False} if mode == 'draft' else {}
+
+    def publish_pending(self):
+        """
+        Try again for stopped recordings still waiting to be published as
+        asked, which is a recording that stopped while WordPress could not be
+        reached: out at the mooring, say. Called each minute from the main
+        loop; tries a recording at most every PENDING_RETRY_SECONDS.
+        """
+        now = time.monotonic()
+        for recording_id, mode in self.database.pending_publishes():
+            job = self.publish_job(recording_id)
+            if job and job['state'] == 'running':
+                continue
+            last = self._pending_tries.get(recording_id)
+            if last is not None and now - last < self.PENDING_RETRY_SECONDS:
+                continue
+            self._pending_tries[recording_id] = now
+            try:
+                self.start_publish(recording_id, **self._publish_options(mode))
+            except RecordingError as e:
+                # Nothing that waiting will mend: say so, and stop asking
+                logger.warning(f"Recording {recording_id}: not published when it stopped: {e}")
+                self.database.set_publish_on_stop(recording_id, None)
 
     def publish_job(self, recording_id: int) -> Optional[Dict]:
         """The latest publish job for a recording, as a copy, or None."""
@@ -951,6 +1028,8 @@ class RecordingService:
             'categories_available': self.categories_available(),
             'crew_suggestions': self.crew_suggestions(),
             'publish_job': self.publish_job(rid),
+            'publish_on_stop': self.database.publish_on_stop(rid),
+            'publisher': bool(self.wordpress_publisher),
             'can_publish': (bool(self.wordpress_publisher) and not active
                             and recording['post_state'] not in PostState.OWNED_BY_WORDPRESS),
         }

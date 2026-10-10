@@ -112,6 +112,19 @@ def create_event_page(web) -> Blueprint:
         except Exception as e:
             return failed('remove photo', e)
 
+    @page.route('/api/publish_on_stop/<int:recording_id>', methods=['POST'])
+    def publish_on_stop(recording_id):
+        """Body: {"mode": "publish" | "draft" | null}. Publish when the recording
+        stops, as a post or a WordPress draft; null stops asking."""
+        try:
+            mode = (request.get_json(silent=True) or {}).get('mode')
+            asked = service.set_publish_on_stop(recording_id, mode)
+            return jsonify({'success': True, 'publish_on_stop': asked})
+        except RecordingError as e:
+            return refused(e)
+        except Exception as e:
+            return failed('publish on stop', e)
+
     @page.route('/api/publish/<int:recording_id>', methods=['POST'])
     def publish(recording_id):
         """Start publishing; {"draft": true} sends it as a WordPress draft."""

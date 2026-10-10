@@ -314,11 +314,20 @@
         var publish = $('publish');
         var why = '';
         var running = job && job.state === 'running';
+        var recording = rec.status === 'active';
+        var asked = state.publish_on_stop;            // 'publish', 'draft' or null
+        var later = recording || !!asked;              // the buttons ask, rather than do
 
         if (running) {
             why = job.step + (job.total ? ' (' + job.done + ' of ' + job.total + ')' : '');
-        } else if (rec.status === 'active') {
-            why = 'Publish when the recording has stopped.';
+        } else if (recording && asked) {
+            why = asked === 'draft'
+                ? 'It goes to WordPress as a draft when the recording stops.'
+                : 'It is published when the recording stops.';
+        } else if (asked) {
+            // Stopped, still asked: WordPress could not be reached when it stopped
+            why = 'Waiting to reach WordPress to publish' +
+                (job && job.state === 'failed' ? ': ' + job.error : '') + '. It tries every few minutes.';
         } else if (locked()) {
             why = 'Published. Change it in WordPress now.';
         } else if (job && job.state === 'failed') {
@@ -326,9 +335,23 @@
         } else if (rec.post_error) {
             why = rec.post_error;
         }
-        publish.disabled = !state.can_publish || running;
+
+        publish.textContent = later ? 'Publish when the recording stops' : 'Publish';
+        $('publish-draft').textContent = later
+            ? 'Send it to WordPress as a draft when it stops'
+            : 'Send to WordPress as a draft instead';
+        var canAsk = state.publisher && !locked() && !asked;
+        publish.disabled = running || (later ? !canAsk : !state.can_publish);
         $('publish-draft').disabled = publish.disabled;
+        $('publish-cancel').hidden = !asked || running;
         $('publish-why').textContent = why;
+
+        // From the racing app, Event Recorder for this recording, outside the app
+        var inRacingApp = location.pathname.indexOf('/race/log/') !== -1;
+        $('recorder').hidden = !inRacingApp;
+        if (inRacingApp) {
+            $('recorder-link').href = '../../events/log/?id=' + rec.id + '&from=events';
+        }
         $('locked').hidden = !locked();
         $('locked').textContent = locked()
             ? 'This post is on enchantee.org now, so it is changed there rather than here.' : '';
@@ -639,6 +662,7 @@
             $('admin-downloads').innerHTML = html;
 
             var active = rec.status === 'active';
+            $('admin-stop').hidden = !active;
             $('admin-reprocess').disabled = active;
             $('admin-delete').disabled = active;
             $('admin-delete').title = active ? 'Stop the recording first' : '';
@@ -650,6 +674,14 @@
         if (!fromDashboard) return;
         function busy(text) { $('admin-status').textContent = text; }
 
+        $('admin-stop').addEventListener('click', function () {
+            if (!confirm('Stop recording "' + state.recording.name + '"?')) return;
+            adminApi('/stop', { method: 'POST' }).then(function (body) {
+                busy(body.success ? 'Stopped' : 'Not stopped: ' + body.error);
+                showAdmin();
+                refresh();
+            });
+        });
         $('admin-reprocess').addEventListener('click', function () {
             busy('Drawing the charts…');
             this.disabled = true;
@@ -699,9 +731,29 @@
         });
     }
 
+    // While recording, the buttons ask for it to be published when it stops; held on
+    // the recorder, so it happens whether or not this page is open then
+    function publishOnStop(mode) {
+        $('publish').disabled = true;
+        api('api/publish_on_stop/' + recordingId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: mode })
+        }).then(function (body) {
+            if (!body.success) $('publish-why').textContent = body.error;
+            refresh();
+        });
+    }
+
     function bindPublish() {
-        $('publish').addEventListener('click', function () { startPublish(false); });
-        $('publish-draft').addEventListener('click', function () { startPublish(true); });
+        function recording() { return state && state.recording.status === 'active'; }
+        $('publish').addEventListener('click', function () {
+            if (recording()) publishOnStop('publish'); else startPublish(false);
+        });
+        $('publish-draft').addEventListener('click', function () {
+            if (recording()) publishOnStop('draft'); else startPublish(true);
+        });
+        $('publish-cancel').addEventListener('click', function () { publishOnStop(null); });
     }
 
     function bindSwitcher() {

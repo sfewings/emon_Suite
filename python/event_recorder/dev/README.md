@@ -115,6 +115,7 @@ MSYS_NO_PATHCONV=1 docker exec -e TZ=UTC -w /app event_recorder_dev \
                      event_recorder/tests/test_log_lines.py \
                      event_recorder/tests/test_live.py \
                      event_recorder/tests/test_speed.py \
+                     event_recorder/tests/test_publish_on_stop.py \
                      event_recorder/tests/test_chart_map.py \
                      event_recorder/tests/test_gps_position.py
 ```
