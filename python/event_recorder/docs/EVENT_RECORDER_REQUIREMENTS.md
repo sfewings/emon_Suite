@@ -978,6 +978,15 @@ localhost:8000. Not yet tried on the boat's iPad or a phone
     confirmation. They use the dashboard's API one up from `log/`, and are never shown
     from the racing app. `upload.html` is retired; `/upload?recording_id=` redirects to
     the Log page for that recording.
+  - **Charts and statistics, before and after publishing.** Opened from the dashboard,
+    once a recording has been processed, the page shows what processing made above the
+    dashboard's tools: the statistics table as the post renders it, every chart as a
+    thumbnail (route maps first, then by title) opening full size in a new tab, the
+    interactive map(s), and the post's preview. `GET /api/recordings/<id>` carries
+    `statistics_html` and `maps` for it, from the same `_gather` that publishing uses.
+    When the charts are out of date the section says so. The editing fields above are
+    unchanged and stay editable until WordPress has the post. The link to the published
+    post opens in a new tab, so a Home Screen app is not left on enchantee.org.
 - **The trigger's description is not the crew's.** A triggered recording starts with its
   event's config description ("Record when vessel departs from home anchor..."), which
   had become the default short description and, through the story's fallback, the

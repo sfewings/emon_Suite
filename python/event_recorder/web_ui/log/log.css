@@ -170,6 +170,19 @@ input:disabled, textarea:disabled { background: #ece8e2; color: #666; }
 
 .admin { margin-top: 40px; padding-top: 12px; border-top: 2px solid #d8d2c8; }
 .admin h2 { font-size: 18px; margin: 0 0 8px; }
+/* Charts: wide 12 x 6 plots, two across where there is room, one on a phone.
+   Grid gap is fine on iOS 12; it is flexbox gap that is not. */
+.charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-gap: 12px;
+    margin-top: 12px;
+}
+.charts figure { margin: 0; }
+.charts img { width: 100%; height: auto; display: block; border: 1px solid #d8d2c8; border-radius: 6px; }
+.charts figcaption { font-size: 14px; color: #555; margin-top: 4px; }
+#results-stats table { margin: 8px 0; }
+
 .downloads { padding-left: 20px; }
 .downloads li { margin: 6px 0; }
 .link.danger { color: #b00020; }

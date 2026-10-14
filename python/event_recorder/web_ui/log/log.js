@@ -358,7 +358,8 @@
 
         var link = rec.wordpress_url;
         $('post').innerHTML = link
-            ? 'Post: <a href="' + escapeHtml(link) + '">' + escapeHtml(link) + '</a>' : '';
+            ? 'Post: <a href="' + escapeHtml(link) + '" target="_blank" rel="noopener">' +
+              escapeHtml(link) + ' &#8599;</a>' : '';
 
         clearTimeout(publishTimer);
         if (running) publishTimer = setTimeout(refresh, PUBLISH_POLL_MS);
@@ -661,6 +662,8 @@
             });
             $('admin-downloads').innerHTML = html;
 
+            showResults(rec);
+
             var active = rec.status === 'active';
             $('admin-stop').hidden = !active;
             $('admin-reprocess').disabled = active;
@@ -668,6 +671,47 @@
             $('admin-delete').title = active ? 'Stop the recording first' : '';
             $('admin-clear').hidden = !(rec.stage === 'failed' && rec.status !== 'failed');
         });
+    }
+
+    // What processing made: shown from Event Recorder once there is any, before and
+    // after publishing. Paths in the API are from the recorder's root, one up from log/.
+    function showResults(rec) {
+        var plots = (rec.images || []).filter(function (img) {
+            return img.image_type === 'plot' && !/statistics_summary\.png$/.test(img.image_path);
+        });
+        // The route maps first, as the post has them (post_renderer's rule), then by title
+        function rank(img) {
+            return /^\s*route map/i.test(img.caption || '') ||
+                   /(^|[\/\\])route_map[^\/\\]*$/i.test(img.image_path || '') ? 0 : 1;
+        }
+        plots.sort(function (a, b) {
+            return rank(a) - rank(b) || String(a.caption || '').localeCompare(String(b.caption || ''));
+        });
+        var processed = plots.length || rec.statistics_html;
+        $('results').hidden = !processed;
+        if (!processed) return;
+
+        $('results-note').textContent = rec.artefacts === 'stale'
+            ? 'Out of date: the recording changed after these were drawn. Draw the charts again below.'
+            : '';
+        // Rendered by the recorder, as the post renders it
+        $('results-stats').innerHTML = rec.statistics_html || '';
+
+        var links = [];
+        (rec.maps || []).forEach(function (url, i) {
+            links.push('<a href="../' + escapeHtml(url) + '" target="_blank" rel="noopener">' +
+                       'Interactive map' + (rec.maps.length > 1 ? ' ' + (i + 1) : '') + ' &#8599;</a>');
+        });
+        links.push('<a href="../preview?id=' + rec.id + '" target="_blank" rel="noopener">' +
+                   'Preview the post &#8599;</a>');
+        $('results-links').innerHTML = links.join(' &middot; ');
+
+        $('results-charts').innerHTML = plots.map(function (img) {
+            var url = '../' + escapeHtml(img.url);
+            return '<figure><a href="' + url + '" target="_blank" rel="noopener">' +
+                '<img src="' + url + '" alt="' + escapeHtml(img.caption || '') + '"></a>' +
+                '<figcaption>' + escapeHtml(img.caption || '') + '</figcaption></figure>';
+        }).join('');
     }
 
     function bindAdmin() {

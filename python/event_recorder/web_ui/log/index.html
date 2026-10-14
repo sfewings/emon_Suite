@@ -135,6 +135,17 @@
     <a id="recorder-link" target="_blank" rel="noopener">Stop or delete it in Event Recorder &#8599;</a>
   </p>
 
+  <!-- What processing made, from Event Recorder only (?from=events), before and after
+       publishing: the statistics as the post has them, every chart, the interactive
+       map and the post's preview. Each opens in a tab of its own. -->
+  <section id="results" class="admin" hidden>
+    <h2>Charts and statistics</h2>
+    <p id="results-note" class="hint"></p>
+    <div id="results-stats"></div>
+    <p id="results-links" class="hint"></p>
+    <div id="results-charts" class="charts"></div>
+  </section>
+
   <!-- The dashboard's own tools, shown only when the page was opened from it
        (?from=events): never on the racing app's screens, where a Delete has no
        business being one tap from a wet finger. They use the dashboard's API, one up

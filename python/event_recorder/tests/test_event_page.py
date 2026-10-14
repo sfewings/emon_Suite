@@ -314,6 +314,37 @@ def test_the_dashboards_tools_are_on_the_page_but_hidden_unless_from_the_dashboa
     assert 'id="admin-delete"' in page
 
 
+def test_the_charts_section_is_on_the_page_but_hidden_until_there_are_charts(client):
+    page = client.get("/log/").get_data(as_text=True)
+    assert '<section id="results" class="admin" hidden>' in page
+    assert 'id="results-charts"' in page
+
+
+def test_the_dashboard_api_gives_the_page_the_statistics_and_the_maps(client, db, tmp_path):
+    rid = _recording(db, "anchor_track_recording", artefacts=Artefacts.FRESH)
+    folder = tmp_path / "plots" / str(rid)
+    folder.mkdir(parents=True)
+    plot = folder / "route_map_0.png"
+    plot.write_bytes(b"png")
+    db.add_image(rid, str(plot), ImageType.PLOT, "Route Map")
+    (folder / "route_map.html").write_text("<html></html>")
+    (folder / "statistics_summary.json").write_text('{"duration": "1:00:00", "max_speed": 6.2}')
+
+    rec = client.get(f"/api/recordings/{rid}").get_json()["recording"]
+
+    assert [img["url"] for img in rec["images"]] == [f"plots/{rid}/route_map_0.png"]
+    assert "<table" in rec["statistics_html"]
+    assert rec["maps"] == [f"plots/{rid}/route_map.html"]
+    # ...and both are there to follow, the map the way the page links it
+    assert client.get(f"/plots/{rid}/route_map.html").status_code == 200
+
+
+def test_an_unprocessed_recording_has_no_statistics_or_maps(client, db):
+    rid = _recording(db, "anchor_track_recording")
+    rec = client.get(f"/api/recordings/{rid}").get_json()["recording"]
+    assert rec["statistics_html"] == "" and rec["maps"] == []
+
+
 def test_titles_typed_into_drafts_before_this_move_onto_their_recordings(tmp_path):
     import sqlite3
     path = tmp_path / "old.db"

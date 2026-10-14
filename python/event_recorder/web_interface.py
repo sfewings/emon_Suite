@@ -16,6 +16,7 @@ from flask import Flask, redirect, render_template, request, jsonify, send_from_
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
+from . import post_renderer
 from .models import Database, ImageType, PostState, RecordingStatus
 from .event_page import create_event_page
 from .recording_service import RecordingError, RecordingService
@@ -337,6 +338,15 @@ class WebInterface:
                     self._export_with_url(exp)
                     for exp in self.database.get_recording_exports(recording_id)
                 ]
+
+                # What processing made, for Event Recorder to show before and after
+                # publishing: the statistics as the post renders them (same labels,
+                # nautical miles), and the interactive maps, each a page of its own
+                inputs = self.recordings._gather(recording_id)
+                recording['statistics_html'] = (
+                    post_renderer.statistics_table_html(inputs['statistics'])
+                    if inputs['statistics'] else '')
+                recording['maps'] = [self._file_url(path) for path in inputs['map_htmls']]
 
                 return jsonify({'success': True, 'recording': recording})
 
