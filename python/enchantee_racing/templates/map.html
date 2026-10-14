@@ -109,6 +109,9 @@
           until /api/state says there is a race and a fix (DESIGN 12.1 step 5).
         -->
         <g id="layer-course"></g>
+        <!-- The waypoint dropped by holding on the chart, and the straight line to it from
+             the boat (DESIGN 15). Under the boat, so the boat is never hidden by it. -->
+        <g id="layer-waypoint"></g>
         <g id="layer-boat"></g>
       </svg>
       <!--
@@ -119,6 +122,9 @@
         Empty in the markup: both the width of the bar and the distance it stands for come
         from the current metres-per-pixel, and only map.js knows that.
       -->
+      <!-- A one-line notice, for the hold that could not drop a waypoint. Not a dialog:
+           it says what happened and goes away by itself (CLAUDE.md, no modals). -->
+      <div id="map-notice" hidden></div>
       <div id="map-scale">
         <div class="scale-text"></div>
         <div class="scale-bar"></div>

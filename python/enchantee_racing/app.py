@@ -55,7 +55,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
-from engine import course, race
+from engine import course, nav, race
 from mqtt_client import DEFAULT_BROKER, DEFAULT_PORT, DemoDriver, MqttClient
 from store import Store
 
@@ -125,7 +125,26 @@ def load_config(config_dir: Path = CONFIG_DIR) -> dict:
     # place that reads a file and engine/ keeps taking documents (DESIGN 11.2).
     race_path = config_dir / "race.json"
     docs["race"] = json.loads(race_path.read_text(encoding="utf-8")) if race_path.exists() else {}
+    # Named points a dropped waypoint can borrow a name from (DESIGN 15): every navaid on
+    # the chart and every course mark. Only names and positions are kept.
+    docs["waypoint_names"] = waypoint_names(config_dir, docs["marks"])
     return docs
+
+
+def waypoint_names(config_dir: Path, marks_doc: dict) -> list:
+    """(name, LatLon) for every named navaid and course mark. Missing navaids is not fatal."""
+    names = [(m.get("name"), nav.LatLon(m["lat"], m["lon"]))
+             for m in marks_doc.get("marks", []) if m.get("name")]
+    navaids_path = config_dir / "navaids.json"
+    if navaids_path.exists():
+        navaids = json.loads(navaids_path.read_text(encoding="utf-8"))
+        for feature in navaids.get("features", []):
+            name = (feature.get("properties") or {}).get("name")
+            geometry = feature.get("geometry") or {}
+            if name and geometry.get("type") == "Point":
+                lon, lat = geometry["coordinates"][:2]
+                names.append((name, nav.LatLon(lat, lon)))
+    return names
 
 
 def create_app(store: Store, config: dict | None = None) -> Flask:
@@ -138,6 +157,8 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     app.config["STORE"] = store
     app.config["RACE_CONFIG"] = config or {}
     app.config.setdefault("EVENT_PUBLISHER", None)
+    store.set_waypoint_config(race.Config.from_document((config or {}).get("race")),
+                              (config or {}).get("waypoint_names", ()))
 
     @app.get("/")
     def index():
@@ -367,6 +388,9 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
                          race.reset(state, context, now) if state.mode != race.IDLE
                          else (state, []))
 
+        # A race takes over the mark panel and the chart, so a waypoint does not survive
+        # choosing a course (DESIGN 15).
+        store.clear_waypoint()
         store.set_race_context(race.Context(
             course=chosen[0],
             marks=course.index_marks(config["marks"]),
@@ -413,6 +437,28 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
     def api_reset():
         """Back to idle. Only ever the crew: nothing here resets itself (DESIGN 11.5)."""
         return _race_response(store.apply_race(race.reset))
+
+    @app.post("/api/waypoint")
+    def api_waypoint():
+        """{lat, lon} drops a waypoint, replacing any other; {clear: true} removes it.
+
+        Dropped by holding on the chart, and steered to on the race screen exactly like a
+        race mark (DESIGN 15). Refused with 409 while a race is in prestart or racing.
+        """
+        body = request.get_json(silent=True) or {}
+        if body.get("clear"):
+            store.clear_waypoint()
+            return jsonify({"waypoint": None})
+        try:
+            lat, lon = float(body["lat"]), float(body["lon"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"error": "lat and lon are required"}), 400
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            return jsonify({"error": "lat or lon out of range"}), 400
+        wp = store.drop_waypoint(lat, lon)
+        if wp is None:
+            return jsonify({"error": "a race is live", "waypoint": None}), 409
+        return jsonify({"waypoint": wp})
 
     @app.post("/api/settings")
     def api_settings():

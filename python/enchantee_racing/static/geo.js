@@ -65,10 +65,21 @@ window.Geo = (function () {
     };
   }
 
+  // nav.py latlon_from_enu(). The inverse of enu(), in the same frame, for a point held
+  // on the chart that has to become a waypoint (DESIGN 15).
+  function fromEnu(origin, e, n) {
+    var m = metresPerDegree(origin.lat);
+    return {
+      lat: origin.lat + n / m.lat,
+      lon: norm180(origin.lon + e / m.lon)
+    };
+  }
+
   return {
     metresPerDegree: metresPerDegree,
     norm180: norm180,
     enu: enu,
+    fromEnu: fromEnu,
     WGS84_A: WGS84_A,
     WGS84_E2: WGS84_E2
   };
