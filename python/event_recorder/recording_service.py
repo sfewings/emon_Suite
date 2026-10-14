@@ -581,8 +581,8 @@ class RecordingService:
                     'path': str(img_path),
                     'caption': img.get('caption', ''),
                     'image_type': img.get('image_type', ImageType.PLOT),
-                    # When a photo was taken, or uploaded, to place it among
-                    # the notes (FR-29)
+                    # When a photo was taken, or uploaded, to show photos in
+                    # the order they happened (FR-29)
                     'taken_at': img.get('taken_at') or img.get('created_at'),
                 })
             else:
@@ -857,7 +857,7 @@ class RecordingService:
             if not isinstance(block, dict) or block.get('type') not in post_renderer.BLOCK_TYPES:
                 raise RecordingError(f"Not a block: {block}", 400)
 
-    # === Photos and notes (FR-29) ===
+    # === Photos (FR-29) ===
 
     PHOTO_TYPES = {'jpg', 'jpeg', 'png', 'gif', 'heic', 'heif'}
 

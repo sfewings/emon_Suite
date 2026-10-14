@@ -172,18 +172,14 @@ def test_the_page_takes_no_notes(client, rid):
     assert client.post(f"/log/api/notes/{rid}", json={"text": "x"}).status_code in (404, 405)
 
 
-def test_notes_already_stored_stay_out_of_the_post(client, db, rid):
-    """The column stays, from when the page took notes; what is in it is not shown."""
+def test_drafts_have_no_notes_column(client, db, rid):
+    """Notes were removed before this branch was deployed anywhere, so the column that
+    held them is not created at all."""
     import sqlite3
-    service_db = db
-    service_db.save_draft_fields(rid, {"blocks": LAYOUT_SHIP_LOG}, {"story": "Out and back"})
     conn = sqlite3.connect(str(db.db_path))
-    conn.execute("""UPDATE post_drafts SET notes = '[{"ts": "2026-10-09T09:05:00Z", "text": "Old note"}]'
-                    WHERE recording_id = ?""", (rid,))
-    conn.commit()
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(post_drafts)")}
     conn.close()
-
-    assert "Old note" not in client.get(f"/log/preview?id={rid}").get_data(as_text=True)
+    assert "notes" not in columns
     assert "notes" not in client.get(f"/log/api/state?id={rid}").get_json()["draft"]
 
 

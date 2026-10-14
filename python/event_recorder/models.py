@@ -337,11 +337,6 @@ class Database:
         if 'field_revisions' not in columns('post_drafts'):
             conn.execute("ALTER TABLE post_drafts ADD COLUMN field_revisions TEXT")
 
-        # FR-29: the crew's one-line notes, JSON [{ts, lat, lon, text}], and
-        # when each photo was taken, so both can be told in the order they
-        # happened
-        if 'notes' not in columns('post_drafts'):
-            conn.execute("ALTER TABLE post_drafts ADD COLUMN notes TEXT")
         # FR-26: the crew's own time line, when they have typed over the one
         # worked out from the recording. Empty means the recording's.
         if 'time_line' not in columns('post_drafts'):
@@ -350,6 +345,8 @@ class Database:
         # the Log page while it was still recording; empty for not
         if 'publish_on_stop' not in columns('post_drafts'):
             conn.execute("ALTER TABLE post_drafts ADD COLUMN publish_on_stop TEXT")
+        # FR-29: when each photo was taken, so photos are told in the order
+        # they happened
         if 'taken_at' not in columns('recording_images'):
             conn.execute("ALTER TABLE recording_images ADD COLUMN taken_at TIMESTAMP")
 
@@ -1228,7 +1225,6 @@ class Database:
                     updated_at = excluded.updated_at
             """, (recording_id, wp_post_id, wp_modified, wp_status, datetime.utcnow()))
 
-    # `notes` is still a column, from when the page took notes (FR-29); no longer a field
     DRAFT_FIELDS = ('title', 'excerpt', 'categories', 'crew', 'story', 'wind', 'blocks',
                     'time_line')
     DRAFT_JSON_FIELDS = ('categories', 'crew', 'blocks')
