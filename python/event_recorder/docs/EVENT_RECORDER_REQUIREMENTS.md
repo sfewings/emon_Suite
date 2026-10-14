@@ -1128,8 +1128,10 @@ most likely to be, without asking
 tests `tests/test_photos.py`. **Notes removed 2026-10-10**, at the owner's decision after
 testing: useful, but not enough to justify the clutter on the page. The Note button, the
 note line, the Notes section, the `log/api/notes` route, placing a note on the track,
-and notes in the post are gone; `post_drafts.notes` remains as a column, unread. Photos
-are unchanged. The notes on notes below are kept as the record of what was built.
+and notes in the post are gone. The `post_drafts.notes` column went too (2026-10-14): it
+was only ever added by this branch, which no database in the field has had, so it is
+no longer created, and was dropped by hand from the dev rig's database. Photos are
+unchanged. The notes on notes below are kept as the record of what was built.
 
 **Implementation Notes:**
 
