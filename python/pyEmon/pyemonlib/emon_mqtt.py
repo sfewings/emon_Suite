@@ -40,6 +40,10 @@ class emon_mqtt:
 
     def on_connect(self, client, userdata, flags, rc):
         print(f"emon_mqtt:Connected with result code {rc}")
+        # Again on every reconnect: a broker without persistence loses retained
+        # messages when it restarts, and emon/config otherwise only goes at start.
+        if getattr(self, "sink", None) is not None:
+            self.publish_config()
 
     def on_disconnect(self, client, userdata, rc=0):
         print("DisConnected result code {rc}")

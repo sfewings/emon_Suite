@@ -35,9 +35,28 @@ files and the git history.
 
 ## Where it is up to
 
-**Phase 1 code done (1a to 1d), fixture now has real house lines; 1e, deploying, is
-next.** Nothing is deployed. Nothing outside `python/pyEmon/` and these docs has changed on this branch, so
-merging it would change no running container until images are rebuilt.
+**Phase 1 tested and built; the shannstainable deploy is next and waits on the owner.**
+Nothing is deployed. On the shannstainable Pi the new images exist locally as
+`sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
+`emon_gpsd_to_mqtt:live-test`, built from `a008c56` plus the reconnect fix; none is
+pushed to Docker Hub. Outside `python/pyEmon/` and these docs the branch changes only
+`python/platform.sh` (armv7 now names the cp313 wheel).
+
+Deploying at shannstainable is local only, so enchantee cannot pull it by accident:
+
+```bash
+for i in emon_serial_to_mqtt emon_mqtt_to_influx; do
+  docker tag sfewings32/$i:latest    sfewings32/$i:pre-live-ui   # the way back
+  docker tag sfewings32/$i:live-test sfewings32/$i:latest
+done
+cd /share/emon_Suite/provisioning/shannstainable
+docker compose up -d --no-deps emon_serial_to_mqtt emon_mqtt_to_influx
+docker exec mqtt mosquitto_sub -v -t 'emon/config' -C 1 | cut -c1-120   # read only
+```
+
+Way back: the same loop tagging `:pre-live-ui` as `:latest`, then the same `up`. A
+`docker compose pull` there would also put the old images back. Push to Docker Hub only
+after a day of watching, at the merge, and before the enchantee deploy.
 
 What exists, all in `python/pyEmon/`:
 
@@ -92,6 +111,9 @@ Behaviour changes a deploy will bring, both switchable per container:
   port that is free (5000, 1880, 1883, 3000, 8002, 8086, 9000 and 9443 are taken).
 - Recorded serial logs for regression fixtures are in `/share/Input/`. The owner will
   supply a shannstainable sample; see PLAN 1c.
+- `docker pull --platform linux/arm/v7 python:3.13` replaces the local arm64
+  `python:3.13`, and the next image build then fails installing the aarch64 wheel. After
+  any armv7 work, `docker pull --platform linux/arm64 python:3.13`.
 - Tests: a venv outside the repo with the same packages as the laptop and
   `python/pyEmon/dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl`, then as above.
   No `mosquitto_sub`/`mosquitto_pub` on the host; use the `mqtt` container's, or paho.
@@ -133,3 +155,20 @@ Behaviour changes a deploy will bring, both switchable per container:
   `make_emonlog_sample.py` read its GPS-with-RSSI line from an uncommitted file, so a
   regeneration anywhere but the laptop dropped it; the line is now in the script. `rain`
   and `hws` have no subnode, so the sampler keys them on type alone. Next: PLAN 1e.
+- **2026-10-19, shannstainable Pi, later.** PLAN 1e test and build done; deploy not
+  done, because the session's permissions stopped a production change; the owner runs
+  the commands under "Where it is up to". A/B on a dev broker (`tests/ab/`), production
+  image vs new, same replay of the fixture plus two hours of 18 Oct (house) and the
+  Frostbite 1 recording (boat): legacy MQTT identical in order (133,415 messages)
+  except 37 house and 2 boat topics, every one a channel named Unused; Influx line
+  protocol byte-identical (129,821 and 41,133 lines); envelopes and `emon/config`
+  retained. Boat also gains `gps/position/<sub>`, which is `master` (599e59e) against a
+  March image, not this branch. Checked the Unused drop against Node-RED: Instant
+  Data's `power/0/#`, `pulse/0/#` and `battery/voltage/0/#` functions already ignore
+  channel 5 and voltages 2 to 4. Learned: production mosquitto has no persistence, so
+  `emon/config` is now also published on reconnect (DESIGN 4.2, test added); the
+  armv7 wheel was cp311 while the images are 3.13, so armv7 builds had been broken
+  since Feb 2026 (now cp313, smoke-tested; nothing runs armv7); the exception lines the
+  bridge prints are now named by node (`airException`, was `airQualityException`) and
+  no longer appear for two-hop relayed lines of unconfigured subnodes. Wire output is
+  unaffected. After the deploy, watch Instant Data and Grafana for a day, then tick it.

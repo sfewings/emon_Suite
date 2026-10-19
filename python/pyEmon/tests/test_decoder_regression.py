@@ -217,6 +217,10 @@ def test_envelopes_are_well_formed_named_and_unique(fakes, tmp_path, config, cap
     assert len(config_msgs) == 1 and config_msgs[0][3] is True, "emon/config, retained, at start"
     doc = json.loads(config_msgs[0][1])
     assert doc["file"] == "emon_config.yml" and isinstance(doc["settings"], dict)
+    new.mqttClient.published.clear()
+    new.on_connect(new.mqttClient, None, {}, 0)   # paho calls this on every reconnect
+    assert [(p[0], p[3]) for p in new.mqttClient.published] == [(emon_feed.CONFIG_TOPIC, True)], \
+        "and again on reconnect, for a broker that lost its retained messages"
 
     catalogue = emon_feed.Catalogue()
     for line in _lines():

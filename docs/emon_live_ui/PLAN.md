@@ -69,7 +69,7 @@ byte-identical.
 ### 1d. Sinks and shims (done 19 Oct 2026, laptop)
 - [x] `sink_mqtt.py`: legacy topics unchanged except channels named Unused (owner's
       decision, DESIGN 4.2), plus retained envelope on `emon/<node>/<sub>/<field>[/<idx>]`,
-      plus retained `emon/config` on load and on every settings reload.
+      plus retained `emon/config` on load, on every settings reload and on reconnect.
 - [x] `sink_influx.py`: generic Point from a Reading, tags as today.
 - [x] `emon_mqtt.py` and `emon_influx.py` reduced to shims over decoder and sinks, same
       class names and constructor signatures (DESIGN D4). Regression test passes.
@@ -79,12 +79,13 @@ byte-identical.
       Checked 19 Oct 2026: emonMQTTToLog and emonMQTTToInflux take `EmonLog/#`;
       event_recorder and the race app subscribe to named topics; Node-RED's
       subscriptions on `nodeRed` and `Enchantee` are all specific. Recheck harvey-farm's.
-- [ ] Test against a dev mosquitto on 1884 with a replayed log (DESIGN 9.2), e.g.
-      `emonCSVToMQTT.py` or the race app's `tests/replay/replay.py` pointed at port 1884.
-      Confirm with `mosquitto_sub -p 1884 -v -t 'emon/#'`, and that the legacy topics match
-      a run of the master image against the same log.
-- [ ] Rebuild the wheel for arm64 and armv7 (DESIGN 9.3), then the
-      serial_to_mqtt, mqtt_to_influx and gpsd images.
+- [x] Test against a dev mosquitto on 1884 with a replayed log (DESIGN 9.2). Done 19 Oct
+      2026 on the Pi with `python/pyEmon/tests/ab/` (production image vs new image, same
+      replay, same broker, capture compared in order). Result in HANDOVER's session log.
+- [x] Rebuild the wheel for arm64 and armv7 (DESIGN 9.3), then the
+      serial_to_mqtt, mqtt_to_influx and gpsd images. Wheels cp313 for both, committed;
+      images built on the Pi as `:live-test`, **not pushed** to Docker Hub.
+      mqtt_to_log only imports pyemonlib, so it was not rebuilt.
 - [ ] Deploy at shannstainable. Watch Node-RED Instant Data and Grafana for a day.
 - [ ] Deploy at enchantee. Check the race app HUD and an event_recorder recording still
       work.

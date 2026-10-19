@@ -234,7 +234,10 @@ the whole `emon/...` namespace off.
 - GPS position keeps its single atomic `{"lat","lon"}` value (race app DESIGN 3): in the
   envelope, `v` is that object.
 - `emon/config` (retained): the active settings file as JSON plus its filename, published
-  on load and on every reload.
+  on load, on every reload and on every (re)connect to the broker. The production brokers
+  have no persistence, so a broker restart drops every retained message; envelopes come
+  back with the next reading, but `emon/config` would otherwise not return until the
+  bridge restarted.
 - `emon/derived/<id>` (retained): same envelope, `node: "derived"`, published by
   `emon_live` or, per D5, by Node-RED.
 - Event payloads such as `race/event` keep their fields and gain `t` and `kind: "event"`
