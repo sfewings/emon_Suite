@@ -23,7 +23,7 @@ DESIGN 9.1), **boat** (enchantee Pi or the boat's iPad).
 - [x] Branch `emon_live_ui` from `master` in emon_Suite.
 - [x] `docs/emon_live_ui/`: DESIGN, PLAN, HANDOVER, INVENTORY, proposal.html.
 - [x] Pointer in the root `CLAUDE.md`.
-- [ ] Push the branch to origin so the Pi can fetch it.
+- [x] Push the branch to origin so the Pi can fetch it.
 
 ---
 
@@ -62,8 +62,9 @@ byte-identical.
       and identical Points. Fixture `tests/data/emonlog_sample.txt` (452 lines, made by
       `make_emonlog_sample.py`): synthetic house lines for every subnode with RSSI and
       relay variants, real boat lines from the Frostbite recordings, rejected lines.
-- [ ] **Add a real shannstainable log to the fixture** when the owner supplies one:
-      `py -3 tests/data/make_emonlog_sample.py --house <log>`, rerun the tests, commit.
+- [x] **Add a real shannstainable log to the fixture** (done 19 Oct 2026, Pi): 138 lines
+      from `/share/Input/20261018.TXT`, six per node type and subnode. Regenerate only on
+      the shannstainable Pi; the command is in the script's docstring.
 
 ### 1d. Sinks and shims (done 19 Oct 2026, laptop)
 - [x] `sink_mqtt.py`: legacy topics unchanged except channels named Unused (owner's

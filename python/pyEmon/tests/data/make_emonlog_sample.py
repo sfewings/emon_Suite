@@ -9,12 +9,15 @@ Serial lines as emonSerialToMQTT hands them to process_line: no timestamp, an op
   samples in tests/test_pybind.py, each also with an RSSI, a single relay hop with an
   RSSI, and two relay hops (whose RSSI is never published);
 - real boat lines, the first of each node type and subnode from the two recorded
-  Frostbite races in python/enchantee_racing/tests/data, plus GPS lines carrying an RSSI
-  from python/event_recorder/test_event_recorder/data/20250904.TXT;
+  Frostbite races in python/enchantee_racing/tests/data, plus a GPS line carrying an RSSI
+  (GPS_RSSI below);
 - lines that must be rejected: unknown node, malformed subnode, too few fields.
 
-Synthetic until a real shannstainable day is available (HANDOVER, open questions); add one
-with --house <file> when it is.
+The committed fixture also holds real house lines, six per node type and subnode, from a
+shannstainable day. That log is not in the repository, so regenerate on the shannstainable
+Pi, or the house lines are lost:
+
+    python tests/data/make_emonlog_sample.py --house /share/Input/20261018.TXT
 """
 
 import argparse
@@ -47,7 +50,8 @@ BOAT_FILES = [
     os.path.join(PYTHON, "enchantee_racing", "tests", "data", "20260913_Frostbite_1.TXT"),
     os.path.join(PYTHON, "enchantee_racing", "tests", "data", "20260816_Frostbite_3.TXT"),
 ]
-RSSI_GPS_FILE = os.path.join(PYTHON, "event_recorder", "test_event_recorder", "data", "20250904.TXT")
+# Real, from an event_recorder recording of 4 Sep 2025 that was never committed
+GPS_RSSI = ["gps,0,-35.0328670,117.8880100,128.88,2.22:13"]
 
 REJECTED = [
     "nosuchnode,0,1,2,3",
@@ -88,16 +92,7 @@ def boat_lines(per_key=6):
                     seen[key].append(line)
     for lines in seen.values():
         yield from lines
-    if os.path.exists(RSSI_GPS_FILE):
-        with open(RSSI_GPS_FILE, encoding="utf-8", errors="replace") as f:
-            n = 0
-            for raw in f:
-                parts = raw.rstrip("\r\n").split(",", 1)
-                if len(parts) == 2 and parts[1].startswith("gps") and ":" in parts[1]:
-                    yield parts[1]
-                    n += 1
-                    if n >= 6:
-                        break
+    yield from GPS_RSSI
 
 
 def main():
@@ -113,7 +108,9 @@ def main():
             for raw in f:
                 parts = raw.rstrip("\r\n").split(",", 3)
                 if len(parts) >= 4:
-                    key = (parts[1].rstrip("0123456789"), parts[2])
+                    node = parts[1].rstrip("0123456789")
+                    # rain and hws have no subnode: field 2 is a reading, not a key
+                    key = (node, None if node in ("rain", "hws") else parts[2])
                     if seen.get(key, 0) < 6:
                         seen[key] = seen.get(key, 0) + 1
                         lines.append(",".join(parts[1:]))

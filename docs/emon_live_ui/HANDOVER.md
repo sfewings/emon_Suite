@@ -35,8 +35,8 @@ files and the git history.
 
 ## Where it is up to
 
-**Phase 1 code done (1a to 1d); 1e, deploying, is next and needs the Pi.** Nothing is
-deployed. Nothing outside `python/pyEmon/` and these docs has changed on this branch, so
+**Phase 1 code done (1a to 1d), fixture now has real house lines; 1e, deploying, is
+next.** Nothing is deployed. Nothing outside `python/pyEmon/` and these docs has changed on this branch, so
 merging it would change no running container until images are rebuilt.
 
 What exists, all in `python/pyEmon/`:
@@ -75,19 +75,26 @@ Behaviour changes a deploy will bring, both switchable per container:
   cd python/pyEmon && <scratch>/venv/Scripts/python -m pytest -q tests
   ```
   Run pytest from `python/pyEmon`, not from inside `pyemonlib`; `tests/conftest.py` uses
-  the source and borrows the compiled extension from the installed wheel. Expect 78 passed.
+  the source and borrows the compiled extension from the installed wheel. Expect 69
+  passed: the regression test runs once per `emon_config/*.yml` in the working tree, so
+  untracked config snapshots add cases (the laptop had 3 more and saw 78).
 
 ### shannstainable Pi (where this finishes)
 
-- Production checkout `/share/emon_Suite`; development worktree
-  `/share/emon_Suite-live` (create it per DESIGN 9.1 on first use, and record it here).
+- Hostname `raspberrypi`, aarch64, Python 3.11.2. Production checkout
+  `/share/emon_Suite`, kept on `master`; development worktree `/share/emon_Suite-live`
+  on `emon_live_ui` (created 19 Oct 2026). To pick up the branch here, `git -C
+  /share/emon_Suite-live pull`; never `git checkout emon_live_ui` in production, which
+  also stops the worktree being created (a branch can be checked out in one place only).
 - Node-RED user directory `/share/emon-node-red`, on branch `nodeRed`.
 - Compose for the site runs from `provisioning/shannstainable/` in the **production**
   checkout. A dev emon_live container should mount the worktree instead and publish a
   port that is free (5000, 1880, 1883, 3000, 8002, 8086, 9000 and 9443 are taken).
 - Recorded serial logs for regression fixtures are in `/share/Input/`. The owner will
   supply a shannstainable sample; see PLAN 1c.
-- Tests: install the Pi's arm wheel and the same packages into a venv, then as above.
+- Tests: a venv outside the repo with the same packages as the laptop and
+  `python/pyEmon/dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl`, then as above.
+  No `mosquitto_sub`/`mosquitto_pub` on the host; use the `mqtt` container's, or paho.
 - Test publishers against a separate mosquitto, never the live one (DESIGN 9.2).
 
 ### enchantee Pi (the boat)
@@ -119,3 +126,10 @@ Behaviour changes a deploy will bring, both switchable per container:
   legacy MQTT for channels named Unused; synthetic house data until they supply a log.
   Regression: 20,674 MQTT publishes and 9,318 Influx points identical across 12 configs.
   Branch not yet pushed.
+- **2026-10-19, shannstainable Pi.** Found the production checkout switched to
+  `emon_live_ui` (harmless: no container reads `python/pyEmon` or these docs). Put it
+  back on `master` and created the worktree. Tests pass on the Pi (69). Added real house
+  lines to the fixture (PLAN 1c), still identical old vs new. Learned:
+  `make_emonlog_sample.py` read its GPS-with-RSSI line from an uncommitted file, so a
+  regeneration anywhere but the laptop dropped it; the line is now in the script. `rain`
+  and `hws` have no subnode, so the sampler keys them on type alone. Next: PLAN 1e.
