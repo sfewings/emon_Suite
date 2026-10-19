@@ -33,47 +33,55 @@ Goal: the bridge publishes the envelope and `emon/config` alongside every legacy
 and `emon_feed` exists with tests. **No consumer changes.** Legacy topics are
 byte-identical.
 
-### 1a. emon_feed core (any)
-- [ ] `pyemonlib/emon_feed.py`, standard library only (DESIGN D4): `Reading`,
+### 1a. emon_feed core (done 19 Oct 2026, laptop)
+- [x] `pyemonlib/emon_feed.py`, standard library only (DESIGN D4): `Reading`,
       `envelope(reading) -> str`, `parse(topic, payload) -> Reading | None` accepting
-      envelopes and bare numbers, `Catalogue` (name resolution from an `emon/config`
-      document, DESIGN 5).
-- [ ] `tests/test_emon_feed.py`, runnable with only pytest. Include a test that importing
+      envelopes and bare numbers, `Catalogue` (built from the names in the envelopes
+      themselves, DESIGN 5).
+- [x] `tests/test_emon_feed.py`, runnable with only pytest. Include a test that importing
       `emon_feed` imports none of `emonSuite`, `paho`, `influxdb_client`, `yaml`.
 
-### 1b. Ported calculations (any)
-- [ ] Copy `norm180` (`python/enchantee_racing/engine/nav.py`) and the TWA, AWA
+### 1b. Ported calculations (done 19 Oct 2026, laptop)
+- [x] Copy `norm180` (`python/enchantee_racing/engine/nav.py`) and the TWA, AWA
       fallback, leeway and heel derivations (`store.py`: `derive`, `derive_leeway`,
       `derive_heel`) into `emon_feed`, **with their tests**. Do not change the race app;
       it keeps its own copies until it migrates (DESIGN 7).
-- [ ] Distance between fixes (`event_recorder/live_summary.py` `_metres`, and the
+- [x] Distance between fixes (`event_recorder/live_summary.py` `_metres`, and the
       Haversine sum in `data_processor.py`) and trapezoidal W to Wh integration
       (`data_processor.py` `_calculate_energy_statistics`). Same rule.
-- [ ] `Store` with `{v, t}` and age, generalised from the race app's `store.py`.
+- [x] `Store` with `{v, t}` and age, generalised from the race app's `store.py`.
 
-### 1c. Decoder (Pi, needs the C++ extension)
-- [ ] `pyemonlib/emon_decoder.py`: `decode(line, settings) -> list[Reading]` for all 18
-      payload types in `emon_mqtt.dispatch`. Reproduce scaling and special cases exactly
-      (DESIGN 4.1).
-- [ ] Regression harness `tests/test_decoder_regression.py`: for each
+### 1c. Decoder (done 19 Oct 2026, laptop, using the cp314 Windows wheel)
+- [x] `pyemonlib/emon_decoder.py`: `decode(line, settings) -> list[Emission]` for all 18
+      payload types, each Emission carrying the canonical Reading plus the legacy MQTT
+      and Influx forms as thunks (DESIGN 4.1, as built).
+- [x] Regression harness `tests/test_decoder_regression.py`: for each
       `provisioning/<site>/emon_config`, run recorded `EmonLog` lines through the old
       `emon_mqtt` and `emon_influx` (with mocked clients capturing every publish and
       Point) and through decoder plus new sinks, and assert identical legacy publishes
-      and identical Points. Fixture lines: a day from `/share/Input/` at shannstainable;
-      an enchantee recording exported from event_recorder for bms, gps, mwv, imu, svc, pth.
-      Commit a trimmed fixture (a few hundred lines per type), not whole days.
+      and identical Points. Fixture `tests/data/emonlog_sample.txt` (452 lines, made by
+      `make_emonlog_sample.py`): synthetic house lines for every subnode with RSSI and
+      relay variants, real boat lines from the Frostbite recordings, rejected lines.
+- [ ] **Add a real shannstainable log to the fixture** when the owner supplies one:
+      `py -3 tests/data/make_emonlog_sample.py --house <log>`, rerun the tests, commit.
 
-### 1d. Sinks and shims (Pi)
-- [ ] `sink_mqtt.py`: legacy topic unchanged, plus retained envelope on
-      `emon/<kind>/<node>-<sub>/<idx>`, plus retained `emon/config` on load and on every
-      settings reload.
-- [ ] `sink_influx.py`: generic Point from a Reading, tags as today.
-- [ ] `emon_mqtt.py` and `emon_influx.py` reduced to shims over decoder and sinks, same
+### 1d. Sinks and shims (done 19 Oct 2026, laptop)
+- [x] `sink_mqtt.py`: legacy topics unchanged except channels named Unused (owner's
+      decision, DESIGN 4.2), plus retained envelope on `emon/<node>/<sub>/<field>[/<idx>]`,
+      plus retained `emon/config` on load and on every settings reload.
+- [x] `sink_influx.py`: generic Point from a Reading, tags as today.
+- [x] `emon_mqtt.py` and `emon_influx.py` reduced to shims over decoder and sinks, same
       class names and constructor signatures (DESIGN D4). Regression test passes.
 
 ### 1e. Deploy (Pi, then boat)
-- [ ] Test against a dev mosquitto on 1884 with a replayed log (DESIGN 9.2). Confirm with
-      `mosquitto_sub -v -t 'emon/#'` and that legacy topics match.
+- [x] Check no consumer subscribes to `#` and would be flooded by retained envelopes.
+      Checked 19 Oct 2026: emonMQTTToLog and emonMQTTToInflux take `EmonLog/#`;
+      event_recorder and the race app subscribe to named topics; Node-RED's
+      subscriptions on `nodeRed` and `Enchantee` are all specific. Recheck harvey-farm's.
+- [ ] Test against a dev mosquitto on 1884 with a replayed log (DESIGN 9.2), e.g.
+      `emonCSVToMQTT.py` or the race app's `tests/replay/replay.py` pointed at port 1884.
+      Confirm with `mosquitto_sub -p 1884 -v -t 'emon/#'`, and that the legacy topics match
+      a run of the master image against the same log.
 - [ ] Rebuild the wheel for arm64 and armv7 (DESIGN 9.3), then the
       serial_to_mqtt, mqtt_to_influx and gpsd images.
 - [ ] Deploy at shannstainable. Watch Node-RED Instant Data and Grafana for a day.

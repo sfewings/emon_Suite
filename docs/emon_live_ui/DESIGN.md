@@ -162,38 +162,69 @@ pyemonlib/
   emon_influx.py       SHIM during migration, then deleted.
 ```
 
-`Reading` fields: `kind, value, unit, node, sub, idx, group, name, t, rssi`, plus `topic`
-(the legacy topic) so the MQTT sink can keep publishing it unchanged.
+`Reading` fields: `node, sub, field, value, unit, kind, idx, group, name, t, rssi`
+(see `emon_feed.Reading`).
 
-The decoder must reproduce today's behaviour exactly, including scaling (`/100`,
-`/1000`, `litresPerPulse`, `mmPerPulse`), the battery mid-voltage subtraction against the
-`vX_reference` channel, skipping battery shunts named `Unused`, the GPS position JSON
-with its range check, and the RSSI relay-path rule. The regression test in PLAN phase 1
-is how that is proven.
+**As built (phase 1, 19 Oct 2026).** The old MQTT and Influx functions turned out to
+differ far more than expected: different topic and tag layouts (battery Influx tags put
+the shunt before the subnode, MQTT the other way round), different scaling (rain is a tip
+count on MQTT and mm in Influx; rain supplyV is mV on MQTT and V in Influx), different
+channels skipped, and a different publish order for batteries and the IMU heading. They
+also failed differently: a channel missing from emon_config raised `KeyError` part-way
+through a message, inside a try that swallowed it, so everything before was published and
+nothing after, at a different point for each sink.
 
-Note that today the MQTT and Influx paths already differ in places. For example, rain is
-published to MQTT as a raw count but to Influx in mm. Where they differ, the Reading
-carries the Influx (named, scaled) form, and the MQTT sink reproduces the old legacy
-value for the legacy topic. The legacy topics must not change by a single byte.
+So `decode()` returns a list of `Emission`s, each carrying:
+
+- `reading`: the canonical Reading for the envelope, or None;
+- `mqtt`: a thunk returning the legacy `(topic, value)`;
+- `influx`: a thunk returning the legacy `(measurement, tags, value)`;
+- `unused`: the channel is named Unused (section 4.2).
+
+Each sink evaluates its thunks in order and stops at the first exception, which
+reproduces each old function's partial-failure behaviour exactly. A thunk returning None
+means "skip" (the old `!= "Unused"` gates). Where the two old orders differ, the quantity
+is emitted once per sink. The canonical value is the Influx one where Influx had one
+(named and scaled), else the MQTT one. Canonical names never raise.
+
+`tests/test_decoder_regression.py` holds this to verbatim copies of the old modules in
+`tests/legacy/`, for every emon_config in provisioning/ and every line of
+`tests/data/emonlog_sample.txt`: legacy MQTT identical in order, Influx line protocol
+byte-identical, same exceptions. At phase 1 that compared 20,674 MQTT publishes and 9,318
+Influx points across 12 configs with no difference.
 
 ### 4.2 The envelope
 
-Published on `emon/<kind>/<node>-<sub>/<idx>` (no `/<idx>` where a payload has one value
-per subnode), retained, QoS 0.
+Published on `emon/<node>/<sub>/<field>[/<idx>]`, retained, QoS 0. For example
+`emon/pulse/0/power/2`, `emon/bms/1/cellVoltage/3`, `emon/gps/0/position`.
+
+The field is in the path because one node publishes several quantities of the same kind
+(a BMS has a pack voltage and sixteen cell voltages), so the `emon/<kind>/...` layout
+first proposed would have collided. Changed while building phase 1.
 
 ```json
 {
   "s": 1,
   "v": 2867,
   "u": "W",
-  "t": 1757580061,
+  "t": 1757580061.0,
   "kind": "power",
-  "node": "pulse", "sub": 0, "idx": 2,
+  "node": "pulse", "sub": 0, "field": "power", "idx": 2,
   "group": "Power board",
   "name": "Consumed",
   "rssi": -61
 }
 ```
+
+Absent optional fields are omitted, not null. Units are `W`, `Wh`, `V`, `A`, `VA`,
+`degC`, `mm`, `L`, `g`, `kn`, `deg`, `hPa`, `%`, `dBm`, `pulse`, `count` and a few more;
+`emon_decoder` is the list.
+
+**Unused.** A channel named `Unused`, or a whole node named `Unused`, gets no envelope.
+On the owner's instruction (19 Oct 2026) its legacy MQTT topic is also no longer
+published; `EMON_SKIP_UNUSED=0` in a container's environment restores it. Influx is
+unchanged. This is the only intended change to legacy output. `EMON_ENVELOPES=0` turns
+the whole `emon/...` namespace off.
 
 - `s` is the envelope version. Fields may be added within a version, never renamed or
   removed.
@@ -280,13 +311,24 @@ dropped, and the per-site branches of `emon-node-red` are archived.
   `h0`, `s0`, `v3` and so on). Example `Power board / Consumed`.
 - **Fields with no name in config** (bms, gps, imu, pth, mwv, leaf, inv, svc, air, bee):
   `group / field`, for example `Main Battery / batterySoC`, `True wind / windDirection`.
-- **One channel, two kinds** (pulse publishes `power` and `pulse` for each channel):
-  the kind is appended in brackets, `Power board / Consumed (pulse)`. The kind with the
-  natural reading (here `power`) takes the bare name.
+  Indexed unnamed fields add the index: `Main Battery / cellVoltage 3`, `IMU Sensor / acc 1`.
+- **A named channel with no name in config**: `group / field idx`, e.g.
+  `House temperatures / temperature 3`.
+- **One channel, two kinds** (pulse publishes `power` and `pulse` for each channel;
+  battery shunts publish `power`, `pulseIn`, `pulseOut`): the second kind is appended in
+  brackets, `Power board / Consumed (pulse)`, `Bank 2 (pulseIn)`. The natural reading
+  (power) takes the bare name.
+- **RSSI**: `group / rssi (<node>)`, or `rssi (<node> via <relay>)` when heard through a
+  relay. The node type is in the name because one place often has several node types
+  under one group name: shannstainable's config has a `Kitchen` display and a `Kitchen`
+  air sensor. Found by the phase 1 envelope test.
 - **Derived feeds**: `derived/<id>`, for example `derived/power/consumed/today`.
 - **Feeds outside emon** (ecowitt, pantech): the raw topic is accepted.
-- Names are resolved by `emon_feed.Catalogue` from `emon/config`. Duplicate names within
-  a site are a lint error.
+- The names travel in every envelope, and envelopes are retained, so a consumer builds
+  its `emon_feed.Catalogue` from the readings it receives on subscribing; it does not
+  need to interpret `emon/config`. `emon/config` is still published, for tools and lint.
+  The phase 1 test asserts no two channels share a name across all 452 sample lines, for
+  every site config. Duplicate names are a lint error.
 
 ---
 
@@ -435,8 +477,14 @@ file.
 
 - `emon_feed` has unit tests that run anywhere with only the standard library and pytest.
 - The decoder regression test compares old and new output, per site config, over
-  recorded `EmonLog` lines (`/share/Input/*.TXT` on a Pi). It needs a build of the C++
-  extension, so it runs where that builds: the Pi, or a Linux container.
+  `tests/data/emonlog_sample.txt`. It needs a build of the C++ extension and is skipped
+  without one. Any installed pyemonlib wheel matching the Python version will do:
+  `tests/conftest.py` puts the source first on the path and borrows the compiled
+  `emonSuite` from the installed package. On the Windows laptop the cp314 win_amd64 wheel
+  in `pyEmon/dist` works; on a Pi, the arm wheel.
+- The sample is synthetic for house nodes until a real shannstainable log is available,
+  and real for boat nodes (Frostbite recordings). `tests/data/make_emonlog_sample.py
+  --house <log>` adds a real log's lines.
 - Ported race app functions bring their tests with them.
 
 ### 9.6 Commits
