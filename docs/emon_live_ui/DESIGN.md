@@ -1,0 +1,446 @@
+# emon live UI redesign: design
+
+This is the authoritative design for the work on branch `emon_live_ui`. It records what
+was decided, why, and what was rejected. It does not record progress; that is in
+`HANDOVER.md`. The task list is in `PLAN.md`. Facts gathered from the existing system
+(what Node-RED computes today, how the daily emails differ, known bugs) are in
+`INVENTORY.md`.
+
+`proposal.html` is the illustrated proposal this design came from (revision 3,
+October 2026), including the page mockups and the three data-age states. Open it in a
+browser. Where it and this file disagree, this file wins: the decisions below were
+confirmed by the owner after the proposal was written.
+
+Sections are numbered so that code comments and commit messages can cite them, for
+example `DESIGN 4.2`.
+
+---
+
+## 1. Problem
+
+The live view of each site is a Node-RED Dashboard 1 page. In order of how much they
+matter:
+
+1. Dashboard 1 is deprecated, lays out widgets on a fixed grid, and cannot reflow to a
+   phone. It has no way to show that a value is old.
+2. Sensor names are typed twice. `emon_config.yml` names every channel, and
+   `emon_influx.py` uses those names as Influx tags. `emon_mqtt.py` drops them, so
+   Node-RED identifies feeds by the last character of the topic and keeps its own
+   `channelNames` arrays.
+3. `emon_mqtt.py` (about 390 lines) and `emon_influx.py` (about 760 lines) each decode
+   every payload type. Every sensor change is made twice.
+4. Everything else that differs between sites lives in `provisioning/<site>/`, but
+   Node-RED keeps one git branch per site in the separate `emon-node-red` repository,
+   and those branches have drifted. See INVENTORY 3 for what that did to the daily emails.
+5. Daily totals live in Node-RED flow context, so a restart corrupts the day.
+6. Derived maths exists three times: Node-RED (daily totals), `enchantee_racing`
+   (TWA, AWA fallback, leeway, heel) and `event_recorder` (Haversine distance, energy).
+
+---
+
+## 2. Decisions
+
+Confirmed by the owner on 19 October 2026. Each records the rejected alternative,
+because that is what a later session will be tempted to reopen.
+
+### D1. Pages poll a small server. Browsers do not subscribe to MQTT.
+
+`emon_live` subscribes to MQTT, holds the latest value of every feed, computes derived
+values and serves one JSON state document that pages poll.
+
+Rejected: browsers subscribing to mosquitto over websockets (proposal revision 2). The
+race app's design brief (`python/enchantee_racing/docs/DESIGN.md` section 2) weighed the
+same choice and chose polling. Its reasons hold here. Polling works unchanged across AP
+mode, mDNS, raw IP and nginx prefixes. It needs no broker change and no vendored MQTT
+client, and a wifi dropout heals itself on the next request. It also means derived values
+are computed once on the server rather than in every open browser, and ages are computed
+on the server, so a phone with a wrong clock still dims correctly.
+
+### D2. Pages and config refer to feeds by name, not by topic.
+
+A feed is referenced as `group / name`, exactly as written in emon_config, for example
+`Power board / Consumed`. Rules are in section 5.
+
+Rejected: structural topics such as `emon/power/0/2` in page files. They never break on a
+rename, but when a sensor is moved to a different channel in a new timestamped settings
+file they silently show the wrong sensor. A name breaks loudly instead, and a lint check
+(section 9.4) catches it before deployment.
+
+### D3. TWA and the other boat calculations are one function, run in two places.
+
+The maths lives once, in `pyemonlib.emon_feed`. `emon_live` runs it and publishes the
+results to MQTT for displays and the recorder. `enchantee_racing`, when it migrates,
+imports the same functions and computes for itself rather than reading the published feed.
+
+Why two places: the race app must keep working if `emon_live` is down. On the water that
+matters more than saving one subtraction. Because both call the same function with the
+same tests, they cannot disagree.
+
+### D4. `emon_feed` lives inside pyemonlib, which outlives `emon_mqtt.py` and `emon_influx.py`.
+
+pyemonlib is already installed in every image, so it is the natural home. But
+`emon_mqtt.py` and `emon_influx.py` are expected to be **deleted** once migration is
+complete, so nothing new may depend on them. The package is restructured as in
+section 4.1. Two consequences:
+
+- `emon_feed.py` imports only the standard library. It must not import `emonSuite`
+  (the C++ extension), `paho`, `influxdb_client` or `yaml` at module level. That keeps it
+  usable and testable on any machine, including one without a build of the extension,
+  and keeps the race app's and recorder's dependency on it light.
+- `emon_mqtt.py` and `emon_influx.py` become thin compatibility shims during migration,
+  keeping their class names and constructor signatures so the existing runners
+  (`emonSerialToMQTT.py`, `emonMQTTToInflux.py`, `emonLogToInflux.py`, `emonCSVToMQTT.py`,
+  `emonGPSDToMQTT.py`) and `enchantee_racing/tests/replay/replay.py` keep working
+  unchanged. They are removed in the final phase, after those callers have moved.
+
+### D5. Single-site calculations stay in Node-RED for now.
+
+Shower detection, the dog-fed notification, the rolling rain-tank average use and the
+daily email stay in Node-RED. Node-RED publishes their results in the new envelope under
+`emon/derived/...` so pages can show them like any other feed. Each moves to `emon_live`
+only when a second site needs it.
+
+Rejected for now: operators for these in `derived.yml`. They are bespoke state machines
+used by one site, and generalising them first would be speculative.
+
+### D6. Data-age thresholds: a site default, overridable per tile.
+
+| Where | Fresh until | Gone after | Treatment when gone |
+|---|---|---|---|
+| House sites (default) | 60 s | 5 min | blank, dashed tile, last value in small type |
+| Boat (enchantee) | 15 s | 2 min | as above |
+| Boat position | n/a | 5 s | blank to `---`, never dim (race app DESIGN 9.5) |
+| Slow feeds, per tile | e.g. odometer, scale, rain | set in the page file | |
+
+Between fresh and gone the value fades linearly to 40% opacity and its age turns amber.
+
+---
+
+## 3. Architecture
+
+```
+radio nodes -> serial -> emonSerialToMQTT
+                           |
+                     emon_decoder (pyemonlib)  line + settings -> [Reading]
+                           |
+              +------------+-------------+
+              |            |             |
+          MQTT sink    Influx sink     log (unchanged)
+          legacy topics + emon/... envelope (retained) + emon/config (retained)
+              |
+              +--> emon_live  (per site: store, derived.yml, /api/state, pages)
+              |        publishes emon/derived/...
+              +--> Node-RED   (email, backups, single-site state machines; no dashboard)
+              +--> enchantee_racing, event_recorder  (later, own projects)
+```
+
+Two organising rules:
+
+- **Code lives once in emon_Suite; everything that differs between sites lives in
+  `provisioning/<site>/`.** That is already true for emon_config, compose, Grafana and
+  mosquitto. This work extends it to pages and derived values, and eventually to the
+  Node-RED flows.
+- **Calculations live once, in a pure library with no I/O**, the same rule the race app
+  applies to its `engine/`. That is what allows replay tests across all three projects.
+
+---
+
+## 4. Components
+
+### 4.1 pyemonlib layout, target
+
+```
+pyemonlib/
+  emonSuite            C++ extension (unchanged): payload parsers
+  emon_settings.py     unchanged: timestamped settings files
+  emon_decoder.py      NEW. decode(line, settings) -> list[Reading]. Uses emonSuite.
+  emon_feed.py         NEW. Pure, stdlib only. Reading, envelope build/parse, catalogue,
+                       Store, derived operators, nav maths.
+  sink_mqtt.py         NEW. Publishes legacy topics, envelopes and emon/config.
+  sink_influx.py       NEW. Generic Point from a Reading.
+  emon_mqtt.py         SHIM during migration, then deleted.
+  emon_influx.py       SHIM during migration, then deleted.
+```
+
+`Reading` fields: `kind, value, unit, node, sub, idx, group, name, t, rssi`, plus `topic`
+(the legacy topic) so the MQTT sink can keep publishing it unchanged.
+
+The decoder must reproduce today's behaviour exactly, including scaling (`/100`,
+`/1000`, `litresPerPulse`, `mmPerPulse`), the battery mid-voltage subtraction against the
+`vX_reference` channel, skipping battery shunts named `Unused`, the GPS position JSON
+with its range check, and the RSSI relay-path rule. The regression test in PLAN phase 1
+is how that is proven.
+
+Note that today the MQTT and Influx paths already differ in places. For example, rain is
+published to MQTT as a raw count but to Influx in mm. Where they differ, the Reading
+carries the Influx (named, scaled) form, and the MQTT sink reproduces the old legacy
+value for the legacy topic. The legacy topics must not change by a single byte.
+
+### 4.2 The envelope
+
+Published on `emon/<kind>/<node>-<sub>/<idx>` (no `/<idx>` where a payload has one value
+per subnode), retained, QoS 0.
+
+```json
+{
+  "s": 1,
+  "v": 2867,
+  "u": "W",
+  "t": 1757580061,
+  "kind": "power",
+  "node": "pulse", "sub": 0, "idx": 2,
+  "group": "Power board",
+  "name": "Consumed",
+  "rssi": -61
+}
+```
+
+- `s` is the envelope version. Fields may be added within a version, never renamed or
+  removed.
+- `t` is unix seconds from the bridge host's clock when the line arrived. `PayloadGPS`
+  and most payloads carry no time of their own, so nothing better is available.
+- `rssi` only when present.
+- GPS position keeps its single atomic `{"lat","lon"}` value (race app DESIGN 3): in the
+  envelope, `v` is that object.
+- `emon/config` (retained): the active settings file as JSON plus its filename, published
+  on load and on every reload.
+- `emon/derived/<id>` (retained): same envelope, `node: "derived"`, published by
+  `emon_live` or, per D5, by Node-RED.
+- Event payloads such as `race/event` keep their fields and gain `t` and `kind: "event"`
+  when their owners migrate.
+
+Two existing topic bugs are fixed in the new namespace and left alone in the legacy one:
+`bms/voltage{n}` and `bms/lifetimeCycles{n}`, and `sevCon/voltage{n}`, `sevCon/current{n}`,
+`sevCon/rpm{n}`, which all lack the slash before the subnode.
+
+### 4.3 Clocks and age
+
+- Consumers on the same host as the bridge may use `t`, and must for retained messages,
+  whose arrival time is only the moment of subscribing.
+- The race app counts staleness from arrival, deliberately (its DESIGN 3 and 9.5), and
+  keeps doing so.
+- Browsers never see `t`. `emon_live` sends `age` in seconds; the page adds the time since
+  its last poll, so ages keep counting through a wifi dropout and never depend on the
+  device clock.
+
+### 4.4 emon_live
+
+A Flask service, one container per site, `python/emon_live/`. Modelled on the race app
+(`store.py`, `app.py`, `mqtt_client.py`), and its store is the race app's `{v, ts}` store
+generalised into `emon_feed.Store`.
+
+- Subscribes to `emon/#`.
+- Loads `provisioning/<site>/emon-ui/` (mounted read-only): `site.json`, `pages/*.json`,
+  `derived.yml`.
+- Runs derived operators on each relevant arrival and publishes `emon/derived/...`.
+- On start, seeds `daily_delta` baselines from Influx (first value since the reset time)
+  so a restart mid-day resumes correct totals.
+- Serves `/` (the engine), `/site/...` (the site folder), `/api/state`.
+- `/api/state` returns every feed a page uses: `{name: {v, u, age}}` plus `theme`.
+  Gzipped. Small enough to poll every second.
+- Theme (day/night) is server state, set with a POST, so every screen on a site switches
+  together (race app DESIGN 9.7, learned the hard way).
+- Bind-mounts its code from the checkout so edits are live, matching
+  "the checkout is the deployment" in `../../CLAUDE.md`.
+
+### 4.5 emon-ui engine
+
+`emon_Suite/ui/`: `index.html`, `emon-ui.js`, `emon-ui.css`, `tiles/*.js`, shared
+`theme.js` and `viewport.js`. No build step, no framework, no CDN.
+
+Tile types: `value`, `gauge` (bar), `trail` (sparkline), `led`/pill, then for the boat
+`dial`, `compass`, `cell-bar`, `grafana` (iframe), and `html` (a site fragment using the
+engine's data client, the escape hatch).
+
+Browser floor, from the race app's CLAUDE.md, because the boat's iPad mini 3 runs iOS 12:
+no `clamp()`, no flexbox `gap`, no `dvh` without a fallback, no container queries, every
+SVG given `width` and `height`, relative URLs only, screen height from `viewport.js`.
+Grid `gap` and media queries are fine.
+
+Visual design (proposal "The page" section): one hue per domain on a top stripe and the
+tile heading, never a filled background; values in a monospace face with tabular figures;
+"today" figures smaller beneath the live value. Domain hues: power orange, solar yellow,
+batteries green, heat red, water blue, rain slate, cars violet. Desktop 4 columns, phone
+2 columns, hero tiles span 2.
+
+### 4.6 Node-RED, residual role
+
+Daily email, log backups, the single-site state machines of D5, and Grafana embeds where
+still wanted. No Dashboard 1 pages once each site's emon-ui reaches parity. In the final
+phase, each site's flows move to `provisioning/<site>/node-red/flows.json`, `flowFile` is
+read from an environment variable in a shared `settings.js`, the dashboard packages are
+dropped, and the per-site branches of `emon-node-red` are archived.
+
+---
+
+## 5. Naming feeds
+
+- **Channels named in emon_config**: `group / name`, where group is
+  `settings[node][sub]["name"]` and name is the channel key's value (`p2`, `t1`, `f0`,
+  `h0`, `s0`, `v3` and so on). Example `Power board / Consumed`.
+- **Fields with no name in config** (bms, gps, imu, pth, mwv, leaf, inv, svc, air, bee):
+  `group / field`, for example `Main Battery / batterySoC`, `True wind / windDirection`.
+- **One channel, two kinds** (pulse publishes `power` and `pulse` for each channel):
+  the kind is appended in brackets, `Power board / Consumed (pulse)`. The kind with the
+  natural reading (here `power`) takes the bare name.
+- **Derived feeds**: `derived/<id>`, for example `derived/power/consumed/today`.
+- **Feeds outside emon** (ecowitt, pantech): the raw topic is accepted.
+- Names are resolved by `emon_feed.Catalogue` from `emon/config`. Duplicate names within
+  a site are a lint error.
+
+---
+
+## 6. Provisioning a site
+
+```
+provisioning/<site>/
+  emon_config/            unchanged; the source of every name
+  emon-ui/
+    site.json
+    pages/<page>.json
+    derived.yml
+  node-red/flows.json     final phase only
+  docker-compose.yml      + emon_live service
+```
+
+### 6.1 site.json
+
+```json
+{
+  "title": "Enchantee",
+  "theme": "night",
+  "state": "api/state",
+  "fresh": 15, "gone": 120,
+  "pages": [
+    {"title": "HUD",  "link": "../race/hud", "for": "phone"},
+    {"title": "Race", "link": "../race/"},
+    {"id": "dials", "title": "Dials", "for": "kiosk"},
+    {"id": "navigation", "title": "Navigation"}
+  ],
+  "default": "dials"
+}
+```
+
+Pages are addressed as `/#<id>`. A `link` entry puts another app in the menu without
+owning it. A site with one page shows no menu.
+
+### 6.2 Page files
+
+A page is a list of tiles. A tile names its feeds:
+
+```json
+{
+  "title": "Hot water", "domain": "heat", "span": 1,
+  "fresh": 60, "gone": 300,
+  "hero":  [ {"feed": "Hot water system / Water (T3)", "label": "Tank", "decimals": 0},
+             {"feed": "derived/hws/showersRemaining", "label": "Showers left"} ],
+  "gauge": {"feed": "derived/hws/showersRemaining", "max": 27},
+  "line":  "Today {derived/hws/showers} showers · {derived/hws/showerMinutes} min"
+}
+```
+
+The exact schema is settled while building phase 2 and recorded here when it is.
+
+### 6.3 derived.yml operators
+
+| op | Meaning |
+|---|---|
+| `daily_delta` | counter value minus its value at the reset time (default local midnight, `reset: "09:00"` for rain). Seeded from Influx on start. |
+| `integrate` | W to Wh, trapezoidal, gaps over 5 min not bridged. |
+| `sum` | sum of named feeds. |
+| `expr` | arithmetic over named feeds, with `norm180` available. |
+| `twa`, `awa`, `leeway`, `heel` | the race app's functions, moved into emon_feed (D3). |
+
+Scale factors default from emon_config (`p2_wPerPulse` and so on) when a line omits them.
+Example lines for both shannstainable and enchantee are in `proposal.html`, section
+"Derived values in provisioning".
+
+### 6.4 Serving
+
+- **enchantee**: host nginx maps `/` to emon_live in place of Node-RED's `/ui/`, which
+  moves to `/nodered/ui/` during the overlap. `/race/`, `/events/`, `/grafana/` unchanged.
+  The kiosk launcher (`usr/local/bin/enchantee-dashboard`) keeps `http://enchantee.local/`
+  and gains `#dials`.
+- **shannstainable, harvey-farm, office-temperature**: emon_live publishes a port, or
+  sits behind the existing reverse proxy for https.
+
+---
+
+## 7. The wider family
+
+`enchantee_racing` and `event_recorder` are **not** changed by this work. They have their
+own design documents, CLAUDE.md files and tests, and migrate when each is next worked on.
+This work owes them a stable contract:
+
+- Legacy topics keep publishing until the last consumer has moved.
+- The envelope is versioned (section 4.2).
+- `emon_feed.parse(topic, payload)` returns a Reading from an envelope **or** a bare
+  number, so either app can switch parsing first and subscriptions later.
+- `emon_feed` has no I/O, so all three projects can replay-test against the recorded
+  Frostbite tracks.
+
+What each gains is listed in `proposal.html`, section "The wider family", including the
+overlap table of which project computes what today.
+
+---
+
+## 8. Deferred, with reasons
+
+- **Generic daily email** (`provisioning/<site>/email.yml` rendered by emon_live). Would
+  remove the per-branch drift in INVENTORY 3. Deferred until emon_live exists and
+  computes the daily totals the email reports.
+- **Shower detection, dog-fed, tank average as operators** (D5).
+- **Server-sent events instead of polling.** A small upgrade if push is ever wanted.
+- **Stopping the legacy topics.** Only after Node-RED, both apps and every Grafana
+  dashboard have moved.
+
+---
+
+## 9. Engineering rules for this branch
+
+### 9.1 Development never touches a production checkout
+
+On a Pi, `/share/emon_Suite` **is** production: containers bind-mount provisioning and
+code from it. Never switch its branch. Develop in a separate worktree:
+
+```bash
+cd /share/emon_Suite
+git fetch origin
+git worktree add /share/emon_Suite-live emon_live_ui
+```
+
+Read `../../CLAUDE.md` on container mounts before any `docker exec`. Container scratch
+work goes in `/tmp` inside the container, never under `/share`.
+
+### 9.2 Development never disturbs the production broker
+
+A second publisher of legacy topics on the production broker would double every
+message that Node-RED counts. Test the new publisher against a separate mosquitto
+(for example a dev container on port 1884) fed by replaying logs, never alongside the
+live `emon_serial` on 1883. Reading from the production broker is fine.
+
+### 9.3 Rebuild the wheel before the images
+
+Images install the prebuilt wheel from `python/pyEmon/dist/` via `platform.sh`. A source
+change in pyemonlib reaches no container until the wheel is rebuilt for the target
+platform. The race app lost time to exactly this (`python/enchantee_racing/docs/HANDOVER.md`).
+
+### 9.4 Lint
+
+`ui/tools/lint_pages.py` checks every feed named in a site's pages and derived.yml
+against that site's emon_config. Run it in `build.sh` and before deploying a settings
+file.
+
+### 9.5 Tests
+
+- `emon_feed` has unit tests that run anywhere with only the standard library and pytest.
+- The decoder regression test compares old and new output, per site config, over
+  recorded `EmonLog` lines (`/share/Input/*.TXT` on a Pi). It needs a build of the C++
+  extension, so it runs where that builds: the Pi, or a Linux container.
+- Ported race app functions bring their tests with them.
+
+### 9.6 Commits
+
+Conventional style, `scope: summary`, with a body saying why. Scopes in use:
+`pyemonlib`, `emon_live`, `ui`, `provisioning`, `docs`. Stage only the files of the
+change; the working tree has unrelated untracked files.

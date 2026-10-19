@@ -6,6 +6,14 @@ This file covers the machine every subproject shares. The subprojects carry thei
 - `python/enchantee_racing/CLAUDE.md` the race support app
 - `python/event_recorder/CLAUDE.md` the recorder and its WordPress publishing
 
+## Branch `emon_live_ui`: the live UI redesign
+
+If the current branch is `emon_live_ui`, read `docs/emon_live_ui/HANDOVER.md` before
+doing anything else. It is a multi-session redesign (self-describing MQTT, a shared
+`emon_feed` library, the `emon_live` service and per-site pages under `provisioning/`),
+moving from a Windows laptop to the shannstainable Pi. On a Pi it is developed in a
+separate worktree, never in this production checkout.
+
 ## This checkout IS the deployment
 
 There is no build-and-ship step for most of the stack. The Docker containers bind-mount
