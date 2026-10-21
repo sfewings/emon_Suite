@@ -109,12 +109,18 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] Tests using a fake clock and injected messages, no broker. Input is a capture of
       every retained `emon/#` message at shannstainable (`tests/data/`).
 
-### 2b. derived.yml (any)
-- [ ] Operators `daily_delta`, `integrate`, `sum`, `expr` (DESIGN 6.3) in `emon_feed`,
-      wired up in emon_live, publishing `emon/derived/...`.
-- [ ] Influx seeding of `daily_delta` baselines on start (Pi to test).
-- [ ] `provisioning/shannstainable/emon-ui/derived.yml`, covering INVENTORY 2 rows marked
-      `derived.yml`. Compare each against the Node-RED figure for a full day.
+### 2b. derived.yml (code done 21 Oct 2026, Pi; the full-day comparison remains)
+- [x] Operators `daily_delta`, `integrate`, `sum`, `expr` (DESIGN 6.3) in `emon_feed`,
+      wired up in emon_live, publishing `emon/derived/...` (with `--publish`). Also
+      `daily_max`, `daily_min`, `mean`, `window_delta`; see DESIGN 6.3 as built.
+- [x] Influx seeding on start (Pi to test): a bounded replay of each input, and a
+      `first()` baseline for month and year.
+- [x] `provisioning/shannstainable/emon-ui/derived.yml`, covering INVENTORY 2 rows marked
+      `derived.yml`: 62 feeds.
+- [ ] Compare each against the Node-RED figure for a full day:
+      `python tools/compare_nodered.py` late in a day Node-RED has run since midnight
+      (from `python/emon_live`). Matched exactly on 21 Oct for 20:01 to 20:30 (after a
+      reboot, `--from 20:01`), but at night: solar, export and foregone untested.
 
 ### 2c. UI engine (any, check on a phone)
 - [ ] `ui/`: engine, `value`, `gauge`, `trail`, `led` tiles, age states (DESIGN D6),

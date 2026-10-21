@@ -197,3 +197,146 @@ def test_integrate_wh_does_not_bridge_long_gaps():
     samples = [(0, 100.0), (60, 100.0), (60 + 3600, 100.0)]
     assert ef.integrate_wh(samples) == pytest.approx(100.0 * 3660 / 3600)
     assert ef.integrate_wh(samples, max_gap_s=300) == pytest.approx(100.0 * 60 / 3600)
+
+
+# --- derived operators (DESIGN 6.3) -----------------------------------------------------
+
+
+@pytest.fixture
+def perth(monkeypatch):
+    """Period boundaries are local time; pin it so these run the same anywhere."""
+    import time
+    monkeypatch.setenv("TZ", "Australia/Perth")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def local(y, mo, d, h=0, mi=0, s=0):
+    import time
+    return time.mktime((y, mo, d, h, mi, s, 0, 0, -1))
+
+
+def test_period_start_daily_nine_am_month_and_year(perth):
+    t = local(2026, 10, 21, 8, 59)
+    assert ef.period_start(t) == local(2026, 10, 21)
+    assert ef.period_start(t, "09:00") == local(2026, 10, 20, 9)
+    assert ef.period_start(local(2026, 10, 21, 9), "09:00") == local(2026, 10, 21, 9)
+    assert ef.period_start(local(2026, 11, 1, 3), "09:00") == local(2026, 10, 31, 9)
+    assert ef.period_start(t, "month") == local(2026, 10, 1)
+    assert ef.period_start(t, "year") == local(2026, 1, 1)
+    with pytest.raises(ValueError):
+        ef.period_start(t, "9am")
+    with pytest.raises(ValueError):
+        ef.DailyDelta(reset="25:00")
+
+
+def test_daily_delta_counts_from_the_first_value_and_resets_at_midnight(perth):
+    d = ef.DailyDelta(scale=2.5)
+    assert d.value is None
+    assert d.update(1000, local(2026, 10, 21, 0, 1)) == 0.0
+    assert d.update(1040, local(2026, 10, 21, 12)) == 100.0
+    assert d.update(1100, local(2026, 10, 22, 0, 2)) == 0.0, "a new day starts from its first value"
+    assert d.update(1104, local(2026, 10, 22, 1)) == 10.0
+
+
+def test_daily_delta_carries_across_a_counter_reset(perth):
+    d = ef.DailyDelta()
+    d.update(500, local(2026, 10, 21, 1))
+    d.update(520, local(2026, 10, 21, 2))
+    assert d.update(3, local(2026, 10, 21, 3)) == 20.0, "a node restart zeroes its counter"
+    assert d.update(10, local(2026, 10, 21, 4)) == 27.0
+
+
+def test_daily_delta_seeded_from_influx_resumes_the_total(perth):
+    d = ef.DailyDelta(reset="09:00")
+    d.seed(6950.0, local(2026, 10, 21, 9, 3))
+    assert d.value == 0.0
+    assert d.update(6959.8, local(2026, 10, 21, 15)) == pytest.approx(9.8)
+
+
+def test_integrate_is_trapezoidal_skips_gaps_and_resets(perth):
+    i = ef.Integrate()
+    t0 = local(2026, 10, 21, 10)
+    assert i.update(100, t0) == 0.0
+    assert i.update(300, t0 + 60) == pytest.approx(200 * 60 / 3600)
+    assert i.update(300, t0 + 60 + 600) == pytest.approx(200 * 60 / 3600), "10 min gap not bridged"
+    assert i.update(300, t0 + 720) == pytest.approx((200 * 60 + 300 * 60) / 3600)
+    assert i.update(50, local(2026, 10, 22, 0, 0, 30)) == 0.0
+    i.seed(1234.5, local(2026, 10, 22, 0, 1))
+    assert i.value == 1234.5
+
+
+def test_extreme_by_magnitude_ignoring_zero(perth):
+    e = ef.Extreme(kind="max", by_abs=True, ignore_zero=True)
+    t = local(2026, 10, 21, 10)
+    for v in (0.0, 0.3, -1.2, 0.9, 0.0):
+        e.update(v, t)
+    assert e.value == -1.2
+    assert ef.Extreme(kind="min").update(5, t) == 5
+    m = ef.Extreme(kind="min")
+    for v in (53.1, 52.4, 54.0):
+        m.update(v, t)
+    assert m.value == 52.4
+    assert m.update(55, local(2026, 10, 22, 1)) == 55, "and resets at the boundary"
+
+
+def test_mean_of_positive_values(perth):
+    m = ef.Mean(positive_only=True)
+    t = local(2026, 10, 21, 10)
+    assert m.value is None
+    for v in (0, 100, 0, 300):
+        m.update(v, t)
+    assert m.value == 200.0
+    m.seed(50.0, 4, t)
+    assert m.update(250, t) == 90.0
+
+
+def test_roll_reports_a_new_period_so_totals_can_drop_to_zero_without_input(perth):
+    d = ef.DailyDelta()
+    d.update(1, local(2026, 10, 21, 23))
+    d.update(5, local(2026, 10, 21, 23, 30))
+    assert not d.roll(local(2026, 10, 21, 23, 59))
+    assert d.roll(local(2026, 10, 22, 0, 0, 10)) and d.value is None
+
+
+def test_expr_reads_feeds_in_braces():
+    e = ef.Expr("{derived/import/today} / 1000 * 0.262")
+    assert e.names == ["derived/import/today"]
+    assert e({"derived/import/today": 5000}) == pytest.approx(1.31)
+    assert e({}) is None and e({"derived/import/today": None}) is None
+    assert ef.Expr("max(0, {Inverter Two / pvInputPower} - {derived/a})")(
+        {"Inverter Two / pvInputPower": 100, "derived/a": 140}) == 0.0
+    assert ef.Expr("{Power board / Car} >= 200")({"Power board / Car": 250}) == 1.0
+    assert ef.Expr("({t} - 45) / 0.7 if {t} >= 40 else 0")({"t": 66.0}) == pytest.approx(30.0)
+    assert ef.Expr("norm180({a} - {b})")({"a": 10, "b": 350}) == 20.0
+    assert ef.Expr("{a} / {b}")({"a": 1, "b": 0}) is None, "division by zero is no value"
+    assert ef.Expr("{a}\n  + {b}")({"a": 1, "b": 2}) == 3.0, "folded over lines, as YAML >- can"
+
+
+@pytest.mark.parametrize("bad", [
+    "__import__('os').system('true')", "{a}.real", "open('x')", "[1, 2]", "'text'",
+    "lambda: 1", "{a", "x + 1",
+])
+def test_expr_refuses_anything_but_arithmetic(bad):
+    with pytest.raises((ValueError, SyntaxError)):
+        ef.Expr(bad)
+
+
+def test_window_delta_reports_out_to_nine_am_and_holds_it(perth):
+    w = ef.WindowDelta(reset="00:00", end="09:00")
+    w.update(100, local(2026, 10, 21, 0, 5))
+    assert w.update(160, local(2026, 10, 21, 8, 55)) is None, "not reported while open"
+    assert w.update(175, local(2026, 10, 21, 9, 1)) == 60.0
+    assert w.update(300, local(2026, 10, 21, 23)) == 60.0, "held after the close"
+    w.update(310, local(2026, 10, 22, 0, 1))
+    assert w.value == 60.0, "yesterday's figure until today's window closes"
+    assert w.roll(local(2026, 10, 22, 9, 0, 5)) and w.value == 0.0, "closed by the clock alone"
+
+
+def test_expr_defaults_stand_in_for_a_missing_input():
+    e = ef.Expr("max(0, {inv2} - {avg})", defaults={"avg": 0})
+    assert e({"inv2": 400}) == 400.0
+    assert e({"inv2": 400, "avg": 150}) == 250.0
+    assert e({"avg": 150}) is None, "only the named input has a default"

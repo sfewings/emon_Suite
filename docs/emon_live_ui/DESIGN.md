@@ -416,9 +416,42 @@ The exact schema is settled while building phase 2 and recorded here when it is.
 | `expr` | arithmetic over named feeds, with `norm180` available. |
 | `twa`, `awa`, `leeway`, `heel` | the race app's functions, moved into emon_feed (D3). |
 
-Scale factors default from emon_config (`p2_wPerPulse` and so on) when a line omits them.
 Example lines for both shannstainable and enchantee are in `proposal.html`, section
 "Derived values in provisioning".
+
+**As built (phase 2b, 21 Oct 2026).** Operators in `emon_feed` (pure, stdlib), wired by
+`python/emon_live/derived.py`, seeded by `influx.py`. The file's own header is the
+reference; the decisions behind it:
+
+- **No `wPerPulse` scaling.** The plan above was wrong: pulse counters are already Wh,
+  because the nodes apply `pN_wPerPulse` themselves. Checked on 21 Oct 2026: over 30 min
+  `Consumed` rose 1,176 pulses while its power integrated to 1,159 Wh (`p2_wPerPulse` is
+  2.5). Node-RED's 1 pulse = 1 Wh was right. `scale` defaults to 1.
+- **More operators than planned**, each one a Node-RED calculation: `daily_max` and
+  `daily_min` (battery rail and mid-points, by magnitude with `abs`, `ignore_zero`),
+  `mean` (the export estimate's average import, `positive_only`), `window_delta`
+  (battery out from 00:00 to 09:00, held until the next 09:00). `daily_delta` also takes
+  `reset: month | year`, which is how month and year rain come from Influx.
+- **Expressions name feeds in braces**, as pages do: `"{derived/import/today} / 1000 *
+  0.262"`. Parsed with `ast` and checked node by node: numbers, arithmetic, comparisons
+  (true is 1), `x if c else y`, and `min max abs round norm180 norm360`. A missing input
+  gives no value unless `defaults` names one.
+- **Seeding is a replay, not a baseline.** Each input is read back from Influx from the
+  earliest boundary of the operators it feeds and run through them in time order, which
+  rebuilds chains (the export estimate) that no aggregate can. Month and year deltas
+  take a bounded `first()` instead. Every query names one series and a time window
+  (HANDOVER: an unbounded query froze the Pi). shannstainable: about 340,000 rows,
+  30 s, 77 MB at 20:30.
+- **Influx series are named in derived.yml** (`influx:`: feed to `measurement sensor`),
+  not derived from feed names: Influx's `sensorGroup`/`sensorName` tags do not always
+  match the envelope names (rain is `rain gauge / Rain gauge` there, `Rain gauge / rain`
+  here).
+- A value no newer than the last seen for a feed is ignored, so retained messages
+  arriving after the replay do not look like counter resets; and emon_live's own
+  `emon/derived/...` echo from the broker is not fed back in.
+- A counter that goes backwards (a node restart) is carried, not subtracted.
+- Boundaries are checked every 5 s, so totals go to 0 at midnight without a reading.
+
 
 ### 6.4 Serving
 

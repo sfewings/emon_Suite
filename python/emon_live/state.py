@@ -43,8 +43,22 @@ class LiveState:
         self.store = emon_feed.Store(clock=clock)
         self.catalogue = emon_feed.Catalogue()
         self.config: Optional[dict] = None
+        self.derived = None
+        """A derived.Derived, when the site has a derived.yml."""
+        self.publish: Optional[Callable[[emon_feed.Reading], None]] = None
+        """Sends a derived reading to MQTT; None while not publishing."""
         self._theme = theme if theme in THEMES else DEFAULT_THEME
         self._lock = threading.Lock()
+
+    def accept_derived(self, readings: Iterable[emon_feed.Reading]) -> None:
+        for reading in readings:
+            self.store.put(reading)
+            self.catalogue.add(reading)
+            if self.publish is not None:
+                try:
+                    self.publish(reading)
+                except Exception:
+                    log.exception("could not publish %s", reading.topic)
 
     @property
     def theme(self) -> str:
@@ -81,6 +95,11 @@ def handle_message(state: LiveState, topic: str, payload: Any) -> bool:
         return False
     state.catalogue.add(reading)
     state.store.put(reading)
+    derived = state.derived
+    if derived is not None and not derived.owns(reading.key):
+        # Our own derived feeds come back from the broker too; feeding them in again
+        # would count them twice.
+        state.accept_derived(derived.on_value(reading.key, reading.value, reading.t))
     return True
 
 

@@ -10,6 +10,9 @@ Subscribes to emon/#, keeps the latest reading of every feed, and serves:
     /api/config       the emon_config in force, as the bridge published it
     /api/settings     POST {"theme": "day" | "night"}
 
+With the site's derived.yml it also computes derived feeds (derived.py), seeded from
+Influx on start (influx.py) and published on emon/derived/... with --publish.
+
 Every URL a page uses is relative, so the same pages work behind nginx at /, on a raw
 port, by IP or by mDNS name.
 
@@ -22,6 +25,7 @@ import argparse
 import gzip
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -36,6 +40,10 @@ DEFAULT_UI_DIR = HERE.parents[1] / "ui"
 GZIP_MIN_BYTES = 500
 """Below this, gzip costs more than it saves. /api/state for a whole site is several KB
 and is polled every second by every open screen, which is why it is gzipped at all."""
+
+TICK_S = 5.0
+"""How often derived periods are checked for a boundary passed with no reading: totals
+drop to 0 within this of midnight, and a 09:00 window closes within this of 09:00."""
 
 
 def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI_DIR) -> Flask:
@@ -107,18 +115,45 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--site", default=os.environ.get("SITE_DIR"),
                         help="the site's emon-ui folder, e.g. provisioning/<site>/emon-ui")
     parser.add_argument("--ui", default=os.environ.get("UI_DIR", str(DEFAULT_UI_DIR)))
+    parser.add_argument("--derived", default=os.environ.get("DERIVED_FILE"),
+                        help="derived.yml; default <site>/derived.yml when there is one")
+    parser.add_argument("--influx", default=os.environ.get("INFLUX_URL", "http://localhost:8086"),
+                        help="where to seed derived values from on start; 'none' to skip")
+    parser.add_argument("--publish", action="store_true",
+                        default=os.environ.get("PUBLISH_DERIVED", "0") not in ("0", "", "false", "no"),
+                        help="publish derived values on emon/derived/... (off for test runs)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     site = Site(args.site)
     state = LiveState(theme=site.site.get("theme", "day"))
 
+    derived_file = args.derived or (Path(args.site) / "derived.yml" if args.site else None)
+    if derived_file is not None and Path(derived_file).is_file():
+        import derived
+        state.derived = derived.load(derived_file)
+        log.info("%s: %d derived feeds", derived_file, len(state.derived.entries))
+        if args.influx != "none":
+            # Before subscribing, so the replay's readings come first and the retained
+            # messages that follow are recognised as older (derived.Derived.on_value).
+            import influx
+            state.accept_derived(influx.seed(state.derived, influx.Influx(args.influx)))
+
     from mqtt_client import MqttClient  # here, so create_app is importable without paho
     source = MqttClient(state, args.broker, args.broker_port)
+    if args.publish:
+        state.publish = source.publish_reading
     source.start()
+    stop = threading.Event()
+    if state.derived is not None:
+        def tick() -> None:
+            while not stop.wait(TICK_S):
+                state.accept_derived(state.derived.tick(state.clock()))
+        threading.Thread(target=tick, name="derived-tick", daemon=True).start()
     try:
         create_app(state, site, Path(args.ui)).run(host=args.host, port=args.port, threaded=True)
     finally:
+        stop.set()
         source.stop()
     return 0
 

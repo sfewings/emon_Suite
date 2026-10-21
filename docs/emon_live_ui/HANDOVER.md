@@ -37,8 +37,9 @@ files and the git history.
 
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
 The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
-2a (the emon_live skeleton) is done and runs against the live broker; 2b, `derived.yml`,
-is next.
+2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
+shannstainable, seeded from Influx on start. What remains of 2b is the full-day
+comparison with Node-RED (PLAN 2b); then 2c, the UI engine.
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -118,8 +119,10 @@ Behaviour changes a deploy will bring, both switchable per container:
 - `docker pull --platform linux/arm/v7 python:3.13` replaces the local arm64
   `python:3.13`, and the next image build then fails installing the aarch64 wheel. After
   any armv7 work, `docker pull --platform linux/arm64 python:3.13`.
-- emon_live tests need only `flask`, `paho-mqtt` and `pytest` in a venv; run
-  `python -m pytest -q tests` from `python/emon_live` (18 pass). To try it against the
+- The venv used on 21 Oct is `/home/pi/.cache/emon_live_venv` (outside `/tmp`, which a
+  reboot wipes): `pytest flask paho-mqtt pyyaml`. It serves both test suites.
+- emon_live tests need only `flask`, `paho-mqtt`, `pyyaml` and `pytest` in a venv; run
+  `python -m pytest -q tests` from `python/emon_live` (28 pass). To try it against the
   live broker, which is read-only for 2a: `python app.py --host 127.0.0.1 --port 5003`,
   then `curl 'http://127.0.0.1:5003/api/state?all=1'`.
 - **Every Influx query must be time-bounded** (`WHERE time > ...`), and never `SELECT *`
@@ -205,3 +208,17 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   under a `feeds` key, `?all=1`, `/api/feeds` and `/api/config`, port 5003. Not yet
   done: no Dockerfile or compose service (PLAN 2e); feeds outside emon (ecowitt,
   pantech) are parsed by topic but not subscribed to.
+- **2026-10-21, shannstainable Pi, evening.** The Pi froze and was reset by its hardware
+  watchdog at 20:00, most likely by my unbounded Influx query (see Machines; now a rule,
+  and in the seeding code). Owner decided the three 2b questions (Open questions). PLAN
+  2b code done: operators in emon_feed (58 tests), `derived.py` and `influx.py` in
+  emon_live (28 tests), `derived.yml` with 62 feeds, `tools/compare_nodered.py`. Matched
+  Node-RED exactly from its restart at 20:01 to 20:30. Found, for the owner: the Schneider
+  pulse meter (`pulse/0/1`) did not move all day, so Node-RED's and our "solar today"
+  leave out Inverter Two (16.9 kWh against about 32 kWh with all three integrated);
+  Node-RED's foregone figure is low because it rounds every 2-second step to whole Wh
+  (ours does not); at night "battery in" rises while the batteries discharge, so the
+  monitors' pulseIn may be discharge (names kept as Node-RED had them); mains and bore
+  water (wtr 1) are not reporting; the tank height reads 0. Node-RED keeps its context in
+  memory only, so every restart zeroes its day; ours resumes. Next: the full-day compare,
+  then 2c.

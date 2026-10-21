@@ -18,17 +18,19 @@ Contents:
     Catalogue               feed key to topic, built from readings seen
     Store                   latest reading per feed, with ages
     norm180 ... integrate_wh the derived maths (DESIGN 6.3, D3)
+    DailyDelta ... Expr     the derived.yml operators (DESIGN 6.3)
 """
 
 from __future__ import annotations
 
+import ast as _ast
 import json
 import math
 import re
 import threading
 import time as _time
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple, Union
 
 ENVELOPE_VERSION = 1
 """The envelope's `s` field. Fields may be added within a version, never renamed or
@@ -418,10 +420,385 @@ def integrate_wh(samples: Iterable[Tuple[float, float]],
     return total
 
 
+# --------------------------------------------------------------------------------------
+# Derived operators (DESIGN 6.3)
+#
+# The stateful ones accumulate over a period that restarts at a local-time boundary:
+# midnight by default, "09:00" for rain and battery out, "month" or "year". Each is fed
+# (value, t) pairs in time order and can be seeded with what Influx says happened since
+# the boundary, so a restart mid-day resumes the right figure. No I/O here: emon_live
+# does the feeding, the seeding queries and the publishing.
+#
+# Local time is the process's (TZ in the container), as Node-RED's crontab resets were.
+# --------------------------------------------------------------------------------------
+
+MAX_GAP_S = 300.0
+"""integrate does not bridge a gap longer than this (DESIGN 6.3)."""
+
+PERIODS = ("month", "year")
+
+
+def _hhmm(reset: str) -> Tuple[int, int]:
+    try:
+        hh, mm = reset.split(":")
+        hh, mm = int(hh), int(mm)
+    except (AttributeError, ValueError):
+        raise ValueError(f"reset must be 'HH:MM', 'month' or 'year', not {reset!r}") from None
+    if not (0 <= hh < 24 and 0 <= mm < 60):
+        raise ValueError(f"reset out of range: {reset!r}")
+    return hh, mm
+
+
+def period_start(t: float, reset: str = "00:00") -> float:
+    """The most recent period boundary at or before t, in local time.
+
+    "HH:MM" is a daily boundary at that time; "month" and "year" start at local midnight
+    on the 1st. mktime normalises day 0 to the last day of the month before, which is how
+    "yesterday's 09:00" is found on the 1st.
+    """
+    lt = _time.localtime(t)
+    if reset in PERIODS:
+        month = lt.tm_mon if reset == "month" else 1
+        return _time.mktime((lt.tm_year, month, 1, 0, 0, 0, 0, 0, -1))
+    hh, mm = _hhmm(reset)
+    start = _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hh, mm, 0, 0, 0, -1))
+    if start > t:
+        start = _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday - 1, hh, mm, 0, 0, 0, -1))
+    return start
+
+
+class PeriodOperator:
+    """Base for the operators that restart at a boundary. `value` is None until there is
+    something to report."""
+
+    def __init__(self, reset: str = "00:00") -> None:
+        period_start(0.0, reset)          # validate now, not at the first reading
+        self.reset = reset
+        self.start: Optional[float] = None
+
+    def roll(self, t: float) -> bool:
+        """Start a new period if t is past the boundary. True when one was started, so a
+        caller ticking the clock knows to republish the zeroed figure."""
+        start = period_start(t, self.reset)
+        if start == self.start:
+            return False
+        rolled = self.start is not None
+        self.start = start
+        self.clear()
+        return rolled
+
+    def clear(self) -> None:
+        raise NotImplementedError
+
+    def update(self, value: float, t: float) -> Optional[float]:
+        raise NotImplementedError
+
+    @property
+    def value(self) -> Optional[float]:
+        raise NotImplementedError
+
+
+class DailyDelta(PeriodOperator):
+    """A counter's increase since the boundary, times `scale` (op daily_delta).
+
+    The baseline is the first value seen in the period, as Node-RED's DayStartPulse was,
+    or the seeded one. A counter that goes backwards, as a node's does when it restarts,
+    is taken to have reset to zero: what had accumulated is carried and counting goes on
+    from the new value, where Node-RED's figure went negative.
+    """
+
+    def __init__(self, reset: str = "00:00", scale: float = 1.0) -> None:
+        super().__init__(reset)
+        self.scale = scale
+        self.clear()
+
+    def clear(self) -> None:
+        self.base: Optional[float] = None
+        self.last: Optional[float] = None
+        self.carry = 0.0
+
+    def seed(self, first_value: float, t: float) -> None:
+        """The counter's first value since the boundary, from Influx."""
+        self.roll(t)
+        self.base = self.last = float(first_value)
+
+    def update(self, value: float, t: float) -> Optional[float]:
+        self.roll(t)
+        value = float(value)
+        if self.base is None:
+            self.base = value
+        elif self.last is not None and value < self.last:
+            self.carry += self.last - self.base
+            self.base = value
+        self.last = value
+        return self.value
+
+    @property
+    def value(self) -> Optional[float]:
+        if self.base is None or self.last is None:
+            return None
+        return (self.last - self.base + self.carry) * self.scale
+
+
+class Integrate(PeriodOperator):
+    """Power to energy since the boundary, by the trapezoid rule (op integrate).
+
+    W in, Wh out with the default `per_s` of 1/3600. A gap over `max_gap_s` is not
+    bridged, as integrate_wh. The interval across a boundary is dropped rather than
+    split: at most one sample interval, and it keeps yesterday's energy out of today.
+    """
+
+    def __init__(self, reset: str = "00:00", max_gap_s: float = MAX_GAP_S,
+                 per_s: float = 1.0 / 3600.0) -> None:
+        super().__init__(reset)
+        self.max_gap_s = max_gap_s
+        self.per_s = per_s
+        self.clear()
+
+    def clear(self) -> None:
+        self.total: Optional[float] = None
+        self.prev: Optional[Tuple[float, float]] = None
+
+    def seed(self, total: float, t: float) -> None:
+        self.roll(t)
+        self.total = float(total)
+
+    def update(self, value: float, t: float) -> Optional[float]:
+        self.roll(t)
+        value = float(value)
+        if self.total is None:
+            self.total = 0.0
+        if self.prev is not None:
+            dt = t - self.prev[0]
+            if 0 < dt <= self.max_gap_s:
+                self.total += (value + self.prev[1]) / 2.0 * dt * self.per_s
+        if self.prev is None or t >= self.prev[0]:
+            self.prev = (t, value)
+        return self.total
+
+    @property
+    def value(self) -> Optional[float]:
+        return self.total
+
+
+class Extreme(PeriodOperator):
+    """The largest (or smallest) value since the boundary (ops daily_max, daily_min).
+
+    With `by_abs`, the value of largest magnitude, sign kept: a battery mid-point
+    voltage is as bad 1.2 V low as 1.2 V high (Node-RED's Battery Voltage node).
+    `ignore_zero` skips readings of exactly 0, which that node also did, since a monitor
+    channel reads 0 when its tap is disconnected.
+    """
+
+    def __init__(self, reset: str = "00:00", kind: str = "max", by_abs: bool = False,
+                 ignore_zero: bool = False) -> None:
+        super().__init__(reset)
+        if kind not in ("max", "min"):
+            raise ValueError(f"kind must be max or min, not {kind!r}")
+        self.kind, self.by_abs, self.ignore_zero = kind, by_abs, ignore_zero
+        self.clear()
+
+    def clear(self) -> None:
+        self.best: Optional[float] = None
+
+    def _better(self, a: float, b: float) -> bool:
+        ka, kb = (abs(a), abs(b)) if self.by_abs else (a, b)
+        return ka > kb if self.kind == "max" else ka < kb
+
+    def seed(self, value: float, t: float) -> None:
+        self.roll(t)
+        self.best = float(value)
+
+    def update(self, value: float, t: float) -> Optional[float]:
+        self.roll(t)
+        value = float(value)
+        if not (self.ignore_zero and value == 0.0):
+            if self.best is None or self._better(value, self.best):
+                self.best = value
+        return self.best
+
+    @property
+    def value(self) -> Optional[float]:
+        return self.best
+
+
+class Mean(PeriodOperator):
+    """The mean of the readings since the boundary (op mean), optionally of positive ones
+    only: Node-RED's "average import" behind its export estimate."""
+
+    def __init__(self, reset: str = "00:00", positive_only: bool = False) -> None:
+        super().__init__(reset)
+        self.positive_only = positive_only
+        self.clear()
+
+    def clear(self) -> None:
+        self.total = 0.0
+        self.count = 0
+
+    def seed(self, mean: float, count: int, t: float) -> None:
+        self.roll(t)
+        self.total, self.count = float(mean) * int(count), int(count)
+
+    def update(self, value: float, t: float) -> Optional[float]:
+        self.roll(t)
+        value = float(value)
+        if not self.positive_only or value > 0:
+            self.total += value
+            self.count += 1
+        return self.value
+
+    @property
+    def value(self) -> Optional[float]:
+        return self.total / self.count if self.count else None
+
+
+def window_end(start: float, end: str) -> float:
+    """The first local time `end` ("HH:MM") strictly after `start`."""
+    hh, mm = _hhmm(end)
+    lt = _time.localtime(start)
+    t = _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hh, mm, 0, 0, 0, -1))
+    if t <= start:
+        t = _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, hh, mm, 0, 0, 0, -1))
+    return t
+
+
+class WindowDelta(PeriodOperator):
+    """A counter's increase over a daily window, reported once the window has closed and
+    held until the next one closes (op window_delta).
+
+    Node-RED's "battery out to 9am": out from 00:00 to 09:00 today, shown from 09:00
+    until 09:00 tomorrow. `reset` is the window's start; `end` its close.
+    """
+
+    def __init__(self, reset: str = "00:00", end: str = "09:00", scale: float = 1.0) -> None:
+        super().__init__(reset)
+        _hhmm(end)
+        self.end, self.scale = end, scale
+        self.held: Optional[float] = None
+        self.clear()
+
+    def clear(self) -> None:
+        self.base: Optional[float] = None
+        self.last: Optional[float] = None
+
+    def _close(self, t: float) -> bool:
+        """Report the open window if t is past its close. True when the value changed."""
+        if self.start is None or self.base is None or t < window_end(self.start, self.end):
+            return False
+        self.held = (self.last - self.base) * self.scale
+        self.clear()
+        return True
+
+    def roll(self, t: float) -> bool:
+        closed = self._close(t)
+        start = period_start(t, self.reset)
+        if start != self.start:
+            self.start = start
+            self.clear()
+        return closed
+
+    def update(self, value: float, t: float) -> Optional[float]:
+        self.roll(t)
+        if t < window_end(self.start, self.end):
+            value = float(value)
+            if self.base is None:
+                self.base = value
+            self.last = value
+        return self.held
+
+    @property
+    def value(self) -> Optional[float]:
+        return self.held
+
+
+# --------------------------------------------------------------------------------------
+# Expressions (op expr)
+#
+# Arithmetic over named feeds, written with the feed names in braces, the same as a
+# page's placeholders: "{derived/import/today} / 1000 * 0.262". Parsed once with ast and
+# checked against a short list of node types, so a settings file cannot run code.
+# --------------------------------------------------------------------------------------
+
+EXPR_FUNCTIONS: Dict[str, Callable[..., Any]] = {
+    "min": min, "max": max, "abs": abs, "round": round,
+    "norm180": lambda d: norm180(d), "norm360": lambda d: norm360(d),
+}
+
+_EXPR_NODES = (
+    _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.BoolOp, _ast.Compare, _ast.IfExp,
+    _ast.Call, _ast.Name, _ast.Load, _ast.Constant,
+    _ast.Add, _ast.Sub, _ast.Mult, _ast.Div, _ast.FloorDiv, _ast.Mod, _ast.Pow,
+    _ast.USub, _ast.UAdd, _ast.Not, _ast.And, _ast.Or,
+    _ast.Lt, _ast.LtE, _ast.Gt, _ast.GtE, _ast.Eq, _ast.NotEq,
+)
+
+
+class Expr:
+    """A compiled expression. `names` are the feeds it reads; call it with a mapping
+    from name to value. Any input missing or None gives None, never a guess, unless
+    `defaults` names a value for it: Node-RED's `flow.get(..) || 0`, where that was the
+    intended behaviour (the export estimate's average import before the first import)."""
+
+    def __init__(self, text: str, defaults: Optional[Mapping[str, float]] = None) -> None:
+        self.text = text
+        self.defaults = dict(defaults or {})
+        self.names: List[str] = []
+        source, pos = [], 0
+        while True:
+            start = text.find("{", pos)
+            if start == -1:
+                source.append(text[pos:])
+                break
+            end = text.find("}", start)
+            if end == -1:
+                raise ValueError(f"unclosed {{ in expression {text!r}")
+            name = text[start + 1:end].strip()
+            if name not in self.names:
+                self.names.append(name)
+            source.append(text[pos:start])
+            source.append(f"_v{self.names.index(name)}")
+            pos = end + 1
+        # Whitespace collapsed outside the braces, so an expression may be folded over
+        # several lines in YAML; the feed names have already become _vN.
+        tree = _ast.parse(" ".join("".join(source).split()), mode="eval")
+        for node in _ast.walk(tree):
+            if not isinstance(node, _EXPR_NODES):
+                raise ValueError(f"{type(node).__name__} not allowed in expression {text!r}")
+            if isinstance(node, _ast.Constant) and not isinstance(node.value, (int, float)):
+                raise ValueError(f"only numbers are allowed as constants in {text!r}")
+            if isinstance(node, _ast.Name) and not (
+                    node.id.startswith("_v") or node.id in EXPR_FUNCTIONS):
+                raise ValueError(f"unknown name {node.id!r} in {text!r}; feeds go in braces")
+            if isinstance(node, _ast.Call) and not (
+                    isinstance(node.func, _ast.Name) and node.func.id in EXPR_FUNCTIONS):
+                raise ValueError(f"only {sorted(EXPR_FUNCTIONS)} may be called in {text!r}")
+        self._code = compile(tree, "<expr>", "eval")
+
+    def __call__(self, values: Mapping[str, Any]) -> Optional[float]:
+        env: Dict[str, Any] = {"__builtins__": {}}
+        env.update(EXPR_FUNCTIONS)
+        for i, name in enumerate(self.names):
+            v = values.get(name)
+            if v is None:
+                v = self.defaults.get(name)
+            if v is None or isinstance(v, bool) or not isinstance(v, (int, float)):
+                return None
+            env[f"_v{i}"] = v
+        try:
+            result = eval(self._code, env)  # noqa: S307  (checked node by node above)
+        except (ArithmeticError, ValueError, TypeError):
+            return None
+        if isinstance(result, bool):
+            return 1.0 if result else 0.0
+        return float(result) if isinstance(result, (int, float)) else None
+
+
 __all__ = [
     "ENVELOPE_VERSION", "TOPIC_ROOT", "CONFIG_TOPIC", "DERIVED_NODE", "UNUSED",
     "Reading", "topic_for", "feed_key", "plain", "envelope", "envelope_json",
     "parse_number", "parse", "Catalogue", "Store",
     "LEEWAY_MIN_SOG_KT", "HEEL_MIN_G", "EARTH_RADIUS_M",
     "norm360", "norm180", "twa", "awa", "leeway", "heel", "distance_m", "integrate_wh",
+    "MAX_GAP_S", "period_start", "PeriodOperator", "DailyDelta", "Integrate", "Extreme",
+    "Mean", "WindowDelta", "window_end", "Expr", "EXPR_FUNCTIONS",
 ]

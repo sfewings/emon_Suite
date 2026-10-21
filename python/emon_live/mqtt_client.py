@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from state import LiveState, handle_message
+from state import LiveState, emon_feed, handle_message
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +57,11 @@ class MqttClient:
             handle_message(self.state, message.topic, message.payload)
         except Exception:  # handle_message does not raise; this is the belt to its braces
             log.exception("dropped a message on %s", message.topic)
+
+    def publish_reading(self, reading) -> None:
+        """A derived reading on emon/derived/<id>, retained, as the bridge publishes its
+        envelopes, so a consumer has every derived value the moment it subscribes."""
+        self.client.publish(reading.topic, emon_feed.envelope_json(reading), retain=True)
 
     def start(self) -> None:
         """connect_async, so pages serve, showing dashes, before the broker is up."""
