@@ -180,6 +180,7 @@ Behaviour changes a deploy will bring, both switchable per container:
   `emon_serial` restarted 4 times on start with `UnicodeDecodeError` in
   `emonSerialToMQTT.py`'s `readline().decode('utf-8')`: opening the port mid-packet
   gives a partial line. That runner is unchanged from master, so the old image does the
-  same on every restart; `restart: always` hides it. Worth `errors='replace'` there some
-  day, not part of this branch. Next: watch for a day, then tick, then PLAN 1e enchantee
+  same on every restart; `restart: always` hides it. Fixed on the branch the same day
+  (escape bad bytes; a garbled `RSSI` line and an empty subnode field also crashed it),
+  so it reaches shannstainable with the next image rebuild. Next: watch for a day, then tick, then PLAN 1e enchantee
   (push the images to Docker Hub first, which is what enchantee pulls).
