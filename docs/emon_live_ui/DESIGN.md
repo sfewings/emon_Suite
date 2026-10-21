@@ -311,6 +311,13 @@ no `clamp()`, no flexbox `gap`, no `dvh` without a fallback, no container querie
 SVG given `width` and `height`, relative URLs only, screen height from `viewport.js`.
 Grid `gap` and media queries are fine.
 
+**As built (phase 2c).** `ui/index.html`, `emon-ui.js` (engine), `emon-ui.css`,
+`theme.js`, `viewport.js`, `tiles/{values,gauge,trail,leds,lines}.js`. `viewport.js`
+sets `min-height`, not the race app's `height`, because a house page scrolls. Night is
+the proposal's dark palette; the boat may want its own (phase 3). Desktop 4 columns,
+3 under 1100 px, 2 under 760 px, 1 under 360 px. `python/emon_live/tests/test_ui.py`
+pins the iOS 12 rules statically.
+
 Visual design (proposal "The page" section): one hue per domain on a top stripe and the
 tile heading, never a filled background; values in a monospace face with tabular figures;
 "today" figures smaller beneath the live value. Domain hues: power orange, solar yellow,
@@ -404,7 +411,26 @@ A page is a list of tiles. A tile names its feeds:
 }
 ```
 
-The exact schema is settled while building phase 2 and recorded here when it is.
+**As built (phase 2c, 21 Oct 2026).** A tile is a frame and up to five parts, drawn in
+this order; the four tile types planned in 4.5 became parts so that one tile can carry
+several, as the mockup's tiles do:
+
+| Key | Part | Shape |
+|---|---|---|
+| `values` | a grid of readings | `[{feed, label, big, decimals, unit, domain, sub}]`, with `cols` (1 to 4) on the tile |
+| `gauge` | a bar | `{feed, min, max}` |
+| `trail` | a sparkline | `{feed, minutes}`; kept by the page since it opened (no history endpoint yet) |
+| `leds` | pills in the heading | `[{feed, on, off, test, bad}]`; `test` `"value"` (on at 1 or more) or `"fresh"` (on while reporting) |
+| `lines` | small text | `["template", ...]` |
+
+Tile keys: `title`, `domain` (`power solar batt heat water rain car other`), `span`
+(1 or 2), `fresh` and `gone` (seconds; tile, then page, then site, then 60 and 300),
+`headline` (a template shown in the heading, which moves the age to the foot).
+Templates anywhere take `{feed}` or `{feed|N}` for N decimal places; `unit: ""` hides a
+unit. A tile's age is its newest feed's; a value whose own feed is past `gone` shows a
+dash. `site.json` takes `title`, `theme`, `poll` (s), `fresh`, `gone`, `pages`,
+`default`; a page id `_all` is built in: every feed known, one tile per group, which is
+what a page is written from.
 
 ### 6.3 derived.yml operators
 
@@ -535,6 +561,13 @@ platform. The race app lost time to exactly this (`python/enchantee_racing/docs/
 `ui/tools/lint_pages.py` checks every feed named in a site's pages and derived.yml
 against that site's emon_config. Run it in `build.sh` and before deploying a settings
 file.
+
+**As built (phase 2c).** It checks against the names the bridge publishes, read from the
+broker's retained `emon/#` (`--broker`, read only) or a capture of them (`--capture`),
+not by working names out from emon_config: that would need the decoder and so a build of
+the C++ extension, and the published names are the ones pages must match. It also
+checks derived.yml loads, that every replayable input has an Influx series, duplicate
+names and unbalanced braces. Not yet wired into `build.sh`.
 
 ### 9.5 Tests
 

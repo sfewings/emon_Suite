@@ -135,7 +135,7 @@ def _placeholders(text: str) -> List[str]:
         end = text.find("}", start)
         if end == -1:
             break
-        out.append(text[start + 1:end].strip())
+        out.append(text[start + 1:end].split("|")[0].strip())   # {feed|2}: 2 decimals
         start = text.find("{", end)
     return [name for name in out if name]
 

@@ -1,0 +1,138 @@
+/* emon-ui (DESIGN 4.5), from the proposal's mockup ("The page").
+ *
+ * One hue per domain, on the tile's top stripe and heading, never a filled background, so
+ * numbers stay dark on light and legible in sun. Values monospace with tabular figures.
+ * Four columns on a desktop, two on a phone; a span-2 tile spans both on a phone.
+ *
+ * iOS 12 floor (enchantee_racing/CLAUDE.md): no clamp(), no flexbox gap, no color-mix(),
+ * no dvh without a fallback. Grid gap is fine, given as grid-gap too for Safari 12.
+ */
+
+:root {
+  --bg: #f2f4f6; --panel: #ffffff; --ink: #1a2230; --ink2: #4c5766; --ink3: #8a94a3;
+  --line: #dde2e8; --line2: #eef1f4;
+  --power: #d4761c; --solar: #c9a10a; --batt: #3a8a5b; --heat: #c1453a; --water: #2b7cb8;
+  --rain: #5a6f8a; --car: #6b5bb0; --other: #6f7a88;
+  --ok: #2f8f5b; --ok-bg: rgba(47, 143, 91, 0.16); --warn: #c98a12; --bad: #c1453a;
+  --bad-bg: rgba(193, 69, 58, 0.14);
+  --mono: "IBM Plex Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --cond: "IBM Plex Sans Condensed", "Arial Narrow", -apple-system, "Segoe UI", sans-serif;
+}
+
+body.night {
+  --bg: #13171d; --panel: #1b2129; --ink: #e8ecf1; --ink2: #aab3bf; --ink3: #6f7a88;
+  --line: #2b333e; --line2: #232a33;
+  --power: #f0953a; --solar: #e6c02a; --batt: #5db07f; --heat: #e2695e; --water: #4d9ddb;
+  --rain: #8a9fbb; --car: #9484d6; --other: #8a94a3;
+  --ok: #5db07f; --ok-bg: rgba(93, 176, 127, 0.18); --bad: #e2695e; --bad-bg: rgba(226, 105, 94, 0.18);
+}
+
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px;
+  line-height: 1.4; -webkit-text-size-adjust: 100%;
+}
+#app { min-height: 100vh; box-sizing: border-box; padding: 10px 12px 16px; }
+
+/* --- top bar ------------------------------------------------------------------------- */
+
+#bar {
+  display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap;
+  padding: 2px 2px 10px; font-family: var(--cond);
+}
+#title { font-weight: 600; font-size: 17px; margin-right: 14px; }
+#menu { flex: 1 1 auto; }
+#menu a {
+  display: inline-block; margin-right: 12px; color: var(--ink2); text-decoration: none;
+  font-size: 15px; padding: 2px 0; border-bottom: 2px solid transparent;
+}
+#menu a.on { color: var(--ink); border-bottom-color: var(--ink2); }
+#status { font-family: var(--mono); font-size: 12px; color: var(--ink3); margin-right: 10px; }
+#status.offline { color: var(--bad); }
+button[data-theme-toggle] {
+  font-family: var(--mono); font-size: 12px; color: var(--ink2); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer;
+}
+
+/* --- grid ---------------------------------------------------------------------------- */
+
+#tiles {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-gap: 10px; gap: 10px;
+}
+@media (max-width: 1100px) { #tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { #tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 8px; gap: 8px; } }
+@media (max-width: 360px) { #tiles { grid-template-columns: minmax(0, 1fr); } }
+.empty { color: var(--ink3); font-family: var(--mono); font-size: 13px; }
+
+/* --- tile ---------------------------------------------------------------------------- */
+
+.tile {
+  --c: var(--other);
+  background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--c);
+  border-radius: 4px; padding: 9px 12px 10px; min-width: 0; box-sizing: border-box;
+}
+.tile.w2 { grid-column: span 2; }
+@media (max-width: 360px) { .tile.w2 { grid-column: auto; } }
+.d-power { --c: var(--power); } .d-solar { --c: var(--solar); } .d-batt { --c: var(--batt); }
+.d-heat { --c: var(--heat); } .d-water { --c: var(--water); } .d-rain { --c: var(--rain); }
+.d-car { --c: var(--car); } .d-other { --c: var(--other); }
+
+.tile .h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+.tile .h b {
+  font-family: var(--cond); font-weight: 600; font-size: 14px; color: var(--c);
+  letter-spacing: 0.01em; margin-right: 8px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile .h .leds { flex: 1 1 auto; text-align: right; margin-right: 6px; white-space: nowrap; }
+.tile .h .leds .pill { margin-left: 4px; }
+.tile .h i { font-family: var(--mono); font-style: normal; font-size: 11px; color: var(--ink3); white-space: nowrap; }
+.tile .h i.head { font-size: 12px; color: var(--ink2); }
+.tile .foot { font-family: var(--mono); font-size: 11px; color: var(--ink3); text-align: right; }
+.tile .foot:empty { display: none; }
+
+.kv { display: grid; grid-gap: 6px 12px; gap: 6px 12px; }
+.kv > div { min-width: 0; overflow: hidden; }
+.kv.c1 { grid-template-columns: minmax(0, 1fr); }
+.kv.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kv.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kv.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 760px) { .tile.w2 .kv.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.k { font-size: 11px; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v {
+  font-family: var(--mono); font-size: 22px; font-weight: 500; line-height: 1.1;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.v small { font-size: 12px; color: var(--ink3); margin-left: 2px; }
+.v.big { font-size: 30px; }
+@media (max-width: 760px) {
+  .v { font-size: 19px; } .v.big { font-size: 24px; }
+  .tile:not(.w2) .kv.c3 { grid-gap: 4px 6px; gap: 4px 6px; }
+  .tile:not(.w2) .kv.c3 .v { font-size: 16px; } .tile:not(.w2) .kv.c3 .v.big { font-size: 19px; }
+  .tile:not(.w2) .kv.c3 .v small { font-size: 10px; margin-left: 1px; }
+}
+.t-power { color: var(--power); } .t-solar { color: var(--solar); } .t-batt { color: var(--batt); }
+.t-heat { color: var(--heat); } .t-water { color: var(--water); } .t-rain { color: var(--rain); }
+.t-car { color: var(--car); }
+.sub { font-family: var(--mono); font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.sub.line { margin-top: 5px; }
+.bar { height: 6px; background: var(--line2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--c); }
+.spark { display: block; width: 100%; height: 34px; margin-top: 6px; }
+.spark polyline { stroke: var(--c); }
+.spark circle { fill: var(--c); }
+.pill {
+  display: inline-block; font-family: var(--mono); font-size: 11px; padding: 1px 6px;
+  border-radius: 3px; background: var(--line2); color: var(--ink3);
+}
+.pill.on { background: var(--ok-bg); color: var(--ok); }
+.pill.bad { background: var(--bad-bg); color: var(--bad); }
+
+/* --- data age (DESIGN D6): fresh, ageing, gone ---------------------------------------- */
+
+.age { font-family: var(--mono); font-size: 11px; color: var(--ink3); }
+.age.warn, .tile .h i.warn, .tile .foot.warn { color: var(--warn); }
+.age.bad, .tile .h i.bad, .tile .foot.bad { color: var(--bad); }
+.tile.dead { border-style: dashed; border-top-style: solid; border-top-color: var(--ink3); }
+.tile.dead .h b, .tile.dead .v { color: var(--ink3); }

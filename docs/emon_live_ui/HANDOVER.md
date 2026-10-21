@@ -39,7 +39,8 @@ files and the git history.
 The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
 shannstainable, seeded from Influx on start. What remains of 2b is the full-day
-comparison with Node-RED (PLAN 2b); then 2c, the UI engine.
+comparison with Node-RED (PLAN 2b). 2c, the page engine and the house page, is done
+and needs the owner's look on a real phone; 2d (Node-RED's own results) is next.
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -122,9 +123,13 @@ Behaviour changes a deploy will bring, both switchable per container:
 - The venv used on 21 Oct is `/home/pi/.cache/emon_live_venv` (outside `/tmp`, which a
   reboot wipes): `pytest flask paho-mqtt pyyaml`. It serves both test suites.
 - emon_live tests need only `flask`, `paho-mqtt`, `pyyaml` and `pytest` in a venv; run
-  `python -m pytest -q tests` from `python/emon_live` (28 pass). To try it against the
+  `python -m pytest -q tests` from `python/emon_live` (46 pass). To try it against the
   live broker, which is read-only for 2a: `python app.py --host 127.0.0.1 --port 5003`,
   then `curl 'http://127.0.0.1:5003/api/state?all=1'`.
+- To see the pages: `python app.py --host 0.0.0.0 --port 5003 --site
+  ../../provisioning/shannstainable/emon-ui` from `python/emon_live` (no `--publish`),
+  then `http://<pi>:5003/` on a phone. Headless screenshots: `chromium --headless=new
+  --no-sandbox --virtual-time-budget=8000 --window-size=390,1900 --screenshot=x.png URL`.
 - **Every Influx query must be time-bounded** (`WHERE time > ...`), and never `SELECT *`
   without one; `ORDER BY time DESC LIMIT n` does not limit the scan. On 21 Oct 2026 an
   unbounded `SELECT * FROM rain|pulse ORDER BY time DESC LIMIT 3` was followed by the Pi
@@ -231,3 +236,11 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   9am", the wrong way round. Not a sensor offset: `pulseIn` stayed flat all day. Monitor
   4 (inverter shunts) is mounted the other way and Node-RED was right there (DESIGN 6.3).
   `compare_nodered.py` maps Node-RED's figures accordingly and still matches.
+- **2026-10-21, shannstainable Pi, night.** PLAN 2c done: `ui/` engine with five tile
+  parts, age states, server theme, menu and an `_all` page; `site.json` and
+  `house.json` from the mockup; `ui/tools/lint_pages.py`, clean; 46 emon_live tests,
+  including static iOS 12 checks. Rendered with live data in headless Chromium at 1280
+  and 390 px, day and night. Decided while building, in DESIGN 6.2, 4.5 and 9.4 as built:
+  tile types are parts of one tile; templates take `{feed|N}`; the linter checks against
+  published names, not emon_config. Not yet seen on a phone or the iPad; the trail starts
+  empty each time a page opens.

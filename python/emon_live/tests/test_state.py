@@ -79,7 +79,7 @@ def test_page_feeds_finds_feed_keys_and_placeholders():
         {"hero": [{"feed": "Hot water system / Water (T3)", "label": "Tank"},
                   {"feed": "derived/hws/showersRemaining"}],
          "gauge": {"feed": "derived/hws/showersRemaining", "max": 27},
-         "line": "Today {derived/hws/showers} showers · {derived/hws/showerMinutes} min"},
+         "line": "Today {derived/hws/showers} showers · {derived/hws/showerMinutes|0} min"},
         {"title": "No feeds here {}"},
     ]}
     assert page_feeds([page]) == {

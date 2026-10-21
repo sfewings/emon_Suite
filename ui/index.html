@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>emon</title>
+<!-- Every URL relative, so this page works at /, behind a prefix, by IP or by name. -->
+<link rel="stylesheet" href="emon-ui.css">
+<script src="viewport.js"></script>
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <span id="title">emon</span>
+    <nav id="menu"></nav>
+    <span id="status">connecting</span>
+    <button type="button" data-theme-toggle>Night</button>
+  </header>
+  <main id="tiles"></main>
+</div>
+<script src="theme.js"></script>
+<script src="emon-ui.js"></script>
+<script src="tiles/values.js"></script>
+<script src="tiles/gauge.js"></script>
+<script src="tiles/trail.js"></script>
+<script src="tiles/leds.js"></script>
+<script src="tiles/lines.js"></script>
+<script>EmonUI.start();</script>
+</body>
+</html>

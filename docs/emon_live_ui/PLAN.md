@@ -122,12 +122,14 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       (from `python/emon_live`). Matched exactly on 21 Oct for 20:01 to 20:30 (after a
       reboot, `--from 20:01`), but at night: solar, export and foregone untested.
 
-### 2c. UI engine (any, check on a phone)
-- [ ] `ui/`: engine, `value`, `gauge`, `trail`, `led` tiles, age states (DESIGN D6),
+### 2c. UI engine (done 21 Oct 2026, Pi; owner to check on a real phone)
+- [x] `ui/`: engine, `value`, `gauge`, `trail`, `led` tiles, age states (DESIGN D6),
       theme as server state, domain colours (DESIGN 4.5). iOS 12 rules from the start.
-- [ ] `ui/tools/lint_pages.py` (DESIGN 9.4).
-- [ ] `provisioning/shannstainable/emon-ui/site.json` and `pages/house.json`, laid out as
-      the proposal mockup.
+      Tile types became parts of one tile (DESIGN 6.2 as built). Checked in headless
+      Chromium at 1280 and 390 px, day and night; not yet on a phone or the iPad.
+- [x] `ui/tools/lint_pages.py` (DESIGN 9.4, as built): clean for shannstainable.
+- [x] `provisioning/shannstainable/emon-ui/site.json` and `pages/house.json`, laid out as
+      the proposal mockup. Showers, dog fed and tank days remaining wait for 2d.
 
 ### 2d. Node-RED publishes its single-site results (Pi, emon-node-red repo)
 - [ ] In `emon-node-red`, branch `emon_live_ui` from `nodeRed`. Add function nodes that
