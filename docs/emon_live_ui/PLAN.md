@@ -86,13 +86,16 @@ byte-identical.
       serial_to_mqtt, mqtt_to_influx and gpsd images. Wheels cp313 for both, committed;
       images built on the Pi as `:live-test`, **not pushed** to Docker Hub.
       mqtt_to_log only imports pyemonlib, so it was not rebuilt.
-- [ ] Deploy at shannstainable. Watch Node-RED Instant Data and Grafana for a day.
-      Deployed 21 Oct 2026 14:11 (local images, see HANDOVER); tick after the day.
-- [ ] Deploy at enchantee. Check the race app HUD and an event_recorder recording still
+- [x] Deploy at shannstainable. Watch Node-RED Instant Data and Grafana for a day.
+      Deployed 21 Oct 2026 14:11 (local images, see HANDOVER).
+- [ ] **Deferred until after phase 2** (owner, 21 Oct 2026). Deploy at enchantee. Check the race app HUD and an event_recorder recording still
       work.
 
-Done when: both sites publish `emon/#` and `emon/config`, nothing downstream noticed,
-and the branch is merged to `master`. Way back: redeploy the previous image tags.
+Done when: both sites publish `emon/#` and `emon/config` and nothing downstream noticed.
+Way back: redeploy the previous image tags (`:pre-live-ui` at shannstainable).
+**Owner, 21 Oct 2026:** phase 1 is not merged on its own. The branch merges to `master`
+at the end of phase 2 at the earliest, and the enchantee deploy waits until then; push
+the rebuilt images (with the `emonSerialToMQTT` fix) to Docker Hub at that point.
 
 ---
 
@@ -100,10 +103,11 @@ and the branch is merged to `master`. Way back: redeploy the previous image tags
 
 Goal: a phone-friendly replacement for Instant Data, running beside it.
 
-### 2a. emon_live skeleton (any)
-- [ ] `python/emon_live/`: Flask app, MQTT client into `emon_feed.Store`, `/api/state`
+### 2a. emon_live skeleton (done 21 Oct 2026, Pi)
+- [x] `python/emon_live/`: Flask app, MQTT client into `emon_feed.Store`, `/api/state`
       (DESIGN 4.4), serving `ui/` and the site folder. Relative URLs only.
-- [ ] Tests using a fake clock and injected messages, no broker.
+- [x] Tests using a fake clock and injected messages, no broker. Input is a capture of
+      every retained `emon/#` message at shannstainable (`tests/data/`).
 
 ### 2b. derived.yml (any)
 - [ ] Operators `daily_delta`, `integrate`, `sum`, `expr` (DESIGN 6.3) in `emon_feed`,

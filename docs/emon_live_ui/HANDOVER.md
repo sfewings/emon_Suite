@@ -35,7 +35,10 @@ files and the git history.
 
 ## Where it is up to
 
-**Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11; being watched for a day.**
+**Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
+The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
+2a (the emon_live skeleton) is done and runs against the live broker; 2b, `derived.yml`,
+is next.
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -115,6 +118,10 @@ Behaviour changes a deploy will bring, both switchable per container:
 - `docker pull --platform linux/arm/v7 python:3.13` replaces the local arm64
   `python:3.13`, and the next image build then fails installing the aarch64 wheel. After
   any armv7 work, `docker pull --platform linux/arm64 python:3.13`.
+- emon_live tests need only `flask`, `paho-mqtt` and `pytest` in a venv; run
+  `python -m pytest -q tests` from `python/emon_live` (18 pass). To try it against the
+  live broker, which is read-only for 2a: `python app.py --host 127.0.0.1 --port 5003`,
+  then `curl 'http://127.0.0.1:5003/api/state?all=1'`.
 - Tests: a venv outside the repo with the same packages as the laptop and
   `python/pyEmon/dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl`, then as above.
   No `mosquitto_sub`/`mosquitto_pub` on the host; use the `mqtt` container's, or paho.
@@ -184,3 +191,11 @@ Behaviour changes a deploy will bring, both switchable per container:
   (escape bad bytes; a garbled `RSSI` line and an empty subnode field also crashed it),
   so it reaches shannstainable with the next image rebuild. Next: watch for a day, then tick, then PLAN 1e enchantee
   (push the images to Docker Hub first, which is what enchantee pulls).
+- **2026-10-21, shannstainable Pi, later.** Owner: phase 1 counts as deployed here; the
+  enchantee deploy and the merge to master wait for the end of phase 2. PLAN 2a done:
+  `python/emon_live/`, 18 tests on a capture of the 218 retained `emon/#` messages, and
+  a run against the live broker (217 feeds by name, no duplicates, 2.4 KB gzipped).
+  Decided while building, now in DESIGN 4.4: emon_feed from the source tree, feeds
+  under a `feeds` key, `?all=1`, `/api/feeds` and `/api/config`, port 5003. Not yet
+  done: no Dockerfile or compose service (PLAN 2e); feeds outside emon (ecowitt,
+  pantech) are parsed by topic but not subscribed to.

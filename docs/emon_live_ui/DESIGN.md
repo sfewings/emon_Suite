@@ -277,6 +277,26 @@ generalised into `emon_feed.Store`.
 - Bind-mounts its code from the checkout so edits are live, matching
   "the checkout is the deployment" in `../../CLAUDE.md`.
 
+**As built (phase 2a, 21 Oct 2026).** `python/emon_live/`: `state.py` (no Flask, no paho:
+`LiveState`, `handle_message`, `state_document`, `Site`), `mqtt_client.py`, `app.py`.
+
+- `emon_feed` is imported from `python/pyEmon/` in the source tree, not from the wheel.
+  It is standard library only, so emon_live needs no numpy and no C++ extension, and an
+  edit to it is live without a wheel rebuild. The container must therefore mount
+  `python/` whole (or at least `emon_live/` and `pyEmon/` side by side).
+- `/api/state` is `{"theme": .., "feeds": {name: {v, u, age}}}`: feeds under their own
+  key, so no feed name can collide with `theme`. It carries the feeds named anywhere in
+  the site's pages (a `"feed"` value or a `{name}` placeholder in a string), or every
+  feed with `?all=1` or when the site has no pages. A whole-site document is about 2.4 KB
+  gzipped (217 feeds at shannstainable).
+- `age` is rounded to 0.1 s and never negative. A feed that has never arrived is absent,
+  not null.
+- Also `/api/feeds` (every name known, and any name two topics share) and `/api/config`
+  (the last `emon/config`), for page writing and lint.
+- The site folder is re-read when a file in it changes; a file that does not parse is
+  logged and its last good version kept.
+- Default port 5003 (free at shannstainable; 5002 is the race app on the boat).
+
 ### 4.5 emon-ui engine
 
 `emon_Suite/ui/`: `index.html`, `emon-ui.js`, `emon-ui.css`, `tiles/*.js`, shared
