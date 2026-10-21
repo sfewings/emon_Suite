@@ -87,6 +87,7 @@ byte-identical.
       images built on the Pi as `:live-test`, **not pushed** to Docker Hub.
       mqtt_to_log only imports pyemonlib, so it was not rebuilt.
 - [ ] Deploy at shannstainable. Watch Node-RED Instant Data and Grafana for a day.
+      Deployed 21 Oct 2026 14:11 (local images, see HANDOVER); tick after the day.
 - [ ] Deploy at enchantee. Check the race app HUD and an event_recorder recording still
       work.
 

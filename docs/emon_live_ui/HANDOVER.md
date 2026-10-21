@@ -35,14 +35,15 @@ files and the git history.
 
 ## Where it is up to
 
-**Phase 1 tested and built; the shannstainable deploy is next and waits on the owner.**
-Nothing is deployed. On the shannstainable Pi the new images exist locally as
+**Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11; being watched for a day.**
+`emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
+old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
 `emon_gpsd_to_mqtt:live-test`, built from `a008c56` plus the reconnect fix; none is
 pushed to Docker Hub. Outside `python/pyEmon/` and these docs the branch changes only
 `python/platform.sh` (armv7 now names the cp313 wheel).
 
-Deploying at shannstainable is local only, so enchantee cannot pull it by accident:
+How it was deployed, local only so enchantee cannot pull it by accident:
 
 ```bash
 for i in emon_serial_to_mqtt emon_mqtt_to_influx; do
@@ -172,3 +173,13 @@ Behaviour changes a deploy will bring, both switchable per container:
   bridge prints are now named by node (`airException`, was `airQualityException`) and
   no longer appear for two-hop relayed lines of unconfigured subnodes. Wire output is
   unaffected. After the deploy, watch Instant Data and Grafana for a day, then tick it.
+- **2026-10-21, shannstainable Pi.** Deployed at 14:11 as above. Checked against a
+  minute of live traffic taken just before: `emon/config` and about 200 envelope topics
+  retained; the legacy topics that stopped are the 21 Unused channels that were
+  transmitting; Influx points per minute unchanged (power about 245, voltage about 330).
+  `emon_serial` restarted 4 times on start with `UnicodeDecodeError` in
+  `emonSerialToMQTT.py`'s `readline().decode('utf-8')`: opening the port mid-packet
+  gives a partial line. That runner is unchanged from master, so the old image does the
+  same on every restart; `restart: always` hides it. Worth `errors='replace'` there some
+  day, not part of this branch. Next: watch for a day, then tick, then PLAN 1e enchantee
+  (push the images to Docker Hub first, which is what enchantee pulls).
