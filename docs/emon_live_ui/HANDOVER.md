@@ -122,6 +122,12 @@ Behaviour changes a deploy will bring, both switchable per container:
   `python -m pytest -q tests` from `python/emon_live` (18 pass). To try it against the
   live broker, which is read-only for 2a: `python app.py --host 127.0.0.1 --port 5003`,
   then `curl 'http://127.0.0.1:5003/api/state?all=1'`.
+- **Every Influx query must be time-bounded** (`WHERE time > ...`), and never `SELECT *`
+  without one; `ORDER BY time DESC LIMIT n` does not limit the scan. On 21 Oct 2026 an
+  unbounded `SELECT * FROM rain|pulse ORDER BY time DESC LIMIT 3` was followed by the Pi
+  stalling and the hardware watchdog (`RuntimeWatchdogSec=15`) resetting it, most likely
+  Influx reading all of history since 2019 into memory. emon_live's seeding queries only
+  ever ask for the period since a reset.
 - Tests: a venv outside the repo with the same packages as the laptop and
   `python/pyEmon/dist/pyemonlib-0.1.0-cp311-cp311-linux_aarch64.whl`, then as above.
   No `mosquitto_sub`/`mosquitto_pub` on the host; use the `mqtt` container's, or paho.
@@ -134,13 +140,13 @@ Behaviour changes a deploy will bring, both switchable per container:
 
 ## Open questions
 
-- Whether the "export" estimate in Node-RED (inverter 2 output minus average night-time
-  import) is worth carrying into `derived.yml` or should be replaced with something
-  simpler. Decide in PLAN 2b with a day of numbers side by side.
-- Whether month and year rainfall should come from an Influx query in emon_live or stay
-  with Node-RED's text files. PLAN 2b.
-- Whether a `daily_max` operator is needed for battery mid-point voltages, or whether
-  that stays in Node-RED. PLAN 2b.
+Decided by the owner on 21 Oct 2026, for PLAN 2b:
+
+- The "export" estimate (inverter 2 output minus the average import) is carried into
+  `derived.yml` as Node-RED computes it.
+- Month and year rainfall come from Influx, not Node-RED's text files.
+- Battery mid-point maximum voltages are computed in emon_live (a `daily_max` operator),
+  not Node-RED.
 
 ## Session log
 
