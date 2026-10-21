@@ -11,7 +11,6 @@
 # Where each input lives in Influx (measurement, sensor tag), so a restart replays today.
 influx:
   Power board / HWS (pulse):                          pulse pulse/0/0
-  Power board / Solar production (Schneider) (pulse): pulse pulse/0/1
   Power board / Consumed (pulse):                     pulse pulse/0/2
   Power board / Imported (pulse):                     pulse pulse/0/3
   Power board / Car (pulse):                          pulse pulse/0/4
@@ -88,8 +87,6 @@ derived:
   - {id: consumed/today, op: daily_delta, feed: Power board / Consumed (pulse), unit: Wh}
   - {id: import/today,   op: daily_delta, feed: Power board / Imported (pulse), unit: Wh}
   - {id: car/today,      op: daily_delta, feed: Power board / Car (pulse),      unit: Wh}
-  - {id: inverter2/pulse/today, op: daily_delta,
-     feed: Power board / Solar production (Schneider) (pulse), unit: Wh}
 
   # Node-RED integrated each inverter's PV as a backward rectangle per message; this is
   # the trapezoid rule, with gaps over 5 min not bridged (DESIGN 6.3).
@@ -97,11 +94,12 @@ derived:
   - {id: inverter2/today, op: integrate, feed: Inverter Two / pvInputPower}
   - {id: inverter3/today, op: integrate, feed: Inverter Three / pvInputPower}
 
-  # Solar today as Node-RED adds it: Inverter Two by its pulse meter, One and Three
-  # integrated.
+  # Solar today, all three inverters integrated. Node-RED took Inverter Two from the
+  # Schneider pulse meter (pulse/0/1), which no longer works (owner, 21 Oct 2026), so its
+  # figure left Inverter Two out.
   - id: solar/today
     op: sum
-    of: [derived/inverter2/pulse/today, derived/inverter1/today, derived/inverter3/today]
+    of: [derived/inverter1/today, derived/inverter2/today, derived/inverter3/today]
     unit: Wh
     kind: energy
     decimals: 0
@@ -111,7 +109,8 @@ derived:
 
   # What Inverters One and Three would have made at Inverter Two's yield, in W.
   # Node-RED rounded each 2-second step to whole Wh, which dropped everything under 900 W;
-  # integrated unrounded here, so this reads higher than Node-RED's figure.
+  # integrated unrounded here, so this reads higher than Node-RED's figure, which the
+  # owner had long found suspiciously low.
   - id: foregone/now
     op: expr
     expr: >-
@@ -138,7 +137,8 @@ derived:
     unit: min
     kind: time
   - {id: water/hot/today, op: daily_delta, feed: Rain tank and HWS / Hot water, unit: L, kind: volume, decimals: 0}
-  # Mains and bore (wtr subnode 1) are not reporting; add them when they are.
+  # Mains and bore (wtr subnode 1) are not working (owner, 21 Oct 2026); add them when
+  # they are.
 
   # --- Rain (Calculate D,M,Y rainfalls). The gauge's envelope is already mm. -----------
   - {id: rain/today,    op: daily_delta, feed: Rain gauge / rain, unit: mm, kind: rain, decimals: 1}
@@ -148,7 +148,8 @@ derived:
   - {id: rain/year,     op: daily_delta, feed: Rain gauge / rain, reset: year,  unit: mm, kind: rain, decimals: 1}
 
   # --- Rain water tank (Calculate Rain water details) ----------------------------------
-  # 460 mm is empty, 2050 mm full. Days remaining stays in Node-RED (DESIGN D5).
+  # 460 mm is empty, 2050 mm full. Days remaining stays in Node-RED (DESIGN D5). The
+  # height sensor is not working (owner, 21 Oct 2026), so this reads 0 until it is.
   - id: tank/percent
     op: expr
     expr: "max(0, round(({Rain tank and HWS / Rain water tank} - 460) / (2050 - 460) * 100))"
@@ -181,12 +182,18 @@ derived:
     kind: count
 
   # --- LiFePO batteries, monitor 5 (Battery Current, Battery power) -------------------
-  - {id: battery/510Ah/in/today,  op: daily_delta, feed: LiFePO monitor 5 / Battery-510Ah (pulseIn),  unit: Wh}
-  - {id: battery/320Ah/in/today,  op: daily_delta, feed: LiFePO monitor 5 / Battery-320Ah (pulseIn),  unit: Wh}
-  - {id: battery/280Ah/in/today,  op: daily_delta, feed: LiFePO monitor 5 / Battery-280Ah (pulseIn),  unit: Wh}
-  - {id: battery/510Ah/out/today, op: daily_delta, feed: LiFePO monitor 5 / Battery-510Ah (pulseOut), unit: Wh}
-  - {id: battery/320Ah/out/today, op: daily_delta, feed: LiFePO monitor 5 / Battery-320Ah (pulseOut), unit: Wh}
-  - {id: battery/280Ah/out/today, op: daily_delta, feed: LiFePO monitor 5 / Battery-280Ah (pulseOut), unit: Wh}
+  # The monitors count positive current on pulseIn and negative on pulseOut. On monitor 5
+  # positive is OUT of the battery (discharging, at night) and negative is INTO it
+  # (charging, by day), so pulseIn is discharge and pulseOut is charge. Checked against
+  # integrated power on 21 Oct 2026 (night: pulseIn 52/199/175 Wh against +54/+202/+176 Wh;
+  # day: pulseOut 465/623/794 Wh against -444/-628/-807 Wh). Node-RED read them the other
+  # way round, so its "battery in" was discharge and its "out to 9am" was morning charge.
+  - {id: battery/510Ah/in/today,  op: daily_delta, feed: LiFePO monitor 5 / Battery-510Ah (pulseOut), unit: Wh}
+  - {id: battery/320Ah/in/today,  op: daily_delta, feed: LiFePO monitor 5 / Battery-320Ah (pulseOut), unit: Wh}
+  - {id: battery/280Ah/in/today,  op: daily_delta, feed: LiFePO monitor 5 / Battery-280Ah (pulseOut), unit: Wh}
+  - {id: battery/510Ah/out/today, op: daily_delta, feed: LiFePO monitor 5 / Battery-510Ah (pulseIn),  unit: Wh}
+  - {id: battery/320Ah/out/today, op: daily_delta, feed: LiFePO monitor 5 / Battery-320Ah (pulseIn),  unit: Wh}
+  - {id: battery/280Ah/out/today, op: daily_delta, feed: LiFePO monitor 5 / Battery-280Ah (pulseIn),  unit: Wh}
   - id: battery/in/today
     op: sum
     of: [derived/battery/510Ah/in/today, derived/battery/320Ah/in/today, derived/battery/280Ah/in/today]
@@ -197,16 +204,16 @@ derived:
     of: [derived/battery/510Ah/out/today, derived/battery/320Ah/out/today, derived/battery/280Ah/out/today]
     unit: Wh
     kind: energy
-  # Out from midnight to 09:00, shown from 09:00 until 09:00 tomorrow.
-  - {id: battery/510Ah/out/to9am, op: window_delta, feed: LiFePO monitor 5 / Battery-510Ah (pulseOut), end: "09:00", unit: Wh}
-  - {id: battery/320Ah/out/to9am, op: window_delta, feed: LiFePO monitor 5 / Battery-320Ah (pulseOut), end: "09:00", unit: Wh}
-  - {id: battery/280Ah/out/to9am, op: window_delta, feed: LiFePO monitor 5 / Battery-280Ah (pulseOut), end: "09:00", unit: Wh}
+  # Discharged from midnight to 09:00, shown from 09:00 until 09:00 tomorrow.
+  - {id: battery/510Ah/out/to9am, op: window_delta, feed: LiFePO monitor 5 / Battery-510Ah (pulseIn), end: "09:00", unit: Wh}
+  - {id: battery/320Ah/out/to9am, op: window_delta, feed: LiFePO monitor 5 / Battery-320Ah (pulseIn), end: "09:00", unit: Wh}
+  - {id: battery/280Ah/out/to9am, op: window_delta, feed: LiFePO monitor 5 / Battery-280Ah (pulseIn), end: "09:00", unit: Wh}
   - id: battery/out/to9am
     op: sum
     of: [derived/battery/510Ah/out/to9am, derived/battery/320Ah/out/to9am, derived/battery/280Ah/out/to9am]
     unit: Wh
     kind: energy
-  # Battery power now: negative is charging (in), positive discharging (out).
+  # Battery power now: positive is out of the battery (discharging), negative into it.
   - id: battery/power/in
     op: expr
     expr: "max(0, -{LiFePO monitor 5 / Battery-510Ah}) + max(0, -{LiFePO monitor 5 / Battery-320Ah}) + max(0, -{LiFePO monitor 5 / Battery-280Ah})"
@@ -219,6 +226,9 @@ derived:
     kind: power
 
   # --- Inverter shunts, monitor 4 (Inverters Current, Inverter power) -----------------
+  # Mounted the other way: positive is INTO the battery, so here pulseIn is charge and
+  # pulseOut discharge, as Node-RED had it (night: pulseOut 242 Wh against -241 Wh; day:
+  # pulseIn 1045 Wh against +1041 Wh, Inverter 1, 21 Oct 2026).
   - {id: inverter/1/in/today,  op: daily_delta, feed: LiFePO monitor 4 / Inverter 1 (pulseIn),  unit: Wh}
   - {id: inverter/2/in/today,  op: daily_delta, feed: LiFePO monitor 4 / Inverter 2 (pulseIn),  unit: Wh}
   - {id: inverter/3/in/today,  op: daily_delta, feed: LiFePO monitor 4 / Inverter 3 (pulseIn),  unit: Wh}
@@ -235,7 +245,7 @@ derived:
     of: [derived/inverter/1/out/today, derived/inverter/2/out/today, derived/inverter/3/out/today]
     unit: Wh
     kind: energy
-  # Opposite sign to the batteries: positive is in.
+  # Opposite sign to monitor 5: positive is into the battery.
   - id: inverter/power/in
     op: expr
     expr: "max(0, {LiFePO monitor 4 / Inverter 1}) + max(0, {LiFePO monitor 4 / Inverter 2}) + max(0, {LiFePO monitor 4 / Inverter 3})"

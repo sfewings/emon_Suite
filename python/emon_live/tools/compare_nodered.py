@@ -55,7 +55,7 @@ def nodered_figures(c: dict) -> dict:
     out = {
         "hws/today": g("hwsTotal"), "consumed/today": g("powerTotal"),
         "import/today": g("importTotal"), "car/today": g("carTotal"),
-        "solar/today": g("solarTotal"), "export/today": g("exportTotal"),
+        "solar/today": g("solarTotal"),   # differs: Node-RED's leaves Inverter Two out "export/today": g("exportTotal"),
         "foregone/today": g("foregoneProductionTotal"),
         "inverter1/today": g("inverterDailyTotal:inverter/pvInputPower/0"),
         "inverter3/today": g("inverterDailyTotal:inverter/pvInputPower/1"),
@@ -63,10 +63,11 @@ def nodered_figures(c: dict) -> dict:
         "import/average": (g("importSum") / g("importCount")) if g("importCount") else None,
         "export/now": g("exporting"),
         "battery/rail/max": g("maxVoltage"), "battery/rail/min": g("minVoltage"),
-        "battery/in/today": total("BatteryIn"), "battery/out/today": total("BatteryOut"),
+        # Node-RED's "BatteryIn" is monitor 5's pulseIn, which is discharge (derived.yml).
+        "battery/out/today": total("BatteryIn"), "battery/in/today": total("BatteryOut"),
         "inverter/in/today": total("InverterIn"), "inverter/out/today": total("InverterOut"),
-        "battery/out/to9am": (sum(g(f"TotalBatteryOutTo9AM{b}") or 0 for b in range(3))
-                              if any(g(f"TotalBatteryOutTo9AM{b}") is not None for b in range(3)) else None),
+        # Not compared: Node-RED's TotalBatteryOutTo9AM is morning charge (pulseOut), ours
+        # is overnight discharge.
         "car/leaf/kmToday": (g("odometer0") - g("odometerStartOfDay0")) if g("odometerStartOfDay0") else None,
         "car/outlander/kmToday": (g("odometer1") - g("odometerStartOfDay1")) if g("odometerStartOfDay1") else None,
     }

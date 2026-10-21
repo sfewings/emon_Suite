@@ -222,3 +222,12 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   water (wtr 1) are not reporting; the tank height reads 0. Node-RED keeps its context in
   memory only, so every restart zeroes its day; ours resumes. Next: the full-day compare,
   then 2c.
+- **2026-10-21, shannstainable Pi, later.** Owner's answers to the 2b findings, applied
+  to derived.yml: the Schneider pulse meter no longer works, so solar today integrates
+  all three inverters; the unrounded foregone figure is wanted (Node-RED's was long
+  suspect); mains, bore and tank height sensors are not working. On the batteries: owner
+  said current is positive out of the battery; Influx confirmed monitor 5's `pulseIn`
+  counts that, so it is discharge, and Node-RED had battery in and out, and "out to
+  9am", the wrong way round. Not a sensor offset: `pulseIn` stayed flat all day. Monitor
+  4 (inverter shunts) is mounted the other way and Node-RED was right there (DESIGN 6.3).
+  `compare_nodered.py` maps Node-RED's figures accordingly and still matches.

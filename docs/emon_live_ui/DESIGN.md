@@ -450,6 +450,13 @@ reference; the decisions behind it:
   arriving after the replay do not look like counter resets; and emon_live's own
   `emon/derived/...` echo from the broker is not fed back in.
 - A counter that goes backwards (a node restart) is carried, not subtracted.
+- **Battery monitor counters count by sign, not by direction.** `pulseIn` accumulates
+  positive current and `pulseOut` negative. Whether positive means into or out of the
+  battery depends on how the shunt is mounted: on shannstainable's monitor 5 (the
+  batteries) positive is out, so `pulseIn` is discharge; on monitor 4 (the inverter
+  shunts) positive is in. Checked against integrated power, 21 Oct 2026. derived.yml
+  names derived feeds from the battery's side (`battery/in` is charge) and says per
+  monitor which counter that is.
 - Boundaries are checked every 5 s, so totals go to 0 at midnight without a reading.
 
 
