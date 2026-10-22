@@ -266,6 +266,16 @@ def test_the_map_drops_a_waypoint_on_a_hold_and_draws_the_line_from_the_boat():
     assert '"pointerdown"' not in code and '"contextmenu"' not in code
 
 
+def test_the_gar_dial_shows_the_waypoint_as_wpt():
+    """GAR puts a waypoint in the race band and on the diamond, labelled WPT not NEXT."""
+    code = (ROOT / "static" / "gar.js").read_text(encoding="utf-8")
+    page = (ROOT / "templates" / "gar.html").read_text(encoding="utf-8")
+    assert 'id="r-lbl"' in page
+    assert '"WPT' in code and "d.waypoint" in code
+    # the band is switched on by a waypoint as well as by a race
+    assert '|| d.waypoint))' in code
+
+
 if __name__ == "__main__":
     import traceback
 

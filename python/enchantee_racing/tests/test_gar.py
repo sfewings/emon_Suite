@@ -421,7 +421,9 @@ def test_the_mark_is_placed_off_the_heading_and_blanks_with_the_fix():
     when the fix is (DESIGN 9.5)."""
     code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
     assert "norm180(nav.bearing - hdg.v)" in code
-    assert "var nav = (racing && r.nav) || null;" in code
+    # from the race while racing, otherwise from a chart waypoint (DESIGN 15); either way
+    # null without a fresh fix, so the diamond goes rather than dims
+    assert "var nav = racing ? (r.nav || null) : (wp ? wp.nav || null : null);" in code
     assert "needles.mark.set(markAngle, false)" in code
 
 
