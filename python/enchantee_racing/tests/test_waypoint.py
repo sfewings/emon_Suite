@@ -276,6 +276,14 @@ def test_the_gar_dial_shows_the_waypoint_as_wpt():
     assert '|| d.waypoint))' in code
 
 
+def test_the_classic_hud_shows_the_waypoint_in_its_racing_rows():
+    """Panel 4 swaps to the racing rows for a waypoint, labelled "waypoint" not "next mark"."""
+    page = (ROOT / "templates" / "hud.html").read_text(encoding="utf-8")
+    assert 'id="r-mark-lbl"' in page
+    assert '"waypoint" : "next mark"' in page
+    assert "|| !!d.waypoint)" in page
+
+
 if __name__ == "__main__":
     import traceback
 

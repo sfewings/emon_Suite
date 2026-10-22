@@ -322,7 +322,7 @@
     <div class="row" data-race="off"><span class="lbl">HDG</span><span class="cell"><span class="val" id="hdg" style="color:var(--hdg)">---</span></span><span class="unit">deg</span></div>
     <div class="row" data-race="off"><span class="lbl">COG</span><span class="cell"><span class="val" id="cog" style="color:var(--cog)">---</span></span><span class="unit">deg</span></div>
     <div class="row multi two off" data-race="on">
-      <span class="cell name"><span class="sub"><span>next mark</span></span><span class="val name" id="r-mark" style="color:var(--mark)">---</span></span>
+      <span class="cell name"><span class="sub"><span id="r-mark-lbl">next mark</span></span><span class="val name" id="r-mark" style="color:var(--mark)">---</span></span>
       <span class="cell"><span class="sub"><span>distance</span><span id="r-dist-unit">m</span></span><span class="val" id="r-dist" style="color:var(--sog)">---</span></span>
     </div>
     <!-- No "deg" on these three. All three are degrees, the numbers say so on sight, and
@@ -426,7 +426,7 @@
   // readings: they are derived from the race and the fix, and they blank rather than dim
   // when the fix goes stale (DESIGN 9.5).
   var race = {};
-  ["r-mark", "r-dist", "r-dist-unit", "r-brg", "r-cog", "r-rel"].forEach(function (k) {
+  ["r-mark", "r-mark-lbl", "r-dist", "r-dist-unit", "r-brg", "r-cog", "r-rel"].forEach(function (k) {
     race[k] = document.getElementById(k);
   });
   var NM_ABOVE_M = 500, METRES_TO_NM = 1 / 1852;
@@ -445,10 +445,15 @@
 
   function paintRace(data) {
     var r = data.race || null;
+    var racing = !!(r && r.mode === "racing");
+    // A chart waypoint uses these same rows, labelled "waypoint" rather than "next mark"
+    // so the two modes cannot be confused (DESIGN 15). A race wins.
+    var wp = (!racing && data.waypoint) || null;
     // nav is null before the first fix and once it is more than 5 s old, which is exactly
     // when none of these three can be known.
-    var nav = (r && r.nav) || null;
-    put(race["r-mark"], (r && r.leg_name) || "---");
+    var nav = wp ? (wp.nav || null) : ((r && r.nav) || null);
+    put(race["r-mark-lbl"], wp ? "waypoint" : "next mark");
+    put(race["r-mark"], wp ? (wp.name || "Waypoint") : ((r && r.leg_name) || "---"));
     if (nav && nav.distance_m !== null && nav.distance_m !== undefined) {
       // metres under 500, nautical miles above, as the race screen (DESIGN 9.4)
       if (nav.distance_m < NM_ABOVE_M) {
@@ -532,7 +537,7 @@
         failures = 0;
         pip.classList.remove("down");
         var swapped = setMode(d.motor);
-        swapped = setRacing(d.race && d.race.mode === "racing") || swapped;
+        swapped = setRacing((d.race && d.race.mode === "racing") || !!d.waypoint) || swapped;
         paint(d);
         paintRace(d);
         applyTheme(d.theme);
