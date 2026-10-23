@@ -246,7 +246,39 @@ def test_daily_delta_carries_across_a_counter_reset(perth):
     d.update(500, local(2026, 10, 21, 1))
     d.update(520, local(2026, 10, 21, 2))
     assert d.update(3, local(2026, 10, 21, 3)) == 20.0, "a node restart zeroes its counter"
-    assert d.update(10, local(2026, 10, 21, 4)) == 27.0
+    assert d.update(10, local(2026, 10, 21, 4)) == 20.0, "not yet confirmed"
+    assert d.update(15, local(2026, 10, 21, 5)) == 32.0, "three in a row from near zero: carried"
+    assert d.update(16, local(2026, 10, 21, 6)) == 33.0
+
+
+def test_daily_delta_ignores_relayed_copies_arriving_late(perth):
+    """23 Oct 2026 20:48: the direct and relayed copies of a packet, 8 Wh apart."""
+    d = ef.DailyDelta()
+    d.update(58_601_260, local(2026, 10, 23, 0, 1))
+    seq = [58_620_648, 58_620_640, 58_620_648, 58_620_640, 58_620_640, 58_620_640, 58_620_656]
+    for i, v in enumerate(seq):
+        d.update(v, local(2026, 10, 23, 20, 48, 28 + i))
+    assert d.value == 58_620_656 - 58_601_260
+
+
+def test_daily_delta_drops_a_corrupted_low_reading(perth):
+    """23 Oct 2026 13:17:16: one line put Consumed at 2776 among readings of 58.6 million."""
+    d = ef.DailyDelta()
+    d.update(58_570_000, local(2026, 10, 23, 0, 1))
+    d.update(58_620_000, local(2026, 10, 23, 13, 17, 12))
+    assert d.update(2776, local(2026, 10, 23, 13, 17, 16)) == 50_000.0, "set aside"
+    assert d.update(58_620_004, local(2026, 10, 23, 13, 17, 20)) == 50_004.0
+    assert d.update(58_620_010, local(2026, 10, 23, 13, 17, 24)) == 50_010.0
+
+
+def test_daily_delta_undoes_a_single_spike_upwards(perth):
+    d = ef.DailyDelta()
+    for i, v in enumerate((1000, 1010)):
+        d.update(v, local(2026, 10, 23, 10, 0, i))
+    assert d.update(9_000_000, local(2026, 10, 23, 10, 0, 2)) == 8_999_000.0, "shows until undone"
+    d.update(1020, local(2026, 10, 23, 10, 0, 3))
+    d.update(1030, local(2026, 10, 23, 10, 0, 4))
+    assert d.update(1040, local(2026, 10, 23, 10, 0, 5)) == 40.0
 
 
 def test_daily_delta_seeded_from_influx_resumes_the_total(perth):

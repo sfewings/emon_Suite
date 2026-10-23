@@ -476,7 +476,12 @@ reference; the decisions behind it:
 - A value no newer than the last seen for a feed is ignored, so retained messages
   arriving after the replay do not look like counter resets; and emon_live's own
   `emon/derived/...` echo from the broker is not fed back in.
-- A counter that goes backwards (a node restart) is carried, not subtracted.
+- A `daily_delta` total never goes backwards. A reading below the last is set aside:
+  relayed copies of a packet arrive late with an older count, and a corrupted serial
+  line can carry another node's numbers (both seen 23 Oct 2026). A node restart is
+  recognised by three readings in a row below the last, rising, from under half the old
+  value, and is then carried, not subtracted; three readings carrying on from before the
+  last undo a spike upwards.
 - **Battery monitor counters count by sign, not by direction.** `pulseIn` accumulates
   positive current and `pulseOut` negative. Whether positive means into or out of the
   battery depends on how the shunt is mounted: on shannstainable's monitor 5 (the

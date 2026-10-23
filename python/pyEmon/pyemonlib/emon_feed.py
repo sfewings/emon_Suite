@@ -502,10 +502,24 @@ class DailyDelta(PeriodOperator):
     """A counter's increase since the boundary, times `scale` (op daily_delta).
 
     The baseline is the first value seen in the period, as Node-RED's DayStartPulse was,
-    or the seeded one. A counter that goes backwards, as a node's does when it restarts,
-    is taken to have reset to zero: what had accumulated is carried and counting goes on
-    from the new value, where Node-RED's figure went negative.
+    or the seeded one. The total never goes backwards. A reading below the last one is
+    set aside, because three different things produce one, all seen at shannstainable:
+
+    - a relayed copy of a packet, arriving a second after the direct one with the count
+      it had when it left: Consumed alternated 58620648, 58620640, 58620648 on 23 Oct;
+    - a corrupted line: at 13:17:16 that day one serial line carried another node's
+      numbers, putting every power-board counter at a few thousand for one reading;
+    - a node restarting, whose counter begins again from zero.
+
+    Only the last is a change to act on. It is recognised by CONFIRM readings in a row
+    below the last, rising among themselves, the first of them under half the old value:
+    then what had accumulated is carried and counting goes on from the new value (where
+    Node-RED's figure went negative). The same run of readings carrying on from the one
+    before the last instead means the last was a spike upwards, and it is undone. Any
+    other reading below the last is ignored. Readings that go forwards are never delayed.
     """
+
+    CONFIRM = 3
 
     def __init__(self, reset: str = "00:00", scale: float = 1.0) -> None:
         super().__init__(reset)
@@ -515,6 +529,8 @@ class DailyDelta(PeriodOperator):
     def clear(self) -> None:
         self.base: Optional[float] = None
         self.last: Optional[float] = None
+        self.prev: Optional[float] = None     # the accepted reading before last
+        self.below: List[float] = []          # readings in a row lower than last
         self.carry = 0.0
 
     def seed(self, first_value: float, t: float) -> None:
@@ -526,11 +542,21 @@ class DailyDelta(PeriodOperator):
         self.roll(t)
         value = float(value)
         if self.base is None:
-            self.base = value
-        elif self.last is not None and value < self.last:
-            self.carry += self.last - self.base
-            self.base = value
-        self.last = value
+            self.base = self.last = value
+            return self.value
+        if value >= self.last:
+            self.below = []
+            self.prev, self.last = self.last, value
+            return self.value
+        self.below.append(value)
+        run = self.below
+        if len(run) >= self.CONFIRM and all(a <= b for a, b in zip(run, run[1:])):
+            if self.prev is not None and run[0] >= self.prev:
+                self.prev, self.last = self.prev, run[-1]       # last was a spike: undo it
+            elif run[0] < self.last / 2:
+                self.carry += self.last - self.base             # a restart: carry the day
+                self.base, self.prev, self.last = run[0], None, run[-1]
+            self.below = []
         return self.value
 
     @property

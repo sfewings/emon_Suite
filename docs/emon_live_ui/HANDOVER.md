@@ -41,8 +41,10 @@ The enchantee deploy and the merge to `master` both wait until phase 2 is done (
 shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
 2c, the page engine and the house page, is done (owner checked it on a phone, 23 Oct:
 fine). 2d is done and deployed: the running Node-RED publishes showers, dog fed and tank days
-on `emon/derived/...`. Mosquitto now keeps retained messages (master). Next: 2e, the
-emon_live container.
+on `emon/derived/...`. Mosquitto now keeps retained messages (master). 2e: the
+`emon_live` container runs at shannstainable since 23 Oct, http://192.168.1.131:5003/,
+publishing `emon/derived/...`; it runs beside Instant Data until 30 Oct, then the
+Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -145,6 +147,20 @@ Behaviour changes a deploy will bring, both switchable per container:
   so only they start. Back up the GET first (`/home/pi/.cache/nodered_backup/`). Node-RED
   then saves the live `flows.json`, which after 2d equals emon-node-red's
   `emon_live_ui` tip.
+- **`emon_live` runs as a container from the worktree** until the branch is merged,
+  because `master` does not have it yet. Same compose project as the site, so it joins
+  its network and reaches `mqtt` and `influxdb` by name; `--no-deps`, so nothing else is
+  touched:
+  ```bash
+  cd /share/emon_Suite-live/provisioning/shannstainable
+  docker compose -p shannstainable up -d --no-deps emon_live     # start or recreate
+  docker restart emon_live                                       # after a code edit
+  ```
+  Never run any other service from the worktree's compose file: that would deploy the
+  branch's definition of it. After the merge, start it from `/share/emon_Suite` as any
+  other service. Page and `derived.yml` edits are read live; Python edits need the
+  restart. The image only carries Flask, paho and PyYAML: rebuild it only when
+  `requirements.txt` changes.
 - **The Pi hard-resets now and then** (hardware watchdog, `RuntimeWatchdogSec=15`): boots
   with no clean shutdown on 10 Aug, 11 Sep, 1 Oct, 21 Oct 07:17 and 20:00, 23 Oct 10:07.
   Cause unknown; the journal loses its last minutes each time, and on 23 Oct its last 30.
@@ -300,3 +316,16 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   first autosave; the four Node-RED nodes deployed through the admin API, publishing and
   retained; the emon-node-red branch pushed. The live `flows.json` now equals that
   branch's tip; `nodeRed` there still lacks the August changes, as before.
+- **2026-10-23, shannstainable Pi, night.** PLAN 2e: Dockerfile, build.sh entry, compose
+  service; container up from the worktree, healthy, publishing 61 derived feeds
+  retained. Two faults found in the first minutes, both now fixed: PyYAML was missing
+  from requirements.txt (the venv had it); and `consumed/today` read 58.6 million,
+  because daily_delta took a backward reading for a counter restart. The real data has
+  two kinds of backward reading: a corrupted serial line at 13:17:16 (every power-board
+  counter a few thousand for one reading, another node's numbers), and relayed copies
+  of packets arriving a second after the direct ones with the older count (Consumed
+  alternating 8 Wh apart at 20:48 and 20:51). daily_delta now never goes backwards and
+  needs three readings in a row from near zero to call a restart (DESIGN 6.3 as built,
+  emon_feed tests). All 20 daily counters then equal Influx's last minus first for the
+  day. Worth looking at with the inverter dropouts: why lines are corrupted, and that
+  relayed duplicates reach MQTT and Influx at all.

@@ -146,11 +146,13 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       Node-RED's context was emptied by that evening's reboot.
 - [x] Pushed `emon_live_ui` in emon-node-red (owner, 23 Oct).
 
-### 2e. Deploy (Pi)
+### 2e. Deploy (Pi) (running since 23 Oct 2026; the week beside Instant Data runs to 30 Oct)
 - [x] Mosquitto persistence at shannstainable (owner, 23 Oct; on master, `f1cf77e`), so a
       restart or reset keeps the retained envelopes. Saved every 5 min.
-- [ ] `emon_live` service in `provisioning/shannstainable/docker-compose.yml`, code
-      bind-mounted, site folder read-only.
+- [x] `emon_live` service in `provisioning/shannstainable/docker-compose.yml`, code
+      bind-mounted, site folder read-only. Image `sfewings32/emon_live:latest`
+      (`python/emon_live/Dockerfile`, `build.sh -c emon_live`), built on the Pi, not
+      pushed. Until the merge it runs from the worktree (HANDOVER, Machines).
 - [ ] Run beside Instant Data for a week. Then disable the Dashboard 1 tabs.
 
 Done when: the family uses the new page on phones and the desktop, and daily totals
