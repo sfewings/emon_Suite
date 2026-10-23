@@ -139,6 +139,13 @@ Behaviour changes a deploy will bring, both switchable per container:
   ../../provisioning/shannstainable/emon-ui` from `python/emon_live` (no `--publish`),
   then `http://<pi>:5003/` on a phone. Headless screenshots: `chromium --headless=new
   --no-sandbox --virtual-time-budget=8000 --window-size=390,1900 --screenshot=x.png URL`.
+- **The Pi hard-resets now and then** (hardware watchdog, `RuntimeWatchdogSec=15`): boots
+  with no clean shutdown on 10 Aug, 11 Sep, 1 Oct, 21 Oct 07:17 and 20:00, 23 Oct 10:07.
+  Cause unknown; the journal loses its last minutes each time, and on 23 Oct its last 30.
+  Both October ones in a session came during heavy work (an unbounded Influx query; a
+  start-up replay plus headless Chromium beside two VS Code servers), so run those one
+  at a time. Mosquitto has no persistence: after a reset every retained message is gone
+  until its node transmits again, and Node-RED's day totals restart; emon_live's replay.
 - **Every Influx query must be time-bounded** (`WHERE time > ...`), and never `SELECT *`
   without one; `ORDER BY time DESC LIMIT n` does not limit the scan. On 21 Oct 2026 an
   unbounded `SELECT * FROM rain|pulse ORDER BY time DESC LIMIT 3` was followed by the Pi
