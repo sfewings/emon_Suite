@@ -42,7 +42,8 @@ shannstainable, seeded from Influx on start. 2b is done, compared over a full da
 2c, the page engine and the house page, is done (owner checked it on a phone, 23 Oct:
 fine). 2d is done and deployed: the running Node-RED publishes showers, dog fed and tank days
 on `emon/derived/...`. Mosquitto now keeps retained messages (master). 2e: the
-`emon_live` container runs at shannstainable since 23 Oct, http://192.168.1.131:5003/,
+`emon_live` container runs at shannstainable since 23 Oct, http://192.168.1.131:5003/
+and https://shannstainable.fewings.org/live/ (host nginx, `location /live/`),
 publishing `emon/derived/...`; it runs beside Instant Data until 30 Oct, then the
 Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
@@ -329,3 +330,11 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   emon_feed tests). All 20 daily counters then equal Influx's last minus first for the
   day. Worth looking at with the inverter dropouts: why lines are corrupted, and that
   relayed duplicates reach MQTT and Influx at all.
+- **2026-10-23, shannstainable Pi, late.** Owner asked for the new pages on the public
+  site: `location /live/` in the host's `/etc/nginx/sites-available/default`, proxying
+  to localhost:5003 with the prefix stripped, and `/live` redirecting to `/live/`
+  (relative URLs need the slash). The repo's `LinuxInstall/` copy of that file had
+  fallen behind the Pi's (/birds, /grafana2, Grafana's new address); replaced with the
+  installed file, on master (merged here). Backup of the file before the change:
+  `/home/pi/.cache/nginx_default_before_live`. Note that /live, like Node-RED at /, is
+  open to anyone who finds it, and anyone can switch its theme (POST /api/settings).
