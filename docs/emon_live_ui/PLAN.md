@@ -132,7 +132,7 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] `provisioning/shannstainable/emon-ui/site.json` and `pages/house.json`, laid out as
       the proposal mockup. Showers, dog fed and tank days remaining wait for 2d.
 
-### 2d. Node-RED publishes its single-site results (code done 23 Oct 2026, Pi; not deployed)
+### 2d. Node-RED publishes its single-site results (done 23 Oct 2026, Pi)
 - [x] In `emon-node-red`, branch `emon_live_ui` (worktree `/share/emon-node-red-live`),
       started from a snapshot of the live flows, which were newer than `nodeRed`. One
       function, "Publish emon_live results", with an inject and an mqtt out, on Instant
@@ -141,11 +141,14 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       Node against a fake flow context; every envelope parses as its derived feed. Food
       remaining and showers remaining need no Node-RED: `dog/food/kg` and
       `hws/showerMinutes` are in derived.yml.
-- [ ] Deploy the three nodes into the running Node-RED (owner's go-ahead), then see the
-      five feeds on the broker and `lint_pages.py --broker localhost` without warnings.
-- [ ] Push `emon_live_ui` in emon-node-red (owner's go-ahead).
+- [x] Deployed into the running Node-RED (admin API, deployment type `nodes`; owner, 23
+      Oct). Four feeds publish every minute; `dog/lastFed` appears at the next feed, as
+      Node-RED's context was emptied by that evening's reboot.
+- [x] Pushed `emon_live_ui` in emon-node-red (owner, 23 Oct).
 
 ### 2e. Deploy (Pi)
+- [x] Mosquitto persistence at shannstainable (owner, 23 Oct; on master, `f1cf77e`), so a
+      restart or reset keeps the retained envelopes. Saved every 5 min.
 - [ ] `emon_live` service in `provisioning/shannstainable/docker-compose.yml`, code
       bind-mounted, site folder read-only.
 - [ ] Run beside Instant Data for a week. Then disable the Dashboard 1 tabs.

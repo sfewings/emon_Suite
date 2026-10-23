@@ -40,8 +40,9 @@ The enchantee deploy and the merge to `master` both wait until phase 2 is done (
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
 shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
 2c, the page engine and the house page, is done (owner checked it on a phone, 23 Oct:
-fine). 2d's code is done in emon-node-red's own worktree and waits for the owner's
-go-ahead to deploy into the running Node-RED and to push; then 2e.
+fine). 2d is done and deployed: the running Node-RED publishes showers, dog fed and tank days
+on `emon/derived/...`. Mosquitto now keeps retained messages (master). Next: 2e, the
+emon_live container.
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -139,13 +140,20 @@ Behaviour changes a deploy will bring, both switchable per container:
   ../../provisioning/shannstainable/emon-ui` from `python/emon_live` (no `--publish`),
   then `http://<pi>:5003/` on a phone. Headless screenshots: `chromium --headless=new
   --no-sandbox --virtual-time-budget=8000 --window-size=390,1900 --screenshot=x.png URL`.
+- Node-RED changes are deployed through its admin API: GET `/flows` with
+  `Node-RED-API-Version: v2`, add the nodes, POST with `Node-RED-Deployment-Type: nodes`
+  so only they start. Back up the GET first (`/home/pi/.cache/nodered_backup/`). Node-RED
+  then saves the live `flows.json`, which after 2d equals emon-node-red's
+  `emon_live_ui` tip.
 - **The Pi hard-resets now and then** (hardware watchdog, `RuntimeWatchdogSec=15`): boots
   with no clean shutdown on 10 Aug, 11 Sep, 1 Oct, 21 Oct 07:17 and 20:00, 23 Oct 10:07.
   Cause unknown; the journal loses its last minutes each time, and on 23 Oct its last 30.
   Both October ones in a session came during heavy work (an unbounded Influx query; a
   start-up replay plus headless Chromium beside two VS Code servers), so run those one
-  at a time. Mosquitto has no persistence: after a reset every retained message is gone
-  until its node transmits again, and Node-RED's day totals restart; emon_live's replay.
+  at a time. Since 23 Oct Mosquitto saves retained messages every 5 min, so a reset loses
+  at most that; Node-RED's day totals still restart (memory context); emon_live's replay.
+  Another session on 23 Oct added zram, `sar` and `/var/log/memtop.log` (top processes by
+  memory, every minute): read those first after a stall.
 - **Every Influx query must be time-bounded** (`WHERE time > ...`), and never `SELECT *`
   without one; `ORDER BY time DESC LIMIT n` does not limit the scan. On 21 Oct 2026 an
   unbounded `SELECT * FROM rain|pulse ORDER BY time DESC LIMIT 3` was followed by the Pi
@@ -163,6 +171,10 @@ Behaviour changes a deploy will bring, both switchable per container:
   and `python/enchantee_racing/CLAUDE.md`. The iPad mini 3 (iOS 12) is the browser floor.
 
 ## Open questions
+
+Decided by the owner on 23 Oct 2026: integrate keeps not bridging gaps over 5 min (no
+15 min allowance for the inverters). The owner would rather find out why Inverter 3, and
+others, drop out for 5 to 7 minutes at a time, but not as part of this work.
 
 Decided by the owner on 21 Oct 2026, for PLAN 2b:
 
@@ -282,3 +294,9 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   owner: deploying the nodes into the running Node-RED, and pushing the Node-RED branch
   (its snapshot carries the August WhatsApp nodes: a group id, no credentials). The
   inverter max_gap question (above, 23 Oct) is still open.
+- **2026-10-23, shannstainable Pi, evening.** Owner's answers: deploy and push 2d,
+  Mosquitto persistence, no 15 min gap allowance (find the cause later). Done: persistence
+  on master (`f1cf77e`, merged here), broker restarted, `mosquitto.db` written at the
+  first autosave; the four Node-RED nodes deployed through the admin API, publishing and
+  retained; the emon-node-red branch pushed. The live `flows.json` now equals that
+  branch's tip; `nodeRed` there still lacks the August changes, as before.
