@@ -39,8 +39,9 @@ files and the git history.
 The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
 shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
-2c, the page engine and the house page, is done and needs the owner's look on a real
-phone; 2d (Node-RED's own results) is next.
+2c, the page engine and the house page, is done (owner checked it on a phone, 23 Oct:
+fine). 2d's code is done in emon-node-red's own worktree and waits for the owner's
+go-ahead to deploy into the running Node-RED and to push; then 2e.
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -111,7 +112,15 @@ Behaviour changes a deploy will bring, both switchable per container:
   on `emon_live_ui` (created 19 Oct 2026). To pick up the branch here, `git -C
   /share/emon_Suite-live pull`; never `git checkout emon_live_ui` in production, which
   also stops the worktree being created (a branch can be checked out in one place only).
-- Node-RED user directory `/share/emon-node-red`, on branch `nodeRed`.
+- Node-RED user directory `/share/emon-node-red`, on branch `nodeRed`, bind-mounted into
+  the running `node_red`: it is production, like `/share/emon_Suite`. Its `flows.json`
+  carries changes since Aug 2026 never committed on `nodeRed`. Development is in the
+  worktree `/share/emon-node-red-live`, branch `emon_live_ui` (created 23 Oct 2026, from
+  a snapshot of the live flows). Node-RED saves `flows.json` compact on one line; keep
+  it so (`json.dumps(o, separators=(",", ":"), ensure_ascii=False)` round-trips it
+  exactly). Its flow context is in memory only.
+- To run Node-RED's function code: there is no `node` on the host; per CLAUDE.md,
+  `docker cp` a harness to `node_red:/tmp` and `docker exec node_red node /tmp/...`.
 - Compose for the site runs from `provisioning/shannstainable/` in the **production**
   checkout. A dev emon_live container should mount the worktree instead and publish a
   port that is free (5000, 1880, 1883, 3000, 8002, 8086, 9000 and 9443 are taken).
@@ -257,3 +266,12 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   daylight and integrate does not bridge gaps over 5 min (Node-RED bridged 233 Wh); a
   longer max_gap for the inverters is the owner's call. Today to 09:46, against Node-RED's
   live context: the same. Fixed a bug in compare_nodered.py that hid the export row.
+- **2026-10-23, shannstainable Pi, later.** Owner: the page is fine on a phone. PLAN 2d
+  code: `emon-node-red` worktree and branch (see Machines), first commit a snapshot of
+  the live flows, then one function, inject and mqtt out publishing showers, dog fed and
+  tank days as retained envelopes, tested under Node in the container. emon-ui gains a
+  `time` format; derived.yml gains `external:` and `dog/food/kg`; the house page shows
+  the five new feeds, as dashes until Node-RED publishes them. Not done, waiting on the
+  owner: deploying the nodes into the running Node-RED, and pushing the Node-RED branch
+  (its snapshot carries the August WhatsApp nodes: a group id, no credentials). The
+  inverter max_gap question (above, 23 Oct) is still open.

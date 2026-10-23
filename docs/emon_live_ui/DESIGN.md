@@ -426,7 +426,8 @@ several, as the mockup's tiles do:
 Tile keys: `title`, `domain` (`power solar batt heat water rain car other`), `span`
 (1 or 2), `fresh` and `gone` (seconds; tile, then page, then site, then 60 and 300),
 `headline` (a template shown in the heading, which moves the age to the foot).
-Templates anywhere take `{feed}` or `{feed|N}` for N decimal places; `unit: ""` hides a
+Templates anywhere take `{feed}`, `{feed|N}` for N decimal places, or `{feed|time}` for
+seconds since the epoch shown as "Today 18:54" (`"format": "time"` on a value); `unit: ""` hides a
 unit. A tile's age is its newest feed's; a value whose own feed is past `gone` shows a
 dash. `site.json` takes `title`, `theme`, `poll` (s), `fresh`, `gone`, `pages`,
 `default`; a page id `_all` is built in: every feed known, one tile per group, which is
@@ -484,6 +485,10 @@ reference; the decisions behind it:
   names derived feeds from the battery's side (`battery/in` is charge) and says per
   monitor which counter that is.
 - Boundaries are checked every 5 s, so totals go to 0 at midnight without a reading.
+- `external:` lists derived feeds that another publisher computes, Node-RED under D5,
+  so the page linter knows them; derived.py ignores it. Node-RED republishes them every
+  minute with `t` = now, which is what keeps a count that has not changed for hours fresh
+  on the pages.
 
 
 ### 6.4 Serving
