@@ -132,11 +132,18 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] `provisioning/shannstainable/emon-ui/site.json` and `pages/house.json`, laid out as
       the proposal mockup. Showers, dog fed and tank days remaining wait for 2d.
 
-### 2d. Node-RED publishes its single-site results (Pi, emon-node-red repo)
-- [ ] In `emon-node-red`, branch `emon_live_ui` from `nodeRed`. Add function nodes that
-      publish shower count and minutes, showers remaining, dog last fed and food
-      remaining, tank days remaining, as envelopes on `emon/derived/...` (DESIGN D5,
-      INVENTORY 2 rows marked `Node-RED`).
+### 2d. Node-RED publishes its single-site results (code done 23 Oct 2026, Pi; not deployed)
+- [x] In `emon-node-red`, branch `emon_live_ui` (worktree `/share/emon-node-red-live`),
+      started from a snapshot of the live flows, which were newer than `nodeRed`. One
+      function, "Publish emon_live results", with an inject and an mqtt out, on Instant
+      data: showers today and their minutes, dog last fed, tank days remaining and
+      average use, as retained envelopes on `emon/derived/...` (DESIGN D5). Tested under
+      Node against a fake flow context; every envelope parses as its derived feed. Food
+      remaining and showers remaining need no Node-RED: `dog/food/kg` and
+      `hws/showerMinutes` are in derived.yml.
+- [ ] Deploy the three nodes into the running Node-RED (owner's go-ahead), then see the
+      five feeds on the broker and `lint_pages.py --broker localhost` without warnings.
+- [ ] Push `emon_live_ui` in emon-node-red (owner's go-ahead).
 
 ### 2e. Deploy (Pi)
 - [ ] `emon_live` service in `provisioning/shannstainable/docker-compose.yml`, code

@@ -16,7 +16,9 @@ Errors (exit 1):
   - an input of derived.yml has no Influx series, so a restart cannot replay it;
   - two topics publish the same name (DESIGN 5);
   - a page file is not valid JSON, or a placeholder is not closed.
-Warnings: a derived feed that nothing reads, on a page or in derived.yml.
+Warnings: a derived feed that nothing reads, on a page or in derived.yml; a feed listed
+under derived.yml's `external:` (published by Node-RED, DESIGN D5) that is not on the
+broker yet.
 """
 
 from __future__ import annotations
@@ -96,8 +98,15 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
 
     computed: Set[str] = set()
     derived_reads: Set[str] = set()
+    external: Set[str] = set()
     derived_file = os.path.join(site_dir, "derived.yml")
     if os.path.isfile(derived_file):
+        import yaml
+        with open(derived_file, encoding="utf-8") as f:
+            external = set((yaml.safe_load(f) or {}).get("external") or [])
+        for name in sorted(external - known):
+            warnings.append(f"{name} is published by Node-RED (external) but not on the broker yet")
+        computed |= external
         import derived
         try:
             d = derived.load(derived_file)
@@ -105,7 +114,7 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
             errors.append(f"derived.yml: {ex}")
             d = None
         if d is not None:
-            computed = set(d.entries)
+            computed |= set(d.entries)
             for entry in d.entries.values():
                 for name in entry.inputs:
                     derived_reads.add(name)
@@ -137,7 +146,7 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
             if name not in known and name not in computed:
                 errors.append(f"pages/{fname}: no feed {name!r}")
 
-    for key in sorted(computed - used - derived_reads):
+    for key in sorted(computed - used - derived_reads - external):
         warnings.append(f"{key} is computed but no page or derived entry reads it")
     return errors, warnings
 

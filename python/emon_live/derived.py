@@ -2,6 +2,8 @@
 
 A site's derived.yml has two parts:
 
+    external:                     # derived feeds published by Node-RED; for the linter only
+      - derived/hws/showers/today
     influx:                       # where each input lives in Influx, for replay on start
       Power board / Imported: power power/0/3        # measurement, then the sensor tag
     derived:

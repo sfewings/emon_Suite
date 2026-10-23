@@ -5,8 +5,10 @@
 //                "sub": "{derived/consumed/today|0} Wh today"} ],
 //   "cols": 4
 //
-// "unit" overrides the feed's own; "" hides it. "domain" colours the number with another
-// domain's hue (Producing, on the Power tile). "sub" is a template line beneath.
+// "unit" overrides the feed's own; "" hides it. "format": "time" shows a time in seconds
+// since the epoch as "Today 18:54", in place of decimals. "domain" colours the number
+// with another domain's hue (Producing, on the Power tile). "sub" is a template line
+// beneath.
 
 (function () {
   "use strict";
@@ -41,8 +43,9 @@
       update: function (view) {
         cells.forEach(function (c) {
           var value = c.item.feed ? view.value(c.item.feed) : null;
-          c.num.textContent = ui.fmt(value, c.item.decimals);
-          var u = c.item.unit !== undefined ? c.item.unit : (c.item.feed ? view.unit(c.item.feed) : "");
+          var time = c.item.format === "time";
+          c.num.textContent = ui.fmtAs(value, time ? "time" : c.item.decimals);
+          var u = time ? "" : c.item.unit !== undefined ? c.item.unit : (c.item.feed ? view.unit(c.item.feed) : "");
           c.small.textContent = value === null ? "" : u;
           if (c.sub) c.sub.textContent = view.fill(c.item.sub);
         });

@@ -14,7 +14,8 @@
 //   leds     pills, on or off
 //   lines    small lines of text
 //
-// Text anywhere may carry {feed} placeholders, or {feed|N} for N decimal places.
+// Text anywhere may carry {feed} placeholders, {feed|N} for N decimal places, or
+// {feed|time} for a time in seconds since the epoch, shown as "Today 18:54".
 // The parts are in tiles/*.js; this file is the engine they plug into.
 
 (function () {
@@ -71,6 +72,29 @@
     return UNITS.hasOwnProperty(u) ? UNITS[u] : u;
   }
 
+  // A time in seconds since the epoch: "Today 18:54", "Yesterday 18:54", "Mon 18:54",
+  // or "22 Oct 18:54". Today and yesterday by this device's calendar, which is the one
+  // its reader means; the time itself came from the server.
+  var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function fmtTime(v) {
+    if (typeof v !== "number" || !isFinite(v) || v <= 0) return DASH;
+    var d = new Date(v * 1000);
+    var midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    var days = Math.floor((midnight.getTime() - d.getTime()) / 86400000) + 1;
+    var hm = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    if (d.getTime() >= midnight.getTime()) return "Today " + hm;
+    if (days === 1) return "Yesterday " + hm;
+    if (days < 7) return DAYS[d.getDay()] + " " + hm;
+    return d.getDate() + " " + MONTHS[d.getMonth()] + " " + hm;
+  }
+
+  // One value as a template or a values item asks: decimals, or "time".
+  function fmtAs(v, how) {
+    return how === "time" ? fmtTime(v) : fmt(v, how);
+  }
+
   // "12 s", "3 m 10 s", "2 h 5 m", "3 d".
   function fmtAge(s) {
     if (s === null || s === undefined) return "";
@@ -96,7 +120,9 @@
       var inner = text.slice(start + 1, end);
       var bar = inner.lastIndexOf("|");
       var piece = { feed: (bar === -1 ? inner : inner.slice(0, bar)).trim() };
-      if (bar !== -1 && /^\s*\d+\s*$/.test(inner.slice(bar + 1))) piece.decimals = Number(inner.slice(bar + 1));
+      var how = bar === -1 ? "" : inner.slice(bar + 1).trim();
+      if (/^\d+$/.test(how)) piece.decimals = Number(how);
+      else if (how === "time") piece.decimals = "time";
       if (piece.feed) out.push(piece);
       pos = end + 1;
     }
@@ -138,7 +164,7 @@
       fill: function (text) {
         var self = this;
         return parseTemplate(text).map(function (p) {
-          return p.feed ? fmt(self.value(p.feed), p.decimals) : p.text;
+          return p.feed ? fmtAs(self.value(p.feed), p.decimals) : p.text;
         }).join("");
       }
     };
@@ -368,7 +394,7 @@
   }
 
   var api = {
-    el: el, fmt: fmt, fmtAge: fmtAge, unit: unit,
+    el: el, fmt: fmt, fmtAs: fmtAs, fmtTime: fmtTime, fmtAge: fmtAge, unit: unit,
     parseTemplate: parseTemplate, templateFeeds: templateFeeds
   };
 

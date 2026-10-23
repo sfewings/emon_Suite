@@ -8,6 +8,16 @@
 #
 # Pulse counters are already Wh (the nodes apply pN_wPerPulse), as Node-RED assumed.
 
+# Derived feeds that Node-RED publishes, not this file (DESIGN D5): bespoke state machines
+# on its Instant data tab, function "Publish emon_live results" (emon-node-red, branch
+# emon_live_ui). Listed so the page linter knows them before they first arrive.
+external:
+  - derived/hws/showers/today       # flows of hot water over 3 min since midnight
+  - derived/hws/showerTime/today    # minutes of hot water flow since midnight
+  - derived/dog/lastFed             # when the scale last dropped 150 g, s since the epoch
+  - derived/tank/daysRemaining      # at the rolling 7-day average use
+  - derived/tank/averageUse         # mm a day, that average
+
 # Where each input lives in Influx (measurement, sensor tag), so a restart replays today.
 influx:
   Power board / HWS (pulse):                          pulse pulse/0/0
@@ -47,6 +57,7 @@ influx:
   LiFePO monitor 4 / Inverter 1 (pulseOut):           pulse battery/pulseOut/0/4
   LiFePO monitor 4 / Inverter 2 (pulseOut):           pulse battery/pulseOut/1/4
   LiFePO monitor 4 / Inverter 3 (pulseOut):           pulse battery/pulseOut/2/4
+  Dog food / scale:                                   scale scale/0
   Leaf / odometer:                                    leaf leaf/odometer/0
   Outlander / odometer:                               leaf leaf/odometer/1
 
@@ -256,6 +267,10 @@ derived:
     expr: "max(0, -{LiFePO monitor 4 / Inverter 1}) + max(0, -{LiFePO monitor 4 / Inverter 2}) + max(0, -{LiFePO monitor 4 / Inverter 3})"
     unit: W
     kind: power
+
+  # --- Dog food (Get last reading time): what is on the scale, as Node-RED showed it ---
+  # When the dog was last fed is Node-RED's (external, above).
+  - {id: dog/food/kg, op: expr, expr: "{Dog food / scale} / 1000", unit: kg, kind: mass, decimals: 1}
 
   # --- Cars (Calculate car details); the rest of that node is page display -------------
   - {id: car/leaf/kmToday,      op: daily_delta, feed: Leaf / odometer,      unit: km, kind: distance, decimals: 0}

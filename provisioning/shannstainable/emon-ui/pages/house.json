@@ -48,7 +48,10 @@
         {"feed": "derived/hws/showerMinutes", "label": "Showers left", "big": true, "decimals": 0}
       ],
       "gauge": {"feed": "derived/hws/showerMinutes", "max": 30},
-      "lines": ["Today {derived/water/hot/today|0} L · {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}"]
+      "lines": [
+        "Today {derived/hws/showers/today|0} showers · {derived/hws/showerTime/today|0} min",
+        "{derived/water/hot/today|0} L · {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}"
+      ]
     },
     {
       "title": "Temperature", "domain": "heat",
@@ -87,7 +90,8 @@
       "title": "Rain tank", "domain": "water",
       "headline": "{derived/tank/percent|0} %",
       "values": [{"feed": "Rain tank and HWS / Rain water tank", "label": "Height", "big": true, "decimals": 0}],
-      "gauge": {"feed": "derived/tank/percent", "max": 100}
+      "gauge": {"feed": "derived/tank/percent", "max": 100},
+      "lines": ["{derived/tank/daysRemaining|0} days left at {derived/tank/averageUse|0} mm a day"]
     },
     {
       "title": "Leaf", "domain": "car",
@@ -118,7 +122,11 @@
     {
       "title": "Dog food", "domain": "rain",
       "fresh": 900, "gone": 7200,
-      "values": [{"feed": "Dog food / scale", "label": "On the scale", "decimals": 0}]
+      "cols": 2,
+      "values": [
+        {"feed": "derived/dog/lastFed", "label": "Hazel fed", "format": "time"},
+        {"feed": "derived/dog/food/kg", "label": "Remaining", "decimals": 1}
+      ]
     }
   ]
 }

@@ -29,7 +29,9 @@ def test_shannstainable_pages_and_derived_lint_clean():
     names, duplicates = known()
     errors, warnings = lint_pages.lint(SITE, names, duplicates)
     assert errors == []
-    assert warnings == []
+    # The capture predates Node-RED publishing its results (PLAN 2d), so those, and only
+    # those, are reported as not on the broker yet.
+    assert all("(external) but not on the broker yet" in w for w in warnings), warnings
 
 
 def test_lint_catches_a_misspelt_feed_and_a_missing_series(tmp_path):
@@ -117,3 +119,14 @@ def test_index_uses_only_relative_urls():
         html = f.read()
     for url in re.findall(r'(?:src|href)="([^"]+)"', html):
         assert not url.startswith(("/", "http:", "https:")), url
+
+
+def test_lint_knows_external_feeds_and_warns_until_they_arrive(tmp_path):
+    (tmp_path / "pages").mkdir()
+    (tmp_path / "pages" / "p.json").write_text(json.dumps({"tiles": [{"lines": ["{derived/dog/lastFed|time}"]}]}))
+    (tmp_path / "derived.yml").write_text("external: [derived/dog/lastFed]\n")
+    names, duplicates = known()
+    errors, warnings = lint_pages.lint(str(tmp_path), names, duplicates)
+    assert errors == [] and len(warnings) == 1
+    errors, warnings = lint_pages.lint(str(tmp_path), names | {"derived/dog/lastFed"}, duplicates)
+    assert errors == [] and warnings == []
