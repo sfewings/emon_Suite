@@ -55,7 +55,8 @@ def nodered_figures(c: dict) -> dict:
     out = {
         "hws/today": g("hwsTotal"), "consumed/today": g("powerTotal"),
         "import/today": g("importTotal"), "car/today": g("carTotal"),
-        "solar/today": g("solarTotal"),   # differs: Node-RED's leaves Inverter Two out "export/today": g("exportTotal"),
+        "solar/today": g("solarTotal"),   # differs: Node-RED's leaves Inverter Two out
+        "export/today": g("exportTotal"),
         "foregone/today": g("foregoneProductionTotal"),
         "inverter1/today": g("inverterDailyTotal:inverter/pvInputPower/0"),
         "inverter3/today": g("inverterDailyTotal:inverter/pvInputPower/1"),

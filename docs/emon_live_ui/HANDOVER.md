@@ -38,9 +38,9 @@ files and the git history.
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
 The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
-shannstainable, seeded from Influx on start. What remains of 2b is the full-day
-comparison with Node-RED (PLAN 2b). 2c, the page engine and the house page, is done
-and needs the owner's look on a real phone; 2d (Node-RED's own results) is next.
+shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
+2c, the page engine and the house page, is done and needs the owner's look on a real
+phone; 2d (Node-RED's own results) is next.
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
@@ -244,3 +244,16 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   tile types are parts of one tile; templates take `{feed|N}`; the linter checks against
   published names, not emon_config. Not yet seen on a phone or the iPad; the trail starts
   empty each time a page opens.
+- **2026-10-23, shannstainable Pi.** The full-day comparison (PLAN 2b). emon_live ran
+  from 21 Oct 21:33 by hand (not a container yet); Node-RED had not restarted since 21
+  Oct 20:00. 22 Oct, replayed for that day, against Node-RED's midnight email
+  (`/share/DailyEmail/Archive/DailyEmail-20261022.html`): consumed, import, HWS, car,
+  hot water, rain, rail min and max, battery and inverter in and out, Leaf km all exact
+  (within 2 Wh); export 16,242 against 16,237 Wh; mid-points within the email's
+  rounding. Expected differences: solar 35.4 against 18.7 kWh (Inverter Two included);
+  foregone +2 %; Node-RED's "out to 9am" (2,901 Wh) is exactly the batteries' charge
+  from 00:00 to 09:00, confirming the swap, and ours is the discharge (3,147 Wh).
+  Inverter 3's PV read 1.5 % low because it dropped out six times for 5 to 7 min in
+  daylight and integrate does not bridge gaps over 5 min (Node-RED bridged 233 Wh); a
+  longer max_gap for the inverters is the owner's call. Today to 09:46, against Node-RED's
+  live context: the same. Fixed a bug in compare_nodered.py that hid the export row.

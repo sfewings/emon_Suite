@@ -109,7 +109,7 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] Tests using a fake clock and injected messages, no broker. Input is a capture of
       every retained `emon/#` message at shannstainable (`tests/data/`).
 
-### 2b. derived.yml (code done 21 Oct 2026, Pi; the full-day comparison remains)
+### 2b. derived.yml (done 23 Oct 2026, Pi)
 - [x] Operators `daily_delta`, `integrate`, `sum`, `expr` (DESIGN 6.3) in `emon_feed`,
       wired up in emon_live, publishing `emon/derived/...` (with `--publish`). Also
       `daily_max`, `daily_min`, `mean`, `window_delta`; see DESIGN 6.3 as built.
@@ -117,10 +117,11 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       `first()` baseline for month and year.
 - [x] `provisioning/shannstainable/emon-ui/derived.yml`, covering INVENTORY 2 rows marked
       `derived.yml`: 62 feeds.
-- [ ] Compare each against the Node-RED figure for a full day:
-      `python tools/compare_nodered.py` late in a day Node-RED has run since midnight
-      (from `python/emon_live`). Matched exactly on 21 Oct for 20:01 to 20:30 (after a
-      reboot, `--from 20:01`), but at night: solar, export and foregone untested.
+- [x] Compare each against the Node-RED figure for a full day. 22 Oct 2026 against
+      Node-RED's midnight email, and 23 Oct to 09:46 against its live context
+      (`tools/compare_nodered.py`): every counter, maximum and mean exact; export within
+      0.1 %; inverter PV within 0.4 % except where gaps over 5 min were not bridged
+      (HANDOVER). Solar, foregone and battery "out to 9am" differ as decided.
 
 ### 2c. UI engine (done 21 Oct 2026, Pi; owner to check on a real phone)
 - [x] `ui/`: engine, `value`, `gauge`, `trail`, `led` tiles, age states (DESIGN D6),
