@@ -1,0 +1,54 @@
+{
+  "title": "Navigation",
+  "tiles": [
+    {
+      "title": "Speed",
+      "domain": "water",
+      "span": 2,
+      "values": [
+        {
+          "feed": "Enchantee-GPS / speed",
+          "label": "SOG",
+          "big": true,
+          "decimals": 1
+        },
+        {
+          "feed": "RaspPi-GPS / speed",
+          "label": "Pi GPS",
+          "decimals": 1
+        }
+      ],
+      "cols": 2,
+      "trail": {
+        "feed": "Enchantee-GPS / speed",
+        "minutes": 30
+      }
+    },
+    {
+      "title": "Course",
+      "domain": "water",
+      "span": 2,
+      "compass": {
+        "needles": [
+          {
+            "feed": "Enchantee-GPS / course",
+            "label": "COG"
+          },
+          {
+            "feed": "IMU Sensor / heading",
+            "label": "Heading"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Power",
+      "domain": "power",
+      "span": 2,
+      "grafana": {
+        "src": "../grafana/d-solo/4z66RJWgk/power?orgId=1&from=now-1h&to=now&timezone=Australia%2FPerth&panelId=panel-6&__feature.dashboardSceneSolo=true",
+        "height": 220
+      }
+    }
+  ]
+}

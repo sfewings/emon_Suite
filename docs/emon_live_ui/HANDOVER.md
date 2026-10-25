@@ -36,6 +36,7 @@ files and the git history.
 ## Where it is up to
 
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
+**Phase 3 started on enchantee, 25 Oct 2026** (owner's request; see the session log).
 The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
 shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
@@ -224,8 +225,42 @@ broker persistence. emon_live and pages for enchantee are phase 3 and do not exi
 
 ### enchantee Pi (the boat)
 
-- Only for phase 3 checks and deploys. Its own conventions are in the root `CLAUDE.md`
-  and `python/enchantee_racing/CLAUDE.md`. The iPad mini 3 (iOS 12) is the browser floor.
+- Hostname `enchantee`, aarch64, Python 3.13.5, at 192.168.1.128 at the dock. Its own
+  conventions are in the root `CLAUDE.md` and `python/enchantee_racing/CLAUDE.md`. The
+  iPad mini 3 (iOS 12) is the browser floor.
+- Production checkout `/share/emon_Suite` is back on `master` (25 Oct 2026; nothing the
+  boat runs differs from the branch, and its images come from Docker Hub). Development
+  worktree `/share/emon_Suite-live` on `emon_live_ui`, as at shannstainable.
+- Node-RED user directory `/share/emon-node-red`, branch `Enchantee`, production.
+  Its dashboard is the reference for phase 3; INVENTORY 4 lists its widgets and their
+  topics, and the gauge ranges are in the flows (`ui_gauge` min, max, seg1, seg2).
+- Venv `/home/pi/.cache/emon_live_venv`: `pytest flask paho-mqtt pyyaml`.
+- Feed names: the boat is often quiet at the dock (no serial for 10 minutes at a time), so
+  names come from decoding a recording. `20260517_Frostbite_1.TXT` (untracked, in
+  `python/enchantee_racing/tests/data/` of the production checkout) through the new
+  image's `emon_decoder` gives 65 names: docker cp a script, the config and the log to
+  `/tmp` in `emon_serial`, run it, remove the three files by name.
+- **Test bench** (DESIGN 9.2): a throwaway broker on 127.0.0.1:1884, the Frostbite log
+  replayed into it in real time and in a loop through the new bridge image, and emon_live
+  from the worktree on port 5003, reachable from the iPad at http://192.168.1.128:5003/.
+  `replay_live.py` is kept in `python/pyEmon/tests/ab/`.
+  ```bash
+  AB=<scratch dir outside /share>; cp python/pyEmon/tests/ab/replay_live.py <frostbite log> $AB/
+  docker network create emon_live_test
+  docker run -d --name emon_live_test_mqtt --network emon_live_test \
+      -p 127.0.0.1:1884:1883 eclipse-mosquitto mosquitto -c /mosquitto-no-auth.conf
+  docker run -d --name emon_live_test_replay --network emon_live_test -e TZ=Australia/Perth \
+      -v $AB:/ab:ro -v $PWD/provisioning/enchantee/emon_config:/data:ro \
+      sfewings32/emon_serial_to_mqtt:latest \
+      python /ab/replay_live.py emon_live_test_mqtt /data/20260211-1447.yml /ab/<log>
+  cd python/emon_live && /home/pi/.cache/emon_live_venv/bin/python app.py --broker 127.0.0.1 \
+      --broker-port 1884 --port 5003 --site ../../provisioning/enchantee/emon-ui --influx none
+  # done: stop app.py; docker rm -f emon_live_test_replay emon_live_test_mqtt;
+  # docker network rm emon_live_test
+  ```
+  `--influx none` matters: the default is the boat's production Influx. The replay has
+  no `emon_gpsd` (`RaspPi-GPS`), and the Bimini sensor reports only in the first
+  minutes, so lint reports those two as missing on the bench.
 
 ## Open questions
 
@@ -392,3 +427,15 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   recording and Grafana are still to check (PLAN 1e), on the water if possible.
   Already so before the deploy: `event_recorder` unhealthy, its `/health` answering 200
   but in about 5 s, past the health check's timeout.
+- **2026-10-25, enchantee, later.** Phase 3 started, ahead of the end of phase 2 at the
+  owner's request. The production checkout went back to `master` and the worktree was
+  created (see Machines). PLAN 3, first task done: `dial`, `compass`, `cell-bar` and
+  `grafana` parts (DESIGN 6.2 as built); `link` menu entries already existed. A first
+  draft of enchantee's `site.json` and five pages, from the Node-RED dashboard's widgets
+  and ranges. Seen in headless Chromium on the test bench at 1024 px, day theme not yet.
+  Learned: a padding-kept aspect box needs its width limit on a parent, because padding
+  percentages are of the parent's width; Node-RED's battery voltage gauge (0 to 60,
+  segments at 48 and 50) is coloured green below 48 V and red above 50 V, backwards for
+  a 16S LiFePO4 pack resting at 52 to 54 V, so the draft has 40 to 60 with 50 warn and
+  48 bad, downwards. Owner to confirm. Next: the iPad mini 3 check (PLAN 3, second
+  task) on the bench; then fit the layout to the iPad and the kiosk.

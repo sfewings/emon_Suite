@@ -167,10 +167,14 @@ survive a restart. Way back: Instant Data is untouched until the last step.
 
 Goal: the boat's Node-RED pages replaced, on the iPad mini 3 and the Waveshare kiosk.
 
-- [ ] Tiles `dial`, `compass`, `cell-bar`, `grafana`, page menu with `link` entries (any).
+- [x] Tiles `dial`, `compass`, `cell-bar`, `grafana`, page menu with `link` entries (any).
+      Done 25 Oct 2026 on enchantee (DESIGN 6.2 as built); `link` entries were already in
+      the 2c menu. Seen in headless Chromium against a Frostbite replay, not yet on iOS.
 - [ ] **Check on the iPad mini 3 before anything else** (boat).
 - [ ] `provisioning/enchantee/emon-ui/`: `site.json`, pages `dials`, `navigation`,
       `weather`, `motor`, `battery`; HUD and Race as links to the race app (INVENTORY 4).
+      **Started 25 Oct 2026**: a first draft of all five, with the real feed names, written
+      to have something to check on the iPad. Layout not yet fitted to the iPad or kiosk.
 - [ ] `derived.yml` with `twa`, `awa`, `leeway`, `heel`, battery energy (DESIGN D3).
 - [ ] nginx and kiosk launcher changes in `provisioning/enchantee/etc/...` (DESIGN 6.4).
       Keep Node-RED's UI at `/nodered/ui/` until a sail has been done on the new pages.

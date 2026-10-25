@@ -1,0 +1,54 @@
+{
+  "title": "Motor",
+  "tiles": [
+    {
+      "title": "Motor",
+      "domain": "power",
+      "span": 2,
+      "values": [
+        {
+          "feed": "SevCon / rpm",
+          "label": "RPM",
+          "big": true,
+          "decimals": 0,
+          "unit": ""
+        },
+        {
+          "feed": "SevCon / batteryCurrent",
+          "label": "Current",
+          "big": true,
+          "decimals": 1
+        },
+        {
+          "feed": "SevCon / capVoltage",
+          "label": "Voltage",
+          "decimals": 1
+        },
+        {
+          "feed": "SevCon / motorTemperature",
+          "label": "Motor",
+          "decimals": 0
+        },
+        {
+          "feed": "SevCon / controllerTemperature",
+          "label": "Controller",
+          "decimals": 0
+        }
+      ],
+      "cols": 3,
+      "trail": {
+        "feed": "SevCon / rpm",
+        "minutes": 30
+      }
+    },
+    {
+      "title": "SevCon controller",
+      "domain": "power",
+      "span": 2,
+      "grafana": {
+        "src": "../grafana/d-solo/714fdea5-0707-405e-89ab-cd8ee5d28cf8/sevcon-controller?orgId=1&from=now-1h&to=now&timezone=browser&panelId=panel-1&__feature.dashboardSceneSolo=true",
+        "height": 220
+      }
+    }
+  ]
+}

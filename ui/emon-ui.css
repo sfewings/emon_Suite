@@ -15,6 +15,7 @@
   --rain: #5a6f8a; --car: #6b5bb0; --other: #6f7a88;
   --ok: #2f8f5b; --ok-bg: rgba(47, 143, 91, 0.16); --warn: #c98a12; --bad: #c1453a;
   --bad-bg: rgba(193, 69, 58, 0.14);
+  --port: #c8372d; --stbd: #2f9a4f;
   --mono: "IBM Plex Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
   --cond: "IBM Plex Sans Condensed", "Arial Narrow", -apple-system, "Segoe UI", sans-serif;
@@ -26,6 +27,7 @@ body.night {
   --power: #f0953a; --solar: #e6c02a; --batt: #5db07f; --heat: #e2695e; --water: #4d9ddb;
   --rain: #8a9fbb; --car: #9484d6; --other: #8a94a3;
   --ok: #5db07f; --ok-bg: rgba(93, 176, 127, 0.18); --bad: #e2695e; --bad-bg: rgba(226, 105, 94, 0.18);
+  --port: #e0554a; --stbd: #4fbf6e;
 }
 
 html, body { margin: 0; padding: 0; }
@@ -128,6 +130,55 @@ button[data-theme-toggle] {
 }
 .pill.on { background: var(--ok-bg); color: var(--ok); }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
+
+/* --- boat parts: dial, compass, cell-bar, grafana (PLAN 3) ----------------------------- */
+
+/* An SVG in a box that keeps its shape by padding: iOS 12 does not keep an SVG's aspect
+   ratio from height: auto. */
+.dial-box, .compass-box { position: relative; height: 0; }
+.dial-box { padding-bottom: 80%; }
+.compass-box { padding-bottom: 100%; }
+.dial-box svg, .compass-box svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+
+.dials { display: flex; justify-content: space-around; }
+.dial { flex: 1 1 0; min-width: 0; max-width: 220px; margin: 0 4px; text-align: center; }
+.dial .k { margin-top: -4px; }
+.dial path { fill: none; stroke-linecap: butt; }
+.dial .track { stroke: var(--line2); stroke-width: 9; }
+.dial .fill { stroke: var(--c); stroke-width: 9; }
+.dial .fill.warn { stroke: var(--warn); }
+.dial .fill.bad { stroke: var(--bad); }
+.dial .band { stroke-width: 3; }
+.dial .band.warn { stroke: var(--warn); }
+.dial .band.bad { stroke: var(--bad); }
+.dial text, .compass text { font-family: var(--mono); text-anchor: middle; fill: var(--ink); }
+.dial .val, .compass .val { font-size: 20px; font-weight: 500; }
+.dial .unit, .compass .unit { font-size: 9px; fill: var(--ink3); }
+.dial .end { font-size: 8px; fill: var(--ink3); }
+
+.compass-size { max-width: 240px; margin: 0 auto 6px; }
+.compass .ring { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.compass .tick { stroke: var(--ink3); stroke-width: 1; }
+.compass .tick.major { stroke: var(--ink2); stroke-width: 1.5; }
+.compass .mark { font-size: 9px; fill: var(--ink2); }
+.compass .port { fill: var(--port); opacity: 0.7; }
+.compass .stbd { fill: var(--stbd); opacity: 0.7; }
+.compass .needle polygon { fill: none; stroke: var(--ink2); stroke-width: 1.5; }
+.compass .needle.main polygon { fill: var(--c); stroke: var(--c); }
+.compass .needle.main line { stroke: var(--c); stroke-width: 2.5; }
+.t-main { color: var(--c); }
+
+.cells { display: flex; align-items: flex-end; margin-top: 2px; }
+.cell { flex: 1 1 0; min-width: 0; margin: 0 1px; text-align: center; }
+.cbar { position: relative; height: 64px; background: var(--line2); border-radius: 2px; overflow: hidden; }
+.cbar i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--c); opacity: 0.55; }
+.cell.lo .cbar i, .cell.hi .cbar i { opacity: 1; }
+.cell.warn .cbar i { background: var(--warn); }
+.cell.none .cbar { background: transparent; border: 1px dashed var(--line); box-sizing: border-box; }
+.cl { font-family: var(--mono); font-size: 9px; color: var(--ink3); line-height: 1.6; }
+.sub.line.warn { color: var(--warn); }
+
+iframe.grafana { display: block; width: 100%; border: 0; margin-top: 4px; background: var(--panel); }
 
 /* --- data age (DESIGN D6): fresh, ageing, gone ---------------------------------------- */
 

@@ -1,0 +1,92 @@
+{
+  "title": "Weather",
+  "tiles": [
+    {
+      "title": "True wind",
+      "domain": "rain",
+      "span": 2,
+      "compass": {
+        "needles": [
+          {
+            "feed": "True wind / windDirection",
+            "label": "TWD"
+          },
+          {
+            "feed": "Enchantee-GPS / course",
+            "label": "COG"
+          }
+        ]
+      },
+      "values": [
+        {
+          "feed": "True wind / windSpeed",
+          "label": "TWS",
+          "big": true,
+          "decimals": 1
+        }
+      ],
+      "trail": {
+        "feed": "True wind / windSpeed",
+        "minutes": 30
+      }
+    },
+    {
+      "title": "Apparent wind",
+      "domain": "rain",
+      "span": 2,
+      "compass": {
+        "relative": true,
+        "needles": [
+          {
+            "feed": "Boat reference wind / windDirection",
+            "label": "AWA"
+          }
+        ]
+      },
+      "values": [
+        {
+          "feed": "Apparent wind / windSpeed",
+          "label": "AWS",
+          "big": true,
+          "decimals": 1
+        },
+        {
+          "feed": "Apparent wind / windDirection",
+          "label": "AWD",
+          "decimals": 0
+        }
+      ],
+      "cols": 2
+    },
+    {
+      "title": "Air",
+      "domain": "heat",
+      "span": 2,
+      "gone": 600,
+      "values": [
+        {
+          "feed": "Anemometer / temperature",
+          "label": "Temperature",
+          "big": true,
+          "decimals": 1
+        },
+        {
+          "feed": "Anemometer / humidity",
+          "label": "Humidity",
+          "decimals": 0
+        },
+        {
+          "feed": "Anemometer / pressure",
+          "label": "Pressure",
+          "decimals": 1
+        },
+        {
+          "feed": "Light Banner / Bimini",
+          "label": "Bimini",
+          "decimals": 1
+        }
+      ],
+      "cols": 4
+    }
+  ]
+}

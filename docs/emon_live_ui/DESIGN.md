@@ -423,6 +423,21 @@ several, as the mockup's tiles do:
 | `leds` | pills in the heading | `[{feed, on, off, test, bad}]`; `test` `"value"` (on at 1 or more) or `"fresh"` (on while reporting) |
 | `lines` | small text | `["template", ...]` |
 
+**As built (phase 3, 25 Oct 2026).** The boat's four tile types are parts too, drawn
+between `values` and `leds` in the order `dial`, `compass`, `cell-bar`, `gauge`, `trail`,
+`grafana`:
+
+| Key | Part | Shape |
+|---|---|---|
+| `dial` | a round gauge, or a list of them side by side | `{feed, min, max, warn, bad, decimals, unit, label}`; fills from 0; `warn` above `bad` means the bottom is bad (a battery voltage) |
+| `compass` | needles on a rose | `{needles: [{feed, label}], relative}`; the first needle is the one read; `relative` is bow-up, signed, port negative, with the race app's 30 to 60 degree sectors |
+| `cell-bar` | a bar per battery cell | `{min, max, spread, decimals, cells: [{feed, label}]}`; lowest, highest and the spread, in the warning colour past `spread` |
+| `grafana` | a Grafana panel | `{src, height}`; `src` relative; follows day and night unless it names a theme |
+
+Cells are listed one by one, not generated from a count, so that every feed is a
+`"feed"` in the page where the server and the linter look (4.4, 9.4). A tile that names
+no feeds, such as a frame alone, shows no age. The `deg` unit is shown as °.
+
 Tile keys: `title`, `domain` (`power solar batt heat water rain car other`), `span`
 (1 or 2), `fresh` and `gone` (seconds; tile, then page, then site, then 60 and 300),
 `headline` (a template shown in the heading, which moves the age to the foot).

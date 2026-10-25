@@ -9,8 +9,12 @@
 // in this order, each one optional:
 //
 //   values   a grid of readings, each with an optional "sub" line under it
+//   dial     round gauges, side by side
+//   compass  bearings on a rose, or angles off the bow
+//   cell-bar one bar per battery cell
 //   gauge    a bar from min to max
 //   trail    a sparkline of one feed, kept by this page since it opened
+//   grafana  a Grafana panel in a frame
 //   leds     pills, on or off
 //   lines    small lines of text
 //
@@ -25,10 +29,11 @@
 
   var DEFAULTS = { title: "emon", poll: 2, fresh: 60, gone: 300 };
   var DOMAINS = ["power", "solar", "batt", "heat", "water", "rain", "car", "other"];
-  var UNITS = { degC: "°C", pulse: "", count: "" };
+  var UNITS = { degC: "°C", deg: "°", pulse: "", count: "" };
   var MINUS = "−";
   var DASH = "—";
   var NNBSP = " ";   // narrow no-break space, between thousands
+  var PARTS = ["values", "dial", "compass", "cell-bar", "gauge", "trail", "grafana", "leds", "lines"];
 
   var parts = {};          // name -> factory(spec, el, tile) returning update(view)
   var site = null;
@@ -201,7 +206,7 @@
     tile.el = root;
 
     if (spec.headline) tile.feeds = tile.feeds.concat(templateFeeds(spec.headline));
-    ["values", "gauge", "trail", "leds", "lines"].forEach(function (name) {
+    PARTS.forEach(function (name) {
       if (spec[name] === undefined || !parts[name]) return;
       var made = parts[name](spec[name], tile.body, tile, api);
       tile.updates.push(made.update);
@@ -218,6 +223,11 @@
   // tile's feeds (DESIGN D6, proposal "Data age, three states").
   function updateTile(tile) {
     var view = makeView(tile);
+    // A tile that names no feeds (a Grafana frame) has no age to show.
+    if (!tile.feeds.length) {
+      tile.updates.forEach(function (u) { u(view); });
+      return;
+    }
     var newest = null;
     tile.feeds.forEach(function (name) {
       var a = view.age(name);
