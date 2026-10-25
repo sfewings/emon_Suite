@@ -47,7 +47,8 @@ and https://shannstainable.fewings.org/live/ (host nginx, `location /live/`),
 publishing `emon/derived/...`; it runs beside Instant Data until 30 Oct, then the
 Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
-old ones kept as `:pre-live-ui`). Enchantee is untouched. On the shannstainable Pi the new images exist locally as
+old ones kept as `:pre-live-ui`). Enchantee runs phase 1 since 25 Oct 2026, 20:59 (step 4 below done; the check, step 5,
+is open). On the shannstainable Pi the new images exist locally as
 `sfewings32/emon_serial_to_mqtt:live-test`, `emon_mqtt_to_influx:live-test` and
 `emon_gpsd_to_mqtt:live-test`, built from `a008c56` plus the reconnect fix; none is
 pushed to Docker Hub. Outside `python/pyEmon/` and these docs the branch changes only
@@ -377,3 +378,17 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   installed file, on master (merged here). Backup of the file before the change:
   `/home/pi/.cache/nginx_default_before_live`. Note that /live, like Node-RED at /, is
   open to anyone who finds it, and anyone can switch its theme (POST /api/settings).
+- **2026-10-25, enchantee.** Deploy steps 1 to 4 of "Deploying phase 1 at enchantee".
+  The checkout was already on `emon_live_ui`, clean; a reset-away commit `36fa2ab`
+  (nginx default, shannstainable mosquitto.conf) is in `stash@{0}` and equals the
+  branch's files, so nothing was lost. Enchantee had been running August images, not
+  March; those are now `:pre-live-ui`. At 20:59 the three bridges were recreated from
+  the Docker Hub images of 25 Oct 20:14 and the broker restarted: `emon_serial` and
+  `emon_gpsd` each restarted once on `Connection refused` while it came back (`restart:
+  always` covers it), 10 clients reconnected, `emon/config` is retained and
+  `mosquitto.db` was written at the first autosave (21:04). Alongside, the boat's nodes
+  were quiet: nothing on `#` in 30 s before the deploy, and `emon_serial` already
+  restarting on its 600 s no-serial timeout. So no envelopes yet, and the HUD, a
+  recording and Grafana are still to check (PLAN 1e), on the water if possible.
+  Already so before the deploy: `event_recorder` unhealthy, its `/health` answering 200
+  but in about 5 s, past the health check's timeout.

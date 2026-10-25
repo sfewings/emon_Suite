@@ -91,8 +91,8 @@ byte-identical.
 - [ ] **Started 25 Oct 2026** (owner). Deploy at enchantee: steps in HANDOVER, "Deploying
       phase 1 at enchantee". Images rebuilt from the branch on 25 Oct with the serial fix
       and checked against enchantee's config (boat A/B); pushed to Docker Hub by the owner.
-      Deploy at enchantee. Check the race app HUD and an event_recorder recording still
-      work.
+      Deployed at enchantee 25 Oct 2026 20:59 (HANDOVER log). Still to check, with the
+      boat's nodes reporting: the race app HUD, an event_recorder recording, Grafana.
 
 Done when: both sites publish `emon/#` and `emon/config` and nothing downstream noticed.
 Way back: redeploy the previous image tags (`:pre-live-ui` at shannstainable).
