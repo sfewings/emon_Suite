@@ -28,6 +28,27 @@ Start at 13:30, which is the gun Enchantee sailed (the 13:50 start is the other 
 
 Stop the broker with `docker compose -f tests/replay/docker-compose.yml down`.
 
+## On a laptop with nothing but Python: play_local.py
+
+The loop above needs a broker, and on Windows also Docker Desktop, a local amd64 image and
+the C++ build tools for pyemonlib. To look at the screens against a recording, none of that
+is needed:
+
+```
+pip install flask
+python tests/replay/play_local.py tests/data/20260913_Frostbite_1.TXT --speed 4
+```
+
+Then open <http://localhost:5002/map>, or `/`, `/gar`, `/hud`. `--start 13:40` skips
+ahead on the log's clock, `--host 0.0.0.0` lets a phone or tablet on the same wifi open it
+at the laptop's address, and Ctrl+C stops it. On Windows, `py` may be the Python command.
+
+It runs the app in its own process and feeds the store through
+`mqtt_client.handle_message`, parsing the log in Python in EmonShared's field order, so
+`crosscheck.py --url http://127.0.0.1:5002/api/state` agrees with it field for field. What it
+skips is what replay.py is for: the C++ parse, emon_mqtt and the broker. The same 4x
+limit applies if the race engine is being watched.
+
 ## On the boat's Pi, beside the provisioned stack
 
 The loop above cannot be run as it stands on `enchantee`: the provisioned stack already
