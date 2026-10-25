@@ -88,7 +88,10 @@ byte-identical.
       mqtt_to_log only imports pyemonlib, so it was not rebuilt.
 - [x] Deploy at shannstainable. Watch Node-RED Instant Data and Grafana for a day.
       Deployed 21 Oct 2026 14:11 (local images, see HANDOVER).
-- [ ] **Deferred until after phase 2** (owner, 21 Oct 2026). Deploy at enchantee. Check the race app HUD and an event_recorder recording still
+- [ ] **Started 25 Oct 2026** (owner). Deploy at enchantee: steps in HANDOVER, "Deploying
+      phase 1 at enchantee". Images rebuilt from the branch on 25 Oct with the serial fix
+      and checked against enchantee's config (boat A/B); pushed to Docker Hub by the owner.
+      Deploy at enchantee. Check the race app HUD and an event_recorder recording still
       work.
 
 Done when: both sites publish `emon/#` and `emon/config` and nothing downstream noticed.

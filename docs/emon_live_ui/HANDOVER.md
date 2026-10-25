@@ -88,6 +88,45 @@ Behaviour changes a deploy will bring, both switchable per container:
 - Legacy MQTT topics of channels named Unused are no longer published (owner's decision).
   `EMON_SKIP_UNUSED=0` restores them. Influx unchanged.
 
+## Deploying phase 1 at enchantee
+
+Prepared on shannstainable, 25 Oct 2026. What reaches the boat is phase 1 only: the
+bridge publishing `emon/...` envelopes and `emon/config` beside the legacy topics, plus
+broker persistence. emon_live and pages for enchantee are phase 3 and do not exist yet.
+
+1. **Images.** `sfewings32/emon_serial_to_mqtt`, `emon_mqtt_to_influx` and
+   `emon_gpsd_to_mqtt`, built from this branch on 25 Oct (wheel included, serial crash
+   fix included), tagged `:enchantee-candidate` on the shannstainable Pi. Boat A/B
+   against the March image enchantee runs, enchantee's config, Frostbite 1: legacy
+   topics identical in order (51,504 messages) apart from `gps/position/<n>` (from
+   master, August) and the two Unused channels. The owner pushes them:
+   ```bash
+   for i in emon_serial_to_mqtt emon_mqtt_to_influx emon_gpsd_to_mqtt; do
+     docker tag sfewings32/$i:enchantee-candidate sfewings32/$i:latest
+     docker push sfewings32/$i:latest
+   done
+   ```
+2. **On enchantee, before anything**: `cd /share/emon_Suite && git status && git log
+   --oneline @{u}..` (which branch, uncommitted or unpushed work). That checkout is its
+   deployment, and `enchantee_racing` and `event_recorder` run from it. The branch has
+   everything on master, including every enchantee branch, and changes nothing under
+   `python/enchantee_racing`, `python/event_recorder` or `provisioning/enchantee` beyond
+   `mosquitto.conf`. Commit or stash local work first.
+3. `git fetch && git checkout emon_live_ui`.
+4. Keep the way back, then pull and recreate only the three bridges and the broker:
+   ```bash
+   cd /share/emon_Suite/provisioning/enchantee
+   for i in emon_serial_to_mqtt emon_mqtt_to_influx emon_gpsd_to_mqtt; do
+     docker tag sfewings32/$i:latest sfewings32/$i:pre-live-ui; done
+   docker compose pull emon_serial_to_mqtt emon_mqtt_to_influx emon_gpsd_to_mqtt
+   docker compose up -d --no-deps emon_serial_to_mqtt emon_mqtt_to_influx emon_gpsd_to_mqtt
+   docker restart mqtt        # loads persistence; clients reconnect
+   ```
+   Way back: tag `:pre-live-ui` as `:latest` and the same `up`.
+5. **Check** (PLAN 1e): `emon/config` and `emon/#` retained on the broker; the race
+   app's HUD live; an event_recorder recording; Node-RED's pages; Grafana. On the
+   water if possible, since that is when gps and the anemometer report.
+
 ## Machines
 
 ### Windows laptop (where this started)
