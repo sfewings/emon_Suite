@@ -1,0 +1,67 @@
+# enchantee feed names: the 20260211-1447.yml config decoding 20260517_Frostbite_1.TXT
+# through emon_decoder (HANDOVER, enchantee Pi). One per line; for the page linter.
+Anemometer / humidity
+Anemometer / pressure
+Anemometer / temperature
+Apparent wind / temperature
+Apparent wind / windDirection
+Apparent wind / windSpeed
+Boat reference wind / temperature
+Boat reference wind / windDirection
+Boat reference wind / windSpeed
+Cabin GPS / humidity
+Cabin GPS / pressure
+Cabin GPS / temperature
+Enchantee-GPS / course
+Enchantee-GPS / latitude
+Enchantee-GPS / longitude
+Enchantee-GPS / position
+Enchantee-GPS / speed
+IMU Sensor / acc 0
+IMU Sensor / acc 1
+IMU Sensor / acc 2
+IMU Sensor / gyro 0
+IMU Sensor / gyro 1
+IMU Sensor / gyro 2
+IMU Sensor / heading
+IMU Sensor / mag 0
+IMU Sensor / mag 1
+IMU Sensor / mag 2
+Light Banner / Bimini
+Light Banner / supplyV
+Main Battery / batterySoC
+Main Battery / batteryVoltage
+Main Battery / cellVoltage 0
+Main Battery / cellVoltage 1
+Main Battery / cellVoltage 10
+Main Battery / cellVoltage 11
+Main Battery / cellVoltage 12
+Main Battery / cellVoltage 13
+Main Battery / cellVoltage 14
+Main Battery / cellVoltage 15
+Main Battery / cellVoltage 2
+Main Battery / cellVoltage 3
+Main Battery / cellVoltage 4
+Main Battery / cellVoltage 5
+Main Battery / cellVoltage 6
+Main Battery / cellVoltage 7
+Main Battery / cellVoltage 8
+Main Battery / cellVoltage 9
+Main Battery / lifetimeCycles
+Main Battery / power
+Main Battery / resCapacity
+Main Battery / temperature
+RaspPi-GPS / course
+RaspPi-GPS / latitude
+RaspPi-GPS / longitude
+RaspPi-GPS / position
+RaspPi-GPS / rssi (gps)
+RaspPi-GPS / speed
+SevCon / batteryCurrent
+SevCon / capVoltage
+SevCon / controllerTemperature
+SevCon / motorTemperature
+SevCon / rpm
+True wind / temperature
+True wind / windDirection
+True wind / windSpeed

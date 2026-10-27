@@ -1,0 +1,113 @@
+{
+  "title": "Weather",
+  "cols": 2,
+  "tiles": [
+    {
+      "title": "True wind",
+      "domain": "rain",
+      "span": 1,
+      "compass": {
+        "needles": [
+          {
+            "feed": "True wind / windDirection",
+            "label": "TWD",
+            "tint": "twa"
+          },
+          {
+            "feed": "Enchantee-GPS / course",
+            "label": "COG",
+            "tint": "cog"
+          }
+        ],
+        "legend": false
+      },
+      "values": [
+        {
+          "feed": "True wind / windSpeed",
+          "label": "TWS",
+          "big": true,
+          "decimals": 1,
+          "tint": "tws"
+        },
+        {
+          "feed": "derived/wind/twa",
+          "label": "TWA",
+          "big": true,
+          "decimals": 0,
+          "tint": "twa"
+        }
+      ],
+      "trail": {
+        "feed": "True wind / windSpeed",
+        "minutes": 30
+      },
+      "cols": 2
+    },
+    {
+      "title": "Apparent wind",
+      "domain": "rain",
+      "span": 1,
+      "compass": {
+        "relative": true,
+        "needles": [
+          {
+            "feed": "derived/wind/awa",
+            "label": "AWA",
+            "tint": "awa"
+          }
+        ],
+        "legend": false
+      },
+      "values": [
+        {
+          "feed": "Apparent wind / windSpeed",
+          "label": "AWS",
+          "big": true,
+          "decimals": 1,
+          "tint": "aws"
+        },
+        {
+          "feed": "Apparent wind / windDirection",
+          "label": "AWD",
+          "decimals": 0,
+          "tint": "awa"
+        }
+      ],
+      "cols": 2
+    },
+    {
+      "title": "Air",
+      "domain": "heat",
+      "span": 2,
+      "gone": 600,
+      "values": [
+        {
+          "feed": "Anemometer / temperature",
+          "label": "Temperature",
+          "big": true,
+          "decimals": 1,
+          "tint": "temp"
+        },
+        {
+          "feed": "Anemometer / humidity",
+          "label": "Humidity",
+          "decimals": 0,
+          "tint": "hum"
+        },
+        {
+          "feed": "Anemometer / pressure",
+          "label": "Pressure",
+          "decimals": 1,
+          "tint": "press"
+        },
+        {
+          "feed": "Light Banner / Bimini",
+          "label": "Bimini",
+          "decimals": 1,
+          "tint": "temp"
+        }
+      ],
+      "cols": 4
+    }
+  ]
+}

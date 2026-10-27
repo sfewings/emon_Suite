@@ -6,6 +6,16 @@ This file covers the machine every subproject shares. The subprojects carry thei
 - `python/enchantee_racing/CLAUDE.md` the race support app
 - `python/event_recorder/CLAUDE.md` the recorder and its WordPress publishing
 
+## The live UI: `emon_live` and the site pages
+
+The pages at http://enchantee.local/ (and shannstainable's /live/) are `emon_live`
+(`python/emon_live/`), the page engine in `ui/`, and each site's `provisioning/<site>/
+emon-ui/`, over the `emon/...` envelopes the bridges publish (`python/pyEmon/pyemonlib/
+emon_feed.py`). They came from branch `emon_live_ui`, merged on 27 Oct 2026. Before
+working on any of it, read `docs/emon_live_ui/HANDOVER.md`: state, machines, how each
+site is deployed. On a Pi, develop it in a worktree, never in this production checkout
+(DESIGN 9.1).
+
 ## This checkout IS the deployment
 
 There is no build-and-ship step for most of the stack. The Docker containers bind-mount

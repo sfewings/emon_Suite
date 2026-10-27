@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Enchantee Grafana
+GenericName=Dashboards
+Comment=Grafana's dashboards in an app window
+Exec=/usr/bin/chromium --profile-directory=Default --app=http://enchantee.local/grafana/ --start-maximized
+Icon=chrome-jmpeonfhdmpfecacgafjcjjiphalodod-Default
+Terminal=false
+StartupNotify=false
+Categories=Network;

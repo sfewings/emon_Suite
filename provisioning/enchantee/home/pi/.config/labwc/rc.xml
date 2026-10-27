@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <touch deviceName="11-0014 Goodix Capacitive TouchScreen" mapToOutput="DSI-2" mouseEmulation="yes"/>
+  <!-- The Enchantee Dashboard (/usr/local/bin/enchantee-dashboard: a Chromium app window
+       on http://enchantee.local/) opens maximised every time, whatever size Chromium
+       remembers from the last time it was open. Chromium names an app window after its
+       address, so the pattern matches it and nothing else. labwc runs with the merge
+       option, so this adds to /etc/xdg/labwc/rc.xml rather than replacing it. -->
+  <windowRules>
+    <windowRule identifier="*enchantee.local*">
+      <action name="Maximize"/>
+    </windowRule>
+  </windowRules>
+</openbox_config>

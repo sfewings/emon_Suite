@@ -23,6 +23,7 @@ ALL_CONTAINERS=(
     mqtt_to_log
     gpsd_to_mqtt
     query_bom
+    emon_live
 )
 
 DOCKERFILE_event_recorder="event_recorder/Dockerfile"
@@ -56,6 +57,10 @@ VERSION_gpsd_to_mqtt="latest"
 DOCKERFILE_query_bom="queryBOM.Dockerfile"
 IMAGE_query_bom="sfewings32/emon_query_bom"
 VERSION_query_bom="latest"
+
+DOCKERFILE_emon_live="emon_live/Dockerfile"
+IMAGE_emon_live="sfewings32/emon_live"
+VERSION_emon_live="latest"
 
 BUILDER_NAME="emon_builder"
 

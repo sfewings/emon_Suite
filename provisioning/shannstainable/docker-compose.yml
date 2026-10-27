@@ -116,6 +116,30 @@ services:
       - mosquitto
     restart: always
 
+  # Live feeds by name, derived values and the house page (docs/emon_live_ui, PLAN 2e).
+  # The image is only the interpreter and its dependencies; the code, the pages' engine
+  # and this site's emon-ui folder are mounted read-only from the checkout, so a page
+  # edit is live at once and a code edit after `docker restart emon_live`.
+  # http://<pi>:5003/
+  emon_live:
+    image: sfewings32/emon_live:latest
+    container_name: emon_live
+    ports:
+      - 5003:5003
+    volumes:
+      - ../../python:/python:ro
+      - ../../ui:/ui:ro
+      - ./emon-ui:/site:ro
+    environment:
+      - MQTT_IP=mqtt
+      - INFLUX_URL=http://influxdb:8086
+      - PUBLISH_DERIVED=1
+      - TZ=${TIMEZONE}
+    depends_on:
+      - influxdb
+      - mosquitto
+    restart: always
+
   ecowitt_to_mqtt:
     image: bachya/ecowitt2mqtt:latest
     container_name: ecowitt_to_mqtt

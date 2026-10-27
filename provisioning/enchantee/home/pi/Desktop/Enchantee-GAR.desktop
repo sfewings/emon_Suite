@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Enchantee GAR
+GenericName=Wind dial
+Comment=The race app's GAR wind dial in an app window
+Exec=/usr/bin/chromium --profile-directory=Default --app=http://enchantee.local/race/gar --start-maximized
+Icon=/share/emon_Suite/python/enchantee_racing/static/icon-512.png
+Terminal=false
+StartupNotify=false
+Categories=Network;

@@ -1,0 +1,89 @@
+# enchantee derived feeds (emon_live, DESIGN 6.3; operators in python/emon_live/derived.py).
+#
+# The boat angles are the race app's own maths, moved into emon_feed (DESIGN D3): TWA and
+# AWA as its HUD shows them, leeway and heel as its GAR page does. Signed port negative.
+# The race app keeps computing its own, so it works with emon_live down.
+#
+# Battery and motor energy integrate power, as event_recorder's energy statistics do.
+# Main Battery's power is negative while it discharges: in the 17 May 2026 Frostbite
+# recording it read -1311 W while the SevCon drew 44 A.
+
+# Where each input lives in Influx (measurement, sensor tag), so a restart replays today.
+# Checked on enchantee's Influx, 27 Oct 2026, each with a 30-day bounded count.
+influx:
+  True wind / windDirection:            anemometer anemometer/windDirection/2
+  Boat reference wind / windDirection:  anemometer anemometer/windDirection/0
+  Apparent wind / windDirection:        anemometer anemometer/windDirection/1
+  IMU Sensor / heading:                 imu imu/0/heading
+  IMU Sensor / acc 1:                   imu imu/0/acc/1
+  IMU Sensor / acc 2:                   imu imu/0/acc/2
+  Enchantee-GPS / course:               gps gps/course/0
+  Enchantee-GPS / speed:                gps gps/speed/0
+  Main Battery / power:                 power bms/power/1
+  SevCon / capVoltage:                  voltage sevCon/voltage/0
+  SevCon / batteryCurrent:              power sevCon/current/0
+
+derived:
+  # --- Wind and the boat (race app store.derive, derive_leeway, derive_heel) ----------
+  - id: wind/twa
+    op: twa
+    twd: True wind / windDirection
+    hdg: IMU Sensor / heading
+    decimals: 0
+
+  # The masthead unit's bow-relative reading; from the apparent wind bearing and the
+  # heading only when that is not being published.
+  - id: wind/awa
+    op: awa
+    measured: Boat reference wind / windDirection
+    awd: Apparent wind / windDirection
+    hdg: IMU Sensor / heading
+    decimals: 0
+
+  # COG - HDG. Not leeway alone: with no speed through the water it also carries tidal
+  # set and compass error. Blank under 1 kn, where COG is GPS noise.
+  - id: boat/leeway
+    op: leeway
+    cog: Enchantee-GPS / course
+    hdg: IMU Sensor / heading
+    sog: Enchantee-GPS / speed
+    decimals: 0
+
+  # From the IMU on the anemometer node: atan2(acc y, acc z), positive to starboard.
+  - id: boat/heel
+    op: heel
+    y: IMU Sensor / acc 1
+    z: IMU Sensor / acc 2
+    decimals: 0
+
+  # --- Main battery energy ---------------------------------------------------------
+  - id: battery/charge/now
+    op: expr
+    expr: "max({Main Battery / power}, 0)"
+    unit: W
+    kind: power
+  - id: battery/discharge/now
+    op: expr
+    expr: "max(-{Main Battery / power}, 0)"
+    unit: W
+    kind: power
+  - id: battery/in/today
+    op: integrate
+    feed: derived/battery/charge/now
+    decimals: 0
+  - id: battery/out/today
+    op: integrate
+    feed: derived/battery/discharge/now
+    decimals: 0
+
+  # --- Motor (SevCon) ----------------------------------------------------------------
+  - id: motor/power/now
+    op: expr
+    expr: "{SevCon / capVoltage} * {SevCon / batteryCurrent}"
+    unit: W
+    kind: power
+    decimals: 0
+  - id: motor/energy/today
+    op: integrate
+    feed: derived/motor/power/now
+    decimals: 0

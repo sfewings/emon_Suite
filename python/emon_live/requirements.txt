@@ -1,0 +1,14 @@
+# emon_live - Python dependencies. emon_feed comes from ../pyEmon/pyemonlib in the
+# source tree (state.py), so neither the pyemonlib wheel nor numpy is needed.
+
+Flask>=3.0,<4.0
+
+# derived.yml (derived.py) and the page linter (ui/tools/lint_pages.py).
+PyYAML>=6.0,<7.0
+
+# paho 2, version 2 callbacks (mqtt_client.py). A new container, so not tied to the race
+# app's pin on paho 1.
+paho-mqtt>=2.0,<3.0
+
+# === Development only ===
+# pytest>=8.0

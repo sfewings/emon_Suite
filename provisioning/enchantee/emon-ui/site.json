@@ -1,0 +1,33 @@
+{
+  "title": "Enchantee",
+  "theme": "night",
+  "poll": 1,
+  "fresh": 15,
+  "gone": 120,
+  "pages": [
+    {
+      "id": "weather",
+      "title": "Weather"
+    },
+    {
+      "id": "navigation",
+      "title": "Navigation"
+    },
+    {
+      "id": "battery",
+      "title": "Battery"
+    },
+    {
+      "id": "motor",
+      "title": "Motor"
+    },
+    {
+      "id": "_all",
+      "title": "All feeds"
+    }
+  ],
+  "default": "weather",
+  "menu": "large",
+  "font": "race",
+  "night": "black"
+}

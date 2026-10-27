@@ -8,8 +8,9 @@
 #   Wifi client  -> http://enchantee.local/    (mDNS/avahi)
 #   either       -> http://<current-ip>/       (always works)
 #
-#   /           -> Node-RED dashboard  (node_red    :1880/ui/)
-#   /nodered/   -> Node-RED editor     (node_red    :1880/)
+#   /           -> emon_live pages     (emon_live   :5003)
+#   /nodered/   -> Node-RED editor     (node_red    :1880/), and its old dashboard
+#                  at /nodered/ui/ until a sail has been done on the new pages
 #   /grafana/   -> Grafana             (grafana1    :3000)   serve_from_sub_path=true
 #   /portainer/ -> Portainer           (portainer   :9000)   --base-url=/portainer
 #   /events/    -> event recorder     (host net   :5000)
@@ -49,17 +50,22 @@ server {
     # for CPU this Pi has spare on a handful of requests per race.
     gzip_comp_level 6;
 
-    # Node-RED dashboard 1.x emits purely relative asset paths, so rewriting the
-    # root onto /ui/ is safe: /css/app.min.css -> :1880/ui/css/app.min.css
+    # emon_live, the boat's pages (emon_Suite docs/emon_live_ui, DESIGN 6.4). Every URL
+    # in them is relative, so they work here at / and on :5003 alike, and their Grafana
+    # panels reach /grafana/ as ../grafana/. Pages poll /api/state once a second; it is
+    # small and JSON, so the gzip_types above compress it.
+    #
+    # Way back: Node-RED's dashboard is unchanged at /nodered/ui/ (the /nodered/ block
+    # below proxies it). To put it back at /, this location's proxy_pass becomes
+    # http://127.0.0.1:1880/ui/ again, with the two Upgrade headers the /nodered/ block
+    # has, which its socket.io needs.
     location / {
-        proxy_pass http://127.0.0.1:1880/ui/;
+        proxy_pass http://127.0.0.1:5003/;
         proxy_http_version 1.1;
         proxy_set_header Host              $http_host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade           $http_upgrade;
-        proxy_set_header Connection        $connection_upgrade;
     }
 
     # Node-RED flow editor
@@ -191,9 +197,9 @@ server {
     # Shortcut, so the crew can type enchantee.local/hud and get the instruments.
     #
     # This is an exact match, so it takes precedence over the catch-all `location /`
-    # that sends everything else to the Node-RED dashboard. It costs nothing to claim:
-    # `location /` rewrites the root onto :1880/ui/, so /hud currently resolves to
-    # :1880/ui/hud, which does not exist. Node-RED's own HUD is served at its root and
+    # that sends everything else to emon_live, which has no /hud of its own. (It was
+    # claimed when `location /` rewrote the root onto Node-RED's :1880/ui/, where /hud
+    # did not exist either.) Node-RED's own HUD is served at its root and
     # stays reachable at /nodered/hud, which is where DESIGN 13 step 3 does the
     # side-by-side comparison against this one.
     #

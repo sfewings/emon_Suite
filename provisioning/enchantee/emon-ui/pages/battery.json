@@ -1,0 +1,150 @@
+{
+  "title": "Battery",
+  "cols": 2,
+  "tiles": [
+    {
+      "title": "Main battery",
+      "domain": "batt",
+      "span": 1,
+      "values": [
+        {
+          "feed": "Main Battery / batterySoC",
+          "label": "SoC",
+          "big": true,
+          "decimals": 0,
+          "tint": "soc"
+        },
+        {
+          "feed": "Main Battery / batteryVoltage",
+          "label": "Voltage",
+          "big": true,
+          "decimals": 2,
+          "tint": "volt"
+        },
+        {
+          "feed": "Main Battery / power",
+          "label": "Power",
+          "decimals": 0,
+          "tint": "power"
+        },
+        {
+          "feed": "Main Battery / resCapacity",
+          "label": "Remaining",
+          "decimals": 0
+        }
+      ],
+      "cols": 4,
+      "gauge": {
+        "feed": "Main Battery / batterySoC",
+        "min": 0,
+        "max": 100
+      },
+      "lines": [
+        "Temperature {Main Battery / temperature|0} °C · {Main Battery / lifetimeCycles|0} cycles"
+      ]
+    },
+    {
+      "title": "Cells",
+      "domain": "batt",
+      "span": 1,
+      "cell-bar": {
+        "min": 3.0,
+        "max": 3.65,
+        "spread": 0.05,
+        "decimals": 3,
+        "cells": [
+          {
+            "feed": "Main Battery / cellVoltage 0"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 1"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 2"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 3"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 4"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 5"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 6"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 7"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 8"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 9"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 10"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 11"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 12"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 13"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 14"
+          },
+          {
+            "feed": "Main Battery / cellVoltage 15"
+          }
+        ],
+        "tint_low": "cellmin",
+        "tint_high": "cellmax"
+      }
+    },
+    {
+      "title": "Battery power",
+      "domain": "batt",
+      "span": 1,
+      "values": [
+        {
+          "feed": "Main Battery / power",
+          "label": "Power",
+          "big": true,
+          "decimals": 0,
+          "tint": "power"
+        },
+        {
+          "feed": "derived/battery/out/today",
+          "label": "Out today",
+          "decimals": 0,
+          "unit": "Wh"
+        },
+        {
+          "feed": "derived/battery/in/today",
+          "label": "In today",
+          "decimals": 0,
+          "unit": "Wh"
+        }
+      ],
+      "trail": {
+        "feed": "Main Battery / power",
+        "minutes": 30
+      },
+      "cols": 3
+    },
+    {
+      "title": "Power",
+      "domain": "power",
+      "span": 1,
+      "grafana": {
+        "src": "../grafana/d-solo/4z66RJWgk/power?orgId=1&from=now-1h&to=now&timezone=Australia%2FPerth&panelId=panel-6&__feature.dashboardSceneSolo=true",
+        "height": 180
+      }
+    }
+  ]
+}

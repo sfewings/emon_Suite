@@ -20,7 +20,11 @@
 
 set -u
 
-URL="${ENCHANTEE_URL:-http://enchantee.local/}"
+# The Weather page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
+# DESIGN 6.4), in large text: this screen is small and read from across the cabin. The
+# iPad and phones open it without ?text=large. Node-RED's old dashboard is at
+# /nodered/ui/ for as long as it is kept.
+URL="${ENCHANTEE_URL:-http://enchantee.local/?text=large#weather}"
 PROFILE="$HOME/.config/chromium"
 WAIT_SECONDS=120
 
@@ -60,7 +64,7 @@ fi
 
 # --- 3. wait for the dashboard ---------------------------------------------
 deadline=$((SECONDS + WAIT_SECONDS))
-until curl -sf -o /dev/null -m 3 "$URL"; do
+until curl -sf -o /dev/null -m 3 "${URL%%#*}"; do
     if [ "$SECONDS" -ge "$deadline" ]; then
         echo "enchantee-dashboard: $URL still not answering after ${WAIT_SECONDS}s; opening anyway"
         break
