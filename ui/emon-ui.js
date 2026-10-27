@@ -395,6 +395,8 @@
       site.pages = site.pages || [];
       var title = document.getElementById("title");
       if (title) title.textContent = site.title;
+      // "menu": "large" doubles the page tabs, for a touch screen at arm's length.
+      document.body.classList.toggle("menu-large", site.menu === "large");
       buildMenu();
       window.addEventListener("hashchange", function () { show(pageId()); });
       // Ages tick between polls, from the server's ages plus the time since they came.

@@ -60,15 +60,6 @@
         "SOG, 30 min",
         "COG − HDG carries tidal set and compass error; blank under 1 kn"
       ]
-    },
-    {
-      "title": "Power",
-      "domain": "power",
-      "span": 2,
-      "grafana": {
-        "src": "../grafana/d-solo/4z66RJWgk/power?orgId=1&from=now-1h&to=now&timezone=Australia%2FPerth&panelId=panel-6&__feature.dashboardSceneSolo=true",
-        "height": 180
-      }
     }
   ]
 }

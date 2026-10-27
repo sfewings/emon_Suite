@@ -174,6 +174,8 @@ Goal: the boat's Node-RED pages replaced, on the iPad mini 3 and the Waveshare k
       test bench: the controls look OK, to be improved later.
 - [ ] `provisioning/enchantee/emon-ui/`: `site.json`, pages `dials`, `navigation`,
       `weather`, `motor`, `battery`; HUD and Race as links to the race app (INVENTORY 4).
+      Owner, 27 Oct, after seeing them on the kiosk: no Dials page and no HUD or Race
+      links; Motor, Navigation, Weather, Battery; larger tabs; the Power panel on Battery.
       **Started 25 Oct 2026**: a first draft of all five, with the real feed names, written
       to have something to check on the iPad. **27 Oct**: laid out for the iPad and the
       kiosk (page `cols`, DESIGN 6.2); each fits 1024 by 690 headless. Owner to look on the
@@ -184,7 +186,7 @@ Goal: the boat's Node-RED pages replaced, on the iPad mini 3 and the Waveshare k
 - [ ] nginx and kiosk launcher changes in `provisioning/enchantee/etc/...` (DESIGN 6.4).
       Keep Node-RED's UI at `/nodered/ui/` until a sail has been done on the new pages.
       **Deployed 27 Oct 2026, 21:24** (owner's go-ahead): emon_live from the worktree,
-      nginx `/` to it, the kiosk launcher on `#dials` (HANDOVER, "Deploying phase 3 at
+      nginx `/` to it, the kiosk launcher on `#motor` (HANDOVER, "Deploying phase 3 at
       enchantee"). Waiting on a day's sailing on the new pages.
 
 Done when: a day's sailing on the new pages. Way back: restore the nginx `/` location.

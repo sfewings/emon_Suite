@@ -50,6 +50,12 @@ body {
   font-size: 15px; padding: 2px 0; border-bottom: 2px solid transparent;
 }
 #menu a.on { color: var(--ink); border-bottom-color: var(--ink2); }
+/* site.json "menu": "large": tabs twice the size, each a finger-sized target, for the
+   boat's kiosk. The theme button grows with them. */
+body.menu-large #bar { align-items: center; padding-bottom: 8px; }
+body.menu-large #title { font-size: 22px; margin-right: 20px; }
+body.menu-large #menu a { font-size: 30px; padding: 6px 4px; margin-right: 28px; border-bottom-width: 3px; }
+body.menu-large button[data-theme-toggle] { font-size: 16px; padding: 10px 18px; }
 #status { font-family: var(--mono); font-size: 12px; color: var(--ink3); margin-right: 10px; }
 #status.offline { color: var(--bad); }
 button[data-theme-toggle] {

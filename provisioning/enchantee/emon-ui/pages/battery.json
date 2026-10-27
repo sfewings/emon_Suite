@@ -104,7 +104,7 @@
     {
       "title": "Battery power",
       "domain": "batt",
-      "span": 2,
+      "span": 1,
       "values": [
         {
           "feed": "Main Battery / power",
@@ -130,6 +130,15 @@
         "minutes": 30
       },
       "cols": 3
+    },
+    {
+      "title": "Power",
+      "domain": "power",
+      "span": 1,
+      "grafana": {
+        "src": "../grafana/d-solo/4z66RJWgk/power?orgId=1&from=now-1h&to=now&timezone=Australia%2FPerth&panelId=panel-6&__feature.dashboardSceneSolo=true",
+        "height": 180
+      }
     }
   ]
 }

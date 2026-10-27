@@ -166,7 +166,7 @@ shannstainable; the nginx file and launcher are installed from it by hand.
    http://enchantee.local/nodered/ui/ throughout.
 4. **Kiosk**: `sudo install -m 755
    /share/emon_Suite-live/provisioning/enchantee/usr/local/bin/enchantee-dashboard
-   /usr/local/bin/`. It opens `#dials` from the next login.
+   /usr/local/bin/`. It opens `#motor` from the next login.
 5. **Check**: http://enchantee.local/ on the iPad and a phone (every page; Grafana frames
    on Navigation and Motor, which only resolve behind nginx), the kiosk after a login,
    `/hud`, `/race/`, `/events/`, `/nodered/ui/`. PLAN 3 is done after a day's sailing on
@@ -525,3 +525,9 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   the iPad and the kiosk; whether Navigation should embed Node-RED's choice of panel
   (Power, "Battery Voltage"). The production checkout is still on `master`, so emon_live
   runs from the worktree until the merge (as at shannstainable).
+- **2026-10-27, enchantee, 22:05.** Owner's changes to the kiosk pages, made live (the site
+  folder and ui/ are mounted from the worktree): Dials page and the HUD and Race links
+  removed; menu Motor, Navigation, Weather, Battery, Motor the default; `"menu": "large"`
+  doubles the tabs (DESIGN 6.2); Navigation's Grafana panel (Power, "Battery Voltage")
+  moved to Battery beside Battery power. The launcher now opens `#motor`, installed in
+  /usr/local/bin again. Checked at the kiosk's size through nginx with replay 1's data.

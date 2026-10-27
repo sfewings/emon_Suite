@@ -444,6 +444,11 @@ wide upright) and the kiosk (the Pi's own 1280 by 800 DSI screen, less a taskbar
 them out alike: tiles span 1, side by side, and a span-2 tile is a full-width strip.
 Every enchantee page fits 1024 by 690 without scrolling (headless Chromium, 27 Oct 2026).
 
+`site.json` also takes `"menu": "large"`: the page tabs at twice the size (30 px), each a
+finger-sized target, for the boat's kiosk. The owner's pages there, 27 Oct 2026: Motor,
+Navigation, Weather, Battery, in that order, Motor the default; no HUD or Race links and
+no Dials page (the `dial` part stays in the engine).
+
 Tile keys: `title`, `domain` (`power solar batt heat water rain car other`), `span`
 (1 or 2), `fresh` and `gone` (seconds; tile, then page, then site, then 60 and 300),
 `headline` (a template shown in the heading, which moves the age to the foot).
@@ -539,7 +544,8 @@ reference; the decisions behind it:
 `127.0.0.1:5003/`. Node-RED's dashboard needed no new block: the existing `/nodered/`
 location already serves it at `/nodered/ui/`. emon_live runs on the compose network and
 publishes 5003, like shannstainable's, and its image is built on the Pi, not pulled. The
-kiosk opens `http://enchantee.local/#dials` and waits on the URL without the fragment.
+kiosk opens `http://enchantee.local/#motor` (`#dials` until the owner dropped that page,
+27 Oct) and waits on the URL without the fragment.
 
 ---
 

@@ -6,16 +6,8 @@
   "gone": 120,
   "pages": [
     {
-      "title": "HUD",
-      "link": "../race/hud"
-    },
-    {
-      "title": "Race",
-      "link": "../race/"
-    },
-    {
-      "id": "dials",
-      "title": "Dials"
+      "id": "motor",
+      "title": "Motor"
     },
     {
       "id": "navigation",
@@ -26,13 +18,10 @@
       "title": "Weather"
     },
     {
-      "id": "motor",
-      "title": "Motor"
-    },
-    {
       "id": "battery",
       "title": "Battery"
     }
   ],
-  "default": "dials"
+  "default": "motor",
+  "menu": "large"
 }
