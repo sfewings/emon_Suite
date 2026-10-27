@@ -95,7 +95,8 @@
         {
           "feed": "Anemometer / pressure",
           "label": "Pressure",
-          "decimals": 1
+          "decimals": 1,
+          "tint": "press"
         },
         {
           "feed": "Light Banner / Bimini",

@@ -158,6 +158,7 @@ button[data-theme-toggle] {
   --r-rpm: #2e8b3e; --r-power: #2e8b3e; --r-cur: #00838f; --r-cellmin: #00838f;
   --r-ctrl: #d32f2f; --r-cellmax: #d32f2f; --r-mot: #9b1b1b; --r-temp: #9b1b1b;
   --r-volt: #a07800; --r-soc: #a07800; --r-hum: #2a7fb8; --r-heel: #8e24aa;
+  --r-press: #0b7a0b;
 }
 body.night {
   --r-sog: #1e90ff; --r-tws: #1e90ff; --r-aws: #8fc9ff;   /* DodgerBlue; its lighter tint */
@@ -169,6 +170,7 @@ body.night {
   --r-mot: #b22222; --r-temp: #b22222;                     /* FireBrick */
   --r-volt: #ffd700; --r-soc: #ffd700;                     /* Gold */
   --r-hum: #87ceeb; --r-heel: #d070ff;                     /* SkyBlue; the race app's violet */
+  --r-press: #00ff00;   /* green, as the GPS Banner shows pressure (emon_GPS_Banner.ino) */
 }
 .r-sog { color: var(--r-sog); } .r-tws { color: var(--r-tws); } .r-aws { color: var(--r-aws); }
 .r-hdg { color: var(--r-hdg); } .r-cog { color: var(--r-cog); } .r-leeway { color: var(--r-leeway); }
@@ -178,7 +180,7 @@ body.night {
 .r-ctrl { color: var(--r-ctrl); } .r-cellmax { color: var(--r-cellmax); }
 .r-mot { color: var(--r-mot); } .r-temp { color: var(--r-temp); }
 .r-volt { color: var(--r-volt); } .r-soc { color: var(--r-soc); }
-.r-hum { color: var(--r-hum); } .r-heel { color: var(--r-heel); }
+.r-hum { color: var(--r-hum); } .r-heel { color: var(--r-heel); } .r-press { color: var(--r-press); }
 /* In SVG the tint is the fill of a dial's or compass's number, and the colour of a needle:
    solid, whether or not it is the first. Selectors carry an element name so that they
    outrank the compass's own needle rules further down. */

@@ -451,10 +451,12 @@ no Dials page (the `dial` part stays in the engine).
 
 **Reading colours** (27 Oct 2026, owner): a value, a dial's number and a compass needle
 take `tint`, and a cell bar `tint_low` and `tint_high`, naming a reading: `sog tws aws
-hdg cog leeway twa awa rpm power cur cellmin ctrl cellmax mot temp volt soc hum heel`.
+hdg cog leeway twa awa rpm power cur cellmin ctrl cellmax mot temp volt soc hum heel
+press`.
 Each is the colour that quantity has on the boat's Node-RED pages and in enchantee_racing
 (its `static/app.css`, `templates/hud.html`), so the same reading is the same colour on
-every boat screen; `emon-ui.css` has the table. Those values suit a black background and
+every boat screen. Pressure is green, as the GPS Banner shows it (`emon_GPS_Banner.ino`,
+`displayTypeColor`); `emon-ui.css` has the table. Those values suit a black background and
 are the night theme's exactly; the day theme has darker shades of the same hues, since
 yellow, pale green and cyan cannot be read on white. The race app's red-only night theme
 is not reproduced. A tint wins over a value's `domain`.
