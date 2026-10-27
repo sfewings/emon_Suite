@@ -177,7 +177,8 @@ Goal: the boat's Node-RED pages replaced, on the iPad mini 3 and the Waveshare k
       **Started 25 Oct 2026**: a first draft of all five, with the real feed names, written
       to have something to check on the iPad. **27 Oct**: laid out for the iPad and the
       kiosk (page `cols`, DESIGN 6.2); each fits 1024 by 690 headless. Owner to look on the
-      iPad and the kiosk, and to confirm the battery voltage dial's bands.
+      iPad and the kiosk. Battery voltage dial (40 to 60 V, amber under 50, red under 48)
+      confirmed by the owner, 27 Oct.
 - [x] `derived.yml` with `twa`, `awa`, `leeway`, `heel`, battery energy (DESIGN D3).
       Done 27 Oct 2026 (DESIGN 6.3 as built, phase 3); motor energy too. On the draft pages.
 - [ ] nginx and kiosk launcher changes in `provisioning/enchantee/etc/...` (DESIGN 6.4).

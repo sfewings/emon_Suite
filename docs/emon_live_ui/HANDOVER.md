@@ -478,7 +478,7 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   percentages are of the parent's width; Node-RED's battery voltage gauge (0 to 60,
   segments at 48 and 50) is coloured green below 48 V and red above 50 V, backwards for
   a 16S LiFePO4 pack resting at 52 to 54 V, so the draft has 40 to 60 with 50 warn and
-  48 bad, downwards. Owner to confirm. Next: the iPad mini 3 check (PLAN 3, second
+  48 bad, downwards. Owner confirmed it, 27 Oct. Next: the iPad mini 3 check (PLAN 3, second
   task) on the bench; then fit the layout to the iPad and the kiosk.
 - **2026-10-27, enchantee.** Owner checked the parts on the iPad mini 3 against the test
   bench: they look OK, to be improved later (PLAN 3 second task ticked). Bench removed.
