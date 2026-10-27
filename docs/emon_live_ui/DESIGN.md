@@ -449,6 +449,12 @@ finger-sized target, for the boat's kiosk. The owner's pages there, 27 Oct 2026:
 Navigation, Battery, Motor, All feeds, in that order, Weather the default; no HUD or Race links and
 no Dials page (the `dial` part stays in the engine).
 
+**The race app's face** (27 Oct 2026, owner): `site.json` `"font": "race"` sets every
+word and number in enchantee_racing's stack, `"Helvetica Neue", Helvetica, Arial,
+sans-serif`, readings at weight 500 with tabular figures and -0.02em tracking, as its
+`static/app.css` does; nothing is downloaded (the Pi resolves it to Nimbus Sans, iOS has
+Helvetica Neue). enchantee uses it; shannstainable keeps the proposal's faces.
+
 **Large text** (27 Oct 2026, owner): `?text=large` in a page's URL doubles every reading
 and label on that screen (values 44 px, big ones 60, labels 20; compass, cell bars and
 sparklines grown to match; four-across value grids in a half-width tile go to two).

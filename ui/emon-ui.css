@@ -244,6 +244,22 @@ svg text.r-temp { fill: var(--r-temp); }
 
 iframe.grafana { display: block; width: 100%; border: 0; margin-top: 4px; background: var(--panel); }
 
+/* --- the race app's face (site.json "font": "race") -------------------------------------
+   enchantee_racing sets everything, numbers included, in the system's Helvetica (static/
+   app.css, templates/hud.html): readings at weight 500 with tabular figures and a touch
+   of negative tracking. A boat site does the same, so a number looks the same on the HUD
+   and on these pages. Nothing is downloaded: the Pi resolves Helvetica to Nimbus Sans,
+   iOS has Helvetica Neue. */
+body.font-race {
+  --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --cond: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+body.font-race .v, body.font-race svg text.val {
+  font-weight: 500; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+}
+
 /* --- large text (?text=large, or site.json "text": "large") -----------------------------
    Twice the size of every reading and label, for a small screen read from across a
    cabin. Value grids of four go to two in a half-width tile, so the numbers keep their

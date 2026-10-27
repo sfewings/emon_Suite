@@ -415,6 +415,9 @@
       // kiosk is small and read from across the cabin, the iPad in the hand. Per screen
       // by its URL, like the size of the screen itself; site.json "text": "large" does it
       // everywhere.
+      // "font": "race" sets every word and number in enchantee_racing's face, so the
+      // boat's screens read alike (emon-ui.css).
+      document.body.classList.toggle("font-race", site.font === "race");
       document.body.classList.toggle("text-large",
         /[?&]text=large(&|$)/.test(location.search) || site.text === "large");
       buildMenu();

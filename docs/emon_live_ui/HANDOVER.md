@@ -562,3 +562,5 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   `provisioning/enchantee/home/pi/.config/labwc/rc.xml`, labwc reloaded with SIGHUP.
   Backup `/home/pi/.cache/labwc_rc.xml_before_maximize`. Learned: no `--` inside an XML
   comment; a first try had `--app=` in one, and labwc briefly held an invalid file.
+- **2026-10-27, enchantee, 23:15.** Owner: the race app's font. `"font": "race"` in
+  enchantee's site.json (DESIGN 6.2). Replay 3 started 23:11.

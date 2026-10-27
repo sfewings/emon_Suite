@@ -27,5 +27,6 @@
     }
   ],
   "default": "weather",
-  "menu": "large"
+  "menu": "large",
+  "font": "race"
 }
