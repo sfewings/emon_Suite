@@ -591,3 +591,12 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   tonight's 00:01 email starts from nothing. To do it again: the same script and a new
   baseline; it refuses while a replay runs. event_recorder was unhealthy (slow /health)
   throughout, as before the replays.
+- **2026-10-27, enchantee, 23:43. Merged into `master`** (owner), with master's own
+  unpushed race app commit (`a0b3922`, GAR heel). No file was changed on both sides. On
+  the merged tree: emon_live 55 and emon_feed 61 tests pass; the race app's
+  `test_heel_subscribes_to_the_topics_emon_mqtt_actually_publishes` failed, because it
+  read `emon_mqtt.py`'s imuMessage, now a shim; it reads `emon_decoder._imu` instead and
+  all 440 pass. Enchantee's emon_live recreated from `/share/emon_Suite` (mounts checked;
+  10 derived feeds; 200 through nginx). Branch `emon_live_ui` fast-forwarded to master;
+  the worktree stays for development. The decoder regression test was not run here (it
+  needs the wheel installed in a venv); it last passed at shannstainable.
