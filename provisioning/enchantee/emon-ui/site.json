@@ -20,6 +20,10 @@
     {
       "id": "battery",
       "title": "Battery"
+    },
+    {
+      "id": "_all",
+      "title": "All feeds"
     }
   ],
   "default": "motor",

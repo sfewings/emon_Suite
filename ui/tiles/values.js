@@ -47,7 +47,8 @@
         cells.forEach(function (c) {
           var value = c.item.feed ? view.value(c.item.feed) : null;
           var time = c.item.format === "time";
-          c.num.textContent = ui.fmtAs(value, time ? "time" : c.item.decimals);
+          // An item with no feed of its own is a label and its "sub" line, no number.
+          c.num.textContent = c.item.feed ? ui.fmtAs(value, time ? "time" : c.item.decimals) : "";
           var u = time ? "" : c.item.unit !== undefined ? c.item.unit : (c.item.feed ? view.unit(c.item.feed) : "");
           c.small.textContent = value === null ? "" : u;
           if (c.sub) c.sub.textContent = view.fill(c.item.sub);

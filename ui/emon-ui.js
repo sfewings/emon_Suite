@@ -55,8 +55,17 @@
   }
 
   // A number for display. decimals undefined: chosen by size, as a person would.
+  // A position, which a GPS sends as one {lat, lon} value (DESIGN 4.2), reads as
+  // "lat, lon" to 6 places, or to the decimals asked for.
   function fmt(v, decimals) {
     if (v === null || v === undefined || v === "") return DASH;
+    if (typeof v === "object") {
+      if (typeof v.lat === "number" && typeof v.lon === "number") {
+        var d6 = typeof decimals === "number" ? decimals : 6;
+        return fmt(v.lat, d6) + ", " + fmt(v.lon, d6);
+      }
+      return JSON.stringify(v);
+    }
     if (typeof v !== "number") return String(v);
     if (!isFinite(v)) return DASH;
     var d = decimals;
@@ -326,7 +335,12 @@
           title: g, domain: "other", span: 2, gone: 86400 * 365,
           values: groups[g].map(function (name) {
             var slash = name.indexOf(" / ");
-            return { feed: name, label: slash === -1 ? name.slice(g.length + 1) || name : name.slice(slash + 3) };
+            var label = slash === -1 ? name.slice(g.length + 1) || name : name.slice(slash + 3);
+            // A value that is not a number (a GPS position) goes on a small line, where
+            // it fits the cell.
+            var f = state.feeds[name];
+            if (f && f.v !== null && typeof f.v === "object") return { label: label, sub: "{" + name + "}" };
+            return { feed: name, label: label };
           }),
           cols: 4
         };

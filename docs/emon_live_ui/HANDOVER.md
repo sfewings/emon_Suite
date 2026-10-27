@@ -539,3 +539,9 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   Found, for the owner: in the 13 Sep recording `Anemometer / pressure` reads about
   101,820 "hPa", where May's read 1017: pascals under an hPa label, from the node or the
   config, not the decoder's scaling, which is unchanged. Replay 1 ran 21:36 to 22:10.
+- **2026-10-27, enchantee, 22:40.** Owner: Navigation's Course and speed shows
+  Enchantee-GPS latitude and longitude to 6 places; Boat's COG − HDG relabelled Leeway
+  (it was the leeway already); an All feeds tab (the built-in `_all` page, as at
+  shannstainable). The engine now prints a GPS position ({lat, lon}) as "lat, lon" to 6
+  places, where `_all` had shown "[object Object]", and `_all` puts such a value on a
+  small line; a values item with no feed of its own shows no dash. Replay 2 started 22:19.

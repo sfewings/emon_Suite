@@ -19,6 +19,16 @@
           "label": "Pi GPS",
           "decimals": 1,
           "tint": "sog"
+        },
+        {
+          "feed": "Enchantee-GPS / latitude",
+          "label": "Latitude",
+          "decimals": 6
+        },
+        {
+          "feed": "Enchantee-GPS / longitude",
+          "label": "Longitude",
+          "decimals": 6
         }
       ],
       "cols": 2,
@@ -44,7 +54,7 @@
       "values": [
         {
           "feed": "derived/boat/leeway",
-          "label": "COG − HDG",
+          "label": "Leeway",
           "big": true,
           "decimals": 0,
           "tint": "leeway"
@@ -64,7 +74,7 @@
       },
       "lines": [
         "SOG, 30 min",
-        "COG − HDG carries tidal set and compass error; blank under 1 kn"
+        "Leeway is COG − HDG, so it carries tidal set and compass error; blank under 1 kn"
       ]
     }
   ]
