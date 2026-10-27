@@ -11,18 +11,21 @@
           "feed": "Main Battery / batterySoC",
           "label": "SoC",
           "big": true,
-          "decimals": 0
+          "decimals": 0,
+          "tint": "soc"
         },
         {
           "feed": "Main Battery / batteryVoltage",
           "label": "Voltage",
           "big": true,
-          "decimals": 2
+          "decimals": 2,
+          "tint": "volt"
         },
         {
           "feed": "Main Battery / power",
           "label": "Power",
-          "decimals": 0
+          "decimals": 0,
+          "tint": "power"
         },
         {
           "feed": "Main Battery / resCapacity",
@@ -98,7 +101,9 @@
           {
             "feed": "Main Battery / cellVoltage 15"
           }
-        ]
+        ],
+        "tint_low": "cellmin",
+        "tint_high": "cellmax"
       }
     },
     {
@@ -110,7 +115,8 @@
           "feed": "Main Battery / power",
           "label": "Power",
           "big": true,
-          "decimals": 0
+          "decimals": 0,
+          "tint": "power"
         },
         {
           "feed": "derived/battery/out/today",

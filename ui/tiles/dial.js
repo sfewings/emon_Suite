@@ -1,8 +1,9 @@
 // dial: a round gauge, as on the boat's Node-RED Dials page (DESIGN 6.2, PLAN 3).
 //
 //   "dial": {"feed": "SevCon / motorTemperature", "min": 0, "max": 100,
-//            "warn": 50, "bad": 75, "decimals": 0, "label": "Motor"}
+//            "warn": 50, "bad": 75, "decimals": 0, "label": "Motor", "tint": "mot"}
 //
+// "tint" colours the number as the reading is coloured elsewhere (emon-ui.css).
 // A list of dials sits side by side in one tile. The arc fills from 0, or from min when 0
 // is off the scale, to the value, so a reversing rpm or a regenerating current fills the
 // other way. "warn" and "bad" colour the arc once the value is past them: upwards when
@@ -72,7 +73,7 @@
     var lo = point(-SWEEP, R), hi = point(SWEEP, R);
     svgEl("text", { "class": "end", x: lo[0].toFixed(1), y: (lo[1] + 13).toFixed(1) }, svg).textContent = ui.fmt(min);
     svgEl("text", { "class": "end", x: hi[0].toFixed(1), y: (hi[1] + 13).toFixed(1) }, svg).textContent = ui.fmt(max);
-    var value = svgEl("text", { "class": "val", x: String(CX), y: String(CY + 6) }, svg);
+    var value = svgEl("text", { "class": "val" + (spec.tint ? " r-" + spec.tint : ""), x: String(CX), y: String(CY + 6) }, svg);
     var units = svgEl("text", { "class": "unit", x: String(CX), y: String(CY + 20) }, svg);
     box.appendChild(svg);
     cell.appendChild(box);

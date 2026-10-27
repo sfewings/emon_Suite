@@ -6,7 +6,9 @@
 //               "needles": [{"feed": "Boat reference wind / windDirection", "label": "AWA"}]}
 //
 // The first needle is the one read: solid, in the tile's hue, its value in the middle.
-// Others are outlines. A bearing reads as three digits with its sixteen-point name
+// Others are outlines. A needle's "tint" (emon-ui.css, reading colours) colours it solid,
+// with its legend value, and the middle number when it is the first: TWD orange, COG
+// light yellow, as on the race app's dial. A bearing reads as three digits with its sixteen-point name
 // beneath ("245", "WSW"). "relative": the rose is the boat, bow up, and an angle reads
 // signed, port negative, with the race app's red and green sectors from 30 to 60 degrees
 // either side (enchantee_racing/engine/nav.py; static/gar.js). A needle whose feed is
@@ -80,12 +82,13 @@
     });
 
     var drawn = needles.map(function (n, i) {
-      var g = svgEl("g", { "class": i === 0 ? "needle main" : "needle" }, svg);
+      var g = svgEl("g", { "class": (i === 0 ? "needle main" : "needle") + (n.tint ? " r-" + n.tint : "") }, svg);
       svgEl("polygon", { points: i === 0 ? "60,9 65,22 55,22" : "60,24 64,33 56,33" }, g);
       if (i === 0) svgEl("line", { x1: "60", y1: "22", x2: "60", y2: "34" }, g);
       return g;
     });
-    var value = svgEl("text", { "class": "val", x: String(C), y: String(C + 6) }, svg);
+    var first0 = needles[0] || {};
+    var value = svgEl("text", { "class": "val" + (first0.tint ? " r-" + first0.tint : ""), x: String(C), y: String(C + 6) }, svg);
     var sub = svgEl("text", { "class": "unit", x: String(C), y: String(C + 19) }, svg);
     box.appendChild(svg);
     size.appendChild(box);
@@ -96,7 +99,7 @@
     var cells = needles.map(function (n, i) {
       var cell = ui.el("div");
       cell.appendChild(ui.el("div", "k", n.label || ""));
-      var v = ui.el("div", "v" + (i === 0 ? " t-main" : ""));
+      var v = ui.el("div", "v" + (n.tint ? " r-" + n.tint : i === 0 ? " t-main" : ""));
       cell.appendChild(v);
       legend.appendChild(cell);
       return v;

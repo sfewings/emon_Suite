@@ -5,6 +5,8 @@
 //                "sub": "{derived/consumed/today|0} Wh today"} ],
 //   "cols": 4
 //
+// "tint" colours the number as that reading is coloured on every boat screen ("sog", "twa",
+// "rpm" and the rest: emon-ui.css, reading colours); it wins over "domain".
 // "unit" overrides the feed's own; "" hides it. "format": "time" shows a time in seconds
 // since the epoch as "Today 18:54", in place of decimals. "domain" colours the number
 // with another domain's hue (Producing, on the Power tile). "sub" is a template line
@@ -20,7 +22,8 @@
     var cells = list.map(function (item) {
       var cell = ui.el("div");
       if (item.label) cell.appendChild(ui.el("div", "k", item.label));
-      var v = ui.el("div", "v" + (item.big ? " big" : "") + (item.domain ? " t-" + item.domain : ""));
+      var v = ui.el("div", "v" + (item.big ? " big" : "") +
+        (item.tint ? " r-" + item.tint : item.domain ? " t-" + item.domain : ""));
       var num = ui.el("span");
       var small = ui.el("small");
       v.appendChild(num);

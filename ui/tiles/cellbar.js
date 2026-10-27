@@ -6,8 +6,10 @@
 // Each bar fills from min to max. Beneath, the lowest and highest cells and the spread
 // between them; past "spread" the two ends and the line turn the warning colour, which is
 // what a cell drifting out of balance looks like. A cell's label defaults to its place in
-// the list, counting from 1. Cells are listed one by one so that every feed is named in
-// the page, where the server and the linter look for them (DESIGN 4.4, 9.4).
+// the list, counting from 1. "tint_low" and "tint_high" colour the lowest and highest
+// readings in the line beneath (Node-RED's battery page had them cyan and red). Cells
+// are listed one by one so that every feed is named in the page, where the server and
+// the linter look for them (DESIGN 4.4, 9.4).
 
 (function () {
   "use strict";
@@ -59,9 +61,16 @@
             (b === lo ? " lo" : b === hi ? " hi" : "") + (wide && (b === lo || b === hi) ? " warn" : "");
         });
         line.className = "sub line" + (wide ? " warn" : "");
-        line.textContent = lo === null ? ui.fmt(null) :
-          "low " + ui.fmt(lo.v, spec.decimals) + " (" + lo.label + ") · high " +
-          ui.fmt(hi.v, spec.decimals) + " (" + hi.label + ") · Δ " + spreadText(hi.v - lo.v, u);
+        line.innerHTML = "";
+        if (lo === null) {
+          line.textContent = ui.fmt(null);
+          return;
+        }
+        line.appendChild(document.createTextNode("low "));
+        line.appendChild(ui.el("span", spec.tint_low ? "r-" + spec.tint_low : "", ui.fmt(lo.v, spec.decimals)));
+        line.appendChild(document.createTextNode(" (" + lo.label + ") · high "));
+        line.appendChild(ui.el("span", spec.tint_high ? "r-" + spec.tint_high : "", ui.fmt(hi.v, spec.decimals)));
+        line.appendChild(document.createTextNode(" (" + hi.label + ") · Δ " + spreadText(hi.v - lo.v, u)));
       }
     };
   });

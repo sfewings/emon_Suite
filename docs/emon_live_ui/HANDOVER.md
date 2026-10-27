@@ -531,3 +531,11 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   doubles the tabs (DESIGN 6.2); Navigation's Grafana panel (Power, "Battery Voltage")
   moved to Battery beside Battery power. The launcher now opens `#motor`, installed in
   /usr/local/bin again. Checked at the kiosk's size through nginx with replay 1's data.
+- **2026-10-27, enchantee, 22:10.** Reading colours (DESIGN 6.2, owner): every reading on
+  the four boat pages tinted as on Node-RED's pages and in the race app (from the
+  Node-RED flows' `className` per widget and the race app's palette, which was copied
+  from them). Seen at the kiosk's size in both themes with replay 1's data (the day
+  theme on a private read-only instance on :5004, so the boat's screens kept theirs).
+  Found, for the owner: in the 13 Sep recording `Anemometer / pressure` reads about
+  101,820 "hPa", where May's read 1017: pascals under an hPa label, from the node or the
+  config, not the decoder's scaling, which is unchanged. Replay 1 ran 21:36 to 22:10.

@@ -12,28 +12,33 @@
           "label": "RPM",
           "big": true,
           "decimals": 0,
-          "unit": ""
+          "unit": "",
+          "tint": "rpm"
         },
         {
           "feed": "SevCon / batteryCurrent",
           "label": "Current",
           "big": true,
-          "decimals": 1
+          "decimals": 1,
+          "tint": "cur"
         },
         {
           "feed": "SevCon / capVoltage",
           "label": "Voltage",
-          "decimals": 1
+          "decimals": 1,
+          "tint": "volt"
         },
         {
           "feed": "SevCon / motorTemperature",
           "label": "Motor",
-          "decimals": 0
+          "decimals": 0,
+          "tint": "mot"
         },
         {
           "feed": "SevCon / controllerTemperature",
           "label": "Controller",
-          "decimals": 0
+          "decimals": 0,
+          "tint": "ctrl"
         },
         {
           "feed": "derived/motor/power/now",

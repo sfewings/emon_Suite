@@ -10,11 +10,13 @@
         "needles": [
           {
             "feed": "True wind / windDirection",
-            "label": "TWD"
+            "label": "TWD",
+            "tint": "twa"
           },
           {
             "feed": "Enchantee-GPS / course",
-            "label": "COG"
+            "label": "COG",
+            "tint": "cog"
           }
         ]
       },
@@ -23,13 +25,15 @@
           "feed": "True wind / windSpeed",
           "label": "TWS",
           "big": true,
-          "decimals": 1
+          "decimals": 1,
+          "tint": "tws"
         },
         {
           "feed": "derived/wind/twa",
           "label": "TWA",
           "big": true,
-          "decimals": 0
+          "decimals": 0,
+          "tint": "twa"
         }
       ],
       "trail": {
@@ -47,7 +51,8 @@
         "needles": [
           {
             "feed": "derived/wind/awa",
-            "label": "AWA"
+            "label": "AWA",
+            "tint": "awa"
           }
         ]
       },
@@ -56,12 +61,14 @@
           "feed": "Apparent wind / windSpeed",
           "label": "AWS",
           "big": true,
-          "decimals": 1
+          "decimals": 1,
+          "tint": "aws"
         },
         {
           "feed": "Apparent wind / windDirection",
           "label": "AWD",
-          "decimals": 0
+          "decimals": 0,
+          "tint": "awa"
         }
       ],
       "cols": 2
@@ -76,12 +83,14 @@
           "feed": "Anemometer / temperature",
           "label": "Temperature",
           "big": true,
-          "decimals": 1
+          "decimals": 1,
+          "tint": "temp"
         },
         {
           "feed": "Anemometer / humidity",
           "label": "Humidity",
-          "decimals": 0
+          "decimals": 0,
+          "tint": "hum"
         },
         {
           "feed": "Anemometer / pressure",
@@ -91,7 +100,8 @@
         {
           "feed": "Light Banner / Bimini",
           "label": "Bimini",
-          "decimals": 1
+          "decimals": 1,
+          "tint": "temp"
         }
       ],
       "cols": 4

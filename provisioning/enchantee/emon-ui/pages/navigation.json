@@ -11,12 +11,14 @@
           "feed": "Enchantee-GPS / speed",
           "label": "SOG",
           "big": true,
-          "decimals": 1
+          "decimals": 1,
+          "tint": "sog"
         },
         {
           "feed": "RaspPi-GPS / speed",
           "label": "Pi GPS",
-          "decimals": 1
+          "decimals": 1,
+          "tint": "sog"
         }
       ],
       "cols": 2,
@@ -24,11 +26,13 @@
         "needles": [
           {
             "feed": "Enchantee-GPS / course",
-            "label": "COG"
+            "label": "COG",
+            "tint": "cog"
           },
           {
             "feed": "IMU Sensor / heading",
-            "label": "Heading"
+            "label": "Heading",
+            "tint": "hdg"
           }
         ]
       }
@@ -42,13 +46,15 @@
           "feed": "derived/boat/leeway",
           "label": "COG − HDG",
           "big": true,
-          "decimals": 0
+          "decimals": 0,
+          "tint": "leeway"
         },
         {
           "feed": "derived/boat/heel",
           "label": "Heel",
           "big": true,
-          "decimals": 0
+          "decimals": 0,
+          "tint": "heel"
         }
       ],
       "cols": 2,

@@ -449,6 +449,16 @@ finger-sized target, for the boat's kiosk. The owner's pages there, 27 Oct 2026:
 Navigation, Weather, Battery, in that order, Motor the default; no HUD or Race links and
 no Dials page (the `dial` part stays in the engine).
 
+**Reading colours** (27 Oct 2026, owner): a value, a dial's number and a compass needle
+take `tint`, and a cell bar `tint_low` and `tint_high`, naming a reading: `sog tws aws
+hdg cog leeway twa awa rpm power cur cellmin ctrl cellmax mot temp volt soc hum heel`.
+Each is the colour that quantity has on the boat's Node-RED pages and in enchantee_racing
+(its `static/app.css`, `templates/hud.html`), so the same reading is the same colour on
+every boat screen; `emon-ui.css` has the table. Those values suit a black background and
+are the night theme's exactly; the day theme has darker shades of the same hues, since
+yellow, pale green and cyan cannot be read on white. The race app's red-only night theme
+is not reproduced. A tint wins over a value's `domain`.
+
 Tile keys: `title`, `domain` (`power solar batt heat water rain car other`), `span`
 (1 or 2), `fresh` and `gone` (seconds; tile, then page, then site, then 60 and 300),
 `headline` (a template shown in the heading, which moves the age to the foot).

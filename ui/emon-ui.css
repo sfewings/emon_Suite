@@ -144,6 +144,55 @@ button[data-theme-toggle] {
 .pill.on { background: var(--ok-bg); color: var(--ok); }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
 
+/* --- reading colours ("tint") ----------------------------------------------------------
+   One colour per quantity, the same on every screen the crew looks at: the boat's Node-RED
+   pages set them, enchantee_racing copied them (its static/app.css and templates/hud.html
+   say which widget each came from), and these are the same values. They were chosen for a
+   black background, so the night theme has them exactly; the day theme's panel is white,
+   where yellow, pale green and cyan cannot be read, so it has darker shades of each hue.
+   The race app's red-only night theme is not reproduced here. */
+:root {
+  --r-sog: #1565c0; --r-tws: #1565c0; --r-aws: #4a90d9;
+  --r-hdg: #7a6500; --r-cog: #9c8600; --r-leeway: #9c8600;
+  --r-twa: #c46a00; --r-awa: #d9913a;
+  --r-rpm: #2e8b3e; --r-power: #2e8b3e; --r-cur: #00838f; --r-cellmin: #00838f;
+  --r-ctrl: #d32f2f; --r-cellmax: #d32f2f; --r-mot: #9b1b1b; --r-temp: #9b1b1b;
+  --r-volt: #a07800; --r-soc: #a07800; --r-hum: #2a7fb8; --r-heel: #8e24aa;
+}
+body.night {
+  --r-sog: #1e90ff; --r-tws: #1e90ff; --r-aws: #8fc9ff;   /* DodgerBlue; its lighter tint */
+  --r-hdg: #ffff00; --r-cog: #ffff99; --r-leeway: #ffff99; /* Yellow; COG and leeway lighter */
+  --r-twa: #ffa500; --r-awa: #ffcc80;                      /* Orange; apparent lighter */
+  --r-rpm: #98fb98; --r-power: #98fb98;                    /* PaleGreen */
+  --r-cur: #00ffff; --r-cellmin: #00ffff;                  /* Cyan */
+  --r-ctrl: #ff0000; --r-cellmax: #ff0000;                 /* Red */
+  --r-mot: #b22222; --r-temp: #b22222;                     /* FireBrick */
+  --r-volt: #ffd700; --r-soc: #ffd700;                     /* Gold */
+  --r-hum: #87ceeb; --r-heel: #d070ff;                     /* SkyBlue; the race app's violet */
+}
+.r-sog { color: var(--r-sog); } .r-tws { color: var(--r-tws); } .r-aws { color: var(--r-aws); }
+.r-hdg { color: var(--r-hdg); } .r-cog { color: var(--r-cog); } .r-leeway { color: var(--r-leeway); }
+.r-twa { color: var(--r-twa); } .r-awa { color: var(--r-awa); }
+.r-rpm { color: var(--r-rpm); } .r-power { color: var(--r-power); }
+.r-cur { color: var(--r-cur); } .r-cellmin { color: var(--r-cellmin); }
+.r-ctrl { color: var(--r-ctrl); } .r-cellmax { color: var(--r-cellmax); }
+.r-mot { color: var(--r-mot); } .r-temp { color: var(--r-temp); }
+.r-volt { color: var(--r-volt); } .r-soc { color: var(--r-soc); }
+.r-hum { color: var(--r-hum); } .r-heel { color: var(--r-heel); }
+/* In SVG the tint is the fill of a dial's or compass's number, and the colour of a needle:
+   solid, whether or not it is the first. Selectors carry an element name so that they
+   outrank the compass's own needle rules further down. */
+svg text.r-sog { fill: var(--r-sog); } svg text.r-tws { fill: var(--r-tws); }
+svg text.r-hdg { fill: var(--r-hdg); } svg text.r-cog { fill: var(--r-cog); }
+svg text.r-twa { fill: var(--r-twa); } svg text.r-awa { fill: var(--r-awa); }
+svg text.r-rpm { fill: var(--r-rpm); } svg text.r-cur { fill: var(--r-cur); }
+svg text.r-ctrl { fill: var(--r-ctrl); } svg text.r-mot { fill: var(--r-mot); }
+svg text.r-volt { fill: var(--r-volt); } svg text.r-soc { fill: var(--r-soc); }
+svg text.r-temp { fill: var(--r-temp); }
+.compass g.needle[class*=" r-"] polygon { fill: currentColor; stroke: currentColor; }
+.compass g.needle.main[class*=" r-"] line { stroke: currentColor; }
+.tile.dead .v[class*=" r-"], .tile.dead svg text { color: var(--ink3); fill: var(--ink3); }
+
 /* --- boat parts: dial, compass, cell-bar, grafana (PLAN 3) ----------------------------- */
 
 /* An SVG in a box that keeps its shape by padding: iOS 12 does not keep an SVG's aspect
