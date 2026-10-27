@@ -567,3 +567,20 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
 - **2026-10-27, enchantee, 23:28.** Owner: black panels at night. `"night": "black"` in
   enchantee's site.json (DESIGN 6.2). Desktop items for /race/gar and /grafana/ added
   (`--app=` windows, provisioned under home/pi/Desktop).
+- **2026-10-27, enchantee, 21:36 to 23:33. Replays on the production broker**, at the
+  owner's request, to see the deployed pages with data: `20260913_Frostbite_1.TXT` at 5x,
+  three times, each a container `emon_replay_<n>` (`replay_live.py ... 5 1` on the
+  `enchantee_default` network, broker `mqtt`), EmonLog included, so Influx and the raw
+  log stored them. event_recorder's anchor event started two recordings per replay on
+  its own (`track_recording`, `anchor_track_recording`; auto_publish off, none posted).
+  Race app and emon_live agreed on TWA (-172.3 against -172). Cleaned up with
+  `/home/pi/.cache/replay_tonight/cleanup.py --apply`, bounded by each container's start
+  and finish (5 s margin), after a baseline taken before the first replay: Influx
+  points in the windows deleted (665,339), today's `/share/Input/20261027.TXT` removed
+  (it held only replay lines; copy kept there), recordings #104 to #109 deleted (the
+  last two stopped and left to finish processing first), containers removed,
+  `enchantee_racing`, `node_red` and `emon_live` restarted. Afterwards: 0 Influx points
+  since midnight, no raw log, recordings back to #103, the race app's trail empty, so
+  tonight's 00:01 email starts from nothing. To do it again: the same script and a new
+  baseline; it refuses while a replay runs. event_recorder was unhealthy (slow /health)
+  throughout, as before the replays.
