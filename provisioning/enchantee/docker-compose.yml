@@ -245,6 +245,32 @@ services:
     # back by itself after the batteries are switched off (CLAUDE.md, Stack).
     restart: always
 
+  emon_live:
+    # The boat's pages (docs/emon_live_ui, DESIGN 4.4 and 6.4): nginx sends / here, in
+    # place of Node-RED's dashboard, which stays at /nodered/ui/. Built on the Pi
+    # (python/build.sh -c emon_live), not pulled. The image holds no code: python/,
+    # ui/ and this site's emon-ui/ are mounted read-only, so a page edit is live and a
+    # Python edit needs a restart.
+    image: sfewings32/emon_live:latest
+    container_name: emon_live
+    # On the compose network, like the bridges, to reach mqtt and influxdb by name.
+    # The published port is also how a page is tried without nginx.
+    ports:
+      - 5003:5003
+    volumes:
+      - ../../python:/python:ro
+      - ../../ui:/ui:ro
+      - ./emon-ui:/site:ro
+    environment:
+      - MQTT_IP=mqtt
+      - INFLUX_URL=http://influxdb:8086
+      - PUBLISH_DERIVED=1
+      - TZ=${TIMEZONE}
+    depends_on:
+      - influxdb
+      - mosquitto
+    restart: always
+
 volumes:
   influxdb-storage:
   grafana-storage:

@@ -535,6 +535,12 @@ reference; the decisions behind it:
 - **shannstainable, harvey-farm, office-temperature**: emon_live publishes a port, or
   sits behind the existing reverse proxy for https.
 
+**As built (phase 3, prepared 27 Oct 2026).** nginx's `location /` proxies to
+`127.0.0.1:5003/`. Node-RED's dashboard needed no new block: the existing `/nodered/`
+location already serves it at `/nodered/ui/`. emon_live runs on the compose network and
+publishes 5003, like shannstainable's, and its image is built on the Pi, not pulled. The
+kiosk opens `http://enchantee.local/#dials` and waits on the URL without the fragment.
+
 ---
 
 ## 7. The wider family

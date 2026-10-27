@@ -20,7 +20,9 @@
 
 set -u
 
-URL="${ENCHANTEE_URL:-http://enchantee.local/}"
+# The Dials page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
+# DESIGN 6.4). Node-RED's old dashboard is at /nodered/ui/ for as long as it is kept.
+URL="${ENCHANTEE_URL:-http://enchantee.local/#dials}"
 PROFILE="$HOME/.config/chromium"
 WAIT_SECONDS=120
 
@@ -60,7 +62,7 @@ fi
 
 # --- 3. wait for the dashboard ---------------------------------------------
 deadline=$((SECONDS + WAIT_SECONDS))
-until curl -sf -o /dev/null -m 3 "$URL"; do
+until curl -sf -o /dev/null -m 3 "${URL%%#*}"; do
     if [ "$SECONDS" -ge "$deadline" ]; then
         echo "enchantee-dashboard: $URL still not answering after ${WAIT_SECONDS}s; opening anyway"
         break

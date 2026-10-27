@@ -129,6 +129,47 @@ broker persistence. emon_live and pages for enchantee are phase 3 and do not exi
    app's HUD live; an event_recorder recording; Node-RED's pages; Grafana. On the
    water if possible, since that is when gps and the anemometer report.
 
+## Deploying phase 3 at enchantee
+
+Prepared on enchantee, 27 Oct 2026, in the worktree; nothing below has been run. With the
+owner, and after phase 1's checks (PLAN 1e), since emon_live reads the `emon/...`
+envelopes. Until the branch merges, emon_live runs from the worktree, as at
+shannstainable; the nginx file and launcher are installed from it by hand.
+
+1. **Image.** `sfewings32/emon_live:latest` is built on enchantee (27 Oct, from `803f1b2`),
+   local only. Rebuild only when `python/emon_live/requirements.txt` changes:
+   `cd /share/emon_Suite-live/python && ./build.sh -m local -c emon_live`.
+2. **emon_live**, publishing `emon/derived/...` to the boat's broker and seeding today
+   from its Influx (bounded queries; the battery and motor integrals replay since
+   midnight):
+   ```bash
+   cd /share/emon_Suite-live/provisioning/enchantee
+   docker compose -p enchantee --env-file /share/emon_Suite/provisioning/enchantee/.env \
+       up -d --no-deps emon_live
+   curl -s localhost:5003/api/state | head -c 300
+   cd /share/emon_Suite-live && /home/pi/.cache/emon_live_venv/bin/python \
+       ui/tools/lint_pages.py --broker localhost provisioning/enchantee/emon-ui
+   ```
+   `--env-file` reads the production `.env` in place, so no secrets are copied. Never
+   start another service from the worktree's compose file. Way back: `docker rm -f
+   emon_live`; nothing else depends on it until step 3.
+3. **nginx**: `/` to emon_live. The installed file equals the repo's (checked 27 Oct).
+   ```bash
+   cp /etc/nginx/sites-available/default /home/pi/.cache/nginx_default_before_live
+   sudo cp /share/emon_Suite-live/provisioning/enchantee/etc/nginx/sites-available/default \
+       /etc/nginx/sites-available/default
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   Way back: copy the backup over it, `nginx -t`, reload. Node-RED's dashboard is at
+   http://enchantee.local/nodered/ui/ throughout.
+4. **Kiosk**: `sudo install -m 755
+   /share/emon_Suite-live/provisioning/enchantee/usr/local/bin/enchantee-dashboard
+   /usr/local/bin/`. It opens `#dials` from the next login.
+5. **Check**: http://enchantee.local/ on the iPad and a phone (every page; Grafana frames
+   on Navigation and Motor, which only resolve behind nginx), the kiosk after a login,
+   `/hud`, `/race/`, `/events/`, `/nodered/ui/`. PLAN 3 is done after a day's sailing on
+   the new pages; then Node-RED's dashboard can go.
+
 ## Machines
 
 ### Windows laptop (where this started)
@@ -458,3 +499,12 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   Pi's DSI screen, 1280 by 800. Grafana frames read Not Found on the bench, which has no
   `/grafana/`; behind nginx they resolve. Next: serving (PLAN 3, last task), prepared in
   the worktree, deployed only with the owner.
+- **2026-10-27, enchantee, night.** PLAN 3 serving prepared, not deployed: enchantee's
+  nginx `location /` to emon_live (the repo copy and installed file were equal before),
+  the kiosk launcher on `#dials`, an `emon_live` service in its compose file, and the
+  image built locally (`build.sh -m local -c emon_live`; not on Docker Hub). Tried on the
+  bench: the built image with the compose mounts, and a throwaway nginx with the new
+  file in front (syntax-checked, then every page URL, `/api/state` and the theme POST
+  through `/`, and the Dials page rendered at the kiosk's size). Learned: Node-RED's
+  dashboard is already at `/nodered/ui/` through the `/nodered/` block, so the overlap
+  needs no new location. Bench removed. Steps: "Deploying phase 3 at enchantee" above.
