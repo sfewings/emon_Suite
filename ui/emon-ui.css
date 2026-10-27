@@ -260,6 +260,12 @@ body.font-race .v, body.font-race svg text.val {
   letter-spacing: -0.02em;
 }
 
+/* --- black nights (site.json "night": "black") ----------------------------------------
+   The night theme with the panels and the page behind them pure black, as enchantee_racing
+   draws its screens; the panels' borders keep them apart. The reading colours were chosen
+   for black, so they are at their best here. */
+body.night.night-black { --bg: #000000; --panel: #000000; --line: #2b2b2b; --line2: #1a1a1a; }
+
 /* --- large text (?text=large, or site.json "text": "large") -----------------------------
    Twice the size of every reading and label, for a small screen read from across a
    cabin. Value grids of four go to two in a half-width tile, so the numbers keep their

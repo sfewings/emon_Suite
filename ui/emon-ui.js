@@ -418,6 +418,8 @@
       // "font": "race" sets every word and number in enchantee_racing's face, so the
       // boat's screens read alike (emon-ui.css).
       document.body.classList.toggle("font-race", site.font === "race");
+      // "night": "black": the night theme on pure black, panels and page, as the race app.
+      document.body.classList.toggle("night-black", site.night === "black");
       document.body.classList.toggle("text-large",
         /[?&]text=large(&|$)/.test(location.search) || site.text === "large");
       buildMenu();

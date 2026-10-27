@@ -28,5 +28,6 @@
   ],
   "default": "weather",
   "menu": "large",
-  "font": "race"
+  "font": "race",
+  "night": "black"
 }

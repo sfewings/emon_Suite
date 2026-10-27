@@ -564,3 +564,6 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   comment; a first try had `--app=` in one, and labwc briefly held an invalid file.
 - **2026-10-27, enchantee, 23:15.** Owner: the race app's font. `"font": "race"` in
   enchantee's site.json (DESIGN 6.2). Replay 3 started 23:11.
+- **2026-10-27, enchantee, 23:28.** Owner: black panels at night. `"night": "black"` in
+  enchantee's site.json (DESIGN 6.2). Desktop items for /race/gar and /grafana/ added
+  (`--app=` windows, provisioned under home/pi/Desktop).

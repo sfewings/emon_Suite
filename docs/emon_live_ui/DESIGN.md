@@ -455,6 +455,10 @@ sans-serif`, readings at weight 500 with tabular figures and -0.02em tracking, a
 `static/app.css` does; nothing is downloaded (the Pi resolves it to Nimbus Sans, iOS has
 Helvetica Neue). enchantee uses it; shannstainable keeps the proposal's faces.
 
+**Black nights** (27 Oct 2026, owner): `site.json` `"night": "black"` puts the night theme's
+panels and page on pure black, as the race app's screens are; enchantee uses it. Grafana
+frames keep Grafana's own dark grey.
+
 **Large text** (27 Oct 2026, owner): `?text=large` in a page's URL doubles every reading
 and label on that screen (values 44 px, big ones 60, labels 20; compass, cell bars and
 sparklines grown to match; four-across value grids in a half-width tile go to two).
