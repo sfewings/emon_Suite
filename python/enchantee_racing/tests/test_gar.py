@@ -232,7 +232,9 @@ def test_heel_is_a_line_across_the_dial_with_fifteen_seconds_fading_behind():
 
     code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
     assert 'heel: new Needle("heel-line")' in code
-    assert ("needles.heel.set(live(d.heel) ? d.heel.v : null, "
+    # An artificial horizon: drawn at minus the heel, line and trail alike, so heeled to
+    # starboard its starboard end rises (DESIGN 9.12).
+    assert ("needles.heel.set(live(d.heel) ? -d.heel.v : null, "
             "d.heel && d.heel.age > STALE_S)") in code
     assert "var HEEL_TRAIL_S = 15;" in code
     assert "paintHeelTrail(d.heel, d.now / 1000)" in code
@@ -241,6 +243,8 @@ def test_heel_is_a_line_across_the_dial_with_fifteen_seconds_fading_behind():
     body = trail.group(1)
     assert "var t = now - heel.age;" in body, "a reading must keep its time across polls"
     assert "(1 - (now - h.t) / HEEL_TRAIL_S)" in body, "the trail does not fade with age"
+    assert '"rotate(" + (-h.v).toFixed(1) + ")"' in body, \
+        "the trail must turn the same way as the horizon line it trails"
 
     css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
     for rule in (r"#gar \.heel line\s*\{", r"#gar \.heel-trail line\s*\{"):

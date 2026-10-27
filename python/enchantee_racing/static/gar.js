@@ -413,7 +413,8 @@
       var line = heelLines[i], h = i < older ? heelTrail[older - 1 - i] : null;
       if (!h) { line.setAttribute("class", "off"); continue; }
       line.setAttribute("class", "");
-      line.setAttribute("transform", "rotate(" + h.v.toFixed(1) + ")");
+      // Minus the heel, as the solid line: the trail is the horizon's last 15 s.
+      line.setAttribute("transform", "rotate(" + (-h.v).toFixed(1) + ")");
       line.setAttribute("opacity", (0.6 * (1 - (now - h.t) / HEEL_TRAIL_S)).toFixed(2));
     }
   }
@@ -437,9 +438,11 @@
     reading($("lwy"), d.leeway, fmtSigned, "---");
     needles.lwy.set(live(d.leeway) ? d.leeway.v : null, d.leeway && d.leeway.age > STALE_S);
 
-    // Heel, positive to starboard, and a positive rotation is clockwise on screen, so the
-    // starboard end of the line goes down as the starboard rail does.
-    needles.heel.set(live(d.heel) ? d.heel.v : null, d.heel && d.heel.age > STALE_S);
+    // Heel as an artificial horizon: the line is the horizon seen from the deck, so it
+    // turns the opposite way to the boat. Heel is positive to starboard and a positive
+    // rotation is clockwise on screen, so the line is drawn at minus the heel: heeled to
+    // starboard, its starboard end rises, as the horizon does out of a starboard window.
+    needles.heel.set(live(d.heel) ? -d.heel.v : null, d.heel && d.heel.age > STALE_S);
     paintHeelTrail(d.heel, d.now / 1000);
 
     needles.awa.set(live(f.awa) ? f.awa.v : null, f.awa && f.awa.age > STALE_S);
