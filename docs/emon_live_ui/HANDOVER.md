@@ -166,7 +166,7 @@ shannstainable; the nginx file and launcher are installed from it by hand.
    http://enchantee.local/nodered/ui/ throughout.
 4. **Kiosk**: `sudo install -m 755
    /share/emon_Suite-live/provisioning/enchantee/usr/local/bin/enchantee-dashboard
-   /usr/local/bin/`. It opens `#motor` from the next login.
+   /usr/local/bin/`. It opens `#weather` from the next login.
 5. **Check**: http://enchantee.local/ on the iPad and a phone (every page; Grafana frames
    on Navigation and Motor, which only resolve behind nginx), the kiosk after a login,
    `/hud`, `/race/`, `/events/`, `/nodered/ui/`. PLAN 3 is done after a day's sailing on
@@ -545,3 +545,6 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   shannstainable). The engine now prints a GPS position ({lat, lon}) as "lat, lon" to 6
   places, where `_all` had shown "[object Object]", and `_all` puts such a value on a
   small line; a values item with no feed of its own shows no dash. Replay 2 started 22:19.
+- **2026-10-27, enchantee, 22:45.** Owner reordered the pages: Weather, Navigation, Battery,
+  Motor, All feeds. Weather is the default and the kiosk launcher opens `#weather`
+  (installed in /usr/local/bin).

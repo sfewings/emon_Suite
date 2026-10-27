@@ -20,9 +20,9 @@
 
 set -u
 
-# The Motor page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
+# The Weather page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
 # DESIGN 6.4). Node-RED's old dashboard is at /nodered/ui/ for as long as it is kept.
-URL="${ENCHANTEE_URL:-http://enchantee.local/#motor}"
+URL="${ENCHANTEE_URL:-http://enchantee.local/#weather}"
 PROFILE="$HOME/.config/chromium"
 WAIT_SECONDS=120
 

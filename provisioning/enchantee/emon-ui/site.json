@@ -6,26 +6,26 @@
   "gone": 120,
   "pages": [
     {
-      "id": "motor",
-      "title": "Motor"
+      "id": "weather",
+      "title": "Weather"
     },
     {
       "id": "navigation",
       "title": "Navigation"
     },
     {
-      "id": "weather",
-      "title": "Weather"
-    },
-    {
       "id": "battery",
       "title": "Battery"
+    },
+    {
+      "id": "motor",
+      "title": "Motor"
     },
     {
       "id": "_all",
       "title": "All feeds"
     }
   ],
-  "default": "motor",
+  "default": "weather",
   "menu": "large"
 }
