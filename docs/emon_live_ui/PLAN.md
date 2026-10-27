@@ -183,9 +183,9 @@ Goal: the boat's Node-RED pages replaced, on the iPad mini 3 and the Waveshare k
       Done 27 Oct 2026 (DESIGN 6.3 as built, phase 3); motor energy too. On the draft pages.
 - [ ] nginx and kiosk launcher changes in `provisioning/enchantee/etc/...` (DESIGN 6.4).
       Keep Node-RED's UI at `/nodered/ui/` until a sail has been done on the new pages.
-      **Prepared 27 Oct 2026, not deployed**: nginx, launcher and an `emon_live` compose
-      service in the worktree, the image built on the Pi, all tried on the bench. Steps in
-      HANDOVER, "Deploying phase 3 at enchantee"; deploy with the owner.
+      **Deployed 27 Oct 2026, 21:24** (owner's go-ahead): emon_live from the worktree,
+      nginx `/` to it, the kiosk launcher on `#dials` (HANDOVER, "Deploying phase 3 at
+      enchantee"). Waiting on a day's sailing on the new pages.
 
 Done when: a day's sailing on the new pages. Way back: restore the nginx `/` location.
 

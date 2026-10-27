@@ -37,6 +37,8 @@ files and the git history.
 
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
 **Phase 3 started on enchantee, 25 Oct 2026** (owner's request; see the session log).
+**Phase 3 deployed on enchantee, 27 Oct 2026, 21:24**: http://enchantee.local/ is emon_live,
+running from the worktree; Node-RED's dashboard is at /nodered/ui/. Waiting on a day's sailing.
 The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
 shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
@@ -131,9 +133,9 @@ broker persistence. emon_live and pages for enchantee are phase 3 and do not exi
 
 ## Deploying phase 3 at enchantee
 
-Prepared on enchantee, 27 Oct 2026, in the worktree; nothing below has been run. With the
-owner, and after phase 1's checks (PLAN 1e), since emon_live reads the `emon/...`
-envelopes. Until the branch merges, emon_live runs from the worktree, as at
+Prepared on enchantee, 27 Oct 2026, in the worktree, and **run that evening** with the
+owner (steps 1 to 5; session log). Backups: `/home/pi/.cache/nginx_default_before_live`
+and `/home/pi/.cache/enchantee-dashboard_before_live`. Until the branch merges, emon_live runs from the worktree, as at
 shannstainable; the nginx file and launcher are installed from it by hand.
 
 1. **Image.** `sfewings32/emon_live:latest` is built on enchantee (27 Oct, from `803f1b2`),
@@ -508,3 +510,18 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   through `/`, and the Dials page rendered at the kiosk's size). Learned: Node-RED's
   dashboard is already at `/nodered/ui/` through the `/nodered/` block, so the overlap
   needs no new location. Bench removed. Steps: "Deploying phase 3 at enchantee" above.
+- **2026-10-27, enchantee, 21:24.** Phase 3 deployed, owner's go-ahead, steps 2 to 5 of
+  "Deploying phase 3 at enchantee". emon_live up from the worktree (compose project
+  `enchantee`, `--env-file` the production `.env`), healthy, connected to `mqtt`, 10
+  derived feeds loaded. The boat's nodes were off: only `emon/config` retained, nothing
+  in Influx since midnight (replayed 0 readings), `emon_serial` at 291 restarts on its
+  no-serial timeout, so every tile reads "no data" until they are powered. nginx: backed
+  up, replaced, `nginx -t`, reloaded; `/`, the site files and `/api/state` 200 and
+  gzipped; `/nodered/ui/`, `/nodered/`, `/race/`, `/events/`, `/grafana/`, `/settings/`
+  200; `/hud` 302 to `/race/hud`; Navigation's Grafana frame now resolves. Launcher
+  installed; the kiosk's open window (`--app=http://enchantee.local/`) shows the new
+  pages on its next reload, `#dials` from the next login. Still open: PLAN 1e's checks
+  and this page check with the nodes on, on the water if possible; the owner's look on
+  the iPad and the kiosk; whether Navigation should embed Node-RED's choice of panel
+  (Power, "Battery Voltage"). The production checkout is still on `master`, so emon_live
+  runs from the worktree until the merge (as at shannstainable).
