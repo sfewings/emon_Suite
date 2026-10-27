@@ -6,13 +6,15 @@ This file covers the machine every subproject shares. The subprojects carry thei
 - `python/enchantee_racing/CLAUDE.md` the race support app
 - `python/event_recorder/CLAUDE.md` the recorder and its WordPress publishing
 
-## Branch `emon_live_ui`: the live UI redesign
+## The live UI: `emon_live` and the site pages
 
-If the current branch is `emon_live_ui`, read `docs/emon_live_ui/HANDOVER.md` before
-doing anything else. It is a multi-session redesign (self-describing MQTT, a shared
-`emon_feed` library, the `emon_live` service and per-site pages under `provisioning/`),
-moving from a Windows laptop to the shannstainable Pi. On a Pi it is developed in a
-separate worktree, never in this production checkout.
+The pages at http://enchantee.local/ (and shannstainable's /live/) are `emon_live`
+(`python/emon_live/`), the page engine in `ui/`, and each site's `provisioning/<site>/
+emon-ui/`, over the `emon/...` envelopes the bridges publish (`python/pyEmon/pyemonlib/
+emon_feed.py`). They came from branch `emon_live_ui`, merged on 27 Oct 2026. Before
+working on any of it, read `docs/emon_live_ui/HANDOVER.md`: state, machines, how each
+site is deployed. On a Pi, develop it in a worktree, never in this production checkout
+(DESIGN 9.1).
 
 ## This checkout IS the deployment
 

@@ -35,11 +35,18 @@ files and the git history.
 
 ## Where it is up to
 
+**Merged into `master` on 27 Oct 2026** (owner's decision, ahead of phase 2's end on 30
+Oct). Enchantee's emon_live then moved to run from the production checkout (session
+log). shannstainable's still runs from its worktree until that Pi's `/share/emon_Suite`
+pulls `master`; then `cd /share/emon_Suite/provisioning/shannstainable && docker compose
+up -d --no-deps emon_live` moves it, as "Machines" says.
+
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
 **Phase 3 started on enchantee, 25 Oct 2026** (owner's request; see the session log).
 **Phase 3 deployed on enchantee, 27 Oct 2026, 21:24**: http://enchantee.local/ is emon_live,
 running from the worktree; Node-RED's dashboard is at /nodered/ui/. Waiting on a day's sailing.
-The enchantee deploy and the merge to `master` both wait until phase 2 is done (owner).
+The enchantee deploy and the merge to `master` were to wait until phase 2 was done; the
+owner brought both forward (27 Oct).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
 shannstainable, seeded from Influx on start. 2b is done, compared over a full day.
 2c, the page engine and the house page, is done (owner checked it on a phone, 23 Oct:
