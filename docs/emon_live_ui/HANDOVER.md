@@ -554,3 +554,11 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   Chromium's `--window-size` includes about 88 px of window, so a shot at 1280x740 shows
   a 652 px viewport; the earlier "fits 1024 by 690" checks were in fact at about 600,
   stricter than meant. To see a 740 px viewport, ask for 828.
+- **2026-10-27, enchantee, 23:10.** The owner had installed pages as Chromium web apps,
+  which on plain HTTP always show Chromium's "Not secure" origin strip; the Enchantee
+  Dashboard launcher (`--app=`) does not, and is what the kiosk uses. To make it always
+  open maximised, whatever size Chromium remembers: a labwc window rule (Maximize, app id
+  `*enchantee.local*`) in `/home/pi/.config/labwc/rc.xml`, provisioned at
+  `provisioning/enchantee/home/pi/.config/labwc/rc.xml`, labwc reloaded with SIGHUP.
+  Backup `/home/pi/.cache/labwc_rc.xml_before_maximize`. Learned: no `--` inside an XML
+  comment; a first try had `--app=` in one, and labwc briefly held an invalid file.
