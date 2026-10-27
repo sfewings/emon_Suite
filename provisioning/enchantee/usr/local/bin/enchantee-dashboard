@@ -21,8 +21,10 @@
 set -u
 
 # The Weather page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
-# DESIGN 6.4). Node-RED's old dashboard is at /nodered/ui/ for as long as it is kept.
-URL="${ENCHANTEE_URL:-http://enchantee.local/#weather}"
+# DESIGN 6.4), in large text: this screen is small and read from across the cabin. The
+# iPad and phones open it without ?text=large. Node-RED's old dashboard is at
+# /nodered/ui/ for as long as it is kept.
+URL="${ENCHANTEE_URL:-http://enchantee.local/?text=large#weather}"
 PROFILE="$HOME/.config/chromium"
 WAIT_SECONDS=120
 

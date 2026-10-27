@@ -411,6 +411,12 @@
       if (title) title.textContent = site.title;
       // "menu": "large" doubles the page tabs, for a touch screen at arm's length.
       document.body.classList.toggle("menu-large", site.menu === "large");
+      // ?text=large in the page's URL doubles the text on that screen only: the boat's
+      // kiosk is small and read from across the cabin, the iPad in the hand. Per screen
+      // by its URL, like the size of the screen itself; site.json "text": "large" does it
+      // everywhere.
+      document.body.classList.toggle("text-large",
+        /[?&]text=large(&|$)/.test(location.search) || site.text === "large");
       buildMenu();
       window.addEventListener("hashchange", function () { show(pageId()); });
       // Ages tick between polls, from the server's ages plus the time since they came.

@@ -18,7 +18,8 @@
             "label": "COG",
             "tint": "cog"
           }
-        ]
+        ],
+        "legend": false
       },
       "values": [
         {
@@ -54,7 +55,8 @@
             "label": "AWA",
             "tint": "awa"
           }
-        ]
+        ],
+        "legend": false
       },
       "values": [
         {

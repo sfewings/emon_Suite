@@ -449,6 +449,17 @@ finger-sized target, for the boat's kiosk. The owner's pages there, 27 Oct 2026:
 Navigation, Battery, Motor, All feeds, in that order, Weather the default; no HUD or Race links and
 no Dials page (the `dial` part stays in the engine).
 
+**Large text** (27 Oct 2026, owner): `?text=large` in a page's URL doubles every reading
+and label on that screen (values 44 px, big ones 60, labels 20; compass, cell bars and
+sparklines grown to match; four-across value grids in a half-width tile go to two).
+Per screen by URL, because it answers to the screen's size and distance, not to the
+site: the kiosk is small and read from across the cabin, the iPad is held. `site.json`
+`"text": "large"` would set it for every screen. A compass takes `"legend": false` to
+leave off the readings beneath it; Weather does, to fit at double size, since the first
+needle's reading is in the middle of the rose and the tints tell the needles apart.
+Every page fits the kiosk's viewport (1280 by about 740) at double size, checked in
+headless Chromium with a window 88 px taller than the viewport it is meant to show.
+
 **Reading colours** (27 Oct 2026, owner): a value, a dial's number and a compass needle
 take `tint`, and a cell bar `tint_low` and `tint_high`, naming a reading: `sog tws aws
 hdg cog leeway twa awa rpm power cur cellmin ctrl cellmax mot temp volt soc hum heel
@@ -556,8 +567,8 @@ reference; the decisions behind it:
 `127.0.0.1:5003/`. Node-RED's dashboard needed no new block: the existing `/nodered/`
 location already serves it at `/nodered/ui/`. emon_live runs on the compose network and
 publishes 5003, like shannstainable's, and its image is built on the Pi, not pulled. The
-kiosk opens `http://enchantee.local/#weather` (`#dials`, then `#motor`, as the owner
-reordered the pages on 27 Oct) and waits on the URL without the fragment.
+kiosk opens `http://enchantee.local/?text=large#weather` (`#dials`, then `#motor`, as
+the owner reordered the pages on 27 Oct) and waits on the URL without the fragment.
 
 ---
 

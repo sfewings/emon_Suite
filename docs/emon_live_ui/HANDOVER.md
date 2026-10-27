@@ -166,7 +166,7 @@ shannstainable; the nginx file and launcher are installed from it by hand.
    http://enchantee.local/nodered/ui/ throughout.
 4. **Kiosk**: `sudo install -m 755
    /share/emon_Suite-live/provisioning/enchantee/usr/local/bin/enchantee-dashboard
-   /usr/local/bin/`. It opens `#weather` from the next login.
+   /usr/local/bin/`. It opens `?text=large#weather` from the next login.
 5. **Check**: http://enchantee.local/ on the iPad and a phone (every page; Grafana frames
    on Navigation and Motor, which only resolve behind nginx), the kiosk after a login,
    `/hud`, `/race/`, `/events/`, `/nodered/ui/`. PLAN 3 is done after a day's sailing on
@@ -548,3 +548,9 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
 - **2026-10-27, enchantee, 22:45.** Owner reordered the pages: Weather, Navigation, Battery,
   Motor, All feeds. Weather is the default and the kiosk launcher opens `#weather`
   (installed in /usr/local/bin).
+- **2026-10-27, enchantee, 22:55.** Owner: double the text on the kiosk. `?text=large`
+  (DESIGN 6.2), the kiosk launcher opens `?text=large#weather` (installed), the iPad and
+  phones unchanged. Weather's roses lose their legends to fit. Learned: headless
+  Chromium's `--window-size` includes about 88 px of window, so a shot at 1280x740 shows
+  a 652 px viewport; the earlier "fits 1024 by 690" checks were in fact at about 600,
+  stricter than meant. To see a 740 px viewport, ask for 828.

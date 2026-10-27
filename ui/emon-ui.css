@@ -244,6 +244,32 @@ svg text.r-temp { fill: var(--r-temp); }
 
 iframe.grafana { display: block; width: 100%; border: 0; margin-top: 4px; background: var(--panel); }
 
+/* --- large text (?text=large, or site.json "text": "large") -----------------------------
+   Twice the size of every reading and label, for a small screen read from across a
+   cabin. Value grids of four go to two in a half-width tile, so the numbers keep their
+   room. */
+body.text-large #bar { flex-wrap: nowrap; }
+body.text-large #title { font-size: 28px; white-space: nowrap; }
+body.text-large #status { font-size: 16px; white-space: nowrap; }
+body.text-large button[data-theme-toggle] { font-size: 20px; padding: 8px 16px; white-space: nowrap; }
+body.text-large .tile { padding: 12px 16px 14px; }
+body.text-large .tile .h { margin-bottom: 10px; }
+body.text-large .tile .h b { font-size: 28px; }
+body.text-large .tile .h i, body.text-large .tile .foot, body.text-large .age { font-size: 20px; }
+body.text-large .k { font-size: 20px; }
+body.text-large .v { font-size: 44px; }
+body.text-large .v.big { font-size: 60px; }
+body.text-large .v small { font-size: 24px; }
+body.text-large .sub { font-size: 22px; }
+body.text-large .pill { font-size: 20px; }
+body.text-large .kv { grid-gap: 10px 18px; gap: 10px 18px; }
+body.text-large .tile:not(.w2) .kv.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body.text-large .compass-size { max-width: 250px; }
+body.text-large .dial { max-width: 400px; }
+body.text-large .cbar { height: 110px; }
+body.text-large .cl { font-size: 16px; }
+body.text-large .spark { height: 48px; }
+
 /* --- data age (DESIGN D6): fresh, ageing, gone ---------------------------------------- */
 
 .age { font-family: var(--mono); font-size: 11px; color: var(--ink3); }

@@ -104,7 +104,9 @@
       legend.appendChild(cell);
       return v;
     });
-    if (needles.length > 1 || (needles[0] && needles[0].label)) wrap.appendChild(legend);
+    // "legend": false leaves it off, where the page shows the readings elsewhere: the
+    // first is in the middle of the rose, and the needles' tints say which is which.
+    if (spec.legend !== false && (needles.length > 1 || (needles[0] && needles[0].label))) wrap.appendChild(legend);
     body.appendChild(wrap);
 
     function reading(v) {
