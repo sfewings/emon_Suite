@@ -1,10 +1,11 @@
 {
   "title": "Navigation",
+  "cols": 2,
   "tiles": [
     {
-      "title": "Speed",
+      "title": "Course and speed",
       "domain": "water",
-      "span": 2,
+      "span": 1,
       "values": [
         {
           "feed": "Enchantee-GPS / speed",
@@ -19,15 +20,6 @@
         }
       ],
       "cols": 2,
-      "trail": {
-        "feed": "Enchantee-GPS / speed",
-        "minutes": 30
-      }
-    },
-    {
-      "title": "Course",
-      "domain": "water",
-      "span": 2,
       "compass": {
         "needles": [
           {
@@ -44,7 +36,7 @@
     {
       "title": "Boat",
       "domain": "water",
-      "span": 2,
+      "span": 1,
       "values": [
         {
           "feed": "derived/boat/leeway",
@@ -60,8 +52,13 @@
         }
       ],
       "cols": 2,
+      "trail": {
+        "feed": "Enchantee-GPS / speed",
+        "minutes": 30
+      },
       "lines": [
-        "Leeway includes tidal set and compass error; blank under 1 kn"
+        "SOG, 30 min",
+        "COG − HDG carries tidal set and compass error; blank under 1 kn"
       ]
     },
     {
@@ -70,7 +67,7 @@
       "span": 2,
       "grafana": {
         "src": "../grafana/d-solo/4z66RJWgk/power?orgId=1&from=now-1h&to=now&timezone=Australia%2FPerth&panelId=panel-6&__feature.dashboardSceneSolo=true",
-        "height": 220
+        "height": 180
       }
     }
   ]

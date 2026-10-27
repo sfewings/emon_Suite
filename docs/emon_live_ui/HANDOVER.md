@@ -449,3 +449,12 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   Frostbite 1, since the boat's broker is often empty at the dock. Not yet run against
   live or replayed data in emon_live: do that on the next bench. Next: fit the page
   layout to the iPad and the kiosk, then nginx and the kiosk launcher (PLAN 3).
+- **2026-10-27, enchantee, later.** Bench back up with derived.yml loaded (replay at 4x):
+  every derived feed live, TWA and leeway equal to a hand calculation from the raw feeds,
+  leeway blank under 1 kn as meant. Expr now returns 0.0 for -0.0 (`max(-x, 0)`). Layout:
+  pages take `cols`, the boat's pages use 2 with span-1 tiles, Navigation regrouped
+  (course and speed with the rose; leeway, heel and an SOG trail; Grafana 180 px), and
+  every page fits the iPad's 1024 by 690 and the kiosk's 1280 by 740. The kiosk is the
+  Pi's DSI screen, 1280 by 800. Grafana frames read Not Found on the bench, which has no
+  `/grafana/`; behind nginx they resolve. Next: serving (PLAN 3, last task), prepared in
+  the worktree, deployed only with the owner.

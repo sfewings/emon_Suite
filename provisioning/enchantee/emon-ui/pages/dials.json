@@ -1,10 +1,11 @@
 {
   "title": "Dials",
+  "cols": 2,
   "tiles": [
     {
       "title": "Motor",
       "domain": "power",
-      "span": 2,
+      "span": 1,
       "dial": [
         {
           "feed": "SevCon / rpm",
@@ -24,7 +25,7 @@
     {
       "title": "Battery",
       "domain": "batt",
-      "span": 2,
+      "span": 1,
       "dial": [
         {
           "feed": "SevCon / capVoltage",
@@ -49,7 +50,7 @@
     {
       "title": "Temperatures",
       "domain": "heat",
-      "span": 2,
+      "span": 1,
       "dial": [
         {
           "feed": "SevCon / motorTemperature",

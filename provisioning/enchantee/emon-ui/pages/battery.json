@@ -1,10 +1,11 @@
 {
   "title": "Battery",
+  "cols": 2,
   "tiles": [
     {
       "title": "Main battery",
       "domain": "batt",
-      "span": 2,
+      "span": 1,
       "values": [
         {
           "feed": "Main Battery / batterySoC",
@@ -42,7 +43,7 @@
     {
       "title": "Cells",
       "domain": "batt",
-      "span": 2,
+      "span": 1,
       "cell-bar": {
         "min": 3.0,
         "max": 3.65,

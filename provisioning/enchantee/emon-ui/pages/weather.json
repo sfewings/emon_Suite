@@ -1,10 +1,11 @@
 {
   "title": "Weather",
+  "cols": 2,
   "tiles": [
     {
       "title": "True wind",
       "domain": "rain",
-      "span": 2,
+      "span": 1,
       "compass": {
         "needles": [
           {
@@ -40,7 +41,7 @@
     {
       "title": "Apparent wind",
       "domain": "rain",
-      "span": 2,
+      "span": 1,
       "compass": {
         "relative": true,
         "needles": [

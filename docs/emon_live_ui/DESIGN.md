@@ -438,6 +438,12 @@ Cells are listed one by one, not generated from a count, so that every feed is a
 `"feed"` in the page where the server and the linter look (4.4, 9.4). A tile that names
 no feeds, such as a frame alone, shows no age. The `deg` unit is shown as °.
 
+A page may take `cols` (1 to 4): its columns from 761 px up, in place of 4, 3 and 2 by
+width. The boat's pages use 2, so the iPad mini 3 (1024 by about 690 in Safari, 768
+wide upright) and the kiosk (the Pi's own 1280 by 800 DSI screen, less a taskbar) lay
+them out alike: tiles span 1, side by side, and a span-2 tile is a full-width strip.
+Every enchantee page fits 1024 by 690 without scrolling (headless Chromium, 27 Oct 2026).
+
 Tile keys: `title`, `domain` (`power solar batt heat water rain car other`), `span`
 (1 or 2), `fresh` and `gone` (seconds; tile, then page, then site, then 60 and 300),
 `headline` (a template shown in the heading, which moves the age to the foot).

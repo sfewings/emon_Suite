@@ -344,6 +344,10 @@
       : getJSON(base + "/site/pages/" + encodeURIComponent(id) + ".json");
     return load.then(function (p) {
       page = p || { title: "Not found", tiles: [] };
+      // "cols" fixes the page's columns from tablet width up, so a boat page lays out
+      // the same on the iPad and the kiosk; a phone keeps its own (emon-ui.css).
+      var cols = Math.max(0, Math.min(4, Math.floor(num(page.cols, 0))));
+      main.className = cols ? "p" + cols : "";
       var defaults = { fresh: num(page.fresh, site.fresh), gone: num(page.gone, site.gone) };
       (page.tiles || []).forEach(function (spec) {
         var t = buildTile(spec, defaults);

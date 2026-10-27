@@ -816,7 +816,8 @@ class Expr:
             return None
         if isinstance(result, bool):
             return 1.0 if result else 0.0
-        return float(result) if isinstance(result, (int, float)) else None
+        # + 0.0 turns the -0.0 of max(-0.0, 0) into 0.0.
+        return float(result) + 0.0 if isinstance(result, (int, float)) else None
 
 
 __all__ = [

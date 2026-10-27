@@ -1,10 +1,11 @@
 {
   "title": "Motor",
+  "cols": 2,
   "tiles": [
     {
       "title": "Motor",
       "domain": "power",
-      "span": 2,
+      "span": 1,
       "values": [
         {
           "feed": "SevCon / rpm",
@@ -52,7 +53,7 @@
     {
       "title": "SevCon controller",
       "domain": "power",
-      "span": 2,
+      "span": 1,
       "grafana": {
         "src": "../grafana/d-solo/714fdea5-0707-405e-89ab-cd8ee5d28cf8/sevcon-controller?orgId=1&from=now-1h&to=now&timezone=browser&panelId=panel-1&__feature.dashboardSceneSolo=true",
         "height": 220
