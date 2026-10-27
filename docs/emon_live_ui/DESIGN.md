@@ -505,6 +505,15 @@ reference; the decisions behind it:
   names derived feeds from the battery's side (`battery/in` is charge) and says per
   monitor which counter that is.
 - Boundaries are checked every 5 s, so totals go to 0 at midnight without a reading.
+- **The boat angles (phase 3, 27 Oct 2026)** are ops `twa`, `awa`, `leeway` and `heel`,
+  each naming its inputs by role (`twd`, `hdg`; `measured` or `awd` and `hdg`; `cog`,
+  `hdg`, `sog`; `y`, `z`) and calling emon_feed's functions, which phase 1 ported from the
+  race app. As the race app does, a result is stamped with the time of the oldest input
+  it used, so it ages when any input stops (AWA from the masthead reads only that). When
+  one stops being knowable while its inputs still arrive (leeway under `min_sog`, heel
+  without enough gravity), it is published once with `v` null, so pages blank it rather
+  than show the last value as current. Battery and motor energy are `expr` and
+  `integrate`; no new operator was needed.
 - `external:` lists derived feeds that another publisher computes, Node-RED under D5,
   so the page linter knows them; derived.py ignores it. Node-RED republishes them every
   minute with `t` = now, which is what keeps a count that has not changed for hours fresh

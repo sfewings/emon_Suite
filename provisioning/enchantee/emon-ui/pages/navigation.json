@@ -42,6 +42,29 @@
       }
     },
     {
+      "title": "Boat",
+      "domain": "water",
+      "span": 2,
+      "values": [
+        {
+          "feed": "derived/boat/leeway",
+          "label": "COG − HDG",
+          "big": true,
+          "decimals": 0
+        },
+        {
+          "feed": "derived/boat/heel",
+          "label": "Heel",
+          "big": true,
+          "decimals": 0
+        }
+      ],
+      "cols": 2,
+      "lines": [
+        "Leeway includes tidal set and compass error; blank under 1 kn"
+      ]
+    },
+    {
       "title": "Power",
       "domain": "power",
       "span": 2,

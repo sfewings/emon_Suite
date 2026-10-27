@@ -439,3 +439,13 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   a 16S LiFePO4 pack resting at 52 to 54 V, so the draft has 40 to 60 with 50 warn and
   48 bad, downwards. Owner to confirm. Next: the iPad mini 3 check (PLAN 3, second
   task) on the bench; then fit the layout to the iPad and the kiosk.
+- **2026-10-27, enchantee.** Owner checked the parts on the iPad mini 3 against the test
+  bench: they look OK, to be improved later (PLAN 3 second task ticked). Bench removed.
+  PLAN 3 derived.yml done: ops `twa`, `awa`, `leeway`, `heel` in derived.py over emon_feed's
+  functions (DESIGN 6.3 as built), and `provisioning/enchantee/emon-ui/derived.yml` with
+  them plus battery in and out and motor energy, its Influx series each confirmed on the
+  boat's Influx with a bounded count. The draft pages show them. emon_live tests now lint
+  enchantee's site against `tests/data/enchantee_feeds.txt`, the 65 names decoded from
+  Frostbite 1, since the boat's broker is often empty at the dock. Not yet run against
+  live or replayed data in emon_live: do that on the next bench. Next: fit the page
+  layout to the iPad and the kiosk, then nginx and the kiosk launcher (PLAN 3).

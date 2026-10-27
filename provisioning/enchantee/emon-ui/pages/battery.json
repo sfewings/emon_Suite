@@ -110,12 +110,25 @@
           "label": "Power",
           "big": true,
           "decimals": 0
+        },
+        {
+          "feed": "derived/battery/out/today",
+          "label": "Out today",
+          "decimals": 0,
+          "unit": "Wh"
+        },
+        {
+          "feed": "derived/battery/in/today",
+          "label": "In today",
+          "decimals": 0,
+          "unit": "Wh"
         }
       ],
       "trail": {
         "feed": "Main Battery / power",
         "minutes": 30
-      }
+      },
+      "cols": 3
     }
   ]
 }

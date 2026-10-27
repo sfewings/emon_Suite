@@ -33,13 +33,21 @@
           "feed": "SevCon / controllerTemperature",
           "label": "Controller",
           "decimals": 0
+        },
+        {
+          "feed": "derived/motor/power/now",
+          "label": "Power",
+          "decimals": 0
         }
       ],
       "cols": 3,
       "trail": {
         "feed": "SevCon / rpm",
         "minutes": 30
-      }
+      },
+      "lines": [
+        "Today {derived/motor/energy/today|0} Wh"
+      ]
     },
     {
       "title": "SevCon controller",

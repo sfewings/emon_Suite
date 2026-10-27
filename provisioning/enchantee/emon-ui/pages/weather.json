@@ -23,12 +23,19 @@
           "label": "TWS",
           "big": true,
           "decimals": 1
+        },
+        {
+          "feed": "derived/wind/twa",
+          "label": "TWA",
+          "big": true,
+          "decimals": 0
         }
       ],
       "trail": {
         "feed": "True wind / windSpeed",
         "minutes": 30
-      }
+      },
+      "cols": 2
     },
     {
       "title": "Apparent wind",
@@ -38,7 +45,7 @@
         "relative": true,
         "needles": [
           {
-            "feed": "Boat reference wind / windDirection",
+            "feed": "derived/wind/awa",
             "label": "AWA"
           }
         ]

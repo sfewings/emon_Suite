@@ -24,8 +24,17 @@ by pages. The operators themselves are emon_feed's; this module wires them to fe
     mean          feed                  reset, positive_only
     sum           of: [feeds]           a missing input is left out; none at all gives none
     expr          expr: "{a} - {b}"     defaults: {feed: value}
+    twa           twd, hdg              gives deg, signed port negative
+    awa           measured; or awd, hdg the masthead's bow-relative reading, else awd - hdg
+    leeway        cog, hdg, sog         min_sog (kn, default 1): below it, no value
+    heel          y, z (acc, in g)      min_g (default 0.5); positive heeled to starboard
 
 Every entry also takes `unit`, `kind` and `decimals`.
+
+The four boat angles are emon_feed's functions, the race app's own maths moved there
+(DESIGN D3). Like the race app, each is stamped with the time of the oldest input it
+used, so it ages, and dims on a page, as soon as any of them stops: a TWA from a fresh
+wind and a heading a minute old is a minute old.
 
 Pulse counters are already in Wh: the nodes apply pN_wPerPulse themselves (checked against
 integrated power, 21 Oct 2026), so `scale` defaults to 1, as Node-RED's daily totals did.
@@ -57,11 +66,23 @@ STATEFUL = {
     "mean": lambda s: emon_feed.Mean(s.get("reset", "00:00"), bool(s.get("positive_only"))),
 }
 STATELESS = ("sum", "expr")
+
+# The boat angles (DESIGN D3): the inputs each reads, by role, and how to compute it from
+# the role values and the entry's spec. Roles left out of an entry are passed as None.
+NAV = {
+    "twa": (("twd", "hdg"), lambda v, s: emon_feed.twa(v["twd"], v["hdg"])),
+    "awa": (("measured", "awd", "hdg"), lambda v, s: emon_feed.awa(v["measured"], v["awd"], v["hdg"])),
+    "leeway": (("cog", "hdg", "sog"), lambda v, s: emon_feed.leeway(
+        v["cog"], v["hdg"], v["sog"], float(s.get("min_sog", emon_feed.LEEWAY_MIN_SOG_KT)))),
+    "heel": (("y", "z"), lambda v, s: emon_feed.heel(
+        v["y"], v["z"], float(s.get("min_g", emon_feed.HEEL_MIN_G)))),
+}
+REQUIRED = {"twa": ("twd", "hdg"), "leeway": ("cog", "hdg", "sog"), "heel": ("y", "z")}
 TOTALS = ("daily_delta", "integrate")
 """Ops whose new period starts from zero, so a boundary publishes 0 at once rather than
 leaving yesterday's total up until the first reading of the day."""
 
-DEFAULT_UNITS = {"integrate": "Wh"}
+DEFAULT_UNITS = {"integrate": "Wh", "twa": "deg", "awa": "deg", "leeway": "deg", "heel": "deg"}
 
 LIVE_S = 900.0
 """Replay depth for an input that only feeds live expressions."""
@@ -75,6 +96,7 @@ class Entry:
     spec: Dict[str, Any]
     operator: Any = None
     expr: Optional[emon_feed.Expr] = None
+    roles: Optional[Dict[str, str]] = None   # NAV ops: role -> feed
     unit: str = ""
     kind: str = ""
     decimals: Optional[int] = None
@@ -121,7 +143,7 @@ class Derived:
         op, ident = spec["op"], str(spec["id"]).strip("/")
         entry = Entry(id=ident, op=op, inputs=[], spec=spec,
                       unit=spec.get("unit", DEFAULT_UNITS.get(op, "")),
-                      kind=spec.get("kind", "energy" if op in TOTALS else ""),
+                      kind=spec.get("kind", "energy" if op in TOTALS else "angle" if op in NAV else ""),
                       decimals=spec.get("decimals"))
         if op in STATEFUL:
             if not spec.get("feed"):
@@ -135,6 +157,14 @@ class Derived:
         elif op == "expr":
             entry.expr = emon_feed.Expr(spec.get("expr", ""), spec.get("defaults"))
             entry.inputs = list(entry.expr.names)
+        elif op in NAV:
+            entry.roles = {role: spec[role] for role in NAV[op][0] if spec.get(role)}
+            missing = [r for r in REQUIRED.get(op, ()) if r not in entry.roles]
+            if op == "awa" and "measured" not in entry.roles and not {"awd", "hdg"} <= set(entry.roles):
+                missing = ["measured, or awd and hdg"]
+            if missing:
+                raise ValueError(f"derived/{ident}: {op} needs {', '.join(missing)}")
+            entry.inputs = list(dict.fromkeys(entry.roles.values()))
         else:
             raise ValueError(f"derived/{ident}: unknown op {op!r}")
         return entry
@@ -194,8 +224,16 @@ class Derived:
         for entry in self.consumers.get(key, ()):
             result = self._compute(entry, value, t)
             if result is not None:
-                out.append(self._reading(entry, result, t))
-                self._propagate(entry.key, result, t, out)
+                stamp = self._stamp(entry, t)
+                out.append(self._reading(entry, result, stamp))
+                self._propagate(entry.key, result, stamp, out)
+            elif entry.roles is not None and self.latest.get(entry.key) is not None:
+                # A boat angle that had a value and now cannot be known though its
+                # inputs are arriving: leeway under min_sog. Published once as no
+                # value, so a page blanks it rather than show the last one as current,
+                # as the race app does (its DESIGN 9.12). Not passed on downstream.
+                self.latest[entry.key] = None
+                out.append(self._reading(entry, None, t))
 
     def _compute(self, entry: Entry, value: float, t: float) -> Optional[float]:
         if entry.operator is not None:
@@ -203,7 +241,20 @@ class Derived:
         if entry.op == "sum":
             present = [self.latest[n] for n in entry.inputs if n in self.latest]
             return sum(present) if present else None
+        if entry.roles is not None:
+            values = {role: None for role in NAV[entry.op][0]}
+            values.update({role: self.latest.get(feed) for role, feed in entry.roles.items()})
+            return NAV[entry.op][1](values, entry.spec)
         return entry.expr(self.latest)
+
+    def _stamp(self, entry: Entry, t: float) -> float:
+        """A NAV result's time: its oldest input's. AWA from the masthead reads only that."""
+        if entry.roles is None:
+            return t
+        feeds = list(entry.roles.values())
+        if entry.op == "awa" and _number(self.latest.get(entry.roles.get("measured"))):
+            feeds = [entry.roles["measured"]]
+        return min([self.last_t.get(f, t) for f in feeds] + [t])
 
     def tick(self, now: float) -> List[emon_feed.Reading]:
         """Roll every period that has passed its boundary, with no reading needed, and
@@ -222,8 +273,8 @@ class Derived:
                     self._propagate(entry.key, value, now, out)
         return out
 
-    def _reading(self, entry: Entry, value: float, t: float) -> emon_feed.Reading:
-        if entry.decimals is not None:
+    def _reading(self, entry: Entry, value: Optional[float], t: float) -> emon_feed.Reading:
+        if entry.decimals is not None and value is not None:
             value = round(value, int(entry.decimals))
         return emon_feed.Reading(node=emon_feed.DERIVED_NODE, sub=None, field=entry.id,
                                  value=value, unit=entry.unit, kind=entry.kind, t=t)

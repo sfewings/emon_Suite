@@ -16,6 +16,8 @@ from conftest import RETAINED
 REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 UI = os.path.join(REPO, "ui")
 SITE = os.path.join(REPO, "provisioning", "shannstainable", "emon-ui")
+ENCHANTEE = os.path.join(REPO, "provisioning", "enchantee", "emon-ui")
+ENCHANTEE_FEEDS = os.path.join(os.path.dirname(__file__), "data", "enchantee_feeds.txt")
 sys.path.insert(0, os.path.join(UI, "tools"))
 
 import lint_pages  # noqa: E402
@@ -32,6 +34,14 @@ def test_shannstainable_pages_and_derived_lint_clean():
     # The capture predates Node-RED publishing its results (PLAN 2d), so those, and only
     # those, are reported as not on the broker yet.
     assert all("(external) but not on the broker yet" in w for w in warnings), warnings
+
+
+def test_enchantee_pages_and_derived_lint_clean():
+    """Against the names decoded from a recorded race: the boat is often quiet at the
+    dock, so its broker cannot be relied on to hold them all (HANDOVER, enchantee Pi)."""
+    with open(ENCHANTEE_FEEDS, encoding="utf-8") as f:
+        names = {line.strip() for line in f if line.strip() and not line.startswith("#")}
+    assert lint_pages.lint(ENCHANTEE, names, {}) == ([], [])
 
 
 def test_lint_catches_a_misspelt_feed_and_a_missing_series(tmp_path):

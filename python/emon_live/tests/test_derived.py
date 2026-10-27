@@ -15,6 +15,8 @@ from pyemonlib import emon_feed
 
 SHANNSTAINABLE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "provisioning",
                               "shannstainable", "emon-ui", "derived.yml")
+ENCHANTEE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "provisioning",
+                         "enchantee", "emon-ui", "derived.yml")
 
 
 @pytest.fixture(autouse=True)
@@ -194,3 +196,79 @@ def test_seed_carries_on_when_influx_fails():
                {"id": "r/year", "op": "daily_delta", "feed": "R / r", "reset": "year"},
                influx_map={"P / a": "pulse pulse/0/0", "R / r": "rain rain"})
     assert influx.seed(d, Broken(), local(2026, 10, 21, 12)) == []
+
+
+# --- the boat angles (DESIGN D3) --------------------------------------------------------
+
+def stamps(readings):
+    return {r.key: r.t for r in readings}
+
+
+def test_the_enchantee_file_loads_and_every_input_has_a_series():
+    d = dv.load(ENCHANTEE)
+    assert {"derived/wind/twa", "derived/wind/awa", "derived/boat/leeway", "derived/boat/heel",
+            "derived/battery/out/today", "derived/motor/energy/today"} <= set(d.entries)
+    assert [n for n in d.inputs_outside() if n not in d.influx] == []
+
+
+def test_twa_is_stamped_with_its_older_input_so_it_ages_with_either():
+    d = engine({"id": "wind/twa", "op": "twa", "twd": "True wind / windDirection",
+                "hdg": "IMU Sensor / heading"})
+    t = local(2026, 10, 27, 14)
+    assert d.on_value("True wind / windDirection", 84.0, t) == [], "no heading yet"
+    out = d.on_value("IMU Sensor / heading", 192.0, t + 5)
+    assert values(out) == {"derived/wind/twa": -108.0} and stamps(out) == {"derived/wind/twa": t}
+    out = d.on_value("True wind / windDirection", 90.0, t + 60)
+    assert values(out) == {"derived/wind/twa": -102.0}
+    assert stamps(out) == {"derived/wind/twa": t + 5}, "the heading has not moved for 55 s"
+    assert out[0].unit == "deg" and out[0].kind == "angle"
+
+
+def test_awa_reads_the_masthead_and_falls_back_to_bearing_and_heading():
+    d = engine({"id": "awa", "op": "awa", "measured": "M / dir", "awd": "A / dir", "hdg": "H / hdg"})
+    t = local(2026, 10, 27, 14)
+    d.on_value("A / dir", 250.0, t)
+    assert values(d.on_value("H / hdg", 200.0, t + 1)) == {"derived/awa": 50.0}
+    out = d.on_value("M / dir", 304.0, t + 2)
+    assert values(out) == {"derived/awa": -56.0}
+    assert stamps(out) == {"derived/awa": t + 2}, "the masthead's own time, not the heading's"
+
+
+def test_leeway_blanks_once_under_a_knot_and_comes_back():
+    d = engine({"id": "lw", "op": "leeway", "cog": "G / cog", "hdg": "H / hdg", "sog": "G / sog"})
+    t = local(2026, 10, 27, 14)
+    d.on_value("G / cog", 95.0, t)
+    d.on_value("H / hdg", 90.0, t)
+    assert values(d.on_value("G / sog", 5.0, t)) == {"derived/lw": 5.0}
+    assert values(d.on_value("G / sog", 0.4, t + 1)) == {"derived/lw": None}, "blanked, once"
+    assert d.on_value("G / sog", 0.3, t + 2) == []
+    assert values(d.on_value("G / sog", 3.0, t + 3)) == {"derived/lw": 5.0}
+
+
+def test_heel_is_positive_to_starboard_and_needs_gravity():
+    d = engine({"id": "heel", "op": "heel", "y": "I / acc 1", "z": "I / acc 2", "decimals": 0})
+    t = local(2026, 10, 27, 14)
+    d.on_value("I / acc 1", 0.17, t)
+    assert values(d.on_value("I / acc 2", 0.985, t)) == {"derived/heel": 10.0}
+    assert values(d.on_value("I / acc 2", 0.1, t + 1)) == {"derived/heel": None}
+
+
+def test_nav_ops_name_their_missing_inputs():
+    with pytest.raises(ValueError, match="twa needs hdg"):
+        engine({"id": "x", "op": "twa", "twd": "a"})
+    with pytest.raises(ValueError, match="measured, or awd and hdg"):
+        engine({"id": "x", "op": "awa", "awd": "a"})
+    with pytest.raises(ValueError, match="heel needs y, z"):
+        engine({"id": "x", "op": "heel"})
+
+
+def test_battery_energy_splits_by_sign():
+    d = dv.load(ENCHANTEE)
+    t = local(2026, 10, 27, 14)
+    d.on_value("Main Battery / power", -1200.0, t)
+    out = values(d.on_value("Main Battery / power", -1200.0, t + 30))
+    assert out["derived/battery/discharge/now"] == 1200.0
+    assert out["derived/battery/charge/now"] == 0.0
+    assert out["derived/battery/out/today"] == 10.0, "1200 W for 30 s"
+    assert out["derived/battery/in/today"] == 0.0
+
