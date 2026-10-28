@@ -142,6 +142,7 @@ body.night {
      bank is the one line on this page it is worth running aground over. */
   --mark-context: #8a4038;
   --mark-halo:    #000000;
+  --waypoint:     #ff5a48;
 }
 
 /* The map by day. The band fills come from depth.json itself, so gen_depth.py owns the
@@ -186,6 +187,7 @@ body {
   --nodata: #9ea4a8;
   --mark-context: #4a5560;
   --mark-halo: #ffffff;
+  --waypoint: #c2187a;
   /* Mark labels are dark on this page, not white.
      The race screen is a black screen and --ink is white for it, which is right there and
      wrong here: the chart is pale, the >4 m band covers most of it at #d8e9f5, and white
@@ -271,6 +273,11 @@ body.mode-prestart #panel-prestart,
 body.mode-racing   #panel-racing,
 body.mode-finished #panel-finished,
 body.mode-detail   #panel-detail { display: flex; }
+/* Steering to a chart waypoint on the racing panel (DESIGN 15). What a race has and a
+   waypoint does not: elapsed time, the leg table and the shorten flag. */
+body.passage #elapsed-row,
+body.passage #detail,
+body.passage #shorten { display: none; }
 
 /* --- the readings --------------------------------------------------- */
 
@@ -886,6 +893,23 @@ body.night #chart .band-deepest   { fill: var(--band-deepest); }
 #chart .boat { fill: var(--boat); stroke: var(--mark-halo); stroke-width: 1.5; }
 #chart .boat-vector { stroke: var(--boat); stroke-width: 2.5; fill: none; }
 #layer-boat[hidden] { display: none; }
+
+/* The chart waypoint and the line from the boat to it (DESIGN 15). Magenta, the colour a
+   paper chart and every plotter draw a planned track in, so it reads as "where we are
+   going" and cannot be taken for a leg of a course, a no-cross line or a depth contour.
+   At night it is the bearing's red, the brightest the theme allows. */
+#chart .waypoint-line {
+  stroke: var(--waypoint); stroke-width: 3; fill: none; stroke-linecap: round;
+}
+#chart .waypoint-ring { fill: none; stroke: var(--waypoint); stroke-width: 3; }
+#chart .waypoint-cross { fill: none; stroke: var(--waypoint); stroke-width: 2; }
+#map-notice {
+  position: absolute; left: 50%; top: 12px; -webkit-transform: translateX(-50%);
+  transform: translateX(-50%); padding: 10px 14px; border-radius: 6px;
+  background: var(--panel); color: var(--warn); border: 1px solid var(--warn);
+  font-size: 18px; font-weight: 700; white-space: nowrap; z-index: 5;
+}
+#map-notice[hidden] { display: none; }
 
 /* The snail trail: everywhere the boat has been since local midnight, coloured by speed
    over ground (DESIGN 12.6).

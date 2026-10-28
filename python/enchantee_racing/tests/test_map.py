@@ -95,7 +95,7 @@ def test_the_layers_are_in_the_order_design_12_states():
     wanted = ["layer-bands", "layer-contours", "layer-land",
               "layer-structures", "layer-navaids", "layer-navaid-labels",
               "layer-lines", "layer-marks", "layer-trail",
-              "layer-course", "layer-boat"]
+              "layer-course", "layer-waypoint", "layer-boat"]
     found = re.findall(r'<g id="(layer-[\w-]+)"', page)
     assert found == wanted, found
     # The trail is history and the course and the boat are now, so it goes under both. A
@@ -197,9 +197,12 @@ def test_the_map_projects_through_the_shared_transcription():
     # would be a second projection is the geodesy.
     for tell in ("6378137", "WGS84", "metresPerDegree", "Math.pow(w", "298.257"):
         assert tell not in code, "%s in map.js means a second projection" % tell
-    # Only project() turns a coordinate into a point, and only geo.js is asked.
-    assert code.count("Geo.") == code.count("Geo.enu("), \
+    # Only project() turns a coordinate into a point, and only unproject() turns a point
+    # held on the chart back into a coordinate (DESIGN 15). geo.js is asked for both and
+    # for nothing else.
+    assert code.count("Geo.") == code.count("Geo.enu(") + code.count("Geo.fromEnu("), \
         "map.js reaches into geo.js for more than the projection"
+    assert code.count("Geo.enu(") == 1 and code.count("Geo.fromEnu(") == 1
     # And the y flip happens exactly once, or the map is mirrored north to south.
     assert code.count("-p.n") == 1, "the y inversion belongs in project() and nowhere else"
 

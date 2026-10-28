@@ -57,6 +57,9 @@ class Config(NamedTuple):
     min_sog_for_cog_kt: float = 0.7
     early_start_warning_s: float = 60.0
     breach_end_margin_m: float = 15.0
+    waypoint_arrival_radius_m: float = 30.0
+    """Read by engine/waypoint.py, not here. It shares the rest of this tuning (arming
+    radius, astern fixes, min SOG) so it lives with it rather than in a second document."""
 
     @classmethod
     def from_document(cls, document: Optional[Mapping[str, Any]]) -> "Config":

@@ -2990,3 +2990,95 @@ everything still outstanding needs either the boat powered up or a device in han
   is what race.py asks for; the risk is a later change steering the HUD to a waypoint or
   auto-advancing on one. If this is picked up, that wants a test and not just good
   intentions.
+
+## 15. Chart waypoint
+
+Wayfinding for a passage rather than a race, asked for with Rottnest in mind: motor or sail
+out of Fremantle Harbour without help, then pick a point and steer to it. The example is
+the run across to Thomson Bay, which has to clear Kingston Reef to the north.
+
+### What was asked for, and what that settled
+
+- **Picked from the chart by holding on it.** No list of saved waypoints and nothing
+  remembered between passages: picking from the chart each time is simpler than managing a
+  list. One waypoint at a time, and a new hold replaces it.
+- **Shown exactly like a race mark.** The race screen's racing panel, the same elements and
+  the same formatters: name, distance with the 500 m switch to nautical miles, bearing, COG
+  beside it, and off the bow signed port negative (9.2 to 9.4).
+- **A straight line from the boat to it on the chart**, so a reef or a shoal on the way is
+  in plain sight. No routing. The crew picks the point and judges the water, and
+  `scripts/navigable_distance.py` stays a bench tool.
+- **On arrival it stops.** The waypoint clears and the bearing goes with it.
+
+### How it fits
+
+`engine/waypoint.py` is pure, like `race.py`. `navigation()` returns exactly the shape of
+`race.navigation()`, with the `next_*` fields always None, and a test pins the two key sets
+together; "exactly like a race mark" is a property of the race screen drawing both with one
+code path, not of a copy. The store holds the one waypoint under the one lock and evaluates
+arrival on every fix *before* the race-context check, the same placement and the same
+reason as the trail: a passage has no course selected. `/api/state` carries it as
+`waypoint: {lat, lon, name, set_at, nav}` or null, and `POST /api/waypoint` takes
+`{lat, lon}` or `{clear: true}`.
+
+**Arrival** is the rounding test of 11.2, reusing its tuning from `race.json`: within
+`arming_radius_m`, then abaft the beam for `astern_fixes` fixes above `min_sog_for_cog_kt`.
+Plus `waypoint_arrival_radius_m`, 30 m, because a waypoint may be where the boat stops, a
+mooring, and a stopped boat never puts anything astern. Sailing past wide of the arming
+radius does not clear it: that was not reaching it.
+
+**The name** is borrowed from the nearest navaid or course mark within 250 m, display only.
+The point is never snapped to the feature. A cardinal marks a hazard, and the stand-off
+beside it is what the crew chose. Kingston Reef North Cardinal Buoy is passed on its north
+side; a waypoint dropped *on* it would be a bearing onto the reef.
+
+### Racing wins
+
+During prestart and racing the hold is refused with a 409 and a one-line notice on the
+map, and choosing a course clears any waypoint. Two targets on the mark panel is the
+failure mode, and the crew steering to the course is the one that matters then. This is
+also what keeps the warning at the end of 14 true: nothing here steers to a waypoint
+inside a race, and `engine/race.py` is untouched. Idle and finished are both open to a
+waypoint, and on the race screen it takes the racing panel with `body.passage`, which hides
+elapsed, Details and S and turns Next mark into **Clear**. Back goes to the course list, as
+it does off leg 1, and the Race button there comes back.
+
+### The hold
+
+One finger still for 600 ms, within 12 px, drops the waypoint. More movement than that is a
+pan and cancels it, and a second finger cancels it, so a pinch never drops anything. Touch
+events and `setTimeout`, not Pointer Events or `contextmenu`, for the iOS 12 reason in 9.8.1.
+The point goes back through `Geo.fromEnu`, a transcription of `nav.latlon_from_enu` checked
+against it numerically wherever there is a JavaScript engine, so the map still holds no
+geodesy of its own (12.1). The waypoint is drawn the moment the hold fires and replaced by
+the server's on the next poll.
+
+Precision is the finger's: at the Everything extent a pixel is tens of metres. Zoom in to
+drop a stand-off near a hazard, which is also where the navaids reappear.
+
+Magenta by day, the colour charts and plotters use for a planned track, so it cannot be
+taken for a leg, a no-cross line or a contour. The bearing's red at night.
+
+On the map strip a waypoint selects the racing set of four, with distance and off the bow
+from the waypoint.
+
+### Fitting a long name
+
+Course mark names are short: median 9 characters, longest "SoPYC Start Outer" at 17. The
+long ones are what a waypoint borrows from the navaid register, median 41 and up to 68,
+and they were cut off with an ellipsis on the race screen. Agreed with the owner from a
+mockup of real names, three changes:
+
+- **A borrowed name loses its region**, by the map's own rule: the part after the last
+  " - " ("Rottnest Island - Thomson Bay Lit South Cardinal Buoy" becomes "Thomson Bay Lit
+  South Cardinal Buoy"). Uncapped, unlike a map label. A race's own mark names never pass
+  through this; the race screen takes them from the course.
+- **The race screen fits the name.** One line if it fits at 80% of the stylesheet's size or
+  more; otherwise two lines at the largest size that fits, down to 55%; past that, two lines
+  at 55% ending in an ellipsis. Every course mark fits on one line, the longest at 84%.
+  Shortened navaid names typically take two lines at 80 to 85%, in space under the name that
+  was empty. The worst in the register, 51 characters, lands at 58%. Lines are counted from
+  the box height: a descender overhangs the last line and scrollHeight reads it as a third.
+  The label reads WAYPOINT for a waypoint, matching WPT on GAR and "waypoint" on the HUD.
+- **The classic HUD shrinks before it ellipsises**, to the same 55% floor, on one line only:
+  that row has no room for a second. GAR already fitted its name to the band.

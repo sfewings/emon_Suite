@@ -37,6 +37,8 @@
     marks: document.getElementById("layer-marks"),
     trail: document.getElementById("layer-trail"),
     course: document.getElementById("layer-course"),
+    waypoint: document.getElementById("layer-waypoint"),
+    notice: document.getElementById("map-notice"),
     boat: document.getElementById("layer-boat"),
     zoom: document.getElementById("map-zoom"),
     readout: document.getElementById("map-readout"),
@@ -173,6 +175,13 @@
     // conventions meet, this is the only place they can be crossed over.
     var p = Geo.enu(origin, { lat: lonLat[1], lon: lonLat[0] });
     return [p.e, -p.n];
+  }
+
+  // The inverse, for a point the crew holds on the chart. geo.js again rather than a
+  // second copy of the geodesy, so it is exact against project(): x is east, y is south,
+  // and this undoes the one flip project() makes.
+  function unproject(x, y) {
+    return Geo.fromEnu(origin, x, -y);
   }
 
   // --- turning GeoJSON into path data -------------------------------------------------
@@ -493,12 +502,83 @@
                    w: from.w, h: from.h });
   }
 
+  // --- hold to drop a waypoint (DESIGN 15) ---------------------------------------------
+  //
+  // One finger held still for HOLD_MS drops a waypoint where it is. "Still" is within
+  // HOLD_SLOP_PX, because a wet finger on a moving boat is never perfectly still, and
+  // anything more than that is a pan and cancels the hold. A second finger cancels it
+  // too, so a pinch that starts with one finger a moment early never drops anything.
+  //
+  // Touch events and setTimeout, not Pointer Events or contextmenu, for the reason the
+  // gestures below use touch events: the iPad is on iOS 12.
+  var HOLD_MS = 600;
+  var HOLD_SLOP_PX = 12;
+  var hold = null;            // {timer, x, y}
+
+  function startHold(clientX, clientY) {
+    cancelHold();
+    hold = { x: clientX, y: clientY,
+             timer: setTimeout(function () { fireHold(clientX, clientY); }, HOLD_MS) };
+  }
+
+  function cancelHold() {
+    if (hold) { clearTimeout(hold.timer); hold = null; }
+  }
+
+  function holdMoved(clientX, clientY) {
+    if (!hold) return;
+    var dx = clientX - hold.x;
+    var dy = clientY - hold.y;
+    if (dx * dx + dy * dy > HOLD_SLOP_PX * HOLD_SLOP_PX) cancelHold();
+  }
+
+  function fireHold(clientX, clientY) {
+    hold = null;
+    // The finger is now a waypoint, not a pan: lifting it must not fling the chart.
+    gesture = null;
+    var at = clientToUser(clientX, clientY);
+    if (!at || !origin) return;
+    var ll = unproject(at.x, at.y);
+    // Drawn at once rather than after the round trip, so the crew sees the hold land. The
+    // next poll replaces it with whatever the server holds, which is the truth.
+    pendingWaypoint = { lat: ll.lat, lon: ll.lon, name: null, nav: null };
+    drawWaypoint(lastState);
+    fetch(base + "/api/waypoint", {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: ll.lat, lon: ll.lon })
+    })
+      .then(function (r) {
+        if (r.status === 409) {
+          pendingWaypoint = null;
+          drawWaypoint(lastState);
+          notice("Racing: no waypoint while a race is on");
+        }
+      })
+      .catch(function () {
+        pendingWaypoint = null;
+        drawWaypoint(lastState);
+        notice("Waypoint not set: no connection");
+      });
+  }
+
+  var noticeTimer = null;
+  function notice(text) {
+    if (!el.notice) return;
+    el.notice.textContent = text;
+    el.notice.removeAttribute("hidden");
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(function () { el.notice.setAttribute("hidden", "hidden"); }, 3000);
+  }
+
   function onTouchStart(event) {
     if (!view) return;
     if (event.touches.length === 1) {
       gesture = { kind: "pan", x: event.touches[0].clientX, y: event.touches[0].clientY,
                   from: view };
+      startHold(event.touches[0].clientX, event.touches[0].clientY);
     } else if (event.touches.length === 2) {
+      cancelHold();
       gesture = { kind: "pinch", spread: spread(event.touches),
                   mid: midpoint(event.touches) };
     }
@@ -506,6 +586,7 @@
   }
 
   function onTouchMove(event) {
+    if (event.touches.length === 1) holdMoved(event.touches[0].clientX, event.touches[0].clientY);
     if (!gesture || !view) return;
     event.preventDefault();
     if (gesture.kind === "pan" && event.touches.length === 1) {
@@ -534,6 +615,7 @@
   }
 
   function onTouchEnd(event) {
+    cancelHold();
     // A finger lifted out of a pinch leaves one down, which should become a pan rather
     // than nothing: otherwise the map sticks until the crew lets go completely.
     if (event.touches.length === 1) {
@@ -555,13 +637,15 @@
     el.chart.addEventListener("mousedown", function (e) {
       if (!view) return;
       gesture = { kind: "pan", x: e.clientX, y: e.clientY, from: view };
+      startHold(e.clientX, e.clientY);
       e.preventDefault();
     });
     window.addEventListener("mousemove", function (e) {
+      holdMoved(e.clientX, e.clientY);
       if (!gesture || gesture.kind !== "pan" || !view) return;
       panBy(e.clientX - gesture.x, e.clientY - gesture.y, gesture.from);
     });
-    window.addEventListener("mouseup", function () { gesture = null; });
+    window.addEventListener("mouseup", function () { cancelHold(); gesture = null; });
     el.chart.addEventListener("wheel", function (e) {
       if (!view) return;
       e.preventDefault();
@@ -792,7 +876,7 @@
     // The overlay is sized in pixels too, so a change of scale has to redraw it. Cheap:
     // a dozen nodes against the chart's sixteen thousand coordinate pairs, which is the
     // whole reason the chart is built once and this is not.
-    if (lastState) { drawCourse(lastState); drawBoat(lastState); }
+    if (lastState) { drawCourse(lastState); drawBoat(lastState); drawWaypoint(lastState); }
   }
 
   // --- the layers, drawn bottom first (DESIGN 12) --------------------------------------
@@ -1064,6 +1148,47 @@
     });
   }
 
+  // The waypoint, and a straight line to it from the boat (DESIGN 15). The line is the
+  // point of drawing it: it is the track the bearing on the race screen steers, laid over
+  // the chart, so a reef or a shoal on the way is in plain sight before the boat is on it.
+  // Straight, deliberately, with no routing round anything: the crew picks the point and
+  // judges the water, and the chart shows them what they picked.
+  var pendingWaypoint = null;   // a hold not yet confirmed by a poll
+
+  function drawWaypoint(state) {
+    if (!el.waypoint) return;
+    clear(el.waypoint);
+    var wp = pendingWaypoint || (state ? state.waypoint : null);
+    if (!wp || !origin) return;
+    var at = project([wp.lon, wp.lat]);
+    var mpp = metresPerPixel();
+
+    var fix = state && state.position;
+    if (fix && fix.v && !fix.stale) {
+      var boat = project([fix.v.lon, fix.v.lat]);
+      add(el.waypoint, "line", {
+        x1: boat[0].toFixed(1), y1: boat[1].toFixed(1),
+        x2: at[0].toFixed(1), y2: at[1].toFixed(1),
+        class: "waypoint-line"
+      });
+    }
+    // A ringed cross, sized in pixels like every symbol here, so it stays readable at the
+    // Everything extent where a passage to Rottnest is planned.
+    var r = WAYPOINT_PX.ring * mpp;
+    var arm = WAYPOINT_PX.arm * mpp;
+    add(el.waypoint, "circle", { cx: at[0].toFixed(1), cy: at[1].toFixed(1),
+                                 r: r.toFixed(1), class: "waypoint-ring" });
+    add(el.waypoint, "path", {
+      d: "M" + (at[0] - arm).toFixed(1) + " " + at[1].toFixed(1) +
+         "L" + (at[0] + arm).toFixed(1) + " " + at[1].toFixed(1) +
+         "M" + at[0].toFixed(1) + " " + (at[1] - arm).toFixed(1) +
+         "L" + at[0].toFixed(1) + " " + (at[1] + arm).toFixed(1),
+      class: "waypoint-cross"
+    });
+  }
+
+  var WAYPOINT_PX = { ring: 11, arm: 16 };
+
   function midOfLine(lines) {
     var a = project([lines.start_finish.inner.lon, lines.start_finish.inner.lat]);
     var b = project([lines.start_finish.outer.lon, lines.start_finish.outer.lat]);
@@ -1324,6 +1449,9 @@
   function whichSet(state) {
     if (!state) return "idle";
     if (state.race && state.race.mode === "racing") return "racing";
+    // Steering to a waypoint is steering to a mark, so it gets the racing strip: distance
+    // and off-the-bow, from the waypoint's numbers (DESIGN 15).
+    if (state.waypoint) return "racing";
     if (state.motor) return "motor";
     return "idle";
   }
@@ -1349,7 +1477,8 @@
   // dim. Blank rather than dim when the number cannot be known at all, since a dimmed
   // number still reads as a number in spray (DESIGN 9.5).
   function reading(state, key) {
-    var nav = state && state.race ? state.race.nav : null;
+    var nav = state && state.race && state.race.mode === "racing" ? state.race.nav
+            : (state && state.waypoint ? state.waypoint.nav : null);
     if (key === "dist") {
       if (!nav || nav.distance_m === null || nav.distance_m === undefined) {
         return { text: BLANK, unit: "m" };
@@ -1456,6 +1585,9 @@
         lastState = state;
         onState(state);
         drawBoat(state);
+        // The server is the truth once a poll has answered, whatever was drawn on the hold.
+        pendingWaypoint = null;
+        drawWaypoint(state);
         // After drawBoat, which is what works out where the boat now is, and before the
         // readout, which does not care about the view (DESIGN 12.7).
         keepBoatInView();

@@ -668,7 +668,9 @@ def _panel_children(page):
 # or the things a hand reaches for, which never do. Every child must be one or the other:
 # a child that is neither shrinks by the default flex rules, which shrink everything a
 # little and overflow anyway, and then the bottom of the column is lost behind the nav.
-GIVES_WAY = {".grow", "#cards", "#detail-legs", ".row"}
+GIVES_WAY = {".grow", "#cards", "#detail-legs", ".row",
+             # the elapsed reading, a .grow with an id so a waypoint can hide it (DESIGN 15)
+             "#elapsed-row"}
 NEVER_SHRINKS = {".controls", "#series", "#secondary", "#final-secondary",
                  "#detail-head", "#detail-notes"}
 

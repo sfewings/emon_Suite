@@ -21,7 +21,7 @@
   ["pip", "notice", "countdown", "line-distance", "line-unit", "line-time", "mark-name",
    "distance", "distance-unit", "bearing", "cog", "relative", "elapsed", "secondary",
    "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake", "quiet",
-   "mark-round", "nav", "resume", "next",
+   "mark-round", "mark-label", "nav", "resume", "next", "back",
    // the first mark, shown before the start as well as during the race (DESIGN 9.2)
    "pre-mark", "pre-round", "pre-distance", "pre-unit", "pre-bearing",
    // the course detail page (DESIGN 9.11)
@@ -100,6 +100,21 @@
       .then(function () { inFlight = false; });
   }
 
+  // Clearing a waypoint is its own request, not post(): it carries no race, and the bearing
+  // has to go from this screen at once rather than on the next poll.
+  function clearWaypoint() {
+    latest.waypoint = null;
+    clearedHere = true;
+    render({ race: latest.race, waypoint: null });
+    wake();
+    fetch(base + "/api/waypoint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear: true }),
+      cache: "no-store"
+    }).catch(function () {});
+  }
+
   // Keep same-app navigation inside the iOS standalone context. See the call site.
   function keepInApp(root) {
     Array.prototype.forEach.call(root.querySelectorAll("a[href]"), function (a) {
@@ -125,6 +140,9 @@
   // reason Shorten does: an accidental tap ends a race, and a POST that has arrived is too
   // late to ask about.
   on("next", function () {
+    // Steering to a waypoint, this button is Clear: the one thing to do with a waypoint
+    // other than reach it (DESIGN 15).
+    if (mode === "waypoint") { clearWaypoint(); return; }
     var r = latest.race;
     if (r && r.legs && r.leg >= r.legs - 1) {
       if (!window.confirm("Finish the race now?")) return;
@@ -137,7 +155,9 @@
   // (DESIGN 9.6).
   on("back", function () {
     var r = latest.race;
-    if (r && r.leg === 0) {
+    // From a waypoint, as from leg 1: a view change to the course list, and the waypoint
+    // carries on behind it with the Race button there coming back to it.
+    if (mode === "waypoint" || (r && r.leg === 0)) {
       viewing = "idle";
       showPanel();
       wake();
@@ -216,7 +236,10 @@
   // Race is this whole page, so its nav entry means "show whatever panel the race is
   // actually in" and clears any view the crew has tapped away to (DESIGN 9.6).
   function panelFor(name) {
-    return name === "race" ? (mode || "idle") : name;
+    var panel = name === "race" ? (mode || "idle") : name;
+    // A waypoint is steered to on the racing panel itself, so it reads exactly like a race
+    // mark because it is drawn by the same markup (DESIGN 15).
+    return panel === "waypoint" ? "racing" : panel;
   }
 
   var PANELS = ["idle", "prestart", "racing", "finished", "detail"];
@@ -236,6 +259,13 @@
       document.body.classList.remove("mode-" + name);
     });
     document.body.classList.add("mode-" + panel);
+    // Which of the racing panel's controls and rows apply: a waypoint has no elapsed time,
+    // no leg table and no shortened course, and its Next is Clear.
+    document.body.classList.toggle("passage", panel === "racing" && mode === "waypoint");
+    el["mark-label"].textContent = mode === "waypoint" ? "waypoint" : "next mark";
+    // A panel that was hidden had no width to fit the name to.
+    nameFitted = null;
+    fitName();
 
     // The way back into a running race, shown only when there is one to go back to.
     el.resume.hidden = !(mode && mode !== "idle");
@@ -448,10 +478,104 @@
       });
   }
 
+  // --- the mark name, fitted (DESIGN 9.2, 15) ---------------------------
+  //
+  // One line if it fits at NAME_ONE_LINE of the stylesheet's size or larger. Otherwise up to
+  // two lines, at the largest size that fits, down to NAME_FLOOR. Past that, two lines at the
+  // floor ending in an ellipsis. Every course mark fits on one line, the longest at 84%; a
+  // shortened navaid name for a waypoint typically lands on two lines at 80 to 85%, using
+  // space under the name that was already empty.
+  //
+  // Measured rather than estimated from the character count, because the glyphs vary and
+  // the rounding arrow shares the line. Only when the text or the width changes, since this
+  // runs on every poll. Lines are counted from the box height, not scrollHeight: a
+  // descender overhangs the last line by a few pixels and would read as a third line.
+  var NAME_ONE_LINE = 0.8, NAME_FLOOR = 0.55, NAME_STEP = 0.02, NAME_LINE_HEIGHT = 1.05;
+  var nameFitted = null;
+
+  function setName(text) {
+    var node = el["mark-name"];
+    if (node.textContent !== text) node.textContent = text;
+    fitName();
+  }
+
+  function fitName() {
+    var node = el["mark-name"];
+    var line = node.parentNode;
+    var arrow = el["mark-round"];
+    var room = line.clientWidth - (arrow.hidden ? 0 : arrow.offsetWidth + 12);
+    if (room <= 0) return;                      // the panel is not on show; fit it later
+    var key = node.textContent + "|" + room + "|" + (arrow.hidden ? 0 : 1);
+    if (key === nameFitted) return;
+    nameFitted = key;
+
+    var s = node.style;
+    s.fontSize = ""; s.whiteSpace = ""; s.lineHeight = ""; s.maxWidth = "";
+    s.display = ""; s.webkitLineClamp = ""; s.webkitBoxOrient = "";
+    var base = parseFloat(window.getComputedStyle(node).fontSize);
+    var f;
+    for (f = 1; f >= NAME_ONE_LINE - 1e-9; f -= NAME_STEP) {
+      s.fontSize = (base * f).toFixed(1) + "px";
+      if (node.scrollWidth <= room) return;
+    }
+    s.whiteSpace = "normal";
+    s.lineHeight = String(NAME_LINE_HEIGHT);
+    s.maxWidth = room + "px";
+    for (f = 1; f >= NAME_FLOOR - 1e-9; f -= NAME_STEP) {
+      var px = base * f;
+      s.fontSize = px.toFixed(1) + "px";
+      if (Math.round(node.clientHeight / (px * NAME_LINE_HEIGHT)) <= 2 &&
+          node.scrollWidth <= room) return;
+    }
+    s.fontSize = (base * NAME_FLOOR).toFixed(1) + "px";
+    s.display = "-webkit-box";
+    s.webkitBoxOrient = "vertical";
+    s.webkitLineClamp = "2";
+  }
+
+  window.addEventListener("resize", function () { nameFitted = null; fitName(); });
+  window.addEventListener("orientationchange", function () {
+    setTimeout(function () { nameFitted = null; fitName(); }, 250);
+  });
+
   // --- rendering --------------------------------------------------------
 
-  var latest = { race: null };
+  var latest = { race: null, waypoint: null };
   var mode = null;
+  var clearedHere = false;     // this device pressed Clear, so no "reached" notice
+
+  // The modes in which the race owns the racing panel. Outside them a waypoint may.
+  var RACE_LIVE = { prestart: true, racing: true };
+
+  // Degrees and decimal minutes, the way a plotter and a paper chart give a position, so
+  // the waypoint can be checked against either.
+  function dm(value, pos, neg) {
+    var hemi = value < 0 ? neg : pos;
+    var a = Math.abs(value);
+    var d = Math.floor(a);
+    var m = (a - d) * 60;
+    return d + "\u00b0" + m.toFixed(2) + "\u2032" + hemi;
+  }
+
+  // The racing panel, filled from the waypoint. The same elements the race fills and the
+  // same formatters, so bearing, distance and off the bow read identically (DESIGN 15).
+  function renderWaypoint(wp) {
+    setName(wp.name || "Waypoint");
+    setRounding(el["mark-round"], null);
+    if (wp.nav) {
+      distance(wp.nav.distance_m, el.distance, el["distance-unit"]);
+      el.bearing.textContent = degrees(wp.nav.bearing);
+      el.relative.textContent = signed(wp.nav.relative);
+    } else {
+      el.distance.textContent = BLANK;
+      el.bearing.textContent = BLANK;
+      el.relative.textContent = BLANK;
+    }
+    el.next.textContent = "Clear";
+    var bits = ["waypoint <b>" + dm(wp.lat, "N", "S") + " " + dm(wp.lon, "E", "W") + "</b>"];
+    if (wp.nav && wp.nav.leg_type) bits.push("<b>" + wp.nav.leg_type + "</b>");
+    el.secondary.innerHTML = bits.join(" · ");
+  }
 
   // Show one of the two turn symbols, or neither. Used for the next mark while racing and
   // for the first mark before the start, so the same reading looks the same in both places.
@@ -471,6 +595,17 @@
   function render(data) {
     var r = data.race;
     latest.race = r;
+    // A POST answers with the race alone, so the waypoint carries over from the last poll.
+    var wp = data.hasOwnProperty("waypoint") ? data.waypoint : latest.waypoint;
+    latest.waypoint = wp || null;
+    var raceMode = r ? r.mode : "idle";
+    // A live race always wins the panel; the server refuses a waypoint during one and
+    // clears it when a course is chosen, so this is belt and braces (DESIGN 15).
+    if (wp && !RACE_LIVE[raceMode]) {
+      setMode("waypoint");
+      renderWaypoint(wp);
+      return;
+    }
     if (r === null || r === undefined) {
       setMode("idle");
       return;
@@ -504,7 +639,7 @@
     // racing. nav is null whenever the numbers cannot be known: no fix, or a fix past the
     // 5 s cutoff. Blanked rather than dimmed, because a dimmed number still reads as a
     // number in spray (DESIGN 9.5).
-    el["mark-name"].textContent = r.leg_name || BLANK;
+    setName(r.leg_name || BLANK);
     // The rounding side sits next to the mark name, as the chart's turn arrow rather than
     // the word, and comes from the leg rather than the mark's default so a course that
     // deviates from the register still reads correctly (DESIGN 9.2). The class picks which
@@ -606,6 +741,18 @@
     previous = r;
   }
 
+  // The waypoint going away by itself is arrival: the server clears it when the boat
+  // reaches or passes it. Said on every device, as the race notices are, except the one
+  // whose crew pressed Clear and knows why it went.
+  var hadWaypoint = false;
+
+  function announceWaypoint(wp) {
+    var has = !!wp;
+    if (hadWaypoint && !has && !clearedHere) notice("Waypoint reached");
+    if (has || !hadWaypoint) clearedHere = false;
+    hadWaypoint = has;
+  }
+
   // A POST tells the device that pressed the button what it caused, which is worth showing
   // immediately rather than on its next poll. Only the early-start warning needs saying
   // out loud; the rest are visible in the state.
@@ -633,6 +780,7 @@
         if (window.Theme) window.Theme.apply(state.theme);
         if (window.LogDot) window.LogDot.apply(state.recording);
         announceChanges(state.race);
+        announceWaypoint(state.waypoint);
       })
       .catch(function () { if (++failures > 3) el.pip.classList.add("down"); });
   }

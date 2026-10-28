@@ -29,6 +29,7 @@ import time
 from typing import Any, Callable, Mapping, NamedTuple, Optional
 
 from engine import nav, race
+from engine import waypoint as waypoint_module
 
 STALE_S = 15.0
 """Wind and motor readings are dimmed past this age (DESIGN 9.5). Applied by the
@@ -194,6 +195,12 @@ class Store:
         # sun sets on the whole boat at once, so a theme held per browser would have to be
         # set three times and would still be lost by walking between screens.
         self._theme = "day"
+        # The waypoint dropped on the chart, or None (DESIGN 15). Server state for the same
+        # reason as the theme: the hold happens on the map and the bearing is read on the
+        # race screen, often on a different device.
+        self._waypoint: Optional[waypoint_module.Waypoint] = None
+        self._nav_config = race.Config()
+        self._waypoint_names: list = []
 
     def set(self, key: str, value: Any, ts: Optional[float] = None) -> None:
         """Record a reading. ts defaults to now, and is the arrival time, not fix time."""
@@ -239,6 +246,7 @@ class Store:
         state["heel"] = derive_heel(snapshot, now)
         state["recording"] = derive_recording(snapshot, now)
         state["race"] = self.race_payload(now)
+        state["waypoint"] = self.waypoint_payload(now)
         state["theme"] = self.theme()
         return state
 
@@ -336,6 +344,21 @@ class Store:
             # empty exactly when it is the only thing on the chart.
             self._append_trail(position, now)
 
+            # Also before the context check, and for the same reason as the trail: a
+            # passage to Rottnest has no course selected. Arrival clears the waypoint, and
+            # with it the bearing on every screen.
+            if self._waypoint is not None:
+                cog = self._values.get("cog")
+                sog = self._values.get("sog")
+                fix = race.Fix(
+                    position=nav.as_latlon(position),
+                    ts=now,
+                    cog=cog.v if cog and isinstance(cog.v, (int, float)) else None,
+                    sog=sog.v if sog and isinstance(sog.v, (int, float)) else None,
+                )
+                self._waypoint, _arrived = waypoint_module.on_fix(
+                    self._waypoint, fix, self._nav_config)
+
             if self._context is None:
                 return []
 
@@ -353,6 +376,48 @@ class Store:
             self._race = state
             self._queue(events + more)
             return events + more
+
+    # --- the waypoint ------------------------------------------------------
+
+    def set_waypoint_config(self, config: race.Config, names=()) -> None:
+        """The arrival tuning, and the (name, position) pairs a waypoint borrows a name from.
+
+        Separate from the race context because a waypoint needs both with no course chosen.
+        """
+        with self._lock:
+            self._nav_config = config
+            self._waypoint_names = list(names)
+
+    def drop_waypoint(self, lat: float, lon: float) -> Optional[dict]:
+        """Drop a waypoint, replacing any other. None if refused because a race is live.
+
+        A race and a waypoint would both claim the race screen's mark panel and the line on
+        the chart, so during prestart and racing the hold does nothing. The crew is
+        steering to the course then, and a stray hold on the chart must not change that.
+        """
+        with self._lock:
+            now = self._clock()
+            if self._race.mode in (race.PRESTART, race.RACING):
+                return None
+            position = nav.LatLon(float(lat), float(lon))
+            name = waypoint_module.name_for(position, self._waypoint_names)
+            self._waypoint = waypoint_module.drop(position, name, now)
+        return self.waypoint_payload(now)
+
+    def clear_waypoint(self) -> None:
+        with self._lock:
+            self._waypoint = None
+
+    def waypoint_payload(self, now: Optional[float] = None) -> Optional[dict]:
+        """The waypoint for /api/state, with the race panel's numbers, or None."""
+        with self._lock:
+            now = self._clock() if now is None else now
+            wp = self._waypoint
+            if wp is None:
+                return None
+            fix = self._fix_now(now)
+            twd = self._wind_direction()
+        return waypoint_module.payload(wp, fix, twd)
 
     # --- the trail ---------------------------------------------------------
 
