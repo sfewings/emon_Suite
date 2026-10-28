@@ -1,0 +1,12 @@
+{
+  "title": "28 Shann Street",
+  "theme": "day",
+  "poll": 2,
+  "fresh": 60,
+  "gone": 300,
+  "pages": [
+    {"id": "house", "title": "House"},
+    {"id": "_all", "title": "All feeds"}
+  ],
+  "default": "house"
+}

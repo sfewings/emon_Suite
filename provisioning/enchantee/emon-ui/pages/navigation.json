@@ -1,0 +1,81 @@
+{
+  "title": "Navigation",
+  "cols": 2,
+  "tiles": [
+    {
+      "title": "Course and speed",
+      "domain": "water",
+      "span": 1,
+      "values": [
+        {
+          "feed": "Enchantee-GPS / speed",
+          "label": "SOG",
+          "big": true,
+          "decimals": 1,
+          "tint": "sog"
+        },
+        {
+          "feed": "RaspPi-GPS / speed",
+          "label": "Pi GPS",
+          "decimals": 1,
+          "tint": "sog"
+        },
+        {
+          "feed": "Enchantee-GPS / latitude",
+          "label": "Latitude",
+          "decimals": 6
+        },
+        {
+          "feed": "Enchantee-GPS / longitude",
+          "label": "Longitude",
+          "decimals": 6
+        }
+      ],
+      "cols": 2,
+      "compass": {
+        "needles": [
+          {
+            "feed": "Enchantee-GPS / course",
+            "label": "COG",
+            "tint": "cog"
+          },
+          {
+            "feed": "IMU Sensor / heading",
+            "label": "Heading",
+            "tint": "hdg"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Boat",
+      "domain": "water",
+      "span": 1,
+      "values": [
+        {
+          "feed": "derived/boat/leeway",
+          "label": "Leeway",
+          "big": true,
+          "decimals": 0,
+          "tint": "leeway"
+        },
+        {
+          "feed": "derived/boat/heel",
+          "label": "Heel",
+          "big": true,
+          "decimals": 0,
+          "tint": "heel"
+        }
+      ],
+      "cols": 2,
+      "trail": {
+        "feed": "Enchantee-GPS / speed",
+        "minutes": 30
+      },
+      "lines": [
+        "SOG, 30 min",
+        "Leeway is COG − HDG, so it carries tidal set and compass error; blank under 1 kn"
+      ]
+    }
+  ]
+}

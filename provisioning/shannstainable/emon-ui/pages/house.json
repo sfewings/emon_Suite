@@ -1,0 +1,132 @@
+{
+  "title": "House",
+  "tiles": [
+    {
+      "title": "Power", "domain": "power", "span": 2,
+      "cols": 4,
+      "values": [
+        {"feed": "Power board / Consumed", "label": "Consuming", "big": true, "decimals": 0,
+         "sub": "{derived/consumed/today|0} Wh today"},
+        {"feed": "derived/solar/now", "label": "Producing", "big": true, "decimals": 0, "domain": "solar",
+         "sub": "{derived/solar/today|0} Wh today"},
+        {"feed": "Power board / Imported", "label": "Importing", "decimals": 0,
+         "sub": "{derived/import/today|0} Wh · ${derived/import/cost/today|2}"},
+        {"feed": "derived/export/now", "label": "Exporting", "decimals": 0,
+         "sub": "{derived/export/today|0} Wh · ${derived/export/value/today|2}"}
+      ],
+      "trail": {"feed": "Power board / Consumed", "minutes": 30},
+      "leds": [{"feed": "derived/car/charging", "on": "car charging", "off": ""}],
+      "lines": [
+        "Foregone {derived/foregone/now|0} W · {derived/foregone/today|0} Wh · ${derived/foregone/value/today|2}",
+        "Car {Power board / Car|0} W · {derived/car/today|0} Wh · ${derived/car/cost/today|2} · HWS {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}"
+      ]
+    },
+    {
+      "title": "Batteries", "domain": "batt", "span": 2,
+      "headline": "{Inverter One / batteryCapacity|0} %",
+      "gauge": {"feed": "Inverter One / batteryCapacity", "max": 100},
+      "cols": 4,
+      "values": [
+        {"feed": "derived/battery/power/in", "label": "In", "decimals": 0,
+         "sub": "{derived/battery/in/today|0} Wh today"},
+        {"feed": "derived/battery/power/out", "label": "Out", "decimals": 0,
+         "sub": "{derived/battery/out/today|0} Wh today"},
+        {"feed": "Main battery monitor / Rail", "label": "Rail", "decimals": 2,
+         "sub": "{derived/battery/rail/min|2} to {derived/battery/rail/max|2}"},
+        {"feed": "derived/battery/out/to9am", "label": "Out to 9am", "unit": "Wh", "decimals": 0}
+      ],
+      "leds": [{"feed": "derived/battery/midpoint/over1V", "on": "mid-point over 1 V", "off": "mid-points ok", "bad": true}],
+      "lines": [
+        "Worst mid-points today: B2-1 {derived/battery/midpoint/B2-1/max|2} · B2-2 {derived/battery/midpoint/B2-2/max|2} · B2-3 {derived/battery/midpoint/B2-3/max|2} · B2-4 {derived/battery/midpoint/B2-4/max|2} · B2-5 {derived/battery/midpoint/B2-5/max|2} V"
+      ]
+    },
+    {
+      "title": "Hot water", "domain": "heat",
+      "cols": 2,
+      "values": [
+        {"feed": "Hot water system / Inlet (T6)", "label": "Tank", "big": true, "decimals": 0},
+        {"feed": "derived/hws/showerMinutes", "label": "Showers left", "big": true, "decimals": 0}
+      ],
+      "gauge": {"feed": "derived/hws/showerMinutes", "max": 30},
+      "lines": [
+        "Today {derived/hws/showers/today|0} showers · {derived/hws/showerTime/today|0} min",
+        "{derived/water/hot/today|0} L · {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}"
+      ]
+    },
+    {
+      "title": "Temperature", "domain": "heat",
+      "fresh": 600, "gone": 1800,
+      "cols": 2,
+      "values": [
+        {"feed": "Rain gauge / temperature", "label": "Outside", "decimals": 1},
+        {"feed": "Kitchen / temperature", "label": "Kitchen", "decimals": 1},
+        {"feed": "Upstairs / temperature", "label": "Upstairs", "decimals": 1},
+        {"feed": "House temperatures / Living room slab", "label": "Floor slab", "decimals": 1}
+      ]
+    },
+    {
+      "title": "Inverters", "domain": "batt",
+      "cols": 2,
+      "values": [
+        {"feed": "derived/inverter/power/in", "label": "To batteries", "decimals": 0,
+         "sub": "{derived/inverter/in/today|0} Wh"},
+        {"feed": "derived/inverter/power/out", "label": "From batteries", "decimals": 0,
+         "sub": "{derived/inverter/out/today|0} Wh"}
+      ],
+      "lines": ["PV {Inverter One / pvInputPower|0} · {Inverter Two / pvInputPower|0} · {Inverter Three / pvInputPower|0} W"]
+    },
+    {
+      "title": "Rain", "domain": "rain",
+      "fresh": 900, "gone": 3600,
+      "cols": 2,
+      "values": [
+        {"feed": "derived/rain/today", "label": "Today", "big": true, "decimals": 1},
+        {"feed": "derived/rain/since9am", "label": "Since 9am", "big": true, "decimals": 1},
+        {"feed": "derived/rain/month", "label": "Month", "decimals": 1},
+        {"feed": "derived/rain/year", "label": "Year", "decimals": 1}
+      ]
+    },
+    {
+      "title": "Rain tank", "domain": "water",
+      "headline": "{derived/tank/percent|0} %",
+      "values": [{"feed": "Rain tank and HWS / Rain water tank", "label": "Height", "big": true, "decimals": 0}],
+      "gauge": {"feed": "derived/tank/percent", "max": 100},
+      "lines": ["{derived/tank/daysRemaining|0} days left at {derived/tank/averageUse|0} mm a day"]
+    },
+    {
+      "title": "Leaf", "domain": "car",
+      "fresh": 600, "gone": 21600,
+      "leds": [{"feed": "Leaf / range", "test": "fresh", "on": "home", "off": "away"}],
+      "cols": 3,
+      "values": [
+        {"feed": "Leaf / range", "label": "Range", "big": true, "decimals": 0},
+        {"feed": "derived/car/leaf/kmToday", "label": "Today", "decimals": 0},
+        {"feed": "Leaf / batterySOH", "label": "SOH", "decimals": 0}
+      ],
+      "gauge": {"feed": "Leaf / batteryChargeBars", "max": 12},
+      "lines": ["{Leaf / batteryChargeBars|0} / 12 bars · {Leaf / odometer|0} km"]
+    },
+    {
+      "title": "Outlander", "domain": "car",
+      "fresh": 600, "gone": 21600,
+      "leds": [{"feed": "Outlander / range", "test": "fresh", "on": "home", "off": "away"}],
+      "cols": 3,
+      "values": [
+        {"feed": "Outlander / range", "label": "Range", "big": true, "decimals": 0},
+        {"feed": "derived/car/outlander/kmToday", "label": "Today", "decimals": 0},
+        {"feed": "Outlander / batterySOH", "label": "SOH", "decimals": 0}
+      ],
+      "gauge": {"feed": "Outlander / batteryChargeBars", "max": 12},
+      "lines": ["{Outlander / batteryChargeBars|0} / 12 bars · {Outlander / odometer|0} km"]
+    },
+    {
+      "title": "Dog food", "domain": "rain",
+      "fresh": 900, "gone": 7200,
+      "cols": 2,
+      "values": [
+        {"feed": "derived/dog/lastFed", "label": "Hazel fed", "format": "time"},
+        {"feed": "derived/dog/food/kg", "label": "Remaining", "decimals": 1}
+      ]
+    }
+  ]
+}

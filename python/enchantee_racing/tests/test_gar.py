@@ -162,14 +162,19 @@ def test_heel_goes_stale_with_the_older_axis():
 def test_heel_subscribes_to_the_topics_emon_mqtt_actually_publishes():
     """emon_mqtt names the axes by index, imu/0/acc/0 to 2, not x, y and z. Subscribing to
     acc/y passed every other test here and showed nothing on a replay, so the names are
-    held to pyemonlib's source, which runs on the Pi without its compiled half."""
+    held to pyemonlib's source, which runs on the Pi without its compiled half.
+
+    Since the emon_live_ui merge (27 Oct 2026) emon_mqtt.py is a shim and the legacy
+    topics are built by emon_decoder.py's _imu, one MQTT thunk per field and axis; the wire
+    is unchanged (emon_live_ui's A/B check)."""
     import mqtt_client
-    source = (ROOT.parent / "pyEmon" / "pyemonlib" / "emon_mqtt.py").read_text(encoding="utf-8")
-    imu = re.search(r"def imuMessage\(.*?\n    def ", source, re.S)
-    assert imu, "no imuMessage in emon_mqtt.py"
-    assert re.search(r'for axis in range\(3\):\s*\n\s*self\.mqttClient\.publish\('
-                     r'f"imu/\{payload\.subnode\}/acc/\{axis\}"', imu.group(0)), \
-        "emon_mqtt no longer publishes the accelerometer as imu/<subnode>/acc/<index>"
+    source = (ROOT.parent / "pyEmon" / "pyemonlib" / "emon_decoder.py").read_text(encoding="utf-8")
+    imu = re.search(r"def _imu\(.*?\n(?=def )", source, re.S)
+    assert imu, "no _imu in emon_decoder.py"
+    assert re.search(r'for field, unit in \(\("acc", "g"\)', imu.group(0)), \
+        "emon_decoder's _imu no longer loops over acc"
+    assert re.search(r'for axis in range\(3\):.*?f"imu/\{s\}/\{field\}/\{axis\}"', imu.group(0), re.S), \
+        "emon_decoder no longer publishes the accelerometer as imu/<subnode>/acc/<index>"
     assert mqtt_client.TOPICS["imu/0/acc/1"] == "accy"
     assert mqtt_client.TOPICS["imu/0/acc/2"] == "accz"
 
@@ -232,7 +237,9 @@ def test_heel_is_a_line_across_the_dial_with_fifteen_seconds_fading_behind():
 
     code = _bare((ROOT / "static" / "gar.js").read_text(encoding="utf-8"))
     assert 'heel: new Needle("heel-line")' in code
-    assert ("needles.heel.set(live(d.heel) ? d.heel.v : null, "
+    # An artificial horizon: drawn at minus the heel, line and trail alike, so heeled to
+    # starboard its starboard end rises (DESIGN 9.12).
+    assert ("needles.heel.set(live(d.heel) ? -d.heel.v : null, "
             "d.heel && d.heel.age > STALE_S)") in code
     assert "var HEEL_TRAIL_S = 15;" in code
     assert "paintHeelTrail(d.heel, d.now / 1000)" in code
@@ -241,6 +248,8 @@ def test_heel_is_a_line_across_the_dial_with_fifteen_seconds_fading_behind():
     body = trail.group(1)
     assert "var t = now - heel.age;" in body, "a reading must keep its time across polls"
     assert "(1 - (now - h.t) / HEEL_TRAIL_S)" in body, "the trail does not fade with age"
+    assert '"rotate(" + (-h.v).toFixed(1) + ")"' in body, \
+        "the trail must turn the same way as the horizon line it trails"
 
     css = _bare((ROOT / "static" / "app.css").read_text(encoding="utf-8"))
     for rule in (r"#gar \.heel line\s*\{", r"#gar \.heel-trail line\s*\{"):

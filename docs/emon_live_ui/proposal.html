@@ -1,0 +1,622 @@
+<title>Shann Street Monitor Redesign</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f2f4f6; --panel:#ffffff; --ink:#1a2230; --ink2:#4c5766; --ink3:#8a94a3; --line:#dde2e8; --line2:#eef1f4;
+  --power:#d4761c; --solar:#c9a10a; --water:#2b7cb8; --temp:#c1453a; --batt:#3a8a5b; --car:#6b5bb0; --rain:#5a6f8a;
+  --ok:#2f8f5b; --warn:#c98a12; --bad:#c1453a;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --sans:"IBM Plex Sans",system-ui,Segoe UI,sans-serif;
+  --cond:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#13171d; --panel:#1b2129; --ink:#e8ecf1; --ink2:#aab3bf; --ink3:#6f7a88; --line:#2b333e; --line2:#232a33;
+  --power:#f0953a; --solar:#e6c02a; --water:#4d9ddb; --temp:#e2695e; --batt:#5db07f; --car:#9484d6; --rain:#8a9fbb;
+}}
+:root[data-theme="dark"]{
+  --bg:#13171d; --panel:#1b2129; --ink:#e8ecf1; --ink2:#aab3bf; --ink3:#6f7a88; --line:#2b333e; --line2:#232a33;
+  --power:#f0953a; --solar:#e6c02a; --water:#4d9ddb; --temp:#e2695e; --batt:#5db07f; --car:#9484d6; --rain:#8a9fbb;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;margin:0}
+main{max-width:1080px;margin:0 auto;padding:40px 24px 80px}
+h1{font-family:var(--cond);font-weight:600;font-size:40px;line-height:1.05;margin:0 0 8px;text-wrap:balance;letter-spacing:-.01em}
+h2{font-family:var(--cond);font-weight:600;font-size:26px;margin:56px 0 14px;text-wrap:balance}
+h3{font-family:var(--cond);font-weight:600;font-size:18px;margin:28px 0 8px}
+p,li{max-width:70ch}
+.lede{font-size:17px;color:var(--ink2);max-width:70ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+code{font-family:var(--mono);font-size:.9em;background:var(--line2);padding:1px 5px;border-radius:3px}
+pre{font-family:var(--mono);font-size:13px;line-height:1.5;background:var(--panel);border:1px solid var(--line);padding:14px 16px;overflow-x:auto;border-radius:4px;max-width:100%}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--cond);font-weight:600;color:var(--ink2)}
+.tablewrap{overflow-x:auto}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+.note{border-left:3px solid var(--power);padding:8px 14px;color:var(--ink2);background:var(--panel);margin:18px 0}
+ul{padding-left:20px}
+li{margin:4px 0}
+.dom{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+/* ---- issue list ---- */
+.issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin:20px 0}
+.issue{background:var(--panel);border:1px solid var(--line);padding:14px 16px;border-radius:4px}
+.issue b{font-family:var(--cond);font-size:16px;display:block;margin-bottom:4px}
+.issue span{color:var(--ink2);font-size:14px}
+
+/* ---- mockup ---- */
+.mock{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;margin:18px 0;overflow-x:auto}
+.mockhead{display:flex;justify-content:space-between;align-items:baseline;padding:2px 4px 10px;font-family:var(--cond)}
+.mockhead .t{font-weight:600;font-size:16px}
+.mockhead .s{font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;min-width:720px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px 12px 12px;position:relative;border-top:3px solid var(--c)}
+.tile.w2{grid-column:span 2}
+.tile .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.tile .h b{font-family:var(--cond);font-weight:600;font-size:14px;color:var(--c);letter-spacing:.01em}
+.tile .h i{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--ink3)}
+.kv{display:grid;gap:4px 12px}
+.kv.c2{grid-template-columns:1fr 1fr}.kv.c3{grid-template-columns:1fr 1fr 1fr}.kv.c4{grid-template-columns:repeat(4,1fr)}
+.k{font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em}
+.v{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.1}
+.v small{font-size:12px;color:var(--ink3);margin-left:2px}
+.v.big{font-size:30px}
+.sub{font-family:var(--mono);font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.bar{height:6px;background:var(--line2);border-radius:3px;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--c)}
+.spark{width:100%;height:34px;display:block;margin-top:6px}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:3px;background:var(--line2);color:var(--ink2)}
+.pill.on{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.off{color:var(--ink3)}
+.age{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.age.warn{color:var(--warn)}
+.age.bad{color:var(--bad)}
+.tile.fade .v,.tile.fade .sub,.tile.fade .bar{opacity:.4}
+.tile.dead{border-style:dashed;border-top-style:solid;border-top-color:var(--ink3)}
+.tile.dead .v{color:var(--ink3)}
+.tile.dead .h b{color:var(--ink3)}
+
+.phones{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin:18px 0}
+.phone{width:300px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:14px 10px;flex:none}
+.phone .tiles{grid-template-columns:1fr 1fr;min-width:0;gap:8px}
+.phone .tile{padding:8px 10px 10px}
+.phone .v{font-size:19px}.phone .v.big{font-size:24px}
+.phone .tile.w2{grid-column:span 2}
+.phonebar{font-family:var(--mono);font-size:11px;color:var(--ink3);display:flex;justify-content:space-between;padding:0 6px 10px}
+
+/* staleness demo */
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0}
+.states .tile{--c:var(--temp)}
+.states figcaption{font-size:13px;color:var(--ink2);margin-top:8px;max-width:none}
+
+/* arch */
+.arch{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:stretch;margin:18px 0;min-width:720px}
+.archwrap{overflow-x:auto}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:12px 14px;font-size:14px}
+.box b{font-family:var(--cond);display:block;font-size:15px;margin-bottom:4px}
+.box .eyebrow{display:block;margin-bottom:6px}
+.box ul{margin:6px 0 0;padding-left:16px;font-size:13px;color:var(--ink2)}
+.arrow{align-self:center;font-family:var(--mono);color:var(--ink3);font-size:12px;text-align:center;padding:0 4px}
+.stack{display:grid;gap:10px}
+.box.new{border-color:var(--power)}
+.box.old{border-style:dashed}
+
+/* options */
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:18px 0}
+.opt{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px 18px}
+.opt h3{margin:0 0 6px}
+.opt .eyebrow{display:block;margin-bottom:8px}
+.opt.rec{border-color:var(--batt);box-shadow:inset 0 0 0 1px var(--batt)}
+.opt ul{font-size:14px;color:var(--ink2);margin:8px 0 0;padding-left:18px}
+
+/* phases */
+.phase{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+.phase:last-child{border-bottom:1px solid var(--line)}
+.phase .n{font-family:var(--cond);font-weight:600;font-size:18px}
+.phase .n small{display:block;font-family:var(--mono);font-weight:400;font-size:12px;color:var(--ink3);margin-top:4px}
+.phase ul{margin:6px 0 0}
+@media (max-width:640px){.phase{grid-template-columns:1fr}}
+</style>
+
+<main>
+<div class="eyebrow">Design proposal · emon_Suite live UI · revision 3 · October 2026</div>
+<h1>Shann Street Monitor Redesign</h1>
+<p class="lede">A phased plan to replace the Node-RED Dashboard 1 pages with a self-describing MQTT feed and one small web UI engine, <b>emon-ui</b>, whose pages are provisioned per site from <code>emon_Suite/provisioning/&lt;site&gt;/</code>, alongside the emon_config, Grafana dashboards and mosquitto config already kept there. It replaces the Instant Data tab at shannstainable and the six dashboard pages at enchantee with the same code.</p>
+<div class="note"><b>What changed in revision 3.</b> The race app and the event recorder are now in view as future consumers. They stay separate projects, but the design takes three things from them. The live UI follows the race app's proven transport, a small server that computes and pages that poll, rather than browsers subscribing to MQTT. Derived maths that today exists three times, in Node-RED, the race app and the recorder, moves into one shared library. And the envelope is shaped so both apps can migrate to it later on their own schedule. See <a href="#family">the wider family</a>.</div>
+<div class="note"><b>Revision 2.</b> Every site is now a first-class target, not only shannstainable. Page layouts move out of Node-RED git branches into the provisioning folder. A site can declare several pages, which covers enchantee's HUD, Dials, Navigation, Weather, Motor and Battery views. Derived values gain a declarative home in provisioning so they no longer need a site branch either. Sections marked <i>revised</i> or <i>new</i> below carry the changes.</div>
+
+<h2>What the current system does, and where it strains</h2>
+<p>The pipeline today is: radio nodes → <code>emonSerialToMQTT</code> → raw index topics such as <code>power/0/2</code> → Node-RED flow context does all the arithmetic (daily totals, shower detection, tank days remaining, cost) → Dashboard 1 widgets. A second consumer, <code>emonMQTTToInflux</code>, re-parses the raw <code>EmonLog</code> lines and applies the names from <code>emon_config.yml</code> as Influx tags. The five issues you raised trace back to three structural causes.</p>
+
+<div class="issues">
+  <div class="issue"><b>Dashboard 1 is an Angular 1 grid from 2016</b><span>It is officially deprecated and lays out groups by fixed widget widths (2×1, 8×1). It can't reflow into one phone column, has no CSS hooks per value, and so can't express "this number is old" without a template hack per widget. Issues 1, 2 and 3 are all this.</span></div>
+  <div class="issue"><b>Names live in two places, by hand</b><span><code>emon_config.yml</code> already says pulse channel 2 is "Consumed" and battery shunt 0 is "Bank 2". Influx uses that. Node-RED never sees it: flows switch on the last character of the topic and carry their own <code>channelNames</code> arrays (four commented-out versions of them). Issue 5.</span></div>
+  <div class="issue"><b>Two parsers, one truth</b><span><code>emon_mqtt.py</code> and <code>emon_influx.py</code> are near-identical 400 and 750 line files, each decoding every payload type. Every new sensor or renamed channel is edited twice, and the MQTT copy drops the names on the floor. This is why issue 5 exists at all.</span></div>
+  <div class="issue"><b>Site config is split across two repos</b><span>Everything else per site lives in <code>provisioning/&lt;site&gt;/</code>: emon_config, docker-compose, Grafana dashboards, mosquitto, nginx. Node-RED alone keeps a git branch per site (<code>nodeRed</code>, <code>Enchantee</code>, <code>harvey-farm</code>), so a fix to shared flow logic is cherry-picked by hand and the branches drift. The UI is the bulk of what differs between those branches.</span></div>
+  <div class="issue"><b>Daily totals live in Node-RED RAM</b><span>Every "today" figure is <code>flow.get()</code> arithmetic reset by cron at midnight. The daily email even warns "system was restarted, totals will not be accurate". Influx already holds the data to compute these robustly.</span></div>
+</div>
+
+<h2>Three directions, one recommendation</h2>
+<div class="opts">
+  <div class="opt">
+    <span class="eyebrow">Minor · stay inside Node-RED</span>
+    <h3>Migrate to Dashboard 2.0</h3>
+    <p>FlowFuse's <code>@flowfuse/node-red-dashboard</code> is the Vue/Vuetify successor. Responsive-ish grid, theming, <code>ui-template</code> with real Vue components, per-message CSS classes.</p>
+    <ul>
+      <li>Keeps all flow logic and the email/backups untouched.</li>
+      <li>Staleness needs a Vue template per tile, or a global ticker in one template that dims by <code>data-topic</code>.</li>
+      <li>Still a widget grid: phone layout improves but stays a compromise. Every widget is rebuilt anyway, since D1 and D2 nodes are not interchangeable.</li>
+      <li>Names still hard-coded unless the publisher changes too.</li>
+    </ul>
+  </div>
+  <div class="opt rec">
+    <span class="eyebrow">Recommended · UI outside Node-RED</span>
+    <h3>Small live service, pages that poll</h3>
+    <p>A Python service, <b>emon_live</b>, subscribes to MQTT, keeps the latest value of every feed, runs the derived calculations and serves one JSON state document. One HTML/JS engine renders it, with no build step. Each site's pages are JSON files in its provisioning folder that reference feeds by name. This is the race app's architecture, generalised.</p>
+    <ul>
+      <li>CSS grid with media queries: 4 columns on a desk, 2 on a phone, same page. Held to the race app's iOS 12 floor, so it runs on the boat's iPad mini 3.</li>
+      <li>The server sends every value with its age, so fading and blanking is one client rule that never depends on a phone's clock.</li>
+      <li>Colour, units, and layout are data, not widget configuration.</li>
+      <li>Node-RED keeps doing what it is good at: the daily email and log backups. Derived figures move to emon_live, and are published back to MQTT for the race app and recorder.</li>
+    </ul>
+  </div>
+  <div class="opt">
+    <span class="eyebrow">Deep · change what is published</span>
+    <h3>Self-describing MQTT + one decoder</h3>
+    <p>Refactor <code>pyemonlib</code> so a single decoder turns a serial line into a list of <em>readings</em> (value, unit, kind, node, sub, index, group, name). Sinks are tiny: MQTT publishes a JSON envelope on a new <code>emon/</code> namespace, Influx tags from the same record.</p>
+    <ul>
+      <li>Kills the duplication between the two 400 and 750 line files.</li>
+      <li>Node-RED, the web UI, and Influx all get names automatically, and renames in a timestamped settings file propagate everywhere at once.</li>
+      <li>Legacy topics keep publishing until every consumer has moved.</li>
+      <li>This is the change that makes the recommended UI cheap to build. Do it first.</li>
+    </ul>
+  </div>
+</div>
+<div class="note">Not recommended as the main path: rebuilding the instant view in Grafana. Stat panels with <code>last()</code> cover most tiles and colour thresholds are free, but Grafana on a phone is poor, "stale" can only be expressed as no-data over a time window, and the derived values still need to come from somewhere. Worth a quick trial only if you want zero new code.</div>
+
+<h2>Proposed architecture <span class="eyebrow">revised</span></h2>
+<p>Two rules organise everything. <b>Code lives once in emon_Suite, and everything that differs between sites lives in <code>provisioning/&lt;site&gt;/</code></b>. That is already true for the publishers, Influx, Grafana and mosquitto, and this extends it to the live UI and the derived values. <b>Calculations live once, in a pure library with no I/O</b>, so the live service, the race app and the recorder compute TWA, distance or energy identically, and replay tests cover them all.</p>
+<div class="archwrap"><div class="arch">
+  <div class="stack">
+    <div class="box"><span class="eyebrow">Unchanged</span><b>Radio nodes → serial</b>emonSerialToMQTT reads lines, appends RSSI.</div>
+    <div class="box"><span class="eyebrow">Per site, unchanged</span><b>provisioning/&lt;site&gt;/emon_config</b>Timestamped settings files, edited through emon_settings_web. Now also the source of every display name in the UI.</div>
+    <div class="box new"><span class="eyebrow">Per site, new</span><b>provisioning/&lt;site&gt;/emon-ui</b>site.json, one JSON file per page, derived.yml. Mounted read-only into the UI and derived containers.</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="stack">
+    <div class="box new"><span class="eyebrow">New · pyemonlib</span><b>emon_decoder</b>Line + settings → list of Reading records. One place that knows payload layouts.<ul><li>Reading(kind, value, unit, node, sub, idx, group, name, ts, rssi)</li></ul></div>
+    <div class="box new"><span class="eyebrow">New · pyemonlib, pure</span><b>emon_feed</b>Envelope parsing (bare numbers too), name catalogue, and the derived maths: norm180, TWA, leeway, heel, Haversine, W→Wh, daily delta. No I/O.</div>
+    <div class="box new"><span class="eyebrow">Rewritten · thin</span><b>Sinks</b><ul><li><b>MQTT</b>: legacy topic + <code>emon/…</code> JSON envelope, retained</li><li><b>Influx</b>: generic Point from the record (~40 lines)</li><li><b>Log</b>: unchanged raw line</li></ul></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="stack">
+    <div class="box new"><span class="eyebrow">New · python/emon_live</span><b>emon_live</b>Subscribes to <code>emon/#</code>, keeps <code>{v, t}</code> per feed, runs the site's derived.yml through emon_feed, publishes <code>emon/derived/…</code> back to MQTT and serves <code>/api/state</code>. Seeds daily totals from Influx on start.</div>
+    <div class="box new"><span class="eyebrow">New · emon_Suite/ui</span><b>emon-ui (static engine)</b>One JS engine and a tile library, no build step. Polls <code>/api/state</code> and renders the site's pages.</div>
+    <div class="box"><span class="eyebrow">Later, own projects</span><b>enchantee_racing · event_recorder</b>Read the same envelope and import emon_feed when each is next worked on. Both can use the derived feeds emon_live publishes.</div>
+    <div class="box old"><span class="eyebrow">Kept, slimmed</span><b>Node-RED</b>Daily email, backups, the odd bespoke state machine. No dashboard. Flows move into provisioning too, ending the branch per site.</div>
+    <div class="box"><span class="eyebrow">Unchanged</span><b>InfluxDB + Grafana</b>History, embedded in pages through a grafana tile where useful.</div>
+  </div>
+</div></div>
+
+<h3>The envelope</h3>
+<p>Topic path stays structural (stable across renames, unique by construction) and mirrors the existing raw topics one level down; names ride in the payload. Published with <code>retain=True</code> so a phone opening the page cold shows every last value, correctly aged, before a single new message arrives.</p>
+<pre><code>emon/power/0/2            ← kind / node-subnode / index   (legacy power/0/2 still published)
+{
+  "v": 2867,                 value, already scaled
+  "u": "W",                  unit
+  "t": 1757580061,           unix seconds, host clock at receipt
+  "kind": "power",
+  "node": "pulse", "sub": 0, "idx": 2,
+  "group": "Power board",    nodeSettings[sub]["name"]
+  "name": "Consumed",        nodeSettings[sub]["p2"]
+  "rssi": -61                 when present
+}
+
+emon/config                ← retained, JSON of the active settings file + its filename
+emon/derived/power/today/consumed   ← emon_live publishes (Node-RED, until emon_live exists)
+{ "v": 18452, "u": "Wh", "t": …, "name": "Consumed today", "kind": "energy" }</code></pre>
+<p><b>Two clocks, stated once.</b> <code>t</code> is the bridge host's clock when the line arrived, as <code>gps/position</code> already documents. Consumers on the same host may use it, and must for retained messages, whose arrival time is only the moment of subscribing. Browsers never see <code>t</code>: emon_live sends <code>age</code>, as the race app does, so a phone whose clock is a minute out still dims correctly. Event payloads such as <code>race/event</code> keep their own fields but gain <code>t</code> and <code>kind: "event"</code>, so the recorder can store them like any other feed.</p>
+<p>Two side benefits fall out of this. Influx tags <code>sensor</code>, <code>sensorGroup</code>, <code>sensorName</code> map one-to-one to <code>node/sub/idx</code>, <code>group</code>, <code>name</code>, so nothing in Grafana changes. And the retained <code>emon/config</code> lets Node-RED replace its hard-coded <code>channelNames</code> arrays with one lookup, even before the UI is touched. Two small existing inconsistencies get fixed on the way: <code>bms/voltage{n}</code> and <code>sevCon/rpm{n}</code> are missing the slash before the subnode.</p>
+
+<h2>Provisioning a site <span class="eyebrow">new</span></h2>
+<p>A site's UI is a folder of plain files next to its emon_config. Nothing UI-specific is built into an image, and the engine never contains a site name.</p>
+<pre><code>emon_Suite/
+├── ui/                                  engine, shared by every site
+│   ├── index.html  emon-ui.js  emon-ui.css
+│   ├── tiles/      value · gauge · dial · trail · compass · led · grafana · html
+│   └── tools/lint_pages.py              checks every feed a page names exists
+├── python/pyEmon/pyemonlib/emon_feed.py  envelope, catalogue, derived maths (pure)
+├── python/emon_live/                    state + derived service, serves /api/state
+└── provisioning/
+    ├── shannstainable/
+    │   ├── emon_config/                 unchanged
+    │   ├── emon-ui/
+    │   │   ├── site.json                title, theme, page order, default page
+    │   │   ├── pages/house.json         the Instant Data replacement
+    │   │   └── derived.yml              daily totals, tank days, costs
+    │   ├── node-red/flows.json          email and backups only (was branch nodeRed)
+    │   └── docker-compose.yml           + emon_live service
+    ├── enchantee/
+    │   └── emon-ui/
+    │       ├── site.json                theme: night, kiosk page: dials
+    │       ├── pages/dials.json  navigation.json  weather.json
+    │       │         motor.json  battery.json      (HUD stays in the race app)
+    │       └── derived.yml              TWA, AWA fallback, leeway, heel
+    ├── harvey-farm/emon-ui/…
+    └── office-temperature/emon-ui/…     one page, temperatures only</code></pre>
+
+<h3>site.json</h3>
+<pre><code>{
+  "title": "Enchantee",
+  "theme": "night",                       night | day | auto  (boat cockpit vs kitchen tablet)
+  "state": "api/state",                   relative, so it works under any prefix, as the race app requires
+  "fresh": 15, "gone": 120,               site default age thresholds, seconds
+  "pages": [
+    {"title": "HUD",  "link": "../race/hud", "for": "phone"},     a link, not a page
+    {"title": "Race", "link": "../race/"},
+    {"id": "dials",      "title": "Dials",      "for": "kiosk"},
+    {"id": "navigation", "title": "Navigation"},
+    {"id": "weather",    "title": "Weather"},
+    {"id": "motor",      "title": "Motor"},
+    {"id": "battery",    "title": "Battery"}
+  ],
+  "default": "dials"
+}</code></pre>
+<p>Pages are addressed as <code>/#hud</code>, <code>/#dials</code> and so on, so the Waveshare kiosk launcher keeps a fixed URL per screen. A <code>link</code> entry puts another app in the menu without owning it, which is how the race app's HUD and race screen appear. An entry with <code>"for": "phone"</code> appears first in the menu on narrow screens. Shannstainable has a single page and shows no menu at all.</p>
+
+<h3>Feeds referenced by name</h3>
+<p>Pages refer to feeds as <code>group / name</code>, exactly as written in emon_config, for example <code>Power board / Consumed</code>. Nodes whose fields carry no names in config, such as bms, gps and imu, use the field itself: <code>Main Battery / batterySoC</code>. Where one channel publishes two kinds, the kind is appended in brackets, as in <code>Power board / Consumed (pulse)</code> for the counter beside the instantaneous watts. The engine resolves names against the retained <code>emon/config</code> topic at load. Two things follow. When a sensor moves to a different channel in a new timestamped settings file, the page follows it without an edit. When a sensor is renamed, the page breaks loudly instead of showing the wrong number, because <code>lint_pages.py</code> runs against the same provisioning folder and is cheap to run in the build script or as a check in emon_settings_web before it saves a new settings file. A structural topic such as <code>emon/power/0/2</code> is still accepted for feeds with no config entry, such as ecowitt.</p>
+
+<h3>How it is served, and why polling</h3>
+<p>Revision 2 had browsers subscribe to mosquitto over websockets. The race app's design brief considered that and chose polling instead, for reasons that hold for emon-ui. Polling works unchanged across AP mode, mDNS, raw IP and nginx prefixes. It needs no broker change and no vendored MQTT client, and a wifi dropout heals itself on the next request. It also lets derived values be computed once on the server instead of in every open browser. So emon-ui polls.</p>
+<ul>
+  <li><b>emon_live</b> is one Flask container per site, like the race app. The engine's static files and the site's emon-ui folder are bind-mounted, so edits are live, matching "the checkout is the deployment". It serves the pages and <code>/api/state</code> from one port.</li>
+  <li><b>enchantee</b>: host nginx maps <code>/</code> to emon_live in place of Node-RED's <code>/ui/</code>, which moves to <code>/nodered/ui/</code> during the overlap. <code>/race/</code> and <code>/events/</code> are untouched.</li>
+  <li><b>shannstainable and the other sites</b> publish emon_live's port, or put it behind the existing reverse proxy for https.</li>
+  <li><b>Poll rate</b> is 1 s by default and 500 ms for any page that asks for it, matching the HUD. The state document is small and gzipped, as the race app's is.</li>
+  <li><b>Browser floor</b> is the race app's: iOS 12, no CDNs, relative URLs, no <code>clamp()</code> or flexbox gap, and every SVG given a width and height. The day and night theme is server state, so every screen on the boat switches together. That is a lesson recorded in the race app's design brief.</li>
+</ul>
+
+<h3>Derived values in provisioning</h3>
+<p>Most of what the Node-RED function nodes compute is one of a handful of shapes. Expressing those shapes as config lets every site have them without a branch. The operators are emon_feed functions, so a derived.yml line and a call in the race app or recorder produce the same number.</p>
+<pre><code># provisioning/shannstainable/emon-ui/derived.yml
+- id: power/consumed/today
+  op: daily_delta             counter → amount since local midnight
+  feed: Power board / Consumed (pulse)
+  scale: 2.5                  Wh per pulse, from emon_config p2_wPerPulse when omitted
+- id: solar/today
+  op: sum
+  of: [Power board / Solar production (Schneider) (pulse), derived/inverter1/today, derived/inverter3/today]
+- id: inverter1/today
+  op: integrate               W → Wh, trapezoidal, gaps over 5 min not bridged
+  feed: Inverter 1 / PV input
+- id: import/cost/today
+  op: expr
+  expr: "derived/import/today / 1000 * 0.262"
+  unit: "$"
+- id: rain/since9am
+  op: daily_delta
+  feed: Outside / Rain
+  reset: "09:00"
+
+# provisioning/enchantee/emon-ui/derived.yml
+- id: wind/twa
+  op: twa                     norm180(twd - hdg), as the race app computes it today
+  twd: True wind / windDirection
+  hdg: IMU Sensor / heading
+- id: wind/awa
+  op: awa                     measured AWA if fresh, else norm180(awd - hdg)
+  awa: Boat reference wind / windDirection
+  awd: Apparent wind / windDirection
+  hdg: IMU Sensor / heading
+- id: boat/leeway
+  op: leeway                  ported from enchantee_racing store.derive_leeway
+- id: boat/heel
+  op: heel                    from IMU acc y and z, ported from derive_heel
+- id: battery/energy/today
+  op: integrate
+  feed: Main Battery / power</code></pre>
+<p>On start the service asks Influx for each counter's first value since the reset time, so a restart mid-afternoon resumes the right totals. That retires the "system was restarted" warning in the daily email. Every derived feed is also published back to MQTT, which is what lets the recorder chart TWA, leeway and heel without computing them itself. Shower detection, the dog-fed email and the rolling tank-use average stay in Node-RED for now, since they are bespoke state machines that only one site has.</p>
+
+<h3>Node-RED without branches</h3>
+<p>Once the dashboards are gone, the remaining flows are small. Move each site's <code>flows.json</code> to <code>provisioning/&lt;site&gt;/node-red/</code> and set <code>flowFile</code> in the shared <code>settings.js</code> from an environment variable, with <code>package.json</code> and <code>entrypoint.sh</code> kept once on the main branch. The compose volume becomes the shared repo plus the site folder. The three branches can then be archived. The dashboard-only dependencies (ui-led, ui-level, ui-value-trail, ui-iframe, node-red-dashboard) drop out, which also shortens the start-up <code>npm install</code> on the Pi.</p>
+
+<h2 id="family">The wider family: race app and event recorder <span class="eyebrow">new</span></h2>
+<p>Neither project is refactored as part of this work. Each has its own design brief, its own CLAUDE.md and its own tests, and each will migrate when it is next worked on. What this work owes them is a contract they can migrate to, and shared code they can import rather than copy.</p>
+
+<h3>What each one does today that overlaps</h3>
+<div class="tablewrap"><table>
+  <tr><th>Concern</th><th>Node-RED today</th><th>enchantee_racing</th><th>event_recorder</th><th>Proposed home</th></tr>
+  <tr><td>Topic to meaning</td><td>Last character of the topic, per function node</td><td>A hand-written <code>TOPICS</code> map of 15 legacy topics</td><td>Hand-written topics, labels and units in each plot</td><td>Names from emon_config, carried in the envelope</td></tr>
+  <tr><td>Latest value and age</td><td>Flow context, no age</td><td><code>store.py</code>, <code>{v, ts}</code> with per-feed stale rules</td><td>Recording rows, no age</td><td>emon_feed <code>Store</code>, generalised from the race app's</td></tr>
+  <tr><td>TWA, AWA fallback</td><td>HUD function node</td><td><code>store.derive</code></td><td>Not computed</td><td>emon_feed, published by emon_live</td></tr>
+  <tr><td>Leeway, heel</td><td>None</td><td><code>derive_leeway</code>, <code>derive_heel</code></td><td>Not computed</td><td>emon_feed, published by emon_live</td></tr>
+  <tr><td>Distance sailed</td><td>None</td><td><code>engine/nav.py</code> ENU projection</td><td>Haversine in <code>data_processor</code> and again in <code>live_summary</code></td><td>emon_feed nav functions</td></tr>
+  <tr><td>Energy from power</td><td>Two-second integration in a function node</td><td>None</td><td>Power × time in statistics</td><td>emon_feed <code>integrate</code></td></tr>
+  <tr><td>Speed colour scale</td><td>None</td><td><code>palette.js</code> generated from viridis</td><td>Same scale for route maps</td><td>Already shared. Add domain colours beside it.</td></tr>
+  <tr><td>Day and night theme</td><td>None</td><td><code>theme.js</code>, server state</td><td>Red Shadow theme</td><td>Shared <code>theme.js</code>, one setting per site</td></tr>
+</table></div>
+
+<h3>enchantee_racing, when it migrates</h3>
+<ul>
+  <li><b>Topics become names.</b> The <code>TOPICS</code> map turns from <code>anemometer/windDirection/0</code> into <code>Boat reference wind / windDirection</code>. That one change makes the subtle 0, 1 and 2 mapping in its design brief readable, and a re-wired anemometer becomes an emon_config edit.</li>
+  <li><b>Derived maths is imported, not owned.</b> <code>derive_leeway</code>, <code>derive_heel</code> and the TWA and AWA fallback move into emon_feed with their tests. The race app either imports them or reads <code>emon/derived/wind/twa</code>. The race engine itself, legs, marks and line crossing, stays in the app: it is race logic, not a feed.</li>
+  <li><b>Its rules are kept, not loosened.</b> Position stays one atomic payload and blanks after 5 s. Staleness still counts from arrival. Bare-number legacy topics keep publishing until the app has moved, so the migration can happen between races, not during one.</li>
+  <li><b>Its store becomes the shared store.</b> emon_live's state model is the race app's <code>store.py</code> pattern lifted into pyemonlib. Writing emon_live is the moment that pattern gets its second user, which is when it is worth extracting.</li>
+</ul>
+
+<h3>event_recorder, when it migrates</h3>
+<ul>
+  <li><b>A recording keeps its own names.</b> On start, the recorder stores the retained <code>emon/config</code> as a snapshot beside the rows. Every chart then labels itself from the snapshot, so a sensor renamed next month does not relabel last month's post.</li>
+  <li><b>Plots configure by name or kind, not topic.</b> Today a plot names each topic and repeats its label, unit and colour by hand, and the speed plot is labelled km/h where the race app documents knots. With units in the envelope that class of error goes away. A plot can say <code>kind: power</code> and get every battery bank, labelled and in domain colours.</li>
+  <li><b>Derived feeds are recorded like any other.</b> Because emon_live publishes TWA, leeway and heel, the recorder can chart them with a line of config and no new maths. Race events gain <code>t</code> and <code>kind</code>, so they can be drawn on the same time axis as the instruments.</li>
+  <li><b>Statistics share the arithmetic.</b> Distance and energy come from emon_feed, so the post, the live summary and the race app agree to the metre.</li>
+  <li><b>Wildcards get simpler.</b> Recording <code>emon/#</code> captures everything with names. The slashless <code>bms/voltage1</code> topic that today needs a separate <code>bms/+</code> line is fixed in the new namespace.</li>
+</ul>
+
+<h3>The contract both can rely on</h3>
+<ul>
+  <li><b>The envelope is versioned</b> with a field <code>s: 1</code>. Fields may be added, never renamed or removed, within a version.</li>
+  <li><b>Legacy topics publish until the last consumer has moved.</b> Node-RED, the race app, the recorder's existing configs and Grafana's raw topic queries all keep working throughout.</li>
+  <li><b>emon_feed parses both forms.</b> <code>parse(topic, payload)</code> returns a reading from an envelope or from a bare number, so either app can switch its parsing first and its subscriptions later.</li>
+  <li><b>emon_feed has no I/O</b>, the same rule as the race app's <code>engine/</code>, so all three projects can replay-test against the recorded Frostbite tracks.</li>
+</ul>
+
+<h2>The page</h2>
+<p>Information design first: what needs a glance, what needs a read. Each domain owns one hue, carried on a top edge stripe and its heading, never as a filled background, so the numbers stay black-on-white and legible in sun. Live values are monospace and tabular so columns of digits line up; "today" figures sit under them in a smaller weight. A gauge bar replaces every level widget. The mockup below uses the values from your screenshot.</p>
+<p><span class="dom" style="background:var(--power)"></span>Power <span class="dom" style="background:var(--solar);margin-left:14px"></span>Solar <span class="dom" style="background:var(--batt);margin-left:14px"></span>Batteries <span class="dom" style="background:var(--temp);margin-left:14px"></span>Heat &amp; hot water <span class="dom" style="background:var(--water);margin-left:14px"></span>Water <span class="dom" style="background:var(--rain);margin-left:14px"></span>Rain <span class="dom" style="background:var(--car);margin-left:14px"></span>Cars</p>
+
+<div class="mock">
+  <div class="mockhead"><span class="t">28 Shann Street</span><span class="s">live · 14:32:07 · 3 feeds stale</span></div>
+  <div class="tiles">
+    <div class="tile w2" style="--c:var(--power)">
+      <div class="h"><b>Power</b><i>W now · Wh today</i></div>
+      <div class="kv c4">
+        <div><div class="k">Consuming</div><div class="v big">2867</div><div class="sub">18 452 today</div></div>
+        <div><div class="k">Producing</div><div class="v big" style="color:var(--solar)">1281</div><div class="sub">31 291 today</div></div>
+        <div><div class="k">Importing</div><div class="v">0</div><div class="sub">454 · $0.12</div></div>
+        <div><div class="k">Exporting</div><div class="v">310</div><div class="sub">14 106 · $1.01</div></div>
+      </div>
+      <svg class="spark" viewBox="0 0 400 34" preserveAspectRatio="none"><polyline fill="none" stroke="var(--power)" stroke-width="1.5" points="0,22 20,18 40,20 60,12 80,15 100,24 120,20 140,9 160,14 180,26 200,22 220,6 240,16 260,18 280,12 300,20 320,17 340,8 360,14 380,19 400,16"/><circle cx="400" cy="16" r="2.5" fill="var(--power)"/></svg>
+      <div class="sub" style="display:flex;justify-content:space-between"><span>Foregone 0 W · 3 801 Wh · $0.27</span><span class="age">12 s</span></div>
+    </div>
+    <div class="tile" style="--c:var(--batt)">
+      <div class="h"><b>Batteries</b><i>62 %</i></div>
+      <div class="bar"><i style="width:62%"></i></div>
+      <div class="kv c2" style="margin-top:8px">
+        <div><div class="k">In</div><div class="v">0<small>W</small></div><div class="sub">4 619 Wh</div></div>
+        <div><div class="k">Out</div><div class="v">1914<small>W</small></div><div class="sub">13 896 Wh</div></div>
+      </div>
+      <div class="sub" style="margin-top:6px">Rail 53.03 V · <span class="pill" style="color:var(--bad)">B2-1 mid −1.32 V</span></div>
+      <div class="sub" style="display:flex;justify-content:space-between"><span>Out to 9am 1 393 Wh</span><span class="age">4 s</span></div>
+    </div>
+    <div class="tile" style="--c:var(--batt)">
+      <div class="h"><b>Inverters</b><i>W</i></div>
+      <div class="kv c2">
+        <div><div class="k">To batteries</div><div class="v">0</div><div class="sub">13 848 Wh</div></div>
+        <div><div class="k">From batteries</div><div class="v">2003</div><div class="sub">5 256 Wh</div></div>
+      </div>
+      <div class="sub" style="text-align:right;margin-top:14px"><span class="age">9 s</span></div>
+    </div>
+
+    <div class="tile" style="--c:var(--temp)">
+      <div class="h"><b>Temperature</b><i>°C</i></div>
+      <div class="kv c2">
+        <div><div class="k">Outside</div><div class="v">20.5</div></div>
+        <div><div class="k">Kitchen</div><div class="v">21.7</div></div>
+        <div><div class="k">Upstairs</div><div class="v">24.3</div></div>
+        <div><div class="k">Floor slab</div><div class="v">19.1</div></div>
+      </div>
+      <div class="sub" style="text-align:right;margin-top:6px"><span class="age">41 s</span></div>
+    </div>
+    <div class="tile fade" style="--c:var(--temp)">
+      <div class="h"><b>Hot water</b><i class="age warn">3 m 10 s</i></div>
+      <div class="kv c2">
+        <div><div class="k">Tank</div><div class="v big">66<small>°C</small></div></div>
+        <div><div class="k">Showers left</div><div class="v big">30<small>min</small></div></div>
+      </div>
+      <div class="bar"><i style="width:80%"></i></div>
+      <div class="sub" style="margin-top:6px">Today 1 shower · 6 min · 33 L · 237 Wh · $0.06</div>
+    </div>
+    <div class="tile" style="--c:var(--water)">
+      <div class="h"><b>Rain tank</b><i>0 %</i></div>
+      <div class="v big">0<small>mm</small></div>
+      <div class="bar"><i style="width:0%"></i></div>
+      <div class="kv c2" style="margin-top:8px">
+        <div><div class="k">Days left</div><div class="v">0</div></div>
+        <div><div class="k">Avg use</div><div class="v">90<small>mm/d</small></div></div>
+      </div>
+      <div class="sub" style="text-align:right"><span class="age">2 m 5 s</span></div>
+    </div>
+    <div class="tile" style="--c:var(--rain)">
+      <div class="h"><b>Rain</b><i>mm</i></div>
+      <div class="kv c2">
+        <div><div class="k">Today</div><div class="v big">0</div></div>
+        <div><div class="k">Since 9am</div><div class="v big">0</div></div>
+        <div><div class="k">Month</div><div class="v">16.6</div></div>
+        <div><div class="k">Year</div><div class="v">505.2</div></div>
+      </div>
+    </div>
+
+    <div class="tile" style="--c:var(--water)">
+      <div class="h"><b>Water today</b><i>L</i></div>
+      <div class="kv c3">
+        <div><div class="k">Mains</div><div class="v">412</div></div>
+        <div><div class="k">Hot</div><div class="v">33</div></div>
+        <div><div class="k">Bore</div><div class="v">0</div></div>
+      </div>
+      <div class="sub" style="text-align:right;margin-top:14px"><span class="age">18 s</span></div>
+    </div>
+    <div class="tile" style="--c:var(--car)">
+      <div class="h"><b>Leaf</b><span><span class="pill on">home</span> <span class="pill on">charging 2.4 kW</span></span></div>
+      <div class="kv c3">
+        <div><div class="k">Range</div><div class="v big">332<small>km</small></div></div>
+        <div><div class="k">Today</div><div class="v">15<small>km</small></div></div>
+        <div><div class="k">SOH</div><div class="v">99<small>%</small></div></div>
+      </div>
+      <div class="bar"><i style="width:100%"></i></div>
+      <div class="sub">12 / 12 bars · 111 871 km</div>
+    </div>
+    <div class="tile" style="--c:var(--car)">
+      <div class="h"><b>Outlander</b><span><span class="pill on">home</span> <span class="pill off">idle</span></span></div>
+      <div class="kv c3">
+        <div><div class="k">Range</div><div class="v big">20<small>km</small></div></div>
+        <div><div class="k">Today</div><div class="v">0<small>km</small></div></div>
+        <div><div class="k">SOH</div><div class="v">40<small>%</small></div></div>
+      </div>
+      <div class="bar"><i style="width:100%"></i></div>
+      <div class="sub">12 / 12 bars · 159 667 km</div>
+    </div>
+    <div class="tile dead" style="--c:var(--rain)">
+      <div class="h"><b>Dog food</b><i class="age bad">no data 27 min</i></div>
+      <div class="kv c2">
+        <div><div class="k">Hazel fed</div><div class="v">—</div></div>
+        <div><div class="k">Remaining</div><div class="v">—</div></div>
+      </div>
+      <div class="sub" style="margin-top:6px">last: yesterday 18:35 · 1.3 kg · 14:05</div>
+    </div>
+  </div>
+</div>
+
+<h3>Same page on a phone</h3>
+<p>No second layout to maintain. The grid drops to two columns under 700 px and the "hero" tiles (power, batteries) span both. Ordering is by attention, not by the desktop position: what you check from the kitchen comes first.</p>
+<div class="phones">
+  <div class="phone">
+    <div class="phonebar"><span>14:32</span><span>live · 3 stale</span></div>
+    <div class="tiles">
+      <div class="tile w2" style="--c:var(--power)">
+        <div class="h"><b>Power</b><i class="age">12 s</i></div>
+        <div class="kv c2">
+          <div><div class="k">Consuming</div><div class="v big">2867</div><div class="sub">18 452 today</div></div>
+          <div><div class="k">Producing</div><div class="v big" style="color:var(--solar)">1281</div><div class="sub">31 291 today</div></div>
+        </div>
+        <div class="sub" style="margin-top:6px">Import 0 · Export 310 W</div>
+      </div>
+      <div class="tile w2" style="--c:var(--batt)">
+        <div class="h"><b>Batteries</b><i>62 %</i></div>
+        <div class="bar"><i style="width:62%"></i></div>
+        <div class="sub" style="margin-top:6px">0 W in · 1914 W out · <span style="color:var(--bad)">B2-1 −1.32 V</span></div>
+      </div>
+      <div class="tile fade" style="--c:var(--temp)">
+        <div class="h"><b>Hot water</b><i class="age warn">3 m</i></div>
+        <div class="v big">66<small>°C</small></div>
+        <div class="sub">30 min showers</div>
+      </div>
+      <div class="tile" style="--c:var(--temp)">
+        <div class="h"><b>Temp</b></div>
+        <div class="v">20.5 <small>out</small></div>
+        <div class="sub">21.7 kitchen · 24.3 up</div>
+      </div>
+      <div class="tile" style="--c:var(--water)">
+        <div class="h"><b>Rain tank</b></div>
+        <div class="v big">0<small>%</small></div>
+        <div class="bar"><i style="width:0%"></i></div>
+      </div>
+      <div class="tile" style="--c:var(--rain)">
+        <div class="h"><b>Rain</b></div>
+        <div class="v big">0<small>mm</small></div>
+        <div class="sub">16.6 month · 505 yr</div>
+      </div>
+      <div class="tile" style="--c:var(--car)">
+        <div class="h"><b>Leaf</b><span class="pill on">⚡</span></div>
+        <div class="v big">332<small>km</small></div>
+        <div class="sub">15 km today</div>
+      </div>
+      <div class="tile dead" style="--c:var(--rain)">
+        <div class="h"><b>Dog food</b><i class="age bad">27 m</i></div>
+        <div class="v">—</div>
+        <div class="sub">last 14:05</div>
+      </div>
+    </div>
+  </div>
+  <div style="flex:1;min-width:260px">
+    <h3 style="margin-top:0">Data age, three states</h3>
+    <p>Every tile shows the age of its newest feed. The server sends each value's age, and the page adds the time since its last poll, so ages keep counting if the wifi drops and never depend on the phone's clock. The rule is the same for raw sensors and derived values.</p>
+    <div class="states" style="grid-template-columns:1fr">
+      <figure style="margin:0"><div class="tile" style="--c:var(--temp)"><div class="h"><b>Hot water</b><i class="age">41 s</i></div><div class="v big">66<small>°C</small></div></div><figcaption><b>Fresh</b>, under 60 s. Full opacity, age in grey.</figcaption></figure>
+      <figure style="margin:0"><div class="tile fade" style="--c:var(--temp)"><div class="h"><b>Hot water</b><i class="age warn">3 m 10 s</i></div><div class="v big">66<small>°C</small></div></div><figcaption><b>Ageing</b>, 60 s to 5 min. Value fades linearly to 40 %, age turns amber.</figcaption></figure>
+      <figure style="margin:0"><div class="tile dead" style="--c:var(--temp)"><div class="h"><b>Hot water</b><i class="age bad">no data 27 min</i></div><div class="v big">—</div><div class="sub">last 66 °C at 14:05</div></div><figcaption><b>Gone</b>, over 5 min. Value blanked, stripe greys out, border dashed, last known value and time in small type so it is not lost.</figcaption></figure>
+    </div>
+    <p>Thresholds are per feed in the layout JSON, because "old" differs: a 10 s pulse channel and a once-a-day odometer should not share a 60 s rule.</p>
+  </div>
+</div>
+
+<h3>Layout is data</h3>
+<p>A tile is a few lines of JSON naming feeds. Adding a sensor is: name it in <code>emon_config.yml</code>, add one entry to the site's page file. No Node-RED nodes, no widget widths, no branch.</p>
+<pre><code>// provisioning/shannstainable/emon-ui/pages/house.json  (one tile of many)
+{
+  "title": "Hot water", "domain": "heat", "span": 1,
+  "fresh": 60, "gone": 300,
+  "hero":  [ {"feed": "Hot water system / Water (T3)", "label": "Tank", "decimals": 0},
+             {"feed": "derived/hws/showersRemaining", "label": "Showers left"} ],
+  "gauge": {"feed": "derived/hws/showersRemaining", "max": 27},
+  "line":  "Today {derived/hws/showers} showers · {derived/hws/showerMinutes} min · {Rain tank and HWS / Hot water} L"
+}</code></pre>
+
+<h3>Enchantee's pages on the same engine <span class="eyebrow">new</span></h3>
+<p>The Sailing HUD has already left Node-RED: the race app serves it at <code>/race/hud</code>, along with the GAR dial and the course map. emon-ui does not rebuild it. It links to it, and the remaining five pages need four tile types beyond the house set.</p>
+<div class="tablewrap"><table>
+  <tr><th>Page</th><th>Shown on</th><th>Today in Node-RED</th><th>emon-ui tiles</th></tr>
+  <tr><td>HUD</td><td>Phone in the cockpit</td><td>Already moved to the race app</td><td>Menu link to <code>/race/hud</code></td></tr>
+  <tr><td>Dials</td><td>Waveshare 8" kiosk</td><td>5 gauges, value trail, template</td><td>dial, trail</td></tr>
+  <tr><td>Navigation</td><td>Kiosk, tablet</td><td>Text, chart, Grafana iframe</td><td>value, trail, grafana (GPS dashboard)</td></tr>
+  <tr><td>Weather</td><td>Kiosk, tablet</td><td>6 texts, chart, template</td><td>value, compass, trail</td></tr>
+  <tr><td>Motor</td><td>Kiosk</td><td>5 texts, chart, iframe, template</td><td>value, dial, grafana (SevCon dashboard)</td></tr>
+  <tr><td>Battery</td><td>Kiosk</td><td>4 texts, chart, cell template</td><td>gauge, cell-bar (16 cell voltages as one bar row), trail</td></tr>
+</table></div>
+<p>An <code>html</code> tile remains as an escape hatch: a page can embed a site-specific fragment from its own provisioning folder that uses the engine's data client. Anything that would otherwise need a branch has somewhere to go.</p>
+
+<h2>Phased plan <span class="eyebrow">revised</span></h2>
+<div class="phase"><div class="n">Phase 1<small>publisher + library · ~3 days</small></div><div>
+  <b>Self-describing MQTT and emon_feed. Nothing that consumes changes.</b>
+  <ul>
+    <li>Add <code>emon_decoder.py</code> to pyemonlib: move each <code>xxxMessage</code> body into a function returning <code>Reading</code> records, with names looked up from settings exactly as <code>emon_influx</code> does today.</li>
+    <li><code>emon_mqtt</code> publishes legacy topics <em>and</em> the retained, versioned <code>emon/…</code> envelope, plus retained <code>emon/config</code> on load and on every settings reload. <code>emon_influx</code> becomes a generic sink over the same records.</li>
+    <li>Create <code>emon_feed.py</code> with the envelope parser, the name catalogue and the first operators. Port TWA, AWA fallback, leeway and heel from the race app with its tests, and Haversine and Wh integration from the recorder.</li>
+    <li>Regression: run a day of <code>EmonLog</code> lines from each site's emon_config through old and new code and diff the Influx points. Check the race app's tests still pass against the unchanged legacy topics.</li>
+  </ul>
+</div></div>
+<div class="phase"><div class="n">Phase 2<small>emon_live + shannstainable · ~4 days</small></div><div>
+  <b>emon-ui reaches parity with Instant Data at one site.</b>
+  <ul>
+    <li>Write emon_live: the store lifted from the race app's pattern, derived.yml, <code>/api/state</code>, and publishing <code>emon/derived/…</code>. Seed daily totals from Influx.</li>
+    <li>Write the engine in <code>emon_Suite/ui</code> with value, gauge, trail and led tiles, the shared theme and viewport scripts, and <code>lint_pages.py</code>.</li>
+    <li>Create <code>provisioning/shannstainable/emon-ui/</code> and add emon_live to its compose file. Run beside the Dashboard 1 tab for a week, then disable that tab.</li>
+  </ul>
+</div></div>
+<div class="phase"><div class="n">Phase 3<small>enchantee · ~3 days</small></div><div>
+  <b>Multi-page sites and the boat's derived feeds.</b>
+  <ul>
+    <li>Add dial, compass, cell-bar and grafana tiles, page navigation and menu links. Test on the iPad mini 3 before anything else, since iOS 12 is where layout fails silently.</li>
+    <li>Port Dials for the kiosk first, then Navigation, Weather, Motor and Battery. Link to the race app's HUD and race screen.</li>
+    <li>Turn on enchantee's derived.yml, so TWA, AWA, leeway and heel are on MQTT for anyone who wants them.</li>
+  </ul>
+</div></div>
+<div class="phase"><div class="n">Phase 4<small>consolidation · ~2 days</small></div><div>
+  <b>Retire the Node-RED branches.</b>
+  <ul>
+    <li>Move remaining derived figures into derived.yml and delete the matching function nodes.</li>
+    <li>Move each site's remaining flows to <code>provisioning/&lt;site&gt;/node-red/flows.json</code>, drive <code>flowFile</code> from an environment variable, drop the dashboard packages and archive the per-site branches.</li>
+    <li>Give office-temperature an emon-ui folder as the proof that a new site needs no code.</li>
+  </ul>
+</div></div>
+<div class="phase"><div class="n">Later<small>separate projects</small></div><div>
+  <b>The race app and the recorder migrate when each is next worked on.</b>
+  <ul>
+    <li><b>enchantee_racing</b>: swap its <code>TOPICS</code> map for names, import emon_feed's operators in place of its own, keep its race engine and its stricter position rules.</li>
+    <li><b>event_recorder</b>: snapshot <code>emon/config</code> per recording, label plots from it, let plots select by kind, record derived feeds, and use emon_feed for distance and energy.</li>
+    <li>Once both have moved and Grafana queries use the new tags, stop publishing legacy topics.</li>
+  </ul>
+</div></div>
+
+<h2>Decisions to confirm <span class="eyebrow">revised</span></h2>
+<ul>
+  <li><b>Polling rather than websockets.</b> Recommended, following the race app's reasoning. The cost is one small service per site, which is also where the derived values need to run anyway.</li>
+  <li><b>Feeds by name or by topic.</b> Recommended: pages and derived.yml name feeds as <code>group / name</code> from emon_config, with a lint check guarding renames. The same lint can later check the recorder's event configs.</li>
+  <li><b>Who computes TWA on the boat.</b> Recommended: emon_live publishes it and the race app imports the same function rather than reading the feed. The race app then keeps working if emon_live is down, which matters more on the water than one fewer calculation.</li>
+  <li><b>Where emon_feed lives.</b> Recommended: inside pyemonlib, since every image already installs that wheel. The race app does not install it today, so its migration adds one wheel to its Dockerfile.</li>
+  <li><b>How far to take derived.yml.</b> Shower detection and the dog-fed email could become operators later, or stay in Node-RED. I would leave them until a second site needs them.</li>
+  <li><b>Data-age thresholds.</b> A site default in site.json, overridable per tile. Suggested 60 s and 5 min for the house, and 15 s and 2 min on the boat to match the HUD. Position keeps the race app's 5 s blanking.</li>
+</ul>
+</main>

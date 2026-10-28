@@ -1400,8 +1400,13 @@ HUD.
   square's corners outside the rim, where 30 at 66 wide is what fits clear of the mark
   diamond's tip: room for four characters, an rpm or a TWA of -105. A test holds that
   geometry.
-- **Heel:** a line across the dial's centre that tilts with the deck, starboard end down
-  when heeled to starboard, with the last 15 s of readings behind it as thinner lines
+- **Heel:** an artificial horizon, a line across the dial's centre that tilts against the
+  deck, starboard end up when heeled to starboard, so it lies where the real horizon is
+  as seen from the boat. It first tilted with the deck, starboard end down, and was turned
+  round at the crew's request: a horizon is the picture every instrument that shows
+  attitude uses, and reads at a glance. The value itself is unchanged, positive to
+  starboard like every other signed angle; only the drawing is negated. The last 15 s of
+  readings sit behind it as thinner lines
   fading with their age. A steady heel is one line; a boat rolling is a fan whose width
   is the roll. Violet by day, the one hue the dial had free, and a red at night like
   everything else. It passes under the hull, the leeway circle and the AWS box, which hide

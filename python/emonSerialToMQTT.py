@@ -11,6 +11,8 @@ import threading
 
 
 def check_int(s):
+    if not s:
+        return False
     if s[0] in ('-', '+'):
         return s[1:].isdigit()
     return s.isdigit()
@@ -60,10 +62,16 @@ if __name__ == "__main__":
 
     with serial.Serial(serialPort, 9600, timeout=5) as ser:
         while ((datetime.datetime.now()-lastReceivedDataPacket).total_seconds() < 600):
-            line = ser.readline().decode('utf-8').rstrip('\r\n')
+            #Opening the port mid-packet gives a partial line that need not be valid utf-8.
+            #Escape the bad bytes (plain ascii, so the log shows them and print never
+            #fails on stdout's encoding); the node filter below then drops the line.
+            line = ser.readline().decode('utf-8', errors='backslashreplace').rstrip('\r\n')
             writeLog(logPath, line)
             if(line.startswith("RSSI")):
-                RSSIvalue = int(line[6:])     #parse -36 from "RSSI: -36"
+                try:
+                    RSSIvalue = int(line[6:])     #parse -36 from "RSSI: -36"
+                except ValueError:
+                    RSSIvalue = 0
             else:
                 lineFields = line.split(',',2)
                 if( len(lineFields)>2 and lineFields[0].rstrip('0123456789') in nodes and check_int(lineFields[1]) ):

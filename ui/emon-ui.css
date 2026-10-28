@@ -1,0 +1,301 @@
+/* emon-ui (DESIGN 4.5), from the proposal's mockup ("The page").
+ *
+ * One hue per domain, on the tile's top stripe and heading, never a filled background, so
+ * numbers stay dark on light and legible in sun. Values monospace with tabular figures.
+ * Four columns on a desktop, two on a phone; a span-2 tile spans both on a phone.
+ *
+ * iOS 12 floor (enchantee_racing/CLAUDE.md): no clamp(), no flexbox gap, no color-mix(),
+ * no dvh without a fallback. Grid gap is fine, given as grid-gap too for Safari 12.
+ */
+
+:root {
+  --bg: #f2f4f6; --panel: #ffffff; --ink: #1a2230; --ink2: #4c5766; --ink3: #8a94a3;
+  --line: #dde2e8; --line2: #eef1f4;
+  --power: #d4761c; --solar: #c9a10a; --batt: #3a8a5b; --heat: #c1453a; --water: #2b7cb8;
+  --rain: #5a6f8a; --car: #6b5bb0; --other: #6f7a88;
+  --ok: #2f8f5b; --ok-bg: rgba(47, 143, 91, 0.16); --warn: #c98a12; --bad: #c1453a;
+  --bad-bg: rgba(193, 69, 58, 0.14);
+  --port: #c8372d; --stbd: #2f9a4f;
+  --mono: "IBM Plex Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --cond: "IBM Plex Sans Condensed", "Arial Narrow", -apple-system, "Segoe UI", sans-serif;
+}
+
+body.night {
+  --bg: #13171d; --panel: #1b2129; --ink: #e8ecf1; --ink2: #aab3bf; --ink3: #6f7a88;
+  --line: #2b333e; --line2: #232a33;
+  --power: #f0953a; --solar: #e6c02a; --batt: #5db07f; --heat: #e2695e; --water: #4d9ddb;
+  --rain: #8a9fbb; --car: #9484d6; --other: #8a94a3;
+  --ok: #5db07f; --ok-bg: rgba(93, 176, 127, 0.18); --bad: #e2695e; --bad-bg: rgba(226, 105, 94, 0.18);
+  --port: #e0554a; --stbd: #4fbf6e;
+}
+
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px;
+  line-height: 1.4; -webkit-text-size-adjust: 100%;
+}
+#app { min-height: 100vh; box-sizing: border-box; padding: 10px 12px 16px; }
+
+/* --- top bar ------------------------------------------------------------------------- */
+
+#bar {
+  display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap;
+  padding: 2px 2px 10px; font-family: var(--cond);
+}
+#title { font-weight: 600; font-size: 17px; margin-right: 14px; }
+#menu { flex: 1 1 auto; }
+#menu a {
+  display: inline-block; margin-right: 12px; color: var(--ink2); text-decoration: none;
+  font-size: 15px; padding: 2px 0; border-bottom: 2px solid transparent;
+}
+#menu a.on { color: var(--ink); border-bottom-color: var(--ink2); }
+/* site.json "menu": "large": tabs twice the size, each a finger-sized target, for the
+   boat's kiosk. The theme button grows with them. */
+body.menu-large #bar { align-items: center; padding-bottom: 8px; }
+body.menu-large #title { font-size: 22px; margin-right: 20px; }
+body.menu-large #menu a { font-size: 30px; padding: 6px 4px; margin-right: 28px; border-bottom-width: 3px; }
+body.menu-large button[data-theme-toggle] { font-size: 16px; padding: 10px 18px; }
+#status { font-family: var(--mono); font-size: 12px; color: var(--ink3); margin-right: 10px; }
+#status.offline { color: var(--bad); }
+button[data-theme-toggle] {
+  font-family: var(--mono); font-size: 12px; color: var(--ink2); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer;
+}
+
+/* --- grid ---------------------------------------------------------------------------- */
+
+#tiles {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-gap: 10px; gap: 10px;
+}
+@media (max-width: 1100px) { #tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { #tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 8px; gap: 8px; } }
+@media (max-width: 360px) { #tiles { grid-template-columns: minmax(0, 1fr); } }
+/* A page's own "cols", from tablet width up: the boat's iPad and kiosk alike. */
+@media (min-width: 761px) {
+  #tiles.p1 { grid-template-columns: minmax(0, 1fr); }
+  #tiles.p2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #tiles.p3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #tiles.p4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.empty { color: var(--ink3); font-family: var(--mono); font-size: 13px; }
+
+/* --- tile ---------------------------------------------------------------------------- */
+
+.tile {
+  --c: var(--other);
+  background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--c);
+  border-radius: 4px; padding: 9px 12px 10px; min-width: 0; box-sizing: border-box;
+}
+.tile.w2 { grid-column: span 2; }
+@media (max-width: 360px) { .tile.w2 { grid-column: auto; } }
+.d-power { --c: var(--power); } .d-solar { --c: var(--solar); } .d-batt { --c: var(--batt); }
+.d-heat { --c: var(--heat); } .d-water { --c: var(--water); } .d-rain { --c: var(--rain); }
+.d-car { --c: var(--car); } .d-other { --c: var(--other); }
+
+.tile .h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+.tile .h b {
+  font-family: var(--cond); font-weight: 600; font-size: 14px; color: var(--c);
+  letter-spacing: 0.01em; margin-right: 8px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile .h .leds { flex: 1 1 auto; text-align: right; margin-right: 6px; white-space: nowrap; }
+.tile .h .leds .pill { margin-left: 4px; }
+.tile .h i { font-family: var(--mono); font-style: normal; font-size: 11px; color: var(--ink3); white-space: nowrap; }
+.tile .h i.head { font-size: 12px; color: var(--ink2); }
+.tile .foot { font-family: var(--mono); font-size: 11px; color: var(--ink3); text-align: right; }
+.tile .foot:empty { display: none; }
+
+.kv { display: grid; grid-gap: 6px 12px; gap: 6px 12px; }
+.kv > div { min-width: 0; overflow: hidden; }
+.kv.c1 { grid-template-columns: minmax(0, 1fr); }
+.kv.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kv.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kv.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 760px) { .tile.w2 .kv.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.k { font-size: 11px; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v {
+  font-family: var(--mono); font-size: 22px; font-weight: 500; line-height: 1.1;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.v small { font-size: 12px; color: var(--ink3); margin-left: 2px; }
+.v.big { font-size: 30px; }
+@media (max-width: 760px) {
+  .v { font-size: 19px; } .v.big { font-size: 24px; }
+  .tile:not(.w2) .kv.c3 { grid-gap: 4px 6px; gap: 4px 6px; }
+  .tile:not(.w2) .kv.c3 .v { font-size: 16px; } .tile:not(.w2) .kv.c3 .v.big { font-size: 19px; }
+  .tile:not(.w2) .kv.c3 .v small { font-size: 10px; margin-left: 1px; }
+}
+.t-power { color: var(--power); } .t-solar { color: var(--solar); } .t-batt { color: var(--batt); }
+.t-heat { color: var(--heat); } .t-water { color: var(--water); } .t-rain { color: var(--rain); }
+.t-car { color: var(--car); }
+.sub { font-family: var(--mono); font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.sub.line { margin-top: 5px; }
+.bar { height: 6px; background: var(--line2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--c); }
+.spark { display: block; width: 100%; height: 34px; margin-top: 6px; }
+.spark polyline { stroke: var(--c); }
+.spark circle { fill: var(--c); }
+.pill {
+  display: inline-block; font-family: var(--mono); font-size: 11px; padding: 1px 6px;
+  border-radius: 3px; background: var(--line2); color: var(--ink3);
+}
+.pill.on { background: var(--ok-bg); color: var(--ok); }
+.pill.bad { background: var(--bad-bg); color: var(--bad); }
+
+/* --- reading colours ("tint") ----------------------------------------------------------
+   One colour per quantity, the same on every screen the crew looks at: the boat's Node-RED
+   pages set them, enchantee_racing copied them (its static/app.css and templates/hud.html
+   say which widget each came from), and these are the same values. They were chosen for a
+   black background, so the night theme has them exactly; the day theme's panel is white,
+   where yellow, pale green and cyan cannot be read, so it has darker shades of each hue.
+   The race app's red-only night theme is not reproduced here. */
+:root {
+  --r-sog: #1565c0; --r-tws: #1565c0; --r-aws: #4a90d9;
+  --r-hdg: #7a6500; --r-cog: #9c8600; --r-leeway: #9c8600;
+  --r-twa: #c46a00; --r-awa: #d9913a;
+  --r-rpm: #2e8b3e; --r-power: #2e8b3e; --r-cur: #00838f; --r-cellmin: #00838f;
+  --r-ctrl: #d32f2f; --r-cellmax: #d32f2f; --r-mot: #9b1b1b; --r-temp: #9b1b1b;
+  --r-volt: #a07800; --r-soc: #a07800; --r-hum: #2a7fb8; --r-heel: #8e24aa;
+  --r-press: #0b7a0b;
+}
+body.night {
+  --r-sog: #1e90ff; --r-tws: #1e90ff; --r-aws: #8fc9ff;   /* DodgerBlue; its lighter tint */
+  --r-hdg: #ffff00; --r-cog: #ffff99; --r-leeway: #ffff99; /* Yellow; COG and leeway lighter */
+  --r-twa: #ffa500; --r-awa: #ffcc80;                      /* Orange; apparent lighter */
+  --r-rpm: #98fb98; --r-power: #98fb98;                    /* PaleGreen */
+  --r-cur: #00ffff; --r-cellmin: #00ffff;                  /* Cyan */
+  --r-ctrl: #ff0000; --r-cellmax: #ff0000;                 /* Red */
+  --r-mot: #b22222; --r-temp: #b22222;                     /* FireBrick */
+  --r-volt: #ffd700; --r-soc: #ffd700;                     /* Gold */
+  --r-hum: #87ceeb; --r-heel: #d070ff;                     /* SkyBlue; the race app's violet */
+  --r-press: #00ff00;   /* green, as the GPS Banner shows pressure (emon_GPS_Banner.ino) */
+}
+.r-sog { color: var(--r-sog); } .r-tws { color: var(--r-tws); } .r-aws { color: var(--r-aws); }
+.r-hdg { color: var(--r-hdg); } .r-cog { color: var(--r-cog); } .r-leeway { color: var(--r-leeway); }
+.r-twa { color: var(--r-twa); } .r-awa { color: var(--r-awa); }
+.r-rpm { color: var(--r-rpm); } .r-power { color: var(--r-power); }
+.r-cur { color: var(--r-cur); } .r-cellmin { color: var(--r-cellmin); }
+.r-ctrl { color: var(--r-ctrl); } .r-cellmax { color: var(--r-cellmax); }
+.r-mot { color: var(--r-mot); } .r-temp { color: var(--r-temp); }
+.r-volt { color: var(--r-volt); } .r-soc { color: var(--r-soc); }
+.r-hum { color: var(--r-hum); } .r-heel { color: var(--r-heel); } .r-press { color: var(--r-press); }
+/* In SVG the tint is the fill of a dial's or compass's number, and the colour of a needle:
+   solid, whether or not it is the first. Selectors carry an element name so that they
+   outrank the compass's own needle rules further down. */
+svg text.r-sog { fill: var(--r-sog); } svg text.r-tws { fill: var(--r-tws); }
+svg text.r-hdg { fill: var(--r-hdg); } svg text.r-cog { fill: var(--r-cog); }
+svg text.r-twa { fill: var(--r-twa); } svg text.r-awa { fill: var(--r-awa); }
+svg text.r-rpm { fill: var(--r-rpm); } svg text.r-cur { fill: var(--r-cur); }
+svg text.r-ctrl { fill: var(--r-ctrl); } svg text.r-mot { fill: var(--r-mot); }
+svg text.r-volt { fill: var(--r-volt); } svg text.r-soc { fill: var(--r-soc); }
+svg text.r-temp { fill: var(--r-temp); }
+.compass g.needle[class*=" r-"] polygon { fill: currentColor; stroke: currentColor; }
+.compass g.needle.main[class*=" r-"] line { stroke: currentColor; }
+.tile.dead .v[class*=" r-"], .tile.dead svg text { color: var(--ink3); fill: var(--ink3); }
+
+/* --- boat parts: dial, compass, cell-bar, grafana (PLAN 3) ----------------------------- */
+
+/* An SVG in a box that keeps its shape by padding: iOS 12 does not keep an SVG's aspect
+   ratio from height: auto. */
+.dial-box, .compass-box { position: relative; height: 0; }
+.dial-box { padding-bottom: 80%; }
+.compass-box { padding-bottom: 100%; }
+.dial-box svg, .compass-box svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+
+.dials { display: flex; justify-content: space-around; }
+.dial { flex: 1 1 0; min-width: 0; max-width: 220px; margin: 0 4px; text-align: center; }
+.dial .k { margin-top: -4px; }
+.dial path { fill: none; stroke-linecap: butt; }
+.dial .track { stroke: var(--line2); stroke-width: 9; }
+.dial .fill { stroke: var(--c); stroke-width: 9; }
+.dial .fill.warn { stroke: var(--warn); }
+.dial .fill.bad { stroke: var(--bad); }
+.dial .band { stroke-width: 3; }
+.dial .band.warn { stroke: var(--warn); }
+.dial .band.bad { stroke: var(--bad); }
+.dial text, .compass text { font-family: var(--mono); text-anchor: middle; fill: var(--ink); }
+.dial .val, .compass .val { font-size: 20px; font-weight: 500; }
+.dial .unit, .compass .unit { font-size: 9px; fill: var(--ink3); }
+.dial .end { font-size: 8px; fill: var(--ink3); }
+
+.compass-size { max-width: 210px; margin: 0 auto 6px; }
+.compass .ring { fill: none; stroke: var(--line); stroke-width: 1.5; }
+.compass .tick { stroke: var(--ink3); stroke-width: 1; }
+.compass .tick.major { stroke: var(--ink2); stroke-width: 1.5; }
+.compass .mark { font-size: 9px; fill: var(--ink2); }
+.compass .port { fill: var(--port); opacity: 0.7; }
+.compass .stbd { fill: var(--stbd); opacity: 0.7; }
+.compass .needle polygon { fill: none; stroke: var(--ink2); stroke-width: 1.5; }
+.compass .needle.main polygon { fill: var(--c); stroke: var(--c); }
+.compass .needle.main line { stroke: var(--c); stroke-width: 2.5; }
+.t-main { color: var(--c); }
+
+.cells { display: flex; align-items: flex-end; margin-top: 2px; }
+.cell { flex: 1 1 0; min-width: 0; margin: 0 1px; text-align: center; }
+.cbar { position: relative; height: 64px; background: var(--line2); border-radius: 2px; overflow: hidden; }
+.cbar i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--c); opacity: 0.55; }
+.cell.lo .cbar i, .cell.hi .cbar i { opacity: 1; }
+.cell.warn .cbar i { background: var(--warn); }
+.cell.none .cbar { background: transparent; border: 1px dashed var(--line); box-sizing: border-box; }
+.cl { font-family: var(--mono); font-size: 9px; color: var(--ink3); line-height: 1.6; }
+.sub.line.warn { color: var(--warn); }
+
+iframe.grafana { display: block; width: 100%; border: 0; margin-top: 4px; background: var(--panel); }
+
+/* --- the race app's face (site.json "font": "race") -------------------------------------
+   enchantee_racing sets everything, numbers included, in the system's Helvetica (static/
+   app.css, templates/hud.html): readings at weight 500 with tabular figures and a touch
+   of negative tracking. A boat site does the same, so a number looks the same on the HUD
+   and on these pages. Nothing is downloaded: the Pi resolves Helvetica to Nimbus Sans,
+   iOS has Helvetica Neue. */
+body.font-race {
+  --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --cond: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+body.font-race .v, body.font-race svg text.val {
+  font-weight: 500; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+}
+
+/* --- black nights (site.json "night": "black") ----------------------------------------
+   The night theme with the panels and the page behind them pure black, as enchantee_racing
+   draws its screens; the panels' borders keep them apart. The reading colours were chosen
+   for black, so they are at their best here. */
+body.night.night-black { --bg: #000000; --panel: #000000; --line: #2b2b2b; --line2: #1a1a1a; }
+
+/* --- large text (?text=large, or site.json "text": "large") -----------------------------
+   Twice the size of every reading and label, for a small screen read from across a
+   cabin. Value grids of four go to two in a half-width tile, so the numbers keep their
+   room. */
+body.text-large #bar { flex-wrap: nowrap; }
+body.text-large #title { font-size: 28px; white-space: nowrap; }
+body.text-large #status { font-size: 16px; white-space: nowrap; }
+body.text-large button[data-theme-toggle] { font-size: 20px; padding: 8px 16px; white-space: nowrap; }
+body.text-large .tile { padding: 12px 16px 14px; }
+body.text-large .tile .h { margin-bottom: 10px; }
+body.text-large .tile .h b { font-size: 28px; }
+body.text-large .tile .h i, body.text-large .tile .foot, body.text-large .age { font-size: 20px; }
+body.text-large .k { font-size: 20px; }
+body.text-large .v { font-size: 44px; }
+body.text-large .v.big { font-size: 60px; }
+body.text-large .v small { font-size: 24px; }
+body.text-large .sub { font-size: 22px; }
+body.text-large .pill { font-size: 20px; }
+body.text-large .kv { grid-gap: 10px 18px; gap: 10px 18px; }
+body.text-large .tile:not(.w2) .kv.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body.text-large .compass-size { max-width: 250px; }
+body.text-large .dial { max-width: 400px; }
+body.text-large .cbar { height: 110px; }
+body.text-large .cl { font-size: 16px; }
+body.text-large .spark { height: 48px; }
+
+/* --- data age (DESIGN D6): fresh, ageing, gone ---------------------------------------- */
+
+.age { font-family: var(--mono); font-size: 11px; color: var(--ink3); }
+.age.warn, .tile .h i.warn, .tile .foot.warn { color: var(--warn); }
+.age.bad, .tile .h i.bad, .tile .foot.bad { color: var(--bad); }
+.tile.dead { border-style: dashed; border-top-style: solid; border-top-color: var(--ink3); }
+.tile.dead .h b, .tile.dead .v { color: var(--ink3); }
