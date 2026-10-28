@@ -131,9 +131,26 @@ def load_config(config_dir: Path = CONFIG_DIR) -> dict:
     return docs
 
 
+def short_navaid_name(name: str) -> str:
+    """The part of a navaid's register name after its last " - ", as the map labels it.
+
+    The register prefixes a region ("Rottnest Island - Thomson Bay Lit South Cardinal
+    Buoy"), which says nothing a crew looking at the water does not already know, and it
+    is what pushes the median name to 41 characters (DESIGN 12.5, 15). The map also caps
+    its labels at 18 characters; this does not, because the race screen fits a name to
+    two lines and a shortened name stays intact there. Used only for the name a waypoint
+    borrows; a race shows its marks as the course names them.
+    """
+    tail = name.split(" - ")[-1].strip()
+    return tail or name.strip()
+
+
 def waypoint_names(config_dir: Path, marks_doc: dict) -> list:
     """(name, LatLon) for every named navaid and course mark. Missing navaids is not fatal."""
-    names = [(m.get("name"), nav.LatLon(m["lat"], m["lon"]))
+    # Marks too: 21 of them are context marks no course uses, named from the register in
+    # the same long form. A race's own mark names never come through here (the race
+    # screen takes them from the course), so shortening every borrowed name is safe.
+    names = [(short_navaid_name(m["name"]), nav.LatLon(m["lat"], m["lon"]))
              for m in marks_doc.get("marks", []) if m.get("name")]
     navaids_path = config_dir / "navaids.json"
     if navaids_path.exists():
@@ -143,7 +160,7 @@ def waypoint_names(config_dir: Path, marks_doc: dict) -> list:
             geometry = feature.get("geometry") or {}
             if name and geometry.get("type") == "Point":
                 lon, lat = geometry["coordinates"][:2]
-                names.append((name, nav.LatLon(lat, lon)))
+                names.append((short_navaid_name(name), nav.LatLon(lat, lon)))
     return names
 
 

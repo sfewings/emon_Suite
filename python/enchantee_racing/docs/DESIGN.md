@@ -3061,3 +3061,24 @@ taken for a leg, a no-cross line or a contour. The bearing's red at night.
 
 On the map strip a waypoint selects the racing set of four, with distance and off the bow
 from the waypoint.
+
+### Fitting a long name
+
+Course mark names are short: median 9 characters, longest "SoPYC Start Outer" at 17. The
+long ones are what a waypoint borrows from the navaid register, median 41 and up to 68,
+and they were cut off with an ellipsis on the race screen. Agreed with the owner from a
+mockup of real names, three changes:
+
+- **A borrowed name loses its region**, by the map's own rule: the part after the last
+  " - " ("Rottnest Island - Thomson Bay Lit South Cardinal Buoy" becomes "Thomson Bay Lit
+  South Cardinal Buoy"). Uncapped, unlike a map label. A race's own mark names never pass
+  through this; the race screen takes them from the course.
+- **The race screen fits the name.** One line if it fits at 80% of the stylesheet's size or
+  more; otherwise two lines at the largest size that fits, down to 55%; past that, two lines
+  at 55% ending in an ellipsis. Every course mark fits on one line, the longest at 84%.
+  Shortened navaid names typically take two lines at 80 to 85%, in space under the name that
+  was empty. The worst in the register, 51 characters, lands at 58%. Lines are counted from
+  the box height: a descender overhangs the last line and scrollHeight reads it as a third.
+  The label reads WAYPOINT for a waypoint, matching WPT on GAR and "waypoint" on the HUD.
+- **The classic HUD shrinks before it ellipsises**, to the same 55% floor, on one line only:
+  that row has no room for a second. GAR already fitted its name to the band.

@@ -388,6 +388,7 @@
     // the racing rows too, when they are the set on show (DESIGN 9.10)
     Object.keys(race).forEach(function (k) {
       if (fittable(race[k])) fit(race[k]);
+      else if (race[k].classList.contains("name")) fitName(race[k]);
     });
   }
 
@@ -441,6 +442,21 @@
     if (node.textContent === text) return;
     node.textContent = text;
     if (fittable(node)) fit(node);
+    else if (node.classList.contains("name")) fitName(node);
+  }
+
+  // A long name shrinks to fit before it is ellipsised, down to NAME_FLOOR of the
+  // stylesheet's size; past that the CSS ellipsis takes over. One line only: this row is
+  // too tight for a second (DESIGN 15).
+  var NAME_FLOOR = 0.55, NAME_STEP = 0.02;
+  function fitName(node) {
+    node.style.fontSize = "";
+    if (!node.clientWidth) return;
+    var base = parseFloat(window.getComputedStyle(node).fontSize);
+    for (var f = 1; f >= NAME_FLOOR - 1e-9; f -= NAME_STEP) {
+      node.style.fontSize = (base * f).toFixed(1) + "px";
+      if (node.scrollWidth <= node.clientWidth) return;
+    }
   }
 
   function paintRace(data) {

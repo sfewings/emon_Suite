@@ -21,7 +21,7 @@
   ["pip", "notice", "countdown", "line-distance", "line-unit", "line-time", "mark-name",
    "distance", "distance-unit", "bearing", "cog", "relative", "elapsed", "secondary",
    "series", "cards", "final-elapsed", "final-course", "final-secondary", "wake", "quiet",
-   "mark-round", "nav", "resume", "next", "back",
+   "mark-round", "mark-label", "nav", "resume", "next", "back",
    // the first mark, shown before the start as well as during the race (DESIGN 9.2)
    "pre-mark", "pre-round", "pre-distance", "pre-unit", "pre-bearing",
    // the course detail page (DESIGN 9.11)
@@ -262,6 +262,10 @@
     // Which of the racing panel's controls and rows apply: a waypoint has no elapsed time,
     // no leg table and no shortened course, and its Next is Clear.
     document.body.classList.toggle("passage", panel === "racing" && mode === "waypoint");
+    el["mark-label"].textContent = mode === "waypoint" ? "waypoint" : "next mark";
+    // A panel that was hidden had no width to fit the name to.
+    nameFitted = null;
+    fitName();
 
     // The way back into a running race, shown only when there is one to go back to.
     el.resume.hidden = !(mode && mode !== "idle");
@@ -474,6 +478,66 @@
       });
   }
 
+  // --- the mark name, fitted (DESIGN 9.2, 15) ---------------------------
+  //
+  // One line if it fits at NAME_ONE_LINE of the stylesheet's size or larger. Otherwise up to
+  // two lines, at the largest size that fits, down to NAME_FLOOR. Past that, two lines at the
+  // floor ending in an ellipsis. Every course mark fits on one line, the longest at 84%; a
+  // shortened navaid name for a waypoint typically lands on two lines at 80 to 85%, using
+  // space under the name that was already empty.
+  //
+  // Measured rather than estimated from the character count, because the glyphs vary and
+  // the rounding arrow shares the line. Only when the text or the width changes, since this
+  // runs on every poll. Lines are counted from the box height, not scrollHeight: a
+  // descender overhangs the last line by a few pixels and would read as a third line.
+  var NAME_ONE_LINE = 0.8, NAME_FLOOR = 0.55, NAME_STEP = 0.02, NAME_LINE_HEIGHT = 1.05;
+  var nameFitted = null;
+
+  function setName(text) {
+    var node = el["mark-name"];
+    if (node.textContent !== text) node.textContent = text;
+    fitName();
+  }
+
+  function fitName() {
+    var node = el["mark-name"];
+    var line = node.parentNode;
+    var arrow = el["mark-round"];
+    var room = line.clientWidth - (arrow.hidden ? 0 : arrow.offsetWidth + 12);
+    if (room <= 0) return;                      // the panel is not on show; fit it later
+    var key = node.textContent + "|" + room + "|" + (arrow.hidden ? 0 : 1);
+    if (key === nameFitted) return;
+    nameFitted = key;
+
+    var s = node.style;
+    s.fontSize = ""; s.whiteSpace = ""; s.lineHeight = ""; s.maxWidth = "";
+    s.display = ""; s.webkitLineClamp = ""; s.webkitBoxOrient = "";
+    var base = parseFloat(window.getComputedStyle(node).fontSize);
+    var f;
+    for (f = 1; f >= NAME_ONE_LINE - 1e-9; f -= NAME_STEP) {
+      s.fontSize = (base * f).toFixed(1) + "px";
+      if (node.scrollWidth <= room) return;
+    }
+    s.whiteSpace = "normal";
+    s.lineHeight = String(NAME_LINE_HEIGHT);
+    s.maxWidth = room + "px";
+    for (f = 1; f >= NAME_FLOOR - 1e-9; f -= NAME_STEP) {
+      var px = base * f;
+      s.fontSize = px.toFixed(1) + "px";
+      if (Math.round(node.clientHeight / (px * NAME_LINE_HEIGHT)) <= 2 &&
+          node.scrollWidth <= room) return;
+    }
+    s.fontSize = (base * NAME_FLOOR).toFixed(1) + "px";
+    s.display = "-webkit-box";
+    s.webkitBoxOrient = "vertical";
+    s.webkitLineClamp = "2";
+  }
+
+  window.addEventListener("resize", function () { nameFitted = null; fitName(); });
+  window.addEventListener("orientationchange", function () {
+    setTimeout(function () { nameFitted = null; fitName(); }, 250);
+  });
+
   // --- rendering --------------------------------------------------------
 
   var latest = { race: null, waypoint: null };
@@ -496,7 +560,7 @@
   // The racing panel, filled from the waypoint. The same elements the race fills and the
   // same formatters, so bearing, distance and off the bow read identically (DESIGN 15).
   function renderWaypoint(wp) {
-    el["mark-name"].textContent = wp.name || "Waypoint";
+    setName(wp.name || "Waypoint");
     setRounding(el["mark-round"], null);
     if (wp.nav) {
       distance(wp.nav.distance_m, el.distance, el["distance-unit"]);
@@ -575,7 +639,7 @@
     // racing. nav is null whenever the numbers cannot be known: no fix, or a fix past the
     // 5 s cutoff. Blanked rather than dimmed, because a dimmed number still reads as a
     // number in spray (DESIGN 9.5).
-    el["mark-name"].textContent = r.leg_name || BLANK;
+    setName(r.leg_name || BLANK);
     // The rounding side sits next to the mark name, as the chart's turn arrow rather than
     // the word, and comes from the leg rather than the mark's default so a course that
     // deviates from the register still reads correctly (DESIGN 9.2). The class picks which

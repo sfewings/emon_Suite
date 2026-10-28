@@ -284,6 +284,45 @@ def test_the_classic_hud_shows_the_waypoint_in_its_racing_rows():
     assert "|| !!d.waypoint)" in page
 
 
+def test_borrowed_names_drop_the_region_and_race_marks_are_untouched():
+    """The register's region prefix goes, as on the map; the rest stays whole (DESIGN 15)."""
+    assert app_module.short_navaid_name(
+        "Rottnest Island - Thomson Bay Lit South Cardinal Buoy") == \
+        "Thomson Bay Lit South Cardinal Buoy"
+    assert app_module.short_navaid_name(
+        "Upper Reaches - Lit Mark 9 - Goongoongup Bridge-South 2") == "Goongoongup Bridge-South 2"
+    assert app_module.short_navaid_name("Kingston Reef North Cardinal Buoy") == \
+        "Kingston Reef North Cardinal Buoy"
+    names = dict((n, p) for n, p in CONFIG["waypoint_names"])
+    assert not any(" - " in n for n in names), "a borrowed name kept its region"
+    # every mark a course uses comes through exactly as marks.json spells it, because none
+    # of them carries a region; this fails if one ever does, rather than shortening it
+    used = {leg.get("mark") for c in CONFIG["courses"]["courses"] for leg in c["legs"]}
+    for m in CONFIG["marks"]["marks"]:
+        if m["id"] in used:
+            assert m["name"] in names, m["name"]
+
+
+def test_the_race_screen_fits_the_name_to_two_lines_and_labels_a_waypoint():
+    code = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    page = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    assert 'id="mark-label"' in page
+    assert '"waypoint" : "next mark"' in code
+    assert "NAME_ONE_LINE = 0.8, NAME_FLOOR = 0.55" in code
+    # both the race and the waypoint go through the one fitter
+    assert code.count("setName(") >= 3
+    # line count from the box, not scrollHeight, or a descender reads as a third line
+    assert "node.clientHeight / (px * NAME_LINE_HEIGHT)" in code
+    # an ellipsis past the floor, by line clamp, which iOS 12 has under -webkit-
+    assert 's.webkitLineClamp = "2"' in code
+
+
+def test_the_classic_hud_shrinks_a_long_name_before_ellipsising_it():
+    page = (ROOT / "templates" / "hud.html").read_text(encoding="utf-8")
+    assert "function fitName(node)" in page and "NAME_FLOOR = 0.55" in page
+    assert 'else if (node.classList.contains("name")) fitName(node);' in page
+
+
 if __name__ == "__main__":
     import traceback
 
