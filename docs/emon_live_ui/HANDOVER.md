@@ -37,9 +37,9 @@ files and the git history.
 
 **Merged into `master` on 27 Oct 2026** (owner's decision, ahead of phase 2's end on 30
 Oct). Enchantee's emon_live then moved to run from the production checkout (session
-log). shannstainable's still runs from its worktree until that Pi's `/share/emon_Suite`
-pulls `master`; then `cd /share/emon_Suite/provisioning/shannstainable && docker compose
-up -d --no-deps emon_live` moves it, as "Machines" says.
+log), and shannstainable's did on 29 Oct 2026, after the Energy page merged (`8fba9df`).
+On both Pis nothing runs from a worktree now; a worktree is only where development is
+done, never the production checkout (root CLAUDE.md).
 
 **PLAN 2f, the Energy page and its Sankey, written on the laptop on 29 Oct 2026 and not
 yet run anywhere** (owner's request). It needs no new image and no broker change: a
@@ -726,3 +726,9 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   two 2f decisions, then merge to master and move emon_live onto the production checkout.
 - **2026-10-29, later.** Owner's 2f decisions (Open questions): Sankey on the Energy page
   only; rolling 7 and 30 days. 2f is done.
+- **2026-10-29, evening.** The Energy page merged to master (`8fba9df`, no-ff, as the
+  earlier merges). shannstainable's production checkout pulled it and emon_live was
+  recreated from `/share/emon_Suite/provisioning/shannstainable` (`up -d --no-deps
+  emon_live`): healthy, mounts read-only from `/share/emon_Suite`, /live/ and
+  /api/energy answering. No container on this Pi mounts `/share/emon_Suite-live` or
+  `/share/emon-node-red-live` any more.
