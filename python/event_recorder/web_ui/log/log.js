@@ -43,6 +43,8 @@
     var dirty = {};                // field -> true while an edit is not yet saved
     var timers = {};
     var publishTimer = null;
+    var shownCrew = null;          // the chips and datalist as last written, to
+    var shownNames = null;         // leave both alone on a poll that changed neither
 
     function $(id) { return document.getElementById(id); }
 
@@ -224,7 +226,10 @@
                 (locked() ? ' disabled' : '') + '>' + escapeHtml(crew[i]) +
                 '<span class="x" aria-label="remove">&times;</span></button>';
         }
-        $('crew').innerHTML = html;
+        if (html !== shownCrew) {
+            $('crew').innerHTML = html;
+            shownCrew = html;
+        }
         $('crew-add').disabled = locked();
 
         var names = '';
@@ -234,7 +239,13 @@
                 names += '<option value="' + escapeHtml(suggestions[j]) + '">';
             }
         }
-        $('crew-names').innerHTML = names;
+        // Writing the datalist closes the suggestion popup and, on the Pi's
+        // browser, costs more than the rest of the render; the five-second poll
+        // almost never changes it
+        if (names !== shownNames) {
+            $('crew-names').innerHTML = names;
+            shownNames = names;
+        }
     }
 
     function showCategories() {

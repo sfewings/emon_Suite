@@ -78,6 +78,9 @@ class RecordingService:
         self.post_config = post_config
         self._suggestion_cache = {}
         self._computed_cache = {}
+        # (taken_at, names) for crew_suggestions: not per recording, so it
+        # cannot use _cached
+        self._crew_cache = None
         # Distance, top speed and the track so far, kept up to date cheaply
         # while a recording runs (FR-31)
         self.live = LiveSummaries(database)
@@ -930,10 +933,14 @@ class RecordingService:
         crew lines of past Ship's Log posts, cached from the site, and from
         earlier drafts here.
         """
-        drafts = post_suggestions.count_names(
-            draft.get('crew') or [] for draft in self.database.get_all_drafts())
+        now = time.monotonic()
+        if self._crew_cache and now - self._crew_cache[0] < self.SUGGESTION_SECONDS:
+            return list(self._crew_cache[1])
+        drafts = post_suggestions.count_names(self.database.get_draft_crews())
         site = post_suggestions.load_json_setting(self.database, 'wp_crew_counts', {})
-        return post_suggestions.merge_counts(site, drafts)
+        names = post_suggestions.merge_counts(site, drafts)
+        self._crew_cache = (now, names)
+        return list(names)
 
     # The rules read the recording's data, and the page asks every 5 s; a
     # minute is as fresh as a suggestion needs to be
