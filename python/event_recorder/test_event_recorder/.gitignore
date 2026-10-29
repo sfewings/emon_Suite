@@ -6,6 +6,7 @@
 # Data directory (recordings and plots)
 data/*
 !data/.gitkeep
+data_old/
 
 # Mosquitto data and logs
 mosquitto-data/

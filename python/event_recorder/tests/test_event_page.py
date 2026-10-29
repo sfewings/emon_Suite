@@ -403,5 +403,31 @@ def test_a_description_the_crew_wrote_is_kept(db, described):
     assert "Out to Pt Walter" in described.preview(rid, lambda path: path)
 
 
+def test_crew_suggestions_come_from_past_drafts_and_the_site(db, service):
+    for crew in (["Steve", "Henry"], ["Fran", "Roda"], ["Steve"]):
+        rid = _recording(db, "track_recording")
+        db.save_draft_fields(rid, {}, {"crew": crew, "blocks": [{"t": "p"}]})
+    db.set_setting("wp_crew_counts", '{"Ian": 5}')
+
+    # Most sailed first: Ian from the site, then Steve's two drafts
+    assert service.crew_suggestions()[:2] == ["Ian", "Steve"]
+    assert sorted(service.crew_suggestions()) == ["Fran", "Henry", "Ian", "Roda", "Steve"]
+
+
+def test_crew_suggestions_are_not_worked_out_on_every_poll(db, service, client):
+    rid = _recording(db, "track_recording")
+    db.save_draft_fields(rid, {}, {"crew": ["Steve"], "blocks": [{"t": "p"}]})
+    assert _state(client, rid)["crew_suggestions"] == ["Steve"]
+
+    # The page polls every 5 s; reading every draft's blocks each time was
+    # seconds on the boat's Pi, so the answer is kept for SUGGESTION_SECONDS
+    reads = []
+    original = db.get_draft_crews
+    db.get_draft_crews = lambda: (reads.append(1), original())[1]
+    for _ in range(5):
+        _state(client, rid)
+    assert reads == []
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

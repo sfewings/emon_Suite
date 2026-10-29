@@ -1241,6 +1241,27 @@ class Database:
         draft['field_revisions'] = json.loads(ref['field_revisions']) if ref.get('field_revisions') else {}
         return draft
 
+    def get_draft_crews(self) -> List[List[str]]:
+        """
+        Just the crew of every stored draft, for the name suggestions (FR-26).
+
+        get_all_drafts reads and decodes every draft's blocks and story to get
+        at this one column, over a connection apiece; the page asks on every
+        poll, and on the boat's Pi that was seconds.
+        """
+        crews = []
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT crew FROM post_drafts WHERE blocks IS NOT NULL AND crew IS NOT NULL")
+            for row in rows:
+                try:
+                    crew = json.loads(row[0]) if row[0] else []
+                except ValueError:
+                    continue
+                if crew:
+                    crews.append(crew)
+        return crews
+
     def get_all_drafts(self) -> List[Dict]:
         """Every stored draft, for what the crew have written before (FR-26, FR-30)."""
         with self.get_connection() as conn:
