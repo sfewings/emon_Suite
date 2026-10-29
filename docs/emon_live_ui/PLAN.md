@@ -158,6 +158,26 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       pushed. Until the merge it runs from the worktree (HANDOVER, Machines).
 - [ ] Run beside Instant Data for a week. Then disable the Dashboard 1 tabs.
 
+### 2f. The Energy page and its Sankey (owner's request, 29 Oct 2026; laptop)
+- [x] `sankey:` block in derived.yml, `/api/energy?period=...` and `energy.py` (DESIGN
+      6.5): the flows as site configuration, three window methods over bounded Influx
+      queries, a cache so a roomful of screens is one set of queries, `other` as the
+      remainder so the diagram balances.
+- [x] `ui/tiles/sankey.js` and its CSS: sources, the house, loads, with tabs for now,
+      today, yesterday, 7 days and 30 days. `ui/tools/sankey_preview.html` shows it on a
+      fixture with nothing running.
+- [x] `provisioning/shannstainable/emon-ui/pages/energy.json` and the site.json tab;
+      `tests/test_energy.py`; the linter knows the block's feeds.
+- [ ] **Check on the Pi** (Pi): the steps are in HANDOVER, "Checking the Energy page at
+      shannstainable". In short: `lint_pages.py` clean (it cannot run on Windows, where
+      `derived.load` fails in `mktime`), the real Influx answers each period with no
+      failed flow, and the figures for today agree with the `derived/.../today` totals on
+      the House page. The export ribbon is bucketed and only approximate; compare it
+      against `derived/export/today` late in a sunny day.
+- [ ] Look at it on a phone and on the desktop, then decide whether the Sankey also
+      belongs as a tile on the House page, and whether 7 and 30 rolling days should be
+      calendar weeks and months instead.
+
 Done when: the family uses the new page on phones and the desktop, and daily totals
 survive a restart. Way back: Instant Data is untouched until the last step.
 

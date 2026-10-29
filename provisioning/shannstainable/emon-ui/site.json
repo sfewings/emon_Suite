@@ -6,6 +6,7 @@
   "gone": 300,
   "pages": [
     {"id": "house", "title": "House"},
+    {"id": "energy", "title": "Energy"},
     {"id": "_all", "title": "All feeds"}
   ],
   "default": "house"

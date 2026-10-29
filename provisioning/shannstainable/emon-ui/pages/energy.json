@@ -1,0 +1,48 @@
+{
+  "title": "Energy",
+  "cols": 2,
+  "tiles": [
+    {
+      "title": "Where the energy went", "domain": "power", "span": 2,
+      "sankey": {
+        "periods": ["now", "today", "yesterday", "week", "month"],
+        "default": "today",
+        "height": 280
+      }
+    },
+    {
+      "title": "Today", "domain": "power", "span": 1,
+      "cols": 2,
+      "values": [
+        {"feed": "derived/solar/today", "label": "Solar", "big": true, "decimals": 0, "domain": "solar",
+         "sub": "{derived/solar/now|0} W now"},
+        {"feed": "derived/consumed/today", "label": "Consumed", "big": true, "decimals": 0,
+         "sub": "{Power board / Consumed|0} W now"},
+        {"feed": "derived/import/today", "label": "Imported", "decimals": 0,
+         "sub": "${derived/import/cost/today|2}"},
+        {"feed": "derived/export/today", "label": "Exported", "decimals": 0,
+         "sub": "${derived/export/value/today|2}"}
+      ],
+      "trail": {"feed": "Power board / Consumed", "minutes": 60},
+      "lines": [
+        "Car {derived/car/today|0} Wh · ${derived/car/cost/today|2} · HWS {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}",
+        "Foregone {derived/foregone/today|0} Wh · ${derived/foregone/value/today|2}"
+      ]
+    },
+    {
+      "title": "Batteries", "domain": "batt", "span": 1,
+      "headline": "{Inverter One / batteryCapacity|0} %",
+      "gauge": {"feed": "Inverter One / batteryCapacity", "max": 100},
+      "cols": 2,
+      "values": [
+        {"feed": "derived/battery/in/today", "label": "In today", "unit": "Wh", "decimals": 0,
+         "sub": "{derived/battery/power/in|0} W now"},
+        {"feed": "derived/battery/out/today", "label": "Out today", "unit": "Wh", "decimals": 0,
+         "sub": "{derived/battery/power/out|0} W now"}
+      ],
+      "lines": [
+        "Rail {Main battery monitor / Rail|2} V · {derived/battery/rail/min|2} to {derived/battery/rail/max|2}"
+      ]
+    }
+  ]
+}

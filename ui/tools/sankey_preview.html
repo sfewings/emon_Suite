@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sankey preview</title>
+<!-- The sankey tile on a fixture, with no emon_live and no broker: open this file in a
+     browser to see the diagram, in both themes, at any width. The real check is still the
+     page on the Pi; this is for laying the thing out on a machine with nothing running.
+     Relative paths, so it only works from ui/tools/. -->
+<link rel="stylesheet" href="../emon-ui.css">
+<style>
+  body { padding: 16px; }
+  #tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 10px; gap: 10px; }
+  .controls { margin-bottom: 12px; font-family: var(--mono); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="controls">
+  <button type="button" id="theme">Night</button>
+  <span id="what"></span>
+</div>
+<main id="tiles"></main>
+
+<script>
+// The slice of the engine the part uses. Keeping it here rather than loading emon-ui.js
+// means the fixture answers /api/energy without a server.
+var FIXTURE = {
+  now: {period: "now", label: "Now", unit: "W", hub: "House", from: 0, to: 0, balance: 0, failed: [],
+        flows: [
+          {id: "solar", label: "Solar", side: "source", domain: "solar", value: 4200, approx: false},
+          {id: "grid", label: "Grid", side: "source", domain: "power", value: 150, approx: false},
+          {id: "battery_out", label: "Battery out", side: "source", domain: "batt", value: 0, approx: false},
+          {id: "battery_in", label: "Battery in", side: "load", domain: "batt", value: 1900, approx: false},
+          {id: "car", label: "Car", side: "load", domain: "car", value: 1400, approx: false},
+          {id: "hws", label: "Hot water", side: "load", domain: "heat", value: 0, approx: false},
+          {id: "export", label: "Export", side: "load", domain: "solar", value: 310, approx: false},
+          {id: "other", label: "House and losses", side: "load", domain: "other", value: 740, approx: true}
+        ]},
+  today: {period: "today", label: "Today", unit: "Wh", hub: "House",
+          from: Date.now() / 1000 - 9 * 3600, to: Date.now() / 1000, balance: 0, failed: [],
+          flows: [
+            {id: "solar", label: "Solar", side: "source", domain: "solar", value: 23400, approx: false},
+            {id: "grid", label: "Grid", side: "source", domain: "power", value: 3100, approx: false},
+            {id: "battery_out", label: "Battery out", side: "source", domain: "batt", value: 5200, approx: false},
+            {id: "battery_in", label: "Battery in", side: "load", domain: "batt", value: 8800, approx: false},
+            {id: "car", label: "Car", side: "load", domain: "car", value: 7400, approx: false},
+            {id: "hws", label: "Hot water", side: "load", domain: "heat", value: 3600, approx: false},
+            {id: "export", label: "Export", side: "load", domain: "solar", value: 2100, approx: true},
+            {id: "other", label: "House and losses", side: "load", domain: "other", value: 9800, approx: true}
+          ]},
+  month: {period: "month", label: "30 days", unit: "Wh", hub: "House",
+          from: Date.now() / 1000 - 30 * 86400, to: Date.now() / 1000, balance: -1200,
+          failed: ["hws"],
+          flows: [
+            {id: "solar", label: "Solar", side: "source", domain: "solar", value: 612000, approx: false},
+            {id: "grid", label: "Grid", side: "source", domain: "power", value: 94000, approx: false},
+            {id: "battery_out", label: "Battery out", side: "source", domain: "batt", value: 141000, approx: false},
+            {id: "battery_in", label: "Battery in", side: "load", domain: "batt", value: 236000, approx: false},
+            {id: "car", label: "Car", side: "load", domain: "car", value: 198000, approx: false},
+            {id: "hws", label: "Hot water", side: "load", domain: "heat", value: null, approx: false},
+            {id: "export", label: "Export", side: "load", domain: "solar", value: 61000, approx: true},
+            {id: "other", label: "House and losses", side: "load", domain: "other", value: 352000, approx: true}
+          ]}
+};
+
+var parts = {};
+window.EmonUI = { part: function (name, factory) { parts[name] = factory; } };
+
+function el(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = text;
+  return e;
+}
+function fmt(v, d) {
+  if (v === null || v === undefined) return "—";
+  return Number(v).toFixed(d === undefined ? 0 : d);
+}
+var ui = {
+  el: el, fmt: fmt, base: "",
+  getJSON: function (url) {
+    var period = (url.split("period=")[1] || "now");
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        var doc = FIXTURE[period] || FIXTURE[period === "yesterday" || period === "week" ? "today" : "now"];
+        if (doc) resolve(JSON.parse(JSON.stringify(doc)));
+        else reject(new Error("no fixture for " + period));
+      }, 120);
+    });
+  }
+};
+</script>
+<script src="../tiles/sankey.js"></script>
+<script>
+["Now and today", "A month, with one flow missing"].forEach(function (title, i) {
+  var tile = el("section", "tile d-power w2");
+  var head = el("div", "h");
+  head.appendChild(el("b", null, title));
+  tile.appendChild(head);
+  var bodyEl = el("div", "body");
+  tile.appendChild(bodyEl);
+  document.getElementById("tiles").appendChild(tile);
+  var made = parts.sankey({ height: 280, "default": i ? "month" : "today" }, bodyEl,
+                          { gone: 300, fresh: 60 }, ui);
+  setInterval(function () { made.update(); }, 1000);
+});
+document.getElementById("what").textContent =
+  "fixture data · the tabs work · resize the window to check a phone";
+document.getElementById("theme").onclick = function () {
+  document.body.classList.toggle("night");
+  this.textContent = document.body.classList.contains("night") ? "Day" : "Night";
+};
+</script>
+</body>
+</html>

@@ -123,7 +123,29 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
             for name in d.inputs_outside():
                 if name not in d.influx and name in known:
                     errors.append(f"derived.yml: {name!r} has no influx series, so a restart cannot replay it")
-            for name in sorted(set(d.influx) - set(d.inputs_outside())):
+        # The sankey: block names feeds the derived entries need not mention (energy.py),
+        # and every feed a past window reads has to be in Influx or that ribbon is blank.
+        import energy
+        try:
+            with open(derived_file, encoding="utf-8") as f:
+                sankey = energy.Sankey(yaml.safe_load(f) or {})
+        except Exception as ex:
+            errors.append(f"derived.yml sankey: {ex}")
+            sankey = None
+        if sankey is not None:
+            for flow in sankey.flows:
+                for name in flow.feeds():
+                    derived_reads.add(name)
+                    if name not in known and name not in computed:
+                        errors.append(f"derived.yml sankey/{flow.id}: no feed {name!r}")
+                for name in flow.of:
+                    if d is not None and name not in d.influx:
+                        errors.append(f"derived.yml sankey/{flow.id}: {name!r} has no influx "
+                                      f"series, so a past period cannot be answered")
+
+        if d is not None:
+            reads = set(d.inputs_outside()) | (set(sankey.feeds()) if sankey else set())
+            for name in sorted(set(d.influx) - reads):
                 warnings.append(f"derived.yml influx: {name!r} is mapped but nothing reads it")
 
     pages_dir = os.path.join(site_dir, "pages")

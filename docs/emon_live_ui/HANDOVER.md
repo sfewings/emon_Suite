@@ -41,6 +41,11 @@ log). shannstainable's still runs from its worktree until that Pi's `/share/emon
 pulls `master`; then `cd /share/emon_Suite/provisioning/shannstainable && docker compose
 up -d --no-deps emon_live` moves it, as "Machines" says.
 
+**PLAN 2f, the Energy page and its Sankey, written on the laptop on 29 Oct 2026 and not
+yet run anywhere** (owner's request). It needs no new image and no broker change: a
+restart of emon_live is the whole deployment. Steps and what to compare against are in
+"Checking the Energy page at shannstainable" below. Design in DESIGN 6.5.
+
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
 **Phase 3 started on enchantee, 25 Oct 2026** (owner's request; see the session log).
 **Phase 3 deployed on enchantee, 27 Oct 2026, 21:24**: http://enchantee.local/ is emon_live,
@@ -178,6 +183,91 @@ shannstainable; the nginx file and launcher are installed from it by hand.
    on Navigation and Motor, which only resolve behind nginx), the kiosk after a login,
    `/hud`, `/race/`, `/events/`, `/nodered/ui/`. PLAN 3 is done after a day's sailing on
    the new pages; then Node-RED's dashboard can go.
+
+## Checking the Energy page at shannstainable (PLAN 2f)
+
+Written on the Windows laptop on 29 Oct 2026, where none of it could be run: `lint_pages.py`
+and three of test_ui fail there before they reach this work (`derived.load` raises
+`OverflowError: mktime argument out of range` on Windows, from the `reset: year` entry),
+and there is no node and no headless browser. So everything below is still to do, in
+this order. Design in DESIGN 6.5; the code is `python/emon_live/energy.py`,
+`influx.Window`, `/api/energy`, `ui/tiles/sankey.js`.
+
+**It needs no new container, no new image and no broker change.** The page is files in
+this checkout and one new route in emon_live, so a restart of emon_live is the whole
+deployment. Nothing publishes and nothing is written: `/api/energy` only reads Influx.
+
+1. **Where does emon_live run here?** Since the 27 Oct merge it may be the production
+   checkout rather than the worktree. Settle it before editing anything:
+   ```bash
+   docker inspect emon_live --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+   ```
+   Work in whichever tree that names; if it is `/share/emon_Suite`, remember that the
+   working tree is production (root CLAUDE.md) and prefer a branch.
+
+2. **Tests and the linter**, from `python/emon_live` in that tree, with the venv at
+   `/home/pi/.cache/emon_live_venv`:
+   ```bash
+   python -m pytest -q tests            # test_energy.py is 24 of them
+   python ../../ui/tools/lint_pages.py ../../provisioning/shannstainable/emon-ui --broker localhost
+   ```
+   The linter is the one check this work added that the laptop could not run: it now
+   reads the `sankey:` block and errors if a flow names a feed that does not exist, or
+   if a flow's `of:` feed has no `influx:` series, which would leave that ribbon blank
+   for every past period. Expect it clean.
+
+3. **Restart emon_live and ask it for each period.** `docker restart emon_live`, then:
+   ```bash
+   for p in now today yesterday week month; do
+     echo "== $p"; curl -s "http://127.0.0.1:5003/api/energy?period=$p" | python -m json.tool
+   done
+   ```
+   What to look at in each answer:
+   - `"failed": []`. A flow listed there means its Influx query failed or its series is
+     missing; the container log says which.
+   - `"balance"` near zero. It is sources minus named loads, before `other` takes up the
+     slack. Large and positive is normal (the house used it); negative means the named
+     loads exceed the sources, which is meters disagreeing and worth understanding.
+   - `now` must cost no queries at all. It is read from the live store.
+
+4. **Check the figures against what the House page already shows.** For `period=today`,
+   each flow should agree with its `derived/.../today` total:
+
+   | flow | agrees with | how it is found |
+   |---|---|---|
+   | `solar` | `derived/solar/today` | `integral` of the three inverters' PV |
+   | `grid` | `derived/import/today` | `counter` on the import pulse meter |
+   | `battery_out` | `derived/battery/out/today` | `counter`, monitor 5 pulseIn (pulseIn is discharge) |
+   | `battery_in` | `derived/battery/in/today` | `counter`, monitor 5 pulseOut |
+   | `car` | `derived/car/today` | `counter` |
+   | `hws` | `derived/hws/today` | `counter` |
+   | `export` | `derived/export/today`, **loosely** | `expr`, bucketed |
+
+   The counters and the integral should match closely. **`export` is the one to look at
+   properly.** It has no single Influx series (it is Inverter Two's output less the
+   average import since midnight), so a past window is rebuilt from one-minute bucketed
+   means and trapezoid-integrated, where the live total integrates every reading. It is
+   marked `"approx": true` and drawn with "≈". If it is out by more than a few percent
+   late in a sunny day, the bucket width is the first thing to change (`energy.STEP_S`).
+
+5. **Look at the page**: `http://<pi>:5003/#energy`, or wherever the site is served.
+   Click every tab. Then a phone, then the desktop. `ui/tools/sankey_preview.html` opened
+   straight from the filesystem draws the same tile on a fixture, including a month with
+   a failed flow, which is the quick way to judge the layout without waiting on queries.
+   Headless, as elsewhere in this file:
+   ```bash
+   chromium --headless=new --no-sandbox --virtual-time-budget=8000 \
+            --window-size=390,1900 --screenshot=energy.png 'http://127.0.0.1:5003/#energy'
+   ```
+
+6. **Then decide two things** and record them here: whether the Sankey also belongs as a
+   tile on the House page, and whether "7 days" and "30 days" should instead be whole
+   calendar weeks and months. They are rolling windows back from now (`energy.window`),
+   chosen because they are cheap and need no explaining; a calendar month would want its
+   own baseline, as `rain/month` does.
+
+Way back: remove the `{"id": "energy"}` line from `site.json` and the page is gone from
+the menu. The route and the block are inert without it.
 
 ## Machines
 
@@ -600,3 +690,22 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   10 derived feeds; 200 through nginx). Branch `emon_live_ui` fast-forwarded to master;
   the worktree stays for development. The decoder regression test was not run here (it
   needs the wheel installed in a venv); it last passed at shannstainable.
+- **2026-10-29, Windows laptop.** PLAN 2f, the Energy page and its Sankey, at the owner's
+  request: solar, grid, battery, car, hot water and export, over now, today, yesterday,
+  the last 7 days and the last 30. Built: `python/emon_live/energy.py`, the `sankey:`
+  block in shannstainable's derived.yml, `influx.Window`, `/api/energy`,
+  `ui/tiles/sankey.js` with its CSS, `pages/energy.json`, `tests/test_energy.py` (24),
+  and the linter now checks the block's feeds. Design in DESIGN 6.5.
+  Learned, and not foreseen by the design: the live store answers "now" and nothing else,
+  so a period selector needs Influx, which is why this is an endpoint of its own and not
+  more of `/api/state`. The export estimate has no single Influx series (it is Inverter
+  Two less the average import), so the `expr` method rebuilds it from bucketed means; it
+  is an estimate, marked "≈" on the diagram, and wants checking against
+  `derived/export/today` on the Pi.
+  **Not checked on this machine**: `derived.load` raises `OverflowError: mktime argument
+  out of range` on Windows (the `reset: year` entry), so `lint_pages.py`, test_ui's three
+  lint tests and all of test_derived cannot run here; they are not affected by this work.
+  There is no node and no headless browser on this laptop either, so the tile has not
+  been rendered. `ui/tools/sankey_preview.html` draws it on a fixture in any browser,
+  and the real check is the page on the Pi. The steps for that are in "Checking the
+  Energy page at shannstainable" above.

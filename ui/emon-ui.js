@@ -13,6 +13,7 @@
 //   compass  bearings on a rose, or angles off the bow
 //   cell-bar one bar per battery cell
 //   gauge    a bar from min to max
+//   sankey   where the energy came from and went, over a chosen period
 //   trail    a sparkline of one feed, kept by this page since it opened
 //   grafana  a Grafana panel in a frame
 //   leds     pills, on or off
@@ -33,7 +34,8 @@
   var MINUS = "−";
   var DASH = "—";
   var NNBSP = " ";   // narrow no-break space, between thousands
-  var PARTS = ["values", "dial", "compass", "cell-bar", "gauge", "trail", "grafana", "leds", "lines"];
+  var PARTS = ["values", "dial", "compass", "cell-bar", "gauge", "sankey", "trail", "grafana",
+               "leds", "lines"];
 
   var parts = {};          // name -> factory(spec, el, tile) returning update(view)
   var site = null;
@@ -436,7 +438,10 @@
 
   var api = {
     el: el, fmt: fmt, fmtAs: fmtAs, fmtTime: fmtTime, fmtAge: fmtAge, unit: unit,
-    parseTemplate: parseTemplate, templateFeeds: templateFeeds
+    parseTemplate: parseTemplate, templateFeeds: templateFeeds,
+    // Where this page is served from, so a part with an endpoint of its own (sankey)
+    // reaches it by the same relative path the engine uses.
+    base: base, getJSON: function (url) { return getJSON(url); }
   };
 
   window.EmonUI = {
