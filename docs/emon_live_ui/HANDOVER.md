@@ -732,3 +732,14 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   emon_live`): healthy, mounts read-only from `/share/emon_Suite`, /live/ and
   /api/energy answering. No container on this Pi mounts `/share/emon_Suite-live` or
   `/share/emon-node-red-live` any more.
+- **2026-10-29, night.** PLAN 2g, battery banks on the Energy page (DESIGN 6.6), built
+  and checked against the real Influx in a development emon_live on port 5004 (the
+  worktree, no `--publish`). Every period answers; 30 days ~30 s the first time, cached
+  after. Found on the way: the Sankey's cache never answered 7 or 30 days (it compared a
+  rolling window's start), fixed in both; the Leaf BMS has 12 wired cells of 16 slots and
+  sends impossible SoC (610, 354), Bank 3's S5 read 107.49 V once, both now filtered by
+  `range`; the Main battery monitor's own bank shunts are dead (frozen counters), so the
+  banks use LiFePO monitor 5. Bank 2's cell 16 went both lowest and highest over 30 days,
+  and Bank 3's S1 sagged to -1.355 V: worth the owner's eye. Waiting on the owner's look
+  before merging.
+

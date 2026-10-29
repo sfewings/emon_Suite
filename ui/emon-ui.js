@@ -14,6 +14,7 @@
 //   cell-bar one bar per battery cell
 //   gauge    a bar from min to max
 //   sankey   where the energy came from and went, over a chosen period
+//   banks    a card a battery bank: cells, charge and readings, over a chosen period
 //   trail    a sparkline of one feed, kept by this page since it opened
 //   grafana  a Grafana panel in a frame
 //   leds     pills, on or off
@@ -34,8 +35,8 @@
   var MINUS = "−";
   var DASH = "—";
   var NNBSP = " ";   // narrow no-break space, between thousands
-  var PARTS = ["values", "dial", "compass", "cell-bar", "gauge", "sankey", "trail", "grafana",
-               "leds", "lines"];
+  var PARTS = ["values", "dial", "compass", "cell-bar", "gauge", "sankey", "banks", "trail",
+               "grafana", "leds", "lines"];
 
   var parts = {};          // name -> factory(spec, el, tile) returning update(view)
   var site = null;

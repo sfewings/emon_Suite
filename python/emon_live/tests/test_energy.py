@@ -272,6 +272,18 @@ def client(live, tmp_path, tmp_path_factory, sankey):
     return create_app(live, Site(tmp_path), ui, sankey, window).test_client()
 
 
+def test_a_rolling_period_is_reused_within_its_ttl(sankey, live):
+    """7 and 30 days start a second later every second; the cache must still answer them
+    (it did not, until 29 Oct 2026, so a month was re-queried on every refresh)."""
+    window = FakeWindow(counters={"Power board / Car (pulse)": 1.0})
+    sankey.document("month", live, window, now=CAPTURED_AT)
+    asked = len(window.asked)
+    sankey.document("month", live, window, now=CAPTURED_AT + 300)
+    assert len(window.asked) == asked
+    sankey.document("month", live, window, now=CAPTURED_AT + energy.TTL_S["month"] + 1)
+    assert len(window.asked) > asked, "and asked again once the TTL has passed"
+
+
 def test_api_energy_defaults_to_now(client):
     doc = client.get("/api/energy").get_json()
     assert doc["period"] == "now" and doc["unit"] == "W"

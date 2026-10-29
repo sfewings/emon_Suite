@@ -60,6 +60,23 @@ influx:
   Dog food / scale:                                   scale scale/0
   Leaf / odometer:                                    leaf leaf/odometer/0
   Outlander / odometer:                               leaf leaf/odometer/1
+  # Battery banks (banks:, below). A BMS's cells take their series from their pattern there.
+  BMS - Bank 1 / batterySoC:                          bms bms/SoC/0
+  BMS - Bank 1 / batteryVoltage:                      voltage bms/voltage/0
+  BMS - Bank 1 / temperature:                         temperature bms/temperature/0
+  BMS - Bank 1 / resCapacity:                         bms bms/resCapacity/0
+  BMS - Bank 1 / lifetimeCycles:                      bms bms/lifetimeCycles/0
+  BMS - Bank 2 / batterySoC:                          bms bms/SoC/1
+  BMS - Bank 2 / batteryVoltage:                      voltage bms/voltage/1
+  BMS - Bank 2 / temperature:                         temperature bms/temperature/1
+  BMS - Bank 2 / resCapacity:                         bms bms/resCapacity/1
+  BMS - Bank 2 / lifetimeCycles:                      bms bms/lifetimeCycles/1
+  BMS - Leaf Bank / batterySoC:                       bms bms/SoC/2
+  BMS - Leaf Bank / batteryVoltage:                   voltage bms/voltage/2
+  BMS - Leaf Bank / power:                            power bms/power/2
+  BMS - Leaf Bank / temperature:                      temperature bms/temperature/2
+  BMS - Leaf Bank / resCapacity:                      bms bms/resCapacity/2
+  BMS - Leaf Bank / lifetimeCycles:                   bms bms/lifetimeCycles/2
 
 # The energy flow the Sankey on the Energy page draws (energy.py, DESIGN 6.5). Each flow
 # names a live W feed for "now" and a recipe for the energy over a past window; the window
@@ -140,6 +157,98 @@ sankey:
           import_avg: {feed: Power board / Imported, agg: mean, positive_only: true}
 
   other: {id: other, label: House and losses, side: load, domain: other}
+
+# Battery banks: a card each on the Energy page (banks.py, DESIGN 6.6).
+#
+# Which shunt is which bank, from the BMS's own figures on 29 Oct 2026: remaining capacity
+# over state of charge puts Bank 1 at about 280 Ah (164 Ah at 59 %) and Bank 2 at about
+# 320 Ah (258 Ah at 81 %), so the 510 Ah shunt is Bank 3's. The Main battery monitor's
+# own Bank 1/2/3 shunts have read 0 W with counters that have not moved since at least
+# 18 Oct, so in and out come from LiFePO monitor 5, where pulseIn is discharge (above).
+# Sign: positive is out of the battery, as the owner reads it; a BMS reports the
+# opposite, so its power is scaled by -1. The Leaf bank has no shunt.
+banks:
+  periods: [now, today, yesterday, week, month]
+  list:
+    - id: bank1
+      title: Bank 1
+      note: LiFePO4 · 16 cells · 280 Ah
+      soc: BMS - Bank 1 / batterySoC
+      cells:
+        feed: "BMS - Bank 1 / cellVoltage {n}"
+        influx: "voltage bms/cellVoltage/0/{n}"
+        count: 16
+        decimals: 3
+        spread: 0.05
+      values:
+        - {label: Voltage,     feed: BMS - Bank 1 / batteryVoltage, decimals: 2}
+        - {label: Power,       feed: LiFePO monitor 5 / Battery-280Ah, decimals: 0}
+        - {label: Temperature, feed: BMS - Bank 1 / temperature, decimals: 1}
+        - {label: Remaining,   feed: BMS - Bank 1 / resCapacity, decimals: 0}
+        - {label: Cycles,      feed: BMS - Bank 1 / lifetimeCycles, decimals: 0}
+      energy:
+        in:  LiFePO monitor 5 / Battery-280Ah (pulseOut)
+        out: LiFePO monitor 5 / Battery-280Ah (pulseIn)
+
+    - id: bank2
+      title: Bank 2
+      note: LiFePO4 · 16 cells · 320 Ah
+      soc: BMS - Bank 2 / batterySoC
+      cells:
+        feed: "BMS - Bank 2 / cellVoltage {n}"
+        influx: "voltage bms/cellVoltage/1/{n}"
+        count: 16
+        decimals: 3
+        spread: 0.05
+      values:
+        - {label: Voltage,     feed: BMS - Bank 2 / batteryVoltage, decimals: 2}
+        - {label: Power,       feed: LiFePO monitor 5 / Battery-320Ah, decimals: 0}
+        - {label: Temperature, feed: BMS - Bank 2 / temperature, decimals: 1}
+        - {label: Remaining,   feed: BMS - Bank 2 / resCapacity, decimals: 0}
+        - {label: Cycles,      feed: BMS - Bank 2 / lifetimeCycles, decimals: 0}
+      energy:
+        in:  LiFePO monitor 5 / Battery-320Ah (pulseOut)
+        out: LiFePO monitor 5 / Battery-320Ah (pulseIn)
+
+    # No BMS: five series strings of four 12 V batteries, each with its mid-point tap.
+    # B2-1 to B2-5 read how far each string's mid-point sits from half the rail, so 0 is
+    # balanced and the further from 0, the worse that string.
+    - id: bank3
+      title: Bank 3
+      note: Lead-acid · 5 × 4 × 12 V · 510 Ah
+      cells:
+        list:
+          - {feed: Main battery monitor / B2-1, label: S1}
+          - {feed: Main battery monitor / B2-2, label: S2}
+          - {feed: Main battery monitor / B2-3, label: S3}
+          - {feed: Main battery monitor / B2-4, label: S4}
+          - {feed: Main battery monitor / B2-5, label: S5}
+        decimals: 3
+        warn_abs: 1.0          # Node-RED's "over 1 V" for an unhealthy string
+        range: [-10, 10]       # S5 read 107.49 V once in October: a fault, not an offset
+      values:
+        - {label: Rail,  feed: Main battery monitor / Rail, decimals: 2}
+        - {label: Power, feed: LiFePO monitor 5 / Battery-510Ah, decimals: 0}
+      energy:
+        in:  LiFePO monitor 5 / Battery-510Ah (pulseOut)
+        out: LiFePO monitor 5 / Battery-510Ah (pulseIn)
+
+    - id: leaf
+      title: Leaf bank
+      note: Nissan Leaf modules · 12 cells · BMS only
+      soc: BMS - Leaf Bank / batterySoC
+      cells:
+        feed: "BMS - Leaf Bank / cellVoltage {n}"
+        influx: "voltage bms/cellVoltage/2/{n}"
+        count: 12              # the BMS sends 16; 13 to 16 have read 0 V, nothing on them
+        decimals: 3
+        spread: 0.05
+      values:
+        - {label: Voltage,     feed: BMS - Leaf Bank / batteryVoltage, decimals: 2}
+        - {label: Power,       feed: BMS - Leaf Bank / power, decimals: 0, scale: -1}
+        - {label: Temperature, feed: BMS - Leaf Bank / temperature, decimals: 1}
+        - {label: Remaining,   feed: BMS - Leaf Bank / resCapacity, decimals: 0}
+        - {label: Cycles,      feed: BMS - Leaf Bank / lifetimeCycles, decimals: 0}
 
 derived:
   # --- Power now (Calculate Instant power) -------------------------------------------

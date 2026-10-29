@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time as _time
 import urllib.parse
 import urllib.request
@@ -52,15 +53,20 @@ class Influx:
                  timeout: float = 30.0) -> None:
         self.url, self.db, self.timeout = url.rstrip("/"), db, timeout
 
-    def query(self, q: str) -> List[list]:
-        """Rows of the first series, times as epoch milliseconds."""
+    def query_series(self, q: str) -> List[dict]:
+        """Every series of the answer, each {name, tags, columns, values}, times as epoch
+        milliseconds: what a GROUP BY returns."""
         params = urllib.parse.urlencode({"db": self.db, "q": q, "epoch": "ms"})
         with urllib.request.urlopen(f"{self.url}/query?{params}", timeout=self.timeout) as r:
             body = json.loads(r.read().decode("utf-8"))
         result = (body.get("results") or [{}])[0]
         if "error" in result:
             raise RuntimeError(result["error"])
-        series = result.get("series") or []
+        return result.get("series") or []
+
+    def query(self, q: str) -> List[list]:
+        """Rows of the first series, times as epoch milliseconds."""
+        series = self.query_series(q)
         return series[0]["values"] if series else []
 
     def rows(self, measurement: str, sensor: str, since: float, until: float) -> List[Tuple[float, float]]:
@@ -142,6 +148,51 @@ class Window:
         q = f"SELECT {agg}(value) {where} GROUP BY time({int(step)}s) fill(none)"
         return [(ms / 1000.0, float(v)) for ms, v in self.influx.query(q)
                 if isinstance(v, (int, float))]
+
+    def stats(self, name: str, since: float, until: float,
+              valid: Optional[Tuple[float, float]] = None) -> Optional[dict]:
+        """{min, max, mean, last} of one feed over the window, or None (banks.py). With
+        `valid`, readings outside it are left out as faults."""
+        extra = "" if valid is None else f" AND value >= {float(valid[0])} AND value <= {float(valid[1])}"
+        where = self._where(name, since, until, extra)
+        if where is None:
+            return None
+        rows = self.influx.query(f"SELECT min(value), max(value), mean(value), last(value) {where}")
+        if not rows:
+            return None
+        lo, hi, mean, last = (float(v) if isinstance(v, (int, float)) else None for v in rows[0][1:5])
+        return {"min": lo, "max": hi, "mean": mean, "last": last}
+
+    def stats_many(self, names: List[str], since: float, until: float,
+                   valid: Optional[Tuple[float, float]] = None) -> dict:
+        """stats() for several feeds of one measurement in a single grouped query, as a
+        bank's cells are: {feed: {min, max, mean, last}}. Still one bounded query, the
+        sensors matched exactly by an anchored alternation."""
+        series = {n: self.series_of.get(n) for n in names}
+        known = {n: s for n, s in series.items() if s is not None}
+        for n in names:
+            if n not in known:
+                log.warning("no influx series for %r, so it has no statistics over a window", n)
+        if not known:
+            return {}
+        measurements = {m for m, _ in known.values()}
+        if len(measurements) != 1:
+            return {n: self.stats(n, since, until, valid) for n in known}
+        extra = "" if valid is None else f"AND value >= {float(valid[0])} AND value <= {float(valid[1])} "
+        measurement = measurements.pop()
+        by_sensor = {s: n for n, (_m, s) in known.items()}
+        alternation = "|".join(re.escape(s).replace("/", "\\/") for s in sorted(by_sensor))
+        q = (f"SELECT min(value), max(value), mean(value), last(value) FROM {_ident(measurement)} "
+             f"WHERE sensor =~ /^({alternation})$/ {extra}"
+             f"AND time >= {int(since * 1000)}ms AND time <= {int(until * 1000)}ms GROUP BY sensor")
+        out = {}
+        for s in self.influx.query_series(q):
+            name = by_sensor.get((s.get("tags") or {}).get("sensor"))
+            if name is None or not s.get("values"):
+                continue
+            lo, hi, mean, last = (float(v) if isinstance(v, (int, float)) else None for v in s["values"][0][1:5])
+            out[name] = {"min": lo, "max": hi, "mean": mean, "last": last}
+        return out
 
     def _maybe(self, select: str, name: str, since: float, until: float) -> Optional[str]:
         where = self._where(name, since, until)
