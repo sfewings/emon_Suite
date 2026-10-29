@@ -454,14 +454,19 @@
   function paintBand(d, f) {
     var r = d.race || null;
     var racing = !!(r && r.mode === "racing");
+    // A chart waypoint takes the same band and the same diamond as a race mark, labelled
+    // WPT rather than NEXT so the two modes cannot be confused at a glance (DESIGN 15). A
+    // race wins: the server refuses a waypoint during one, so this is belt and braces.
+    var wp = (!racing && d.waypoint) || null;
     // nav is null before the first fix and once it is more than 5 s old, and then
     // distance, bearing and the diamond go blank, never dim (DESIGN 9.5).
-    var nav = (racing && r.nav) || null;
+    var nav = racing ? (r.nav || null) : (wp ? wp.nav || null : null);
 
     reading($("b-sog"), f.sog, fmt1, "--.-");
     reading($("r-sog"), f.sog, fmt1, "--.-");
 
-    put($("r-mark"), (r && r.leg_name) || "---");
+    put($("r-lbl"), wp ? "WPT\u00a0\u00a0" : "NEXT\u00a0\u00a0");
+    put($("r-mark"), wp ? (wp.name || "Waypoint") : ((r && r.leg_name) || "---"));
     refit($("r-name"));
     if (nav && nav.distance_m !== null && nav.distance_m !== undefined) {
       if (nav.distance_m < NM_ABOVE_M) {
@@ -496,7 +501,7 @@
         failures = 0;
         pip.classList.remove("down");
         var swapped = setMotoring(!!d.motor);
-        swapped = swap("data-race", "on", !!(d.race && d.race.mode === "racing")) || swapped;
+        swapped = swap("data-race", "on", !!((d.race && d.race.mode === "racing") || d.waypoint)) || swapped;
         paint(d);
         window.Theme.apply(d.theme);
         if (window.LogDot) window.LogDot.apply(d.recording);

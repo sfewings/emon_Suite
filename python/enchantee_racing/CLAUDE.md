@@ -65,6 +65,7 @@ store.py                thread-safe {v, ts} cache, one lock, and the shared sett
 engine/nav.py           ENU projection, distance, bearing, line crossing
 engine/course.py        load and validate marks/courses/lines, and the leg table
 engine/race.py          mode and leg state machine, pure functions
+engine/waypoint.py      the chart waypoint, steered to like a mark (DESIGN 15)
 templates/              index.html, hud.html, map.html, gar.html (the HUD as
                         the boat's Garmin lays it out, DESIGN 9.12)
 static/                 app.js and app.css, the race screen

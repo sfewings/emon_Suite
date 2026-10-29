@@ -20,5 +20,8 @@
   "early_start_note": "Crossing the line within this long before the gun is flagged as a possible Rule 30.1 infringement. A warning only: the engine never changes state on it and never adjudicates a recall. The start box does that (DESIGN 11.1).",
 
   "breach_end_margin_m": 15.0,
-  "breach_end_margin_note": "A crossing of a no_cross_line within this distance of either mark is not a breach. A tight rounding passes over the end of the line within GPS and survey error of the mark: both Frostbite course 1 recordings logged a Smith / Lucky Bay breach 1 and 6 m from Smith while rounding it properly. Sailing between a pair crosses the middle of a line 104 to 202 m long, well clear of this (DESIGN 11.3)."
+  "breach_end_margin_note": "A crossing of a no_cross_line within this distance of either mark is not a breach. A tight rounding passes over the end of the line within GPS and survey error of the mark: both Frostbite course 1 recordings logged a Smith / Lucky Bay breach 1 and 6 m from Smith while rounding it properly. Sailing between a pair crosses the middle of a line 104 to 202 m long, well clear of this (DESIGN 11.3).",
+
+  "waypoint_arrival_radius_m": 30.0,
+  "waypoint_arrival_note": "A waypoint dropped on the chart clears itself when the boat comes within this distance of it, or when it is passed: within arming_radius_m and then abaft the beam for astern_fixes fixes, the rounding test above. The radius is for a waypoint the boat stops at, such as a mooring, which never goes astern because below min_sog_for_cog_kt the astern test declines (DESIGN 15)."
 }
