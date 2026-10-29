@@ -417,7 +417,7 @@ several, as the mockup's tiles do:
 
 | Key | Part | Shape |
 |---|---|---|
-| `values` | a grid of readings | `[{feed, label, big, decimals, unit, domain, sub}]`, with `cols` (1 to 4) on the tile |
+| `values` | a grid of readings | `[{feed, label, big, decimals, scale, unit, domain, sub}]`, with `cols` (1 to 4) on the tile |
 | `gauge` | a bar | `{feed, min, max}` |
 | `trail` | a sparkline | `{feed, minutes}`; kept by the page since it opened (no history endpoint yet) |
 | `leds` | pills in the heading | `[{feed, on, off, test, bad}]`; `test` `"value"` (on at 1 or more) or `"fresh"` (on while reporting) |
@@ -579,6 +579,52 @@ location already serves it at `/nodered/ui/`. emon_live runs on the compose netw
 publishes 5003, like shannstainable's, and its image is built on the Pi, not pulled. The
 kiosk opens `http://enchantee.local/?text=large#weather` (`#dials`, then `#motor`, as
 the owner reordered the pages on 27 Oct) and waits on the URL without the fragment.
+
+### 6.5 The Sankey, and energy over a past period
+
+**Added 29 Oct 2026** (owner's request: a diagram of where the power comes from and goes,
+over now, today, yesterday, the last week and the last month).
+
+A Sankey is the first thing on these pages that cannot be answered from the live store.
+The store holds one reading a feed, and derived.yml's totals reset at midnight, so
+"yesterday" and "last month" have to come from Influx. Three choices follow.
+
+**The flows are site configuration, not page configuration.** A new `sankey:` block in
+the site's derived.yml names each ribbon once: which side it is on, its colour, the live
+W feed for "now", and how to find its energy over a past window. The page then says only
+`"sankey": {"periods": [...], "default": "today", "height": 280}`. One description
+answers every period, and the linter checks the feed names as it checks a page's (9.4).
+
+**A new endpoint, not the state document.** `/api/energy?period=...` (energy.py). The
+state document is polled every second or two by every open screen; the Sankey's past
+periods are database queries and must not ride on it. "now" is read from the live store
+and costs nothing; the rest are cached, 60 s for today, 10 min for a week or a month, an
+hour for yesterday, which cannot change. A roomful of screens is one set of queries.
+
+**Three ways to value a window**, each one or two bounded queries, for the reason influx.py
+gives:
+
+| method | query | for |
+|---|---|---|
+| `counter` | `last(value) - first(value)` | the pulse meters, which are already Wh |
+| `integral` | `integral(value, 1s) / 3600` | a feed in W, such as an inverter's PV |
+| `expr` | an expression in W over bucketed means, trapezoid-integrated | a figure no single series holds |
+
+`expr` exists for the export estimate, which is Inverter Two's output less the average
+import since midnight (6.3): two series and a window-wide aggregate, which `scalars:`
+supplies. Its buckets are a minute for a day and 15 minutes for a month, so it is close
+to `derived/export/today` but not equal to it. Those flows are marked `approx` and the
+diagram prints "≈" beside them. Honest, and cheap.
+
+**The diagram balances by construction.** Sources on the left, the house in the middle,
+loads on the right; what the sources carried that the named loads do not account for is
+one `other` ribbon. Nothing is counted twice at shannstainable because solar charges the
+batteries and battery charge is a load, so the round trip's losses land in `other` with
+everything else the house used. When the named loads exceed the sources, the meters
+disagree, and the note line says by how much rather than hiding it.
+
+A flow whose query fails comes back with no value and is named in `failed`: the rest of
+the diagram still draws, as a tile with a feed that never arrived still draws.
 
 ---
 

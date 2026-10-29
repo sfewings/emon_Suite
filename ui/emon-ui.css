@@ -242,6 +242,33 @@ svg text.r-temp { fill: var(--r-temp); }
 .cl { font-family: var(--mono); font-size: 9px; color: var(--ink3); line-height: 1.6; }
 .sub.line.warn { color: var(--warn); }
 
+/* --- sankey (tiles/sankey.js) ------------------------------------------------------------
+   Ribbons in the domain hue of what flows, at the weight the gauges use, so a glance
+   reads the colour before the number. The period tabs are finger-sized on the boat's
+   kiosk, where every tab is (body.menu-large). */
+.sk-tabs { margin: 0 0 4px; }
+.sk-tab {
+  font-family: var(--cond); font-size: 12px; color: var(--ink3); background: transparent;
+  border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; margin: 0 4px 4px 0;
+  cursor: pointer; -webkit-appearance: none;
+}
+.sk-tab.on { color: var(--ink); border-color: var(--ink3); background: var(--line2); }
+body.menu-large .sk-tab { font-size: 18px; padding: 8px 14px; margin-right: 8px; }
+svg.sankey { display: block; width: 100%; }
+.sankey .sk-flow { opacity: 0.42; }
+.sankey .sk-node { opacity: 0.95; }
+.sankey .sk-hub { fill: var(--ink2); opacity: 0.8; }
+.sankey .sk-label { font-family: var(--cond); font-size: 10px; fill: var(--ink2); }
+.sankey .sk-value {
+  font-family: var(--mono); font-size: 10px; fill: var(--ink); font-variant-numeric: tabular-nums;
+}
+.sankey .sk-empty { font-family: var(--mono); font-size: 11px; fill: var(--ink3); }
+.sankey .f-power { fill: var(--power); } .sankey .f-solar { fill: var(--solar); }
+.sankey .f-batt { fill: var(--batt); }   .sankey .f-heat { fill: var(--heat); }
+.sankey .f-water { fill: var(--water); } .sankey .f-rain { fill: var(--rain); }
+.sankey .f-car { fill: var(--car); }     .sankey .f-other { fill: var(--other); }
+.sk-note.bad { color: var(--bad); }
+
 iframe.grafana { display: block; width: 100%; border: 0; margin-top: 4px; background: var(--panel); }
 
 /* --- the race app's face (site.json "font": "race") -------------------------------------

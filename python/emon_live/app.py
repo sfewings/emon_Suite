@@ -6,6 +6,8 @@ Subscribes to emon/#, keeps the latest reading of every feed, and serves:
     /site/<path>      the site's emon-ui folder: site.json, pages/*.json
     /api/state        {"theme", "feeds": {name: {v, u, age}}} for the feeds the pages use;
                       ?all=1 for every feed known, which is how a page gets written
+    /api/energy       the Sankey's flows over ?period=now|today|yesterday|week|month,
+                      when the site's derived.yml has a `sankey:` block (energy.py)
     /api/feeds        every feed name known, and any name two topics share
     /api/config       the emon_config in force, as the bridge published it
     /api/settings     POST {"theme": "day" | "night"}
@@ -46,7 +48,11 @@ TICK_S = 5.0
 drop to 0 within this of midnight, and a 09:00 window closes within this of 09:00."""
 
 
-def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI_DIR) -> Flask:
+def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI_DIR,
+               sankey=None, window=None) -> Flask:
+    """`sankey` is an energy.Sankey when the site's derived.yml has a `sankey:` block,
+    and `window` the influx.Window its past periods are answered from; without the
+    latter only ?period=now has values."""
     app = Flask(__name__, static_folder=None)
 
     @app.after_request
@@ -68,6 +74,19 @@ def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI
         site.refresh()
         everything = request.args.get("all") in ("1", "true", "yes") or not site.pages
         return jsonify(state_document(state, None if everything else site.feeds))
+
+    @app.get("/api/energy")
+    def api_energy():
+        """The Sankey's flows over one period (energy.py). "now" is live and costs
+        nothing; the rest are Influx queries behind a cache, so a roomful of screens
+        polling is still one set of queries a minute."""
+        if sankey is None or not sankey:
+            abort(404, "this site's derived.yml has no sankey: block")
+        period = request.args.get("period", "now")
+        try:
+            return jsonify(sankey.document(period, state, window))
+        except ValueError as ex:
+            abort(400, str(ex))
 
     @app.get("/api/feeds")
     def api_feeds():
@@ -128,16 +147,27 @@ def main(argv: Optional[list] = None) -> int:
     site = Site(args.site)
     state = LiveState(theme=site.site.get("theme", "day"))
 
+    sankey = None
+    window = None
     derived_file = args.derived or (Path(args.site) / "derived.yml" if args.site else None)
     if derived_file is not None and Path(derived_file).is_file():
         import derived
+        import energy
+        import yaml
         state.derived = derived.load(derived_file)
         log.info("%s: %d derived feeds", derived_file, len(state.derived.entries))
+        with open(derived_file, encoding="utf-8") as f:
+            sankey = energy.Sankey(yaml.safe_load(f) or {})
+        if sankey:
+            log.info("%s: a sankey of %d flows", derived_file, len(sankey.flows))
         if args.influx != "none":
             # Before subscribing, so the replay's readings come first and the retained
             # messages that follow are recognised as older (derived.Derived.on_value).
             import influx
-            state.accept_derived(influx.seed(state.derived, influx.Influx(args.influx)))
+            store = influx.Influx(args.influx)
+            state.accept_derived(influx.seed(state.derived, store))
+            if sankey:
+                window = influx.Window(store, state.derived.influx)
 
     from mqtt_client import MqttClient  # here, so create_app is importable without paho
     source = MqttClient(state, args.broker, args.broker_port)
@@ -151,7 +181,8 @@ def main(argv: Optional[list] = None) -> int:
                 state.accept_derived(state.derived.tick(state.clock()))
         threading.Thread(target=tick, name="derived-tick", daemon=True).start()
     try:
-        create_app(state, site, Path(args.ui)).run(host=args.host, port=args.port, threaded=True)
+        create_app(state, site, Path(args.ui), sankey, window).run(
+            host=args.host, port=args.port, threaded=True)
     finally:
         stop.set()
         source.stop()

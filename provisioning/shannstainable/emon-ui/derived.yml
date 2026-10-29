@@ -61,6 +61,86 @@ influx:
   Leaf / odometer:                                    leaf leaf/odometer/0
   Outlander / odometer:                               leaf leaf/odometer/1
 
+# The energy flow the Sankey on the Energy page draws (energy.py, DESIGN 6.5). Each flow
+# names a live W feed for "now" and a recipe for the energy over a past window; the window
+# recipes read Influx directly rather than the derived totals, which only go back to
+# midnight. `other` is the remainder, so the diagram balances.
+#
+# Inverters One and Three charge the batteries, Inverter Two does not, so solar is a
+# source, battery charge a load and battery discharge a source: nothing is counted twice,
+# and the round trip's losses land in "Other" with everything else the house used.
+# On monitor 5, pulseIn is discharge and pulseOut charge (see the derived entries below).
+sankey:
+  hub: House
+  flows:
+    - id: solar
+      label: Solar
+      side: source
+      domain: solar
+      now: derived/solar/now
+      window:
+        method: integral
+        of: [Inverter One / pvInputPower, Inverter Two / pvInputPower, Inverter Three / pvInputPower]
+
+    - id: grid
+      label: Grid
+      side: source
+      domain: power
+      now: Power board / Imported
+      window: {method: counter, of: [Power board / Imported (pulse)]}
+
+    - id: battery_out
+      label: Battery out
+      side: source
+      domain: batt
+      now: derived/battery/power/out
+      window:
+        method: counter
+        of: [LiFePO monitor 5 / Battery-510Ah (pulseIn),
+             LiFePO monitor 5 / Battery-320Ah (pulseIn),
+             LiFePO monitor 5 / Battery-280Ah (pulseIn)]
+
+    - id: battery_in
+      label: Battery in
+      side: load
+      domain: batt
+      now: derived/battery/power/in
+      window:
+        method: counter
+        of: [LiFePO monitor 5 / Battery-510Ah (pulseOut),
+             LiFePO monitor 5 / Battery-320Ah (pulseOut),
+             LiFePO monitor 5 / Battery-280Ah (pulseOut)]
+
+    - id: car
+      label: Car
+      side: load
+      domain: car
+      now: Power board / Car
+      window: {method: counter, of: [Power board / Car (pulse)]}
+
+    - id: hws
+      label: Hot water
+      side: load
+      domain: heat
+      now: Power board / HWS
+      window: {method: counter, of: [Power board / HWS (pulse)]}
+
+    # The export estimate is Inverter Two's output less the average import, which no
+    # single Influx series holds, so a past window is rebuilt from bucketed means: close
+    # to derived/export/today, not equal to it, and marked "≈" on the diagram.
+    - id: export
+      label: Export
+      side: load
+      domain: solar
+      now: derived/export/now
+      window:
+        method: expr
+        expr: "max(0, {Inverter Two / pvInputPower} - {import_avg})"
+        scalars:
+          import_avg: {feed: Power board / Imported, agg: mean, positive_only: true}
+
+  other: {id: other, label: House and losses, side: load, domain: other}
+
 derived:
   # --- Power now (Calculate Instant power) -------------------------------------------
   # Inverter One and Three are on the batteries; Inverter Two is not.
