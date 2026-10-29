@@ -742,4 +742,8 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   banks use LiFePO monitor 5. Bank 2's cell 16 went both lowest and highest over 30 days,
   and Bank 3's S1 sagged to -1.355 V: worth the owner's eye. Waiting on the owner's look
   before merging.
+- **2026-10-29, night, later.** Owner approved the banks card. Merged to master
+  (`ab3f560`), production's emon_live restarted: 4 banks loaded, /live/api/banks answers
+  now and today through nginx with nothing failed. The development instance on 5004 is
+  stopped.
 
