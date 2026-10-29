@@ -168,13 +168,18 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       fixture with nothing running.
 - [x] `provisioning/shannstainable/emon-ui/pages/energy.json` and the site.json tab;
       `tests/test_energy.py`; the linter knows the block's feeds.
-- [ ] **Check on the Pi** (Pi): the steps are in HANDOVER, "Checking the Energy page at
-      shannstainable". In short: `lint_pages.py` clean (it cannot run on Windows, where
+- [x] **Check on the Pi** (done 29 Oct 2026, shannstainable): tests (80) and linter clean;
+      every period answers with no failed flow (month in 2.9 s, memory flat); today's
+      flows equal the House page's totals (counters exact, solar +0.3 %, export -0.4 %).
+      Found and fixed: the month's export was 0 (15 min buckets against a 5 min gap
+      rule). Today's tile shows Solar and Consumed in kWh (new `scale` on values). Steps
+      were in HANDOVER, "Checking the Energy page at shannstainable". In short: `lint_pages.py` clean (it cannot run on Windows, where
       `derived.load` fails in `mktime`), the real Influx answers each period with no
       failed flow, and the figures for today agree with the `derived/.../today` totals on
       the House page. The export ribbon is bucketed and only approximate; compare it
       against `derived/export/today` late in a sunny day.
-- [ ] Look at it on a phone and on the desktop, then decide whether the Sankey also
+- [ ] Looked at headless at 390 and 1280 px (fine). The owner to look on a phone and click
+      every tab, then decide whether the Sankey also
       belongs as a tile on the House page, and whether 7 and 30 rolling days should be
       calendar weeks and months instead.
 

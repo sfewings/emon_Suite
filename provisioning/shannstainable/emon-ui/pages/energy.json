@@ -14,9 +14,9 @@
       "title": "Today", "domain": "power", "span": 1,
       "cols": 2,
       "values": [
-        {"feed": "derived/solar/today", "label": "Solar", "big": true, "decimals": 0, "domain": "solar",
+        {"feed": "derived/solar/today", "label": "Solar", "scale": 0.001, "unit": "kWh", "decimals": 1, "domain": "solar",
          "sub": "{derived/solar/now|0} W now"},
-        {"feed": "derived/consumed/today", "label": "Consumed", "big": true, "decimals": 0,
+        {"feed": "derived/consumed/today", "label": "Consumed", "scale": 0.001, "unit": "kWh", "decimals": 1,
          "sub": "{Power board / Consumed|0} W now"},
         {"feed": "derived/import/today", "label": "Imported", "decimals": 0,
          "sub": "${derived/import/cost/today|2}"},

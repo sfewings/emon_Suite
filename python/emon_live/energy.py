@@ -237,7 +237,10 @@ class Sankey:
             value = flow.expr(carried)
             if value is not None:
                 points.append((t, float(value)))
-        return _trapezoid_wh(points)
+        # Consecutive buckets are `step` apart, and for week and month that is wider than
+        # MAX_GAP_S: the gap rule must allow one bucket, or a month integrates to nothing.
+        # A bucket missing altogether (fill(none)) still leaves a gap that is not bridged.
+        return _trapezoid_wh(points, max(MAX_GAP_S, float(step)))
 
 
 def window(period: str, now: float) -> Tuple[float, float]:
@@ -266,13 +269,13 @@ def _sum_or_none(values) -> Optional[float]:
     return sum(present) if present else None
 
 
-def _trapezoid_wh(points: List[Tuple[float, float]]) -> Optional[float]:
-    """W against time to Wh, a gap over MAX_GAP_S not bridged (derived.yml's integrate)."""
+def _trapezoid_wh(points: List[Tuple[float, float]], max_gap_s: float = MAX_GAP_S) -> Optional[float]:
+    """W against time to Wh, a gap over max_gap_s not bridged (derived.yml's integrate)."""
     if not points:
         return None
     total = 0.0
     for (t0, v0), (t1, v1) in zip(points, points[1:]):
         dt = t1 - t0
-        if 0 < dt <= MAX_GAP_S:
+        if 0 < dt <= max_gap_s:
             total += (v0 + v1) / 2.0 * dt
     return total / 3600.0

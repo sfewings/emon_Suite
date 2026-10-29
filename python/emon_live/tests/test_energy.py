@@ -205,6 +205,18 @@ def test_a_gap_in_the_buckets_is_not_bridged(sankey, live):
     assert flows["export"]["value"] == pytest.approx(2 * 360 * 60 / 3600.0, rel=1e-6)
 
 
+def test_month_buckets_are_bridged_one_bucket_at_a_time(sankey, live):
+    """A month is bucketed every 900 s, wider than integrate's 5 min gap rule. Before
+    this was allowed for, every month's export came out as nothing (29 Oct 2026)."""
+    window = FakeWindow(
+        scalars={"Power board / Imported": 0.0},
+        buckets={"Inverter Two / pvInputPower": [(0.0, 400.0), (900.0, 400.0), (1800.0, 400.0),
+                                                 (3600.0, 400.0)]})
+    flows = by_id(sankey.document("month", live, window, now=CAPTURED_AT))
+    # 0 to 1800 s at 400 W is 200 Wh; the missing bucket at 2700 s leaves 1800 to 3600 out.
+    assert flows["export"]["value"] == pytest.approx(200.0, rel=1e-6)
+
+
 def test_a_failed_query_leaves_the_rest_of_the_diagram(sankey, live):
     window = FakeWindow(counters={"Power board / Car (pulse)": 1500.0},
                         fail=["Power board / Imported (pulse)"])

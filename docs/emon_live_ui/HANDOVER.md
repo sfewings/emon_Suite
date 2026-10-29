@@ -709,3 +709,14 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   been rendered. `ui/tools/sankey_preview.html` draws it on a fixture in any browser,
   and the real check is the page on the Pi. The steps for that are in "Checking the
   Energy page at shannstainable" above.
+- **2026-10-29, shannstainable Pi.** Pulled: the production checkout fast-forwarded to
+  master (`e01dacb`; only the compose file's new `emon_live` service touched anything a
+  container mounts, and it is not applied); master merged into the branch. emon_live
+  here still runs from the worktree, on purpose: PLAN 2f was only on the branch. 2f
+  checked on the Pi (PLAN): one bug, the month's export integrated to nothing because
+  its buckets are 900 s apart and the trapezoid refused any step over 300 s; now it may
+  bridge one bucket. Today's figures: solar 49,480 against 49,313 Wh (Influx's
+  `integral()` bridges inverter dropouts, derived.yml does not), export 17,712 against
+  17,784 Wh, every counter exact. The Today tile's five-digit Wh no longer fit half a
+  phone: Solar and Consumed are in kWh via a new `scale` on values. Next: the owner's
+  two 2f decisions, then merge to master and move emon_live onto the production checkout.

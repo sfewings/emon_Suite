@@ -7,6 +7,7 @@
 //
 // "tint" colours the number as that reading is coloured on every boat screen ("sog", "twa",
 // "rpm" and the rest: emon-ui.css, reading colours); it wins over "domain".
+// "scale" multiplies the value for display, as 0.001 with "unit": "kWh" for a Wh feed.
 // "unit" overrides the feed's own; "" hides it. "format": "time" shows a time in seconds
 // since the epoch as "Today 18:54", in place of decimals. "domain" colours the number
 // with another domain's hue (Producing, on the Power tile). "sub" is a template line
@@ -46,6 +47,7 @@
       update: function (view) {
         cells.forEach(function (c) {
           var value = c.item.feed ? view.value(c.item.feed) : null;
+          if (typeof value === "number" && typeof c.item.scale === "number") value = value * c.item.scale;
           var time = c.item.format === "time";
           // An item with no feed of its own is a label and its "sub" line, no number.
           c.num.textContent = c.item.feed ? ui.fmtAs(value, time ? "time" : c.item.decimals) : "";

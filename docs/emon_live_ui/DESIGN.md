@@ -417,7 +417,7 @@ several, as the mockup's tiles do:
 
 | Key | Part | Shape |
 |---|---|---|
-| `values` | a grid of readings | `[{feed, label, big, decimals, unit, domain, sub}]`, with `cols` (1 to 4) on the tile |
+| `values` | a grid of readings | `[{feed, label, big, decimals, scale, unit, domain, sub}]`, with `cols` (1 to 4) on the tile |
 | `gauge` | a bar | `{feed, min, max}` |
 | `trail` | a sparkline | `{feed, minutes}`; kept by the page since it opened (no history endpoint yet) |
 | `leds` | pills in the heading | `[{feed, on, off, test, bad}]`; `test` `"value"` (on at 1 or more) or `"fresh"` (on while reporting) |
