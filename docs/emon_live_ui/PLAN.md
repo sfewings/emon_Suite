@@ -183,6 +183,16 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       belongs as a tile on the House page, and whether 7 and 30 rolling days should be
       calendar weeks and months instead.
 
+### 2g. Battery banks on the Energy page (owner's request, 29 Oct 2026; Pi)
+- [x] `banks:` block in derived.yml, `banks.py`, `/api/banks?period=...`,
+      `influx.Window.stats` and `stats_many` (DESIGN 6.6); the linter knows the block;
+      `tests/test_banks.py` (16).
+- [x] `ui/tiles/banks.js`: a card a bank, the Sankey's period tabs, cells drawn now and
+      as ranges over a period. On the Energy page between the Sankey and Today.
+- [x] Checked on the Pi against the real Influx, every period, in a development
+      instance on port 5004 (headless, phone and desktop).
+- [ ] The owner looks at it, then merge to master and restart production's emon_live.
+
 Done when: the family uses the new page on phones and the desktop, and daily totals
 survive a restart. Way back: Instant Data is untouched until the last step.
 

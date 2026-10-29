@@ -326,3 +326,32 @@ body.text-large .spark { height: 48px; }
 .age.bad, .tile .h i.bad, .tile .foot.bad { color: var(--bad); }
 .tile.dead { border-style: dashed; border-top-style: solid; border-top-color: var(--ink3); }
 .tile.dead .h b, .tile.dead .v { color: var(--ink3); }
+
+/* --- banks (DESIGN 6.6): a card a battery bank --------------------------------------- */
+
+.banks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 10px; gap: 10px; margin-top: 4px; }
+@media (max-width: 760px) { .banks { grid-template-columns: minmax(0, 1fr); } }
+.bank { border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px 9px; min-width: 0; }
+.bank-h { display: flex; justify-content: space-between; align-items: flex-start; }
+.bank-t b { font-family: var(--cond); font-weight: 600; font-size: 15px; color: var(--c); margin-right: 8px; }
+.bank-n { font-family: var(--mono); font-size: 11px; color: var(--ink3); }
+.bank-soc { text-align: right; white-space: nowrap; }
+.bank-soc .v { font-size: 24px; }
+.bank-soc small { font-family: var(--mono); font-size: 12px; color: var(--ink3); margin-left: 2px; }
+.bank-r { font-family: var(--mono); font-size: 11px; color: var(--ink3); }
+.bank .bar { margin-top: 4px; }
+.bank-cells { margin-top: 8px; }
+.bank-cells .cbar i { opacity: 0.45; }
+.bank-cells .cell.lo .cbar i { background: var(--water); opacity: 1; }
+.bank-cells .cell.hi .cbar i { background: var(--power); opacity: 1; }
+.bank-cells .cell.warn .cbar i { background: var(--bad); opacity: 1; }
+.bank-cells .cell.lo .cl { color: var(--water); font-weight: 600; }
+.bank-cells .cell.hi .cl { color: var(--power); font-weight: 600; }
+.bank-cells.centred .cbar { background: linear-gradient(to top, var(--line2) 49.5%, var(--line) 49.5%, var(--line) 50.5%, var(--line2) 50.5%); }
+.ctick { position: absolute; left: 0; right: 0; height: 2px; margin-bottom: -1px; background: var(--ink); }
+.bank-v { border-collapse: collapse; margin-top: 6px; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; width: 100%; }
+.bank-v td, .bank-v th { padding: 1px 6px 1px 0; text-align: left; white-space: nowrap; }
+.bank-v th { font-weight: 400; font-size: 10px; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.05em; }
+.bank-v td.k { color: var(--ink3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.bank-v td.r { color: var(--ink2); }
+body.text-large .bank-v { font-size: 16px; }

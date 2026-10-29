@@ -143,8 +143,31 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
                         errors.append(f"derived.yml sankey/{flow.id}: {name!r} has no influx "
                                       f"series, so a past period cannot be answered")
 
+        # The banks: block likewise (banks.py): every feed it shows must exist, and every
+        # one must have a series, from the influx: map or its cells' pattern, or a past
+        # period shows that reading blank.
+        import banks
+        try:
+            with open(derived_file, encoding="utf-8") as f:
+                bank_block = banks.load(yaml.safe_load(f) or {})
+        except Exception as ex:
+            errors.append(f"derived.yml banks: {ex}")
+            bank_block = None
+        if bank_block is not None:
+            series = dict(d.influx) if d is not None else {}
+            series.update(bank_block.series())
+            for bank in bank_block.list:
+                for name in bank.feeds():
+                    derived_reads.add(name)
+                    if name not in known and name not in computed:
+                        errors.append(f"derived.yml banks/{bank.id}: no feed {name!r}")
+                    if d is not None and name not in series:
+                        errors.append(f"derived.yml banks/{bank.id}: {name!r} has no influx "
+                                      f"series, so a past period cannot be answered")
+
         if d is not None:
             reads = set(d.inputs_outside()) | (set(sankey.feeds()) if sankey else set())
+            reads |= set(bank_block.feeds()) if bank_block else set()
             for name in sorted(set(d.influx) - reads):
                 warnings.append(f"derived.yml influx: {name!r} is mapped but nothing reads it")
 

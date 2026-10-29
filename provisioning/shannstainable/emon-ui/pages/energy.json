@@ -10,6 +10,7 @@
         "height": 280
       }
     },
+    {"title": "Battery banks", "domain": "batt", "span": 2, "banks": {"periods": ["now", "today", "yesterday", "week", "month"], "default": "now"}},
     {
       "title": "Today", "domain": "power", "span": 1,
       "cols": 2,

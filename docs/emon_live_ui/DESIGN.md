@@ -628,6 +628,42 @@ the diagram still draws, as a tile with a feed that never arrived still draws.
 
 ---
 
+### 6.6 Battery banks
+
+Owner's request, 29 Oct 2026: bank health and status on the Energy page, now and over
+today, yesterday, 7 and 30 days, with the lowest and highest of everything shown. Built
+as the Sankey is (6.5): a `banks:` block in derived.yml describes the banks,
+`python/emon_live/banks.py` answers `/api/banks?period=...` for all of them at once, and
+`ui/tiles/banks.js` draws a card for each.
+
+- **What a bank is.** Its cells (a numbered feed pattern with a matching Influx pattern,
+  or a list), a state of charge, readings (voltage, power, temperature, remaining
+  capacity, cycles), and the counters of energy in and out. Bank 3 has no BMS: its
+  "cells" are the five series strings' mid-point offsets, B2-1 to B2-5, drawn about a
+  zero line and flagged past `warn_abs` (1 V, Node-RED's line). The Leaf bank has a BMS
+  and no shunt.
+- **Which shunt is which bank** was settled from the BMS's own figures (remaining capacity
+  over SoC): 280 Ah is Bank 1, 320 Ah Bank 2, 510 Ah Bank 3, all on LiFePO monitor 5. The
+  Main battery monitor's Bank 1/2/3 shunts read 0 W with counters frozen since at least
+  18 Oct 2026, so they are not used. Sign: positive out of the battery; a BMS's power is
+  scaled by -1 to match.
+- **Now** is the live store: each cell's reading, the lowest and highest, and the spread
+  between them, warned past `spread` (50 mV for LiFePO). **A period** is, per bank, one
+  grouped Influx query for every cell's min, max, mean and last, then one per reading
+  and last minus first per counter: each cell's range is drawn, and the cells that went
+  lowest and highest are named (Bank 2's cell 16 was both, over 30 days). A period has
+  no spread warning: every cell swings empty to full, so its range is charge, not
+  imbalance.
+- **Faults are not readings.** `range: [lo, hi]` on a reading or on the cells drops what
+  is outside it, live and inside the Influx query. SoC defaults to 0 to 100: the Leaf
+  BMS sent 610 and 354 among its 98s; Bank 3's S5 read 107.49 V once in October.
+- **Cost.** 30 days of a 16-cell bank is ~4 million points: 8 s on the shannstainable Pi,
+  memory flat; all four banks ~30 s. Answers are cached (an hour for 30 days) and a
+  period being answered is answered once however many screens ask; "now" costs nothing.
+  The same rolling-window fix went into the Sankey's cache, which had never answered
+  7 or 30 days from cache at all.
+- The Leaf BMS sends 16 cell slots and only 12 are wired; the page shows 12.
+
 ## 7. The wider family
 
 `enchantee_racing` and `event_recorder` are **not** changed by this work. They have their

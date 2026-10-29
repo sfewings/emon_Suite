@@ -174,10 +174,7 @@ class Sankey:
         at, doc = got
         if now - at > TTL_S.get(period, 60.0):
             return None
-        # Yesterday is held for an hour, which can span midnight; its window would then
-        # be the wrong day.
-        start, _end = window(period, now)
-        return doc if abs(doc["from"] - start) < 1.0 else None
+        return doc if still_same_window(period, doc["from"], now) else None
 
     def _live(self, state, now: float) -> Dict[str, Optional[float]]:
         snapshot = state.store.snapshot()
@@ -241,6 +238,20 @@ class Sankey:
         # MAX_GAP_S: the gap rule must allow one bucket, or a month integrates to nothing.
         # A bucket missing altogether (fill(none)) still leaves a gap that is not bridged.
         return _trapezoid_wh(points, max(MAX_GAP_S, float(step)))
+
+
+def still_same_window(period: str, start: float, now: float) -> bool:
+    """Whether an answer for a window that began at `start` still answers `period` now.
+
+    Today and yesterday are calendar days: held across midnight, an answer would be for
+    the wrong day, so their start must not have moved. 7 and 30 days roll back from now,
+    so their start moves every second and the cache's TTL alone decides; comparing the
+    start there, as this first did, meant the cache never answered them at all.
+    """
+    if period in ("week", "month"):
+        return True
+    begun, _end = window(period, now)
+    return abs(start - begun) < 1.0
 
 
 def window(period: str, now: float) -> Tuple[float, float]:

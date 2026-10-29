@@ -49,7 +49,7 @@ drop to 0 within this of midnight, and a 09:00 window closes within this of 09:0
 
 
 def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI_DIR,
-               sankey=None, window=None) -> Flask:
+               sankey=None, window=None, banks=None) -> Flask:
     """`sankey` is an energy.Sankey when the site's derived.yml has a `sankey:` block,
     and `window` the influx.Window its past periods are answered from; without the
     latter only ?period=now has values."""
@@ -85,6 +85,19 @@ def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI
         period = request.args.get("period", "now")
         try:
             return jsonify(sankey.document(period, state, window))
+        except ValueError as ex:
+            abort(400, str(ex))
+
+    @app.get("/api/banks")
+    def api_banks():
+        """Every battery bank's cells and readings over one period (banks.py). "now" is
+        live; the rest are bounded Influx queries behind a cache, answered once however
+        many screens ask."""
+        if banks is None or not banks:
+            abort(404, "this site's derived.yml has no banks: block")
+        period = request.args.get("period", "now")
+        try:
+            return jsonify(banks.document(period, state, window))
         except ValueError as ex:
             abort(400, str(ex))
 
@@ -148,26 +161,34 @@ def main(argv: Optional[list] = None) -> int:
     state = LiveState(theme=site.site.get("theme", "day"))
 
     sankey = None
+    banks_block = None
     window = None
     derived_file = args.derived or (Path(args.site) / "derived.yml" if args.site else None)
     if derived_file is not None and Path(derived_file).is_file():
+        import banks
         import derived
         import energy
         import yaml
         state.derived = derived.load(derived_file)
         log.info("%s: %d derived feeds", derived_file, len(state.derived.entries))
         with open(derived_file, encoding="utf-8") as f:
-            sankey = energy.Sankey(yaml.safe_load(f) or {})
+            doc = yaml.safe_load(f) or {}
+        sankey = energy.Sankey(doc)
         if sankey:
             log.info("%s: a sankey of %d flows", derived_file, len(sankey.flows))
+        banks_block = banks.load(doc)
+        if banks_block:
+            log.info("%s: %d battery banks", derived_file, len(banks_block.list))
         if args.influx != "none":
             # Before subscribing, so the replay's readings come first and the retained
             # messages that follow are recognised as older (derived.Derived.on_value).
             import influx
             store = influx.Influx(args.influx)
             state.accept_derived(influx.seed(state.derived, store))
-            if sankey:
-                window = influx.Window(store, state.derived.influx)
+            if sankey or banks_block:
+                series = dict(state.derived.influx)
+                series.update(banks_block.series() if banks_block else {})
+                window = influx.Window(store, series)
 
     from mqtt_client import MqttClient  # here, so create_app is importable without paho
     source = MqttClient(state, args.broker, args.broker_port)
@@ -181,7 +202,7 @@ def main(argv: Optional[list] = None) -> int:
                 state.accept_derived(state.derived.tick(state.clock()))
         threading.Thread(target=tick, name="derived-tick", daemon=True).start()
     try:
-        create_app(state, site, Path(args.ui), sankey, window).run(
+        create_app(state, site, Path(args.ui), sankey, window, banks_block).run(
             host=args.host, port=args.port, threaded=True)
     finally:
         stop.set()
