@@ -158,7 +158,7 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       pushed. Until the merge it runs from the worktree (HANDOVER, Machines).
 - [ ] Run beside Instant Data for a week. Then disable the Dashboard 1 tabs.
 
-### 2f. The Energy page and its Sankey (owner's request, 29 Oct 2026; laptop)
+### 2f. The Energy page and its Sankey (done 29 Oct 2026; written on the laptop, checked on the Pi)
 - [x] `sankey:` block in derived.yml, `/api/energy?period=...` and `energy.py` (DESIGN
       6.5): the flows as site configuration, three window methods over bounded Influx
       queries, a cache so a roomful of screens is one set of queries, `other` as the
@@ -178,8 +178,8 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       failed flow, and the figures for today agree with the `derived/.../today` totals on
       the House page. The export ribbon is bucketed and only approximate; compare it
       against `derived/export/today` late in a sunny day.
-- [ ] Looked at headless at 390 and 1280 px (fine). The owner to look on a phone and click
-      every tab, then decide whether the Sankey also
+- [x] Looked at headless at 390 and 1280 px (fine). Owner, 29 Oct 2026: the Sankey stays
+      on the Energy page only, and 7 and 30 days stay rolling. Asked was whether the Sankey also
       belongs as a tile on the House page, and whether 7 and 30 rolling days should be
       calendar weeks and months instead.
 

@@ -404,6 +404,10 @@ the menu. The route and the block are inert without it.
 
 ## Open questions
 
+Decided by the owner on 29 Oct 2026, for PLAN 2f: the Sankey stays on the Energy page
+and does not go on the House page; "7 days" and "30 days" stay rolling windows back from
+now, not calendar weeks and months.
+
 Decided by the owner on 23 Oct 2026: integrate keeps not bridging gaps over 5 min (no
 15 min allowance for the inverters). The owner would rather find out why Inverter 3, and
 others, drop out for 5 to 7 minutes at a time, but not as part of this work.
@@ -720,3 +724,5 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   17,784 Wh, every counter exact. The Today tile's five-digit Wh no longer fit half a
   phone: Solar and Consumed are in kWh via a new `scale` on values. Next: the owner's
   two 2f decisions, then merge to master and move emon_live onto the production checkout.
+- **2026-10-29, later.** Owner's 2f decisions (Open questions): Sankey on the Energy page
+  only; rolling 7 and 30 days. 2f is done.
