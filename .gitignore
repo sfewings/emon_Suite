@@ -53,7 +53,6 @@ build/
 pyemonlib.egg-info/
 __pycache__/
 
-python/event_recorder/test*/
 python/exportCSV/tests/
 python/testing_emon_settings/
 provisioning/enchantee/data/
