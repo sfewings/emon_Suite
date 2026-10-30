@@ -455,6 +455,11 @@ sans-serif`, readings at weight 500 with tabular figures and -0.02em tracking, a
 `static/app.css` does; nothing is downloaded (the Pi resolves it to Nimbus Sans, iOS has
 Helvetica Neue). enchantee uses it; shannstainable keeps the proposal's faces.
 
+**Half-size lesser figures** (30 Oct 2026, owner, shannstainable): `site.json` `"sub": "half"`
+sets the totals under a reading and a tile's lines at 15 px (13 px on a phone), about half
+the main figures, rather than 12 px. A pill takes `"big": true` to stand out as the point
+of its tile, used for a car's home or away. shannstainable also takes `"font": "race"`.
+
 **Black nights** (27 Oct 2026, owner): `site.json` `"night": "black"` puts the night theme's
 panels and page on pure black, as the race app's screens are; enchantee uses it. Grafana
 frames keep Grafana's own dark grey.

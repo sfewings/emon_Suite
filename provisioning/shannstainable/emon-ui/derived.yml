@@ -32,6 +32,8 @@ influx:
   Hot water system / Inlet (T6):                      temperature temperature/HWS/2
   Rain tank and HWS / Hot water:                      water water/flowCount/0/0
   Rain tank and HWS / Rain water tank:                tank water/height/0/0
+  Front yard / Mains:                                 water water/flowCount/1/0
+  Front yard / Bore:                                  water water/flowCount/1/1
   Rain gauge / rain:                                  rain rain
   Main battery monitor / Rail:                        voltage battery/voltage/0/0
   Main battery monitor / B2-5:                        voltage battery/voltage/1/0
@@ -386,8 +388,11 @@ derived:
     unit: min
     kind: time
   - {id: water/hot/today, op: daily_delta, feed: Rain tank and HWS / Hot water, unit: L, kind: volume, decimals: 0}
-  # Mains and bore (wtr subnode 1) are not working (owner, 21 Oct 2026); add them when
-  # they are.
+  # Mains and bore (wtr subnode 1, "Front yard") for the House page's Water card, as
+  # Node-RED's had. Not reporting since 28 Oct 2026 (owner: not working); these count
+  # again from the first reading after they return.
+  - {id: water/mains/today, op: daily_delta, feed: Front yard / Mains, unit: L, kind: volume, decimals: 0}
+  - {id: water/bore/today,  op: daily_delta, feed: Front yard / Bore,  unit: L, kind: volume, decimals: 0}
 
   # --- Rain (Calculate D,M,Y rainfalls). The gauge's envelope is already mm. -----------
   - {id: rain/today,    op: daily_delta, feed: Rain gauge / rain, unit: mm, kind: rain, decimals: 1}

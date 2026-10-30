@@ -143,6 +143,11 @@ button[data-theme-toggle] {
 }
 .pill.on { background: var(--ok-bg); color: var(--ok); }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
+/* A pill that is the point of its tile ("big": a car home or away). */
+.pill.big { font-size: 14px; font-weight: 600; padding: 3px 10px; border-radius: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+.pill.big.off { background: var(--line); color: var(--ink2); }
+@media (max-width: 760px) { .pill.big { font-size: 12px; padding: 2px 6px; letter-spacing: 0.02em; } }
+body.text-large .pill.big { font-size: 24px; }
 
 /* --- reading colours ("tint") ----------------------------------------------------------
    One colour per quantity, the same on every screen the crew looks at: the boat's Node-RED
@@ -293,6 +298,13 @@ body.font-race .v, body.font-race svg text.val {
    draws its screens; the panels' borders keep them apart. The reading colours were chosen
    for black, so they are at their best here. */
 body.night.night-black { --bg: #000000; --panel: #000000; --line: #2b2b2b; --line2: #1a1a1a; }
+
+/* --- half-size lesser figures (site.json "sub": "half") -------------------------------
+   The totals under a reading and a tile's lines at about half the main figures' size
+   (owner, shannstainable, 30 Oct 2026: "too small" at 12 px under a 30 px reading). */
+body.sub-half .sub { font-size: 15px; }
+body.sub-half .sub.line { margin-top: 7px; }
+@media (max-width: 760px) { body.sub-half .sub { font-size: 13px; } }
 
 /* --- large text (?text=large, or site.json "text": "large") -----------------------------
    Twice the size of every reading and label, for a small screen read from across a

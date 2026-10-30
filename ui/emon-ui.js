@@ -423,6 +423,9 @@
       document.body.classList.toggle("font-race", site.font === "race");
       // "night": "black": the night theme on pure black, panels and page, as the race app.
       document.body.classList.toggle("night-black", site.night === "black");
+      // "sub": "half": the lesser figures (a reading's sub line, a tile's lines) at about
+      // half the size of the main ones, rather than the small print they are by default.
+      document.body.classList.toggle("sub-half", site.sub === "half");
       document.body.classList.toggle("text-large",
         /[?&]text=large(&|$)/.test(location.search) || site.text === "large");
       buildMenu();
