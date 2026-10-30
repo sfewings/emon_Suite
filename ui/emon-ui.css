@@ -131,6 +131,18 @@ button[data-theme-toggle] {
 .t-heat { color: var(--heat); } .t-water { color: var(--water); } .t-rain { color: var(--rain); }
 .t-car { color: var(--car); }
 .sub { font-family: var(--mono); font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+/* A number in a sub line or a tile's line reads as a reading does (the Rain tile's month
+   and year): medium and in ink, or its reading's colour; the words and units around it
+   stay small and grey (ui.templateInto). */
+.n { color: var(--ink); }   /* before the r- tints, so a tinted reading's colour wins */
+.sub .n {
+  font-size: 22px; font-weight: 500; line-height: 1.15;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+}
+.sub .n.t-power { color: var(--power); } .sub .n.t-solar { color: var(--solar); } .sub .n.t-batt { color: var(--batt); }
+.sub .n.t-heat { color: var(--heat); } .sub .n.t-water { color: var(--water); } .sub .n.t-rain { color: var(--rain); }
+.sub .n.t-car { color: var(--car); }
+@media (max-width: 760px) { .sub .n { font-size: 18px; } }
 .sub.line { margin-top: 5px; }
 .bar { height: 6px; background: var(--line2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--c); }
@@ -299,13 +311,6 @@ body.font-race .v, body.font-race svg text.val {
    for black, so they are at their best here. */
 body.night.night-black { --bg: #000000; --panel: #000000; --line: #2b2b2b; --line2: #1a1a1a; }
 
-/* --- half-size lesser figures (site.json "sub": "half") -------------------------------
-   The totals under a reading and a tile's lines at about half the main figures' size
-   (owner, shannstainable, 30 Oct 2026: "too small" at 12 px under a 30 px reading). */
-body.sub-half .sub { font-size: 15px; }
-body.sub-half .sub.line { margin-top: 7px; }
-@media (max-width: 760px) { body.sub-half .sub { font-size: 13px; } }
-
 /* --- large text (?text=large, or site.json "text": "large") -----------------------------
    Twice the size of every reading and label, for a small screen read from across a
    cabin. Value grids of four go to two in a half-width tile, so the numbers keep their
@@ -323,6 +328,7 @@ body.text-large .v { font-size: 44px; }
 body.text-large .v.big { font-size: 60px; }
 body.text-large .v small { font-size: 24px; }
 body.text-large .sub { font-size: 22px; }
+body.text-large .sub .n { font-size: 44px; }
 body.text-large .pill { font-size: 20px; }
 body.text-large .kv { grid-gap: 10px 18px; gap: 10px 18px; }
 body.text-large .tile:not(.w2) .kv.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

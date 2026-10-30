@@ -770,7 +770,8 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   /live/api/energy answers both views, now and today, through nginx with nothing failed;
   Unmatched 59 Wh today. The development instance on 5004 is stopped.
 - **2026-10-30, 21:55.** Owner's House page changes, on the branch: lesser figures at about
-  half the main ones (`"sub": "half"`), the cars' HOME / AWAY as big pills, the race app's
+  half the main ones (`"sub": "half"`; replaced the same evening, at the owner's word, by
+  every number in a line set medium in ink with its words small and grey), the cars' HOME / AWAY as big pills, the race app's
   font (`"font": "race"`), and a Water card (Hot, Mains, Bore litres today; new
   `derived/water/mains/today` and `bore/today`, their counters mapped to Influx). The
   Front yard node (mains, bore) last reported 28 Oct, so those read 0 until it returns.
