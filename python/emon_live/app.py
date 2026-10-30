@@ -7,7 +7,8 @@ Subscribes to emon/#, keeps the latest reading of every feed, and serves:
     /api/state        {"theme", "feeds": {name: {v, u, age}}} for the feeds the pages use;
                       ?all=1 for every feed known, which is how a page gets written
     /api/energy       the Sankey's flows over ?period=now|today|yesterday|week|month,
-                      when the site's derived.yml has a `sankey:` block (energy.py)
+                      when the site's derived.yml has a `sankey:` block (energy.py);
+                      &view=split, supply to demand (supply.py)
     /api/feeds        every feed name known, and any name two topics share
     /api/config       the emon_config in force, as the bridge published it
     /api/settings     POST {"theme": "day" | "night"}
@@ -84,7 +85,8 @@ def create_app(state: LiveState, site: Site, ui_dir: Optional[Path] = DEFAULT_UI
             abort(404, "this site's derived.yml has no sankey: block")
         period = request.args.get("period", "now")
         try:
-            return jsonify(sankey.document(period, state, window))
+            return jsonify(sankey.document(period, state, window,
+                                           view=request.args.get("view", "house")))
         except ValueError as ex:
             abort(400, str(ex))
 
@@ -154,6 +156,12 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--publish", action="store_true",
                         default=os.environ.get("PUBLISH_DERIVED", "0") not in ("0", "", "false", "no"),
                         help="publish derived values on emon/derived/... (off for test runs)")
+    # The broker drops a client when another connects with its id, so two instances with
+    # one id knock each other off every second or two. A development instance beside
+    # production did exactly that to shannstainable's for 40 s (30 Oct 2026); so the one
+    # that publishes is "emon-live" and any other is told apart by its port.
+    parser.add_argument("--client-id", default=os.environ.get("MQTT_CLIENT_ID"),
+                        help="MQTT client id; default emon-live when publishing, else emon-live-view-<port>")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -191,7 +199,8 @@ def main(argv: Optional[list] = None) -> int:
                 window = influx.Window(store, series)
 
     from mqtt_client import MqttClient  # here, so create_app is importable without paho
-    source = MqttClient(state, args.broker, args.broker_port)
+    client_id = args.client_id or ("emon-live" if args.publish else f"emon-live-view-{args.port}")
+    source = MqttClient(state, args.broker, args.broker_port, client_id=client_id)
     if args.publish:
         state.publish = source.publish_reading
     source.start()

@@ -7,7 +7,9 @@
       "sankey": {
         "periods": ["now", "today", "yesterday", "week", "month"],
         "default": "today",
-        "height": 280
+        "height": 280,
+        "views": ["house", "split"],
+        "splitHeight": 360
       }
     },
     {"title": "Battery banks", "domain": "batt", "span": 2, "banks": {"periods": ["now", "today", "yesterday", "week", "month"], "default": "now"}},

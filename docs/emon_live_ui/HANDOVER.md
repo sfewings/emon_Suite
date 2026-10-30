@@ -742,4 +742,25 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   banks use LiFePO monitor 5. Bank 2's cell 16 went both lowest and highest over 30 days,
   and Bank 3's S1 sagged to -1.355 V: worth the owner's eye. Waiting on the owner's look
   before merging.
+- **2026-10-29, night, later.** Owner approved the banks card. Merged to master
+  (`ab3f560`), production's emon_live restarted: 4 banks loaded, /live/api/banks answers
+  now and today through nginx with nothing failed. The development instance on 5004 is
+  stopped.
 
+- **2026-10-30, shannstainable Pi.** PLAN 2h, supply to demand on the Sankey (DESIGN 6.7),
+  after the owner described the two circuits and chose export option 2, a switch on the
+  tile, and House Main / House Office. Built and checked against the real Influx in a
+  development emon_live on port 5004 (worktree, no `--publish`): 0.7 s a day, 3.2 s for
+  30 days, Unmatched under 0.1 %, counter totals equal to the house view's. Found on the
+  way: the inverters' PV buckets are sparse at a minute, so W feeds are held forward (5 min
+  gap rule); the banks card showed the Leaf bank's power with the wrong sign (its BMS
+  already reports + as out), fixed. The new export estimate reads ~3 kWh a day lower than
+  Node-RED's (14.9 against 18.1 kWh on 30 Oct). Each inverter also reports `power` (AC
+  out, `inverter/power/N`), not used yet. Waiting on the owner's look before merging.
+- **2026-10-30, the same session. A development instance knocks production off the
+  broker.** Both connected as MQTT client `emon-live`, and the broker drops a client when
+  another connects with its id: production's emon_live was disconnected every 1-2 s for
+  the 40 s the 5004 instance ran (20:16:20 to 20:16:59), and its log shows the same 525
+  times in the 19:00 hour of 29 Oct, the 2g development instance. Fixed in app.py:
+  `--client-id` / `MQTT_CLIENT_ID`, defaulting to `emon-live` when publishing and
+  `emon-live-view-<port>` otherwise, so a read-only instance can no longer collide.

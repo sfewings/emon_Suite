@@ -142,6 +142,15 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
                     if d is not None and name not in d.influx:
                         errors.append(f"derived.yml sankey/{flow.id}: {name!r} has no influx "
                                       f"series, so a past period cannot be answered")
+            # The split view (supply.py) likewise.
+            for name in sankey.split.feeds():
+                derived_reads.add(name)
+                if name not in known and name not in computed:
+                    errors.append(f"derived.yml sankey/split: no feed {name!r}")
+            for name in sankey.split.series_feeds():
+                if d is not None and name not in d.influx:
+                    errors.append(f"derived.yml sankey/split: {name!r} has no influx series, "
+                                  f"so a past period cannot be answered")
 
         # The banks: block likewise (banks.py): every feed it shows must exist, and every
         # one must have a series, from the influx: map or its cells' pattern, or a past

@@ -1,12 +1,17 @@
 // sankey: where the energy came from, and where it went (DESIGN 6.2, 6.5).
 //
 //   "sankey": {"periods": ["now", "today", "yesterday", "week", "month"],
-//              "default": "today", "height": 260}
+//              "default": "today", "height": 260,
+//              "views": ["house", "split"], "splitHeight": 340}
 //
 // Sources on the left, the house in the middle, loads on the right, each ribbon as wide
 // as its share. The flows themselves are not in the page: they are the site's derived.yml
 // `sankey:` block, served by /api/energy, so one description answers every period and the
 // page says only how to show it (energy.py).
+//
+// With "views" naming both, a switch offers the other view, "split": no house in the
+// middle, each source's ribbons running straight to the loads it fed, as the site's
+// `split:` block attributes them (supply.py). Its nodes are grouped by circuit.
 //
 // "now" is live, in W, and costs the server nothing. The other periods are Influx
 // queries behind a cache, so this asks for them a minute at a time, not every poll.
@@ -30,12 +35,19 @@
   var MIN_BAND = 1.2;          // a flow too small to see still gets a hairline
   var REFRESH_MS = { now: 5000 };
   var REFRESH_OTHER_MS = 60000;
+  var LABEL_H = 24;            // a node's two lines of label, so small nodes do not overprint
+  var VIEWS = { house: "Through the house", split: "Supply \u2192 demand" };
 
   EmonUI.part("sankey", function (spec, body, tile, ui) {
     var periods = spec.periods && spec.periods.length
       ? spec.periods : ["now", "today", "yesterday", "week", "month"];
     var period = periods.indexOf(spec.default) === -1 ? periods[0] : spec.default;
-    var height = typeof spec.height === "number" ? spec.height : 260;
+    var houseHeight = typeof spec.height === "number" ? spec.height : 260;
+    var splitHeight = typeof spec.splitHeight === "number" ? spec.splitHeight : Math.round(houseHeight * 1.3);
+    var views = (spec.views || ["house"]).filter(function (v) { return VIEWS[v]; });
+    if (!views.length) views = ["house"];
+    var view = views.indexOf(spec.view) === -1 ? views[0] : spec.view;
+    var height = view === "split" ? splitHeight : houseHeight;
     var doc = null;
     var error = null;
     var pending = false;
@@ -59,6 +71,30 @@
     });
     body.appendChild(tabs);
 
+    var viewButtons = [];
+    if (views.length > 1) {
+      var switcher = ui.el("div", "sk-tabs sk-views");
+      viewButtons = views.map(function (v) {
+        var b = ui.el("button", "sk-tab", VIEWS[v]);
+        b.type = "button";
+        b.onclick = function () {
+          if (view === v) return;
+          view = v;
+          height = view === "split" ? splitHeight : houseHeight;
+          svg.setAttribute("viewBox", "0 0 " + W + " " + height);
+          svg.setAttribute("height", String(height));
+          doc = null;
+          error = null;
+          fetched = 0;
+          mark();
+          load();
+        };
+        switcher.appendChild(b);
+        return { v: v, el: b };
+      });
+      body.appendChild(switcher);
+    }
+
     // width and height as attributes, not CSS alone: iOS 12 lays an SVG that has only a
     // viewBox out at 300 px wide (test_ui.test_every_svg_gets_a_width_and_height).
     var svg = document.createElementNS(NS, "svg");
@@ -81,6 +117,9 @@
       buttons.forEach(function (b) {
         b.el.className = "sk-tab" + (b.p === period ? " on" : "");
       });
+      viewButtons.forEach(function (b) {
+        b.el.className = "sk-tab" + (b.v === view ? " on" : "");
+      });
     }
     mark();
 
@@ -88,11 +127,12 @@
       // A tile on a page the reader has left keeps its timer; it must not keep asking.
       if (pending || !document.body.contains(svg)) return;
       pending = true;
-      var asked = period;
-      ui.getJSON(ui.base + "/api/energy?period=" + encodeURIComponent(period))
+      var asked = period + "/" + view;
+      ui.getJSON(ui.base + "/api/energy?period=" + encodeURIComponent(period) +
+                 (view === "house" ? "" : "&view=" + encodeURIComponent(view)))
         .then(function (d) {
           pending = false;
-          if (asked !== period) return;     // the reader moved on while it was in flight
+          if (asked !== period + "/" + view) return;   // the reader moved on while it was in flight
           doc = d;
           error = null;
           fetched = Date.now();
@@ -100,7 +140,7 @@
         })
         .catch(function (ex) {
           pending = false;
-          if (asked !== period) return;
+          if (asked !== period + "/" + view) return;
           error = String(ex && ex.message ? ex.message : ex);
           fetched = Date.now();
           draw();
@@ -146,6 +186,10 @@
       if (doc === null) {
         svg.appendChild(svgEl("text", { x: W / 2, y: height / 2, "class": "sk-empty",
                                         "text-anchor": "middle" }, "loading"));
+        return;
+      }
+      if (doc.view === "split") {
+        drawSplit();
         return;
       }
 
@@ -234,6 +278,106 @@
       if (doc.failed && doc.failed.length) bits.push("no data for " + doc.failed.join(", "));
       note.textContent = bits.join(" · ");
       if (doc.failed && doc.failed.length) note.className = "sub line sk-note warn";
+    }
+
+    // --- the split view --------------------------------------------------------------------
+
+    // Label centres pushed apart to LABEL_H, then back up if that ran off the bottom.
+    function spread(mids) {
+      var out = mids.slice();
+      for (var i = 1; i < out.length; i++) out[i] = Math.max(out[i], out[i - 1] + LABEL_H);
+      var over = out.length ? out[out.length - 1] - (height - PAD - 6) : 0;
+      if (over > 0) {
+        out[out.length - 1] -= over;
+        for (var j = out.length - 2; j >= 0; j--) out[j] = Math.min(out[j], out[j + 1] - LABEL_H);
+      }
+      return out;
+    }
+
+    function drawSplit() {
+      var sources = doc.nodes.filter(function (n) { return n.side === "source" && n.value > 0; });
+      var loads = doc.nodes.filter(function (n) { return n.side === "load" && n.value > 0; });
+      var total = sources.reduce(function (a, n) { return a + n.value; }, 0);
+      var loadTotal = loads.reduce(function (a, n) { return a + n.value; }, 0);
+      var biggest = Math.max(total, loadTotal);
+      if (!biggest) {
+        svg.appendChild(svgEl("text", { x: W / 2, y: height / 2, "class": "sk-empty",
+                                        "text-anchor": "middle" }, "nothing flowing"));
+        note.textContent = doc.failed && doc.failed.length ? "no data for " + doc.failed.join(", ") : "";
+        return;
+      }
+      var sc = scaleOf(doc.unit, biggest);
+      var room = height - 2 * PAD;
+
+      // A circuit's nodes sit together, a wider gap between circuits.
+      function gaps(list) {
+        var g = [];
+        for (var i = 1; i < list.length; i++) g.push(list[i].circuit === list[i - 1].circuit ? GAP : GAP * 2.5);
+        return g;
+      }
+      var gs = gaps(sources), gl = gaps(loads);
+      var sum = function (a) { return a.reduce(function (x, y) { return x + y; }, 0); };
+      var perUnit = (room - Math.max(sum(gs), sum(gl))) / biggest;
+
+      function column(list, g, x, anchorX, anchor) {
+        var block = list.reduce(function (a, n) { return a + Math.max(MIN_BAND, n.value * perUnit); }, 0) + sum(g);
+        var y = PAD + (room - block) / 2;
+        var placed = list.map(function (n, i) {
+          if (i) y += g[i - 1];
+          var h = Math.max(MIN_BAND, n.value * perUnit);
+          var node = { n: n, y0: y, y1: y + h, at: y };
+          y += h;
+          return node;
+        });
+        var mids = spread(placed.map(function (p) { return (p.y0 + p.y1) / 2; }));
+        placed.forEach(function (p, i) {
+          svg.appendChild(svgEl("rect", { x: x, y: p.y0, width: BAR, height: p.y1 - p.y0, rx: 1.5,
+                                          "class": "sk-node f-" + p.n.domain }));
+          svg.appendChild(svgEl("text", { x: anchorX, y: mids[i] - 1, "text-anchor": anchor,
+                                          "class": "sk-label" }, p.n.label));
+          svg.appendChild(svgEl("text", { x: anchorX, y: mids[i] + 9, "text-anchor": anchor,
+                                          "class": "sk-value" },
+                                ui.fmt(p.n.value / sc.div, sc.decimals) + " " + sc.unit +
+                                (p.n.approx ? " \u2248" : "")));
+        });
+        return placed;
+      }
+
+      var left = column(sources, gs, LEFT, LEFT - 6, "end");
+      var right = column(loads, gl, RIGHT, RIGHT + BAR + 6, "start");
+      var byId = {};
+      left.forEach(function (p) { byId["s:" + p.n.id] = p; });
+      right.forEach(function (p) { byId["l:" + p.n.id] = p; });
+      var order = {};
+      right.forEach(function (p, i) { order[p.n.id] = i; });
+
+      // Each source's ribbons leave it in the order of the loads, and arrive at each
+      // load in the order of the sources, so no two ribbons cross at either end.
+      var links = doc.links.filter(function (k) { return byId["s:" + k.source] && byId["l:" + k.target]; });
+      links.sort(function (a, b) {
+        var sa = left.indexOf(byId["s:" + a.source]), sb = left.indexOf(byId["s:" + b.source]);
+        return sa !== sb ? sa - sb : order[a.target] - order[b.target];
+      });
+      links.forEach(function (k) {
+        var s = byId["s:" + k.source], t = byId["l:" + k.target];
+        var h = k.value * perUnit;
+        var path = svgEl("path", { d: ribbon(LEFT + BAR, s.at, s.at + h, RIGHT, t.at, t.at + h),
+                                   "class": "sk-flow f-" + s.n.domain });
+        path.appendChild(svgEl("title", {}, s.n.label + " \u2192 " + t.n.label + ": " +
+                               ui.fmt(k.value / sc.div, sc.decimals) + " " + sc.unit));
+        svg.appendChild(path);
+        s.at += h;
+        t.at += h;
+      });
+
+      var bits = [];
+      if (doc.period !== "now") bits.push(span(doc));
+      bits.push("\u2248 estimated: export has no meter, and each house is what its circuit's meters leave");
+      if (doc.unmatched > 0) bits.push("unmatched " + ui.fmt(doc.unmatched / sc.div, sc.decimals) + " " + sc.unit +
+        ": loads the meters show more of than their circuit supplied");
+      if (doc.failed && doc.failed.length) bits.push("no data for " + doc.failed.join(", "));
+      note.textContent = bits.join(" \u00b7 ");
+      note.className = "sub line sk-note" + (doc.failed && doc.failed.length ? " warn" : "");
     }
 
     function span(d) {

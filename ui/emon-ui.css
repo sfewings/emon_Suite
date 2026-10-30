@@ -247,6 +247,7 @@ svg text.r-temp { fill: var(--r-temp); }
    reads the colour before the number. The period tabs are finger-sized on the boat's
    kiosk, where every tab is (body.menu-large). */
 .sk-tabs { margin: 0 0 4px; }
+.sk-views .sk-tab { font-size: 11px; }
 .sk-tab {
   font-family: var(--cond); font-size: 12px; color: var(--ink3); background: transparent;
   border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; margin: 0 4px 4px 0;
