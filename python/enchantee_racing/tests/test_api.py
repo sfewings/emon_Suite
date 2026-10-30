@@ -69,13 +69,14 @@ def test_the_course_list_is_served_for_the_selection_screen():
     client, _store, _ticker, _published = _client()
     body = json.loads(client.get("/api/courses").get_data(as_text=True))
     assert set(body) == {"series", "courses"}
-    # every series on a course sheet in the fixtures book, plus the Parmelia night race,
-    # which has its own sailing instructions document rather than a page in that book
+    # every series on a course sheet in the fixtures book, plus the Parmelia night race and
+    # the Opening Day Regatta, which each have their own sailing instructions document
+    # rather than a page in that book
     assert set(body["series"]) == {"frostbite", "friday", "sunday-div-ii", "sunday-div-iii",
-                                   "sunday-div-iv", "twilight", "parmelia"}
+                                   "sunday-div-iv", "twilight", "parmelia", "opening-day"}
     # the endpoint offers the whole file rather than a subset of it
     shipped = app_module.load_config()["courses"]["courses"]
-    assert len(body["courses"]) == len(shipped) == 25
+    assert len(body["courses"]) == len(shipped) == 27
     assert {c["id"] for c in body["courses"]} == {c["id"] for c in shipped}
 
     first = body["courses"][0]
