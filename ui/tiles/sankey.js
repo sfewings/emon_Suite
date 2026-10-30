@@ -35,7 +35,7 @@
   var MIN_BAND = 1.2;          // a flow too small to see still gets a hairline
   var REFRESH_MS = { now: 5000 };
   var REFRESH_OTHER_MS = 60000;
-  var LABEL_H = 21;            // a node's two lines of label, so small nodes do not overprint
+  var LABEL_H = 24;            // a node's two lines of label, so small nodes do not overprint
   var VIEWS = { house: "Through the house", split: "Supply \u2192 demand" };
 
   EmonUI.part("sankey", function (spec, body, tile, ui) {
