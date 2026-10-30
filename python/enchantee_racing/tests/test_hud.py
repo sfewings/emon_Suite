@@ -748,9 +748,10 @@ def test_load_config_reads_the_real_files_and_validates_them():
     config = app_module.load_config()
     assert set(config) >= {"marks", "courses", "lines", "problems", "unraceable"}
     # all six course sheets from the fixtures book, 4 + 4 + 4 + 4 + 4 + 3 = 23, plus the
-    # two Parmelia night race courses, which come from their own instructions document
-    assert len(config["courses"]["courses"]) == 25
-    assert len(config["courses"]["series"]) == 7
+    # two Parmelia night race courses and the two Opening Day cruiser courses, which each
+    # come from their own instructions document
+    assert len(config["courses"]["courses"]) == 27
+    assert len(config["courses"]["series"]) == 8
     assert config["unraceable"] == set()  # nothing in the shipped config blocks racing
 
 

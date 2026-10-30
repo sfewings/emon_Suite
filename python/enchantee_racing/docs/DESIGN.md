@@ -699,6 +699,37 @@ rather than as context specks, which on a night race down to Blackwall Reach is 
 difference between finding a mark and not. One of the thirteen had to be keyed on its DoT
 name, because the register's own numbering column is empty for a navigation mark.
 
+### 7.2 The Opening Day Regatta
+
+The second course source outside the fixtures book. `docs/reference/Opening Day Sailing
+Instructions 2026.pdf` is the 129th Opening Day Regatta, Sunday 1 November 2026, and
+Attachment A on page 5 gives two cruiser courses: `opening-day-1` for a westerly breeze and
+`opening-day-2` for an easterly, chosen on the day and shown by numeral pendant 1 or 2. Both
+were transcribed by hand and checked against a render of the page, for the same two-column
+reason given in 7.1. The Sharpie and International 14 courses on pages 6 and 7 are not
+transcribed: the boat does not sail them.
+
+**Every mark resolves exactly, and every rounding agrees with the register**, so unlike 7.1
+there is nothing to pin in `KNOWN_ROUNDING_MISMATCHES`. SQUADRON BUOY (37) is
+`squadron-37`, the club racing buoy, read on name; SI 7 says Deepwater Spit (37) is not a
+navigation mark for this race, which rules out the other 37 independently.
+
+**No distance is printed.** `validate()` requires a positive `distance_nm` and the card
+shows one, so it is the straight-line leg sum, 9.40 and 7.13 nm, stored to two places and
+labelled as such in each course note. It reconciles by construction, so the DESIGN 7 check
+says nothing about this transcription; `tests/test_courses.py` instead holds the legs
+against a second copy of the sheet and asserts the stored distance still equals the sum.
+
+**Neither course rounds Club Buoy 32A before the finish**, so both join `sunday-div-iii-2`
+in `NO_MID_RACE_LINE`. The finish rounds 32A to port on course 1 and to starboard on course
+2. The arming rule in 11.5 is unchanged and still needed, since a boat can sail through the
+line mid-race without rounding the buoy.
+
+The starts are 14:35 for Cruisers III and IV under naval 3 and 14:40 for I and II under
+naval 2, on the same course. The time limit is 1730 wall clock. The instructions make no
+provision for shortening, so `shortened_at` is null with a note saying so, and the series
+has no `shortened_signal`.
+
 ## 8. Flags
 
 Courses are signalled from the start box by a naval numeral flag for the division

@@ -223,11 +223,14 @@ def test_mosman_has_no_line():
         assert "mosman-b-13" not in line["marks"], line["id"]
 
 
-# The one course in the whole document that never returns to the line before finishing,
-# and so the one where a naive finish test would happen to be right. It is also the only
-# Sunday course with no printed shortened distance, which is the same fact from the other
-# side: there is no line crossing to shorten it at.
-NO_MID_RACE_LINE = {"sunday-div-iii-2"}
+# The courses that never round club-32a before finishing, and so the ones where a naive
+# finish test would happen to be right. sunday-div-iii-2 is the one in the fixtures book,
+# and the only Sunday course with no printed shortened distance, which is the same fact from
+# the other side: there is no line crossing to shorten it at. The two Opening Day cruiser
+# courses are the others; their sailing instructions make no provision for shortening
+# either. A boat on those can still sail through the line mid-race without rounding 32A,
+# which is why the arming rule in DESIGN 11.5 does not depend on this list.
+NO_MID_RACE_LINE = {"sunday-div-iii-2", "opening-day-1", "opening-day-2"}
 
 
 def test_club_32a_is_both_a_course_mark_and_the_finish():
@@ -247,7 +250,7 @@ def test_club_32a_is_both_a_course_mark_and_the_finish():
     everything = {c["id"] for c in COURSES["courses"]}
     assert everything - exposed == NO_MID_RACE_LINE, everything - exposed
     # and it is the overwhelming majority, which is why the arming rule exists at all
-    assert len(exposed) >= len(everything) - 1
+    assert len(exposed) >= len(everything) - len(NO_MID_RACE_LINE)
 
 
 def test_a_shortened_course_ends_at_a_crossing_of_the_line():
@@ -790,6 +793,79 @@ def test_the_leg_table_works_for_every_shipped_course():
         assert rows[-1]["finish"] is True, c["id"]
         assert all(r["distance_nm"] >= 0.0 for r in rows), c["id"]
         assert all(r["rounding"] in ("port", "starboard") for r in rows), c["id"]
+
+
+# --- the Opening Day Regatta ----------------------------------------------------------
+#
+# Attachment A, Cruisers, page 5 of docs/reference/Opening Day Sailing Instructions
+# 2026.pdf, written out a second time and independently of config/courses.json, as for
+# the Parmelia courses above. The last row is the finish and its rounding of Club Buoy 32A,
+# which is port on course 1 and starboard on course 2.
+OPENING_DAY_SHEET = {
+    "opening-day-1": [
+        ("miller-28", "port"),
+        ("dolphin-east-42b", "starboard"),
+        ("smith-35a", "port"),
+        ("lucky-bay-35b", "port"),
+        ("squadron-37", "port"),
+        ("dolphin-west-42a", "starboard"),
+        ("sanders-99", "starboard"),
+        ("hallmark-41a", "port"),
+        (None, "port"),
+    ],
+    "opening-day-2": [
+        ("dolphin-east-42b", "starboard"),
+        ("sanders-99", "starboard"),
+        ("armstrong-32", "port"),
+        ("bricklanding-a-33a", "starboard"),
+        ("bricklanding-b-33b", "starboard"),
+        ("dolphin-east-42b", "starboard"),
+        ("sanders-99", "starboard"),
+        (None, "starboard"),
+    ],
+}
+
+
+def test_the_opening_day_courses_match_the_sailing_instructions():
+    for course_id, expected in OPENING_DAY_SHEET.items():
+        legs = _course(course_id)["legs"]
+        got = [(leg.get("mark"), leg.get("rounding")) for leg in legs]
+        assert got == expected, (course_id, got)
+        assert legs[-1].get("finish") is True, course_id
+        assert legs[-1].get("line") == "pfsyc-start-finish", course_id
+        assert not any(leg.get("finish") for leg in legs[:-1]), course_id
+
+
+def test_opening_day_squadron_is_the_racing_buoy_not_deepwater_spit():
+    """The sheet prints SQUADRON BUOY (37), and SI 7 says Deepwater Spit (37) is not a
+    navigation mark for this race. Number 37 is shared, so this pins the name reading."""
+    marks = [leg.get("mark") for leg in _course("opening-day-1")["legs"]]
+    assert "squadron-37" in marks
+    assert "deepwater-spit-37" not in marks
+
+
+def test_opening_day_flags_and_starts():
+    for n in (1, 2):
+        c = _course("opening-day-%d" % n)
+        assert c["course_no"] == n
+        assert c["flags"] == {"division": None, "numeral": "pendant-%d" % n}
+    series = COURSES["series"]["opening-day"]
+    assert [(s["divisions"], s["time"], s["flag"]) for s in series["starts"]] == [
+        (["III", "IV"], "14:35", "naval-3"),
+        (["I", "II"], "14:40", "naval-2"),
+    ]
+    assert series["time_limit"] == "17:30"
+
+
+def test_opening_day_distance_is_the_summed_legs():
+    """The instructions print no distance, so distance_nm is the mark-to-mark sum. If a mark
+    moves or a leg is edited, this says the stored figure needs recomputing, rather than
+    leaving a number that looks printed but is not."""
+    for course_id in OPENING_DAY_SHEET:
+        c = _course(course_id)
+        summed = course.course_distance_nm(c, INDEX, LINES)
+        assert abs(summed - c["distance_nm"]) < 0.01, (course_id, summed, c["distance_nm"])
+        assert "print no distance" in c["note"], course_id
 
 
 if __name__ == "__main__":
