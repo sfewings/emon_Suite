@@ -59,8 +59,8 @@ fine). 2d is done and deployed: the running Node-RED publishes showers, dog fed 
 on `emon/derived/...`. Mosquitto now keeps retained messages (master). 2e: the
 `emon_live` container runs at shannstainable since 23 Oct, http://192.168.1.131:5003/
 and https://shannstainable.fewings.org/live/ (host nginx, `location /live/`),
-publishing `emon/derived/...`; it runs beside Instant Data until 30 Oct, then the
-Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
+publishing `emon/derived/...`; it runs beside Instant Data until at least 6 Nov (owner,
+30 Oct: another week), then the Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee runs phase 1 since 25 Oct 2026, 20:59 (step 4 below done; the check, step 5,
 is open). On the shannstainable Pi the new images exist locally as
