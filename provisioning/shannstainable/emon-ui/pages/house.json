@@ -54,6 +54,16 @@
       ]
     },
     {
+      "title": "Water", "domain": "water",
+      "cols": 3,
+      "values": [
+        {"feed": "derived/water/hot/today", "label": "Hot", "big": true, "decimals": 0},
+        {"feed": "derived/water/mains/today", "label": "Mains", "big": true, "decimals": 0},
+        {"feed": "derived/water/bore/today", "label": "Bore", "big": true, "decimals": 0}
+      ],
+      "lines": ["Litres today"]
+    },
+    {
       "title": "Temperature", "domain": "heat",
       "fresh": 600, "gone": 1800,
       "cols": 2,
@@ -96,7 +106,7 @@
     {
       "title": "Leaf", "domain": "car",
       "fresh": 600, "gone": 21600,
-      "leds": [{"feed": "Leaf / range", "test": "fresh", "on": "home", "off": "away"}],
+      "leds": [{"feed": "Leaf / range", "test": "fresh", "on": "home", "off": "away", "big": true}],
       "cols": 3,
       "values": [
         {"feed": "Leaf / range", "label": "Range", "big": true, "decimals": 0},
@@ -109,7 +119,7 @@
     {
       "title": "Outlander", "domain": "car",
       "fresh": 600, "gone": 21600,
-      "leds": [{"feed": "Outlander / range", "test": "fresh", "on": "home", "off": "away"}],
+      "leds": [{"feed": "Outlander / range", "test": "fresh", "on": "home", "off": "away", "big": true}],
       "cols": 3,
       "values": [
         {"feed": "Outlander / range", "label": "Range", "big": true, "decimals": 0},

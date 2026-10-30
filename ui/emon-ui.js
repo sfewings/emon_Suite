@@ -147,6 +147,23 @@
     return out;
   }
 
+  // A template built into `parent` once: its words as text, each {feed} as its own
+  // span.n, so a number reads at the size of a reading and the words and units around it
+  // stay small and grey, as on the Rain tile (owner, 30 Oct 2026). `cls` is added to the
+  // numbers (a domain's colour). Returns update(view), which changes only the numbers.
+  function templateInto(parent, text, cls) {
+    var pieces = parseTemplate(text).map(function (p) {
+      var node = p.feed ? el("span", "n" + (cls ? " " + cls : "")) : document.createTextNode(p.text);
+      parent.appendChild(node);
+      return { p: p, node: node };
+    });
+    return function (view) {
+      pieces.forEach(function (x) {
+        if (x.p.feed) x.node.textContent = fmtAs(view.value(x.p.feed), x.p.decimals);
+      });
+    };
+  }
+
   function templateFeeds(text) {
     return parseTemplate(text).filter(function (p) { return p.feed; }).map(function (p) { return p.feed; });
   }
@@ -439,7 +456,7 @@
 
   var api = {
     el: el, fmt: fmt, fmtAs: fmtAs, fmtTime: fmtTime, fmtAge: fmtAge, unit: unit,
-    parseTemplate: parseTemplate, templateFeeds: templateFeeds,
+    parseTemplate: parseTemplate, templateFeeds: templateFeeds, templateInto: templateInto,
     // Where this page is served from, so a part with an endpoint of its own (sankey)
     // reaches it by the same relative path the engine uses.
     base: base, getJSON: function (url) { return getJSON(url); }

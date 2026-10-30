@@ -131,6 +131,18 @@ button[data-theme-toggle] {
 .t-heat { color: var(--heat); } .t-water { color: var(--water); } .t-rain { color: var(--rain); }
 .t-car { color: var(--car); }
 .sub { font-family: var(--mono); font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+/* A number in a sub line or a tile's line reads as a reading does (the Rain tile's month
+   and year): medium and in ink, or its reading's colour; the words and units around it
+   stay small and grey (ui.templateInto). */
+.n { color: var(--ink); }   /* before the r- tints, so a tinted reading's colour wins */
+.sub .n {
+  font-size: 22px; font-weight: 500; line-height: 1.15;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+}
+.sub .n.t-power { color: var(--power); } .sub .n.t-solar { color: var(--solar); } .sub .n.t-batt { color: var(--batt); }
+.sub .n.t-heat { color: var(--heat); } .sub .n.t-water { color: var(--water); } .sub .n.t-rain { color: var(--rain); }
+.sub .n.t-car { color: var(--car); }
+@media (max-width: 760px) { .sub .n { font-size: 18px; } }
 .sub.line { margin-top: 5px; }
 .bar { height: 6px; background: var(--line2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--c); }
@@ -143,6 +155,11 @@ button[data-theme-toggle] {
 }
 .pill.on { background: var(--ok-bg); color: var(--ok); }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
+/* A pill that is the point of its tile ("big": a car home or away). */
+.pill.big { font-size: 14px; font-weight: 600; padding: 3px 10px; border-radius: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+.pill.big.off { background: var(--line); color: var(--ink2); }
+@media (max-width: 760px) { .pill.big { font-size: 12px; padding: 2px 6px; letter-spacing: 0.02em; } }
+body.text-large .pill.big { font-size: 24px; }
 
 /* --- reading colours ("tint") ----------------------------------------------------------
    One colour per quantity, the same on every screen the crew looks at: the boat's Node-RED
@@ -311,6 +328,7 @@ body.text-large .v { font-size: 44px; }
 body.text-large .v.big { font-size: 60px; }
 body.text-large .v small { font-size: 24px; }
 body.text-large .sub { font-size: 22px; }
+body.text-large .sub .n { font-size: 44px; }
 body.text-large .pill { font-size: 20px; }
 body.text-large .kv { grid-gap: 10px 18px; gap: 10px 18px; }
 body.text-large .tile:not(.w2) .kv.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

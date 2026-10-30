@@ -455,6 +455,13 @@ sans-serif`, readings at weight 500 with tabular figures and -0.02em tracking, a
 `static/app.css` does; nothing is downloaded (the Pi resolves it to Nimbus Sans, iOS has
 Helvetica Neue). enchantee uses it; shannstainable keeps the proposal's faces.
 
+**Numbers in lines read as readings** (30 Oct 2026, owner): in a reading's sub line and a
+tile's lines, each `{feed}` number is set medium (22 px, 18 on a phone) in ink, or in its
+reading's colour, and the words and units around it stay small and grey, as the Rain
+tile's month and year read beside its today (`ui.templateInto`). A pill takes `"big":
+true` to stand out as the point of its tile, used for a car's home or away.
+shannstainable also takes `"font": "race"`.
+
 **Black nights** (27 Oct 2026, owner): `site.json` `"night": "black"` puts the night theme's
 panels and page on pure black, as the race app's screens are; enchantee uses it. Grafana
 frames keep Grafana's own dark grey.

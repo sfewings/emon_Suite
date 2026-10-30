@@ -32,8 +32,10 @@
       cell.appendChild(v);
       var sub = null;
       if (item.sub) {
-        sub = ui.el("div", "sub");
-        cell.appendChild(sub);
+        var line = ui.el("div", "sub");
+        cell.appendChild(line);
+        // The sub line's numbers take the reading's colour, when it has one.
+        sub = ui.templateInto(line, item.sub, item.tint ? "r-" + item.tint : item.domain ? "t-" + item.domain : "");
         feeds = feeds.concat(ui.templateFeeds(item.sub));
       }
       if (item.feed) feeds.push(item.feed);
@@ -53,7 +55,7 @@
           c.num.textContent = c.item.feed ? ui.fmtAs(value, time ? "time" : c.item.decimals) : "";
           var u = time ? "" : c.item.unit !== undefined ? c.item.unit : (c.item.feed ? view.unit(c.item.feed) : "");
           c.small.textContent = value === null ? "" : u;
-          if (c.sub) c.sub.textContent = view.fill(c.item.sub);
+          if (c.sub) c.sub(view);
         });
       }
     };

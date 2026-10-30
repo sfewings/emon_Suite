@@ -149,14 +149,15 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
       Node-RED's context was emptied by that evening's reboot.
 - [x] Pushed `emon_live_ui` in emon-node-red (owner, 23 Oct).
 
-### 2e. Deploy (Pi) (running since 23 Oct 2026; the week beside Instant Data runs to 30 Oct)
+### 2e. Deploy (Pi) (running since 23 Oct 2026; beside Instant Data until at least 6 Nov)
 - [x] Mosquitto persistence at shannstainable (owner, 23 Oct; on master, `f1cf77e`), so a
       restart or reset keeps the retained envelopes. Saved every 5 min.
 - [x] `emon_live` service in `provisioning/shannstainable/docker-compose.yml`, code
       bind-mounted, site folder read-only. Image `sfewings32/emon_live:latest`
       (`python/emon_live/Dockerfile`, `build.sh -c emon_live`), built on the Pi, not
       pushed. Until the merge it runs from the worktree (HANDOVER, Machines).
-- [ ] Run beside Instant Data for a week. Then disable the Dashboard 1 tabs.
+- [ ] Run beside Instant Data. Owner, 30 Oct 2026: leave Node-RED's dashboard running for
+      at least another week, so not before 6 Nov. Then disable the Dashboard 1 tabs.
 
 ### 2f. The Energy page and its Sankey (done 29 Oct 2026; written on the laptop, checked on the Pi)
 - [x] `sankey:` block in derived.yml, `/api/energy?period=...` and `energy.py` (DESIGN
@@ -205,7 +206,8 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] `ui/tiles/sankey.js`: the view switch and the split drawing.
 - [x] Checked on the Pi against the real Influx, every period, in a development
       instance on port 5004.
-- [ ] Owner's approval; merge to master and restart production's emon_live.
+- [x] Owner approved it, 30 Oct 2026; merged to master (`d8e4406`) and production's
+      emon_live restarted. Live at shannstainable.fewings.org/live/#energy.
 
 Done when: the family uses the new page on phones and the desktop, and daily totals
 survive a restart. Way back: Instant Data is untouched until the last step.

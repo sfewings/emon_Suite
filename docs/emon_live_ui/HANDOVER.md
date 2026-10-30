@@ -59,8 +59,8 @@ fine). 2d is done and deployed: the running Node-RED publishes showers, dog fed 
 on `emon/derived/...`. Mosquitto now keeps retained messages (master). 2e: the
 `emon_live` container runs at shannstainable since 23 Oct, http://192.168.1.131:5003/
 and https://shannstainable.fewings.org/live/ (host nginx, `location /live/`),
-publishing `emon/derived/...`; it runs beside Instant Data until 30 Oct, then the
-Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
+publishing `emon/derived/...`; it runs beside Instant Data until at least 6 Nov (owner,
+30 Oct: another week), then the Dashboard 1 tabs go. After that, phase 2 is done and the branch can merge (owner).
 `emon_serial` and `emon_influx` there run the new images (`:latest` retagged locally,
 old ones kept as `:pre-live-ui`). Enchantee runs phase 1 since 25 Oct 2026, 20:59 (step 4 below done; the check, step 5,
 is open). On the shannstainable Pi the new images exist locally as
@@ -764,3 +764,16 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   times in the 19:00 hour of 29 Oct, the 2g development instance. Fixed in app.py:
   `--client-id` / `MQTT_CLIENT_ID`, defaulting to `emon-live` when publishing and
   `emon-live-view-<port>` otherwise, so a read-only instance can no longer collide.
+- **2026-10-30, 21:16.** Owner approved supply to demand. Merged to master (`d8e4406`),
+  production's emon_live restarted: healthy, replay rebuilt today's export with the new
+  estimate (14.96 kWh against Node-RED's 18.05), `derived/office/nightLoad` 166 W, and
+  /live/api/energy answers both views, now and today, through nginx with nothing failed;
+  Unmatched 59 Wh today. The development instance on 5004 is stopped.
+- **2026-10-30, 21:55.** Owner's House page changes, on the branch: lesser figures at about
+  half the main ones (`"sub": "half"`; replaced the same evening, at the owner's word, by
+  every number in a line set medium in ink with its words small and grey), the cars' HOME / AWAY as big pills, the race app's
+  font (`"font": "race"`), and a Water card (Hot, Mains, Bore litres today; new
+  `derived/water/mains/today` and `bore/today`, their counters mapped to Influx). The
+  Front yard node (mains, bore) last reported 28 Oct, so those read 0 until it returns.
+  The test capture gained its four retained `emon/wtr/1/...` messages, taken from the
+  broker.
