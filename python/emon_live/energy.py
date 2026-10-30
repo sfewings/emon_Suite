@@ -20,7 +20,7 @@ window (in Wh). `/api/energy?period=...` answers with the flows and their values
 account for, so the diagram balances by construction. When it would be negative the
 named loads already exceed the sources, which the response reports as `balance`.
 
-Three window methods, each one or two **bounded** Influx queries (influx.py says why
+Four window methods, each one or two **bounded** Influx queries (influx.py says why
 that matters):
 
     counter   last(value) - first(value), summed over `of`. The pulse meters are already
@@ -29,6 +29,8 @@ that matters):
     expr      an expression in W over bucketed means of its inputs, trapezoid-integrated.
               This is how the export estimate, which no single series holds, is answered
               for a past window. `scalars` supplies the window-wide aggregates it needs.
+    split     the figure the supply-to-demand view gives the node of the same id
+              (supply.py), so an estimate made there reads the same in both views.
 
 The buckets are coarse (a minute for a day, longer for a month), so an `expr` figure is
 an estimate, close but not equal to the live `derived/...` total that integrates every
@@ -36,6 +38,9 @@ reading. The response says so in `approx`.
 
 Periods are "now", "today" (since midnight), "yesterday" (the whole of it), "week" and
 "month" (the last 7 and 30 days, to now).
+
+The block's `split:` is the other view, which source fed which load, with no house in the
+middle (supply.py); `/api/energy?view=split` answers it.
 """
 
 from __future__ import annotations
@@ -88,12 +93,12 @@ class Flow:
             self.scalars = dict(self.window.get("scalars") or {})
             self.expr = emon_feed.Expr(self.window.get("expr", ""), self.window.get("defaults"))
             self.of = [n for n in self.expr.names if n not in self.scalars]
-        elif self.method and self.method not in ("counter", "integral"):
+        elif self.method and self.method not in ("counter", "integral", "split"):
             raise ValueError(f"sankey flow {self.id!r}: unknown method {self.method!r}")
 
     @property
     def approx(self) -> bool:
-        return self.method == "expr"
+        return self.method in ("expr", "split")
 
     def feeds(self) -> List[str]:
         """Every feed name this flow refers to, for the page linter."""
@@ -121,6 +126,10 @@ class Sankey:
         other = block.get("other")
         self.other = Flow(other) if other else None
         self.periods = [p for p in (block.get("periods") or PERIODS) if p in PERIODS]
+        import supply                      # here: supply.py imports this module
+        self.split = supply.Split(block.get("split"))
+        if any(f.method == "split" for f in self.flows) and not self.split:
+            raise ValueError("a sankey flow's window method is split, but there is no split: block")
         self._cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._lock = threading.Lock()
 
@@ -131,14 +140,21 @@ class Sankey:
         names: List[str] = []
         for flow in self.flows:
             names.extend(flow.feeds())
-        return names
+        return names + self.split.feeds()
 
     # --- answering ---------------------------------------------------------------------
 
-    def document(self, period: str, state, influx=None, now: Optional[float] = None) -> Dict[str, Any]:
+    def document(self, period: str, state, influx=None, now: Optional[float] = None,
+                 view: str = "house") -> Dict[str, Any]:
         """The flows and their values for one period. Never raises on a query that fails:
         that flow comes back with no value and is named in `failed`, so the rest of the
-        diagram still draws."""
+        diagram still draws. `view` "split" is supply to demand (supply.py)."""
+        if view == "split":
+            if not self.split:
+                raise ValueError("this site's sankey: block has no split:")
+            return self.split.document(period, state, influx, now)
+        if view != "house":
+            raise ValueError(f"unknown view {view!r}")
         if period not in PERIODS:
             raise ValueError(f"unknown period {period!r}")
         now = state.clock() if now is None else now
@@ -156,7 +172,10 @@ class Sankey:
                 failed.append(flow.id)
                 continue
             try:
-                values[flow.id] = self._over(flow, influx, start, end)
+                values[flow.id] = (self.split.total(flow.id, period, state, influx, now)
+                                   if flow.method == "split" else self._over(flow, influx, start, end))
+                if values[flow.id] is None and flow.method == "split":
+                    failed.append(flow.id)
             except Exception as ex:
                 log.error("energy %s: flow %s failed: %s", period, flow.id, ex)
                 values[flow.id] = None
@@ -199,7 +218,8 @@ class Sankey:
             out.append({"id": self.other.id, "label": self.other.label, "side": self.other.side,
                         "domain": self.other.domain, "value": round(max(0.0, sources - loads), 1),
                         "approx": True})
-        return {"period": period, "label": LABELS[period], "unit": unit, "hub": self.hub,
+        return {"view": "house", "split": bool(self.split),
+                "period": period, "label": LABELS[period], "unit": unit, "hub": self.hub,
                 "from": start, "to": end, "flows": out, "failed": failed,
                 "balance": round(sources - loads, 1)}
 

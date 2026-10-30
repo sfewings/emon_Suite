@@ -610,11 +610,13 @@ gives:
 | `integral` | `integral(value, 1s) / 3600` | a feed in W, such as an inverter's PV |
 | `expr` | an expression in W over bucketed means, trapezoid-integrated | a figure no single series holds |
 
-`expr` exists for the export estimate, which is Inverter Two's output less the average
+`expr` existed for the export estimate when it was Inverter Two's output less the average
 import since midnight (6.3): two series and a window-wide aggregate, which `scalars:`
 supplies. Its buckets are a minute for a day and 15 minutes for a month, so it is close
 to `derived/export/today` but not equal to it. Those flows are marked `approx` and the
-diagram prints "≈" beside them. Honest, and cheap.
+diagram prints "≈" beside them. Honest, and cheap. Since 30 Oct 2026 the export takes a
+fourth method, `split`: the supply-to-demand view's figure (6.7), which rebuilds the new
+estimate a bucket at a time, so both views give the same number.
 
 **The diagram balances by construction.** Sources on the left, the house in the middle,
 loads on the right; what the sources carried that the named loads do not account for is
@@ -645,8 +647,9 @@ as the Sankey is (6.5): a `banks:` block in derived.yml describes the banks,
 - **Which shunt is which bank** was settled from the BMS's own figures (remaining capacity
   over SoC): 280 Ah is Bank 1, 320 Ah Bank 2, 510 Ah Bank 3, all on LiFePO monitor 5. The
   Main battery monitor's Bank 1/2/3 shunts read 0 W with counters frozen since at least
-  18 Oct 2026, so they are not used. Sign: positive out of the battery; a BMS's power is
-  scaled by -1 to match.
+  18 Oct 2026, so they are not used. Sign: positive out of the battery, which is how the
+  Leaf bank's BMS reports it too (+160 W overnight, -65 W at midday). It was first
+  scaled by -1 here in error, which showed it charging at night; fixed 30 Oct 2026.
 - **Now** is the live store: each cell's reading, the lowest and highest, and the spread
   between them, warned past `spread` (50 mV for LiFePO). **A period** is, per bank, one
   grouped Influx query for every cell's min, max, mean and last, then one per reading
@@ -663,6 +666,59 @@ as the Sankey is (6.5): a `banks:` block in derived.yml describes the banks,
   The same rolling-window fix went into the Sankey's cache, which had never answered
   7 or 30 days from cache at all.
 - The Leaf BMS sends 16 cell slots and only 12 are wired; the page shows 12.
+
+### 6.7 Supply to demand
+
+Owner's request, 30 Oct 2026: the Sankey with only supply and demand columns, no house,
+showing how much of each demand each supply filled. A switch on the Sankey tile, the
+same period tabs; `/api/energy?view=split`, answered by `python/emon_live/supply.py`
+from a `split:` block inside the site's `sankey:`.
+
+**Nothing measures which source fed which load, so it is attributed from the wiring.**
+shannstainable, from the owner: two circuits that never meet. *Main* is Inverters One and
+Three with Banks 1 to 3, and carries the car and the hot water. *Office* is Inverter Two
+with the Leaf bank (the old Nissan Leaf pack; the car called Leaf is a load on Main), and
+is the only circuit that exports, and only its solar. Everything the house uses is on the
+two circuits; an import is an occasional load straight off the grid. A manual charge of
+the batteries from the grid happens perhaps once a year and is not modelled.
+
+**The rules, a slice at a time** (a minute for a day, 5 for a week, 15 for a month), on
+each circuit:
+
+1. Battery charge comes from that circuit's solar; more than the solar made, from its own
+   battery's discharge (one bank charging another), then "Unmatched".
+2. Export comes from what solar is left, never from a battery.
+3. What solar is left and the battery's discharge feed the loads and the house in the
+   same proportion. While the battery charges, every load is solar; while it discharges,
+   every load gets the same mix. This is the one real assumption.
+
+Each circuit's house (House Main, House Office) is the remainder: its supply less its
+measured demands, inverter losses included. When the measured demands exceed the supply,
+the difference is drawn from an **Unmatched** source rather than hidden. The grid feeds
+only "Direct from grid". Attributing period totals instead of slices would be wrong:
+night-time hot water would take a share of the day's solar.
+
+**Slices from counters where there are counters.** A counter's energy in a slice is the
+rise of its last value from the slice before, so the slices add up to the counter's own
+total (Banks, Car, Hot water, Grid agree with the house view to the Wh). A W feed is its
+bucket mean, **held forward** into a bucket it has no reading in, up to the 5 min gap
+derived.yml's integrate bridges: the inverters report every ~27 s unevenly, a minute often
+has one of a pair, and reading the other as 0 took half of Main's solar (first run, 30 Oct
+2026: 3.5 kWh "Unmatched" in a day; with the hold, 56 Wh). The Leaf bank has no shunt: its
+in and out are the BMS power's negative and positive parts.
+
+**The export estimate changed with it** (owner's option, 30 Oct 2026). Node-RED's was
+Inverter Two's solar less the average import since midnight, from when the Office circuit
+ran from the grid at night. With the Leaf bank carrying it, the import is near 0, so that
+counted the Leaf bank's charge and the office's daytime load as export (18.05 kWh of
+18.39 kWh solar on 30 Oct). Now: Inverter Two's solar, less the Leaf bank's charge, less
+the office's night load, which is the Leaf bank's mean discharge while Inverter Two makes
+nothing, since midnight (`derived/office/nightLoad`); 14.92 kWh the same day. Live in
+derived.yml, rebuilt the same way slice by slice for a past period.
+
+**Cost.** One bounded bucket query a series, 13 for shannstainable: 0.7 s for a day,
+3.2 s for 30 days, memory flat; cached as the house view is, one computation a period
+however many screens ask.
 
 ## 7. The wider family
 

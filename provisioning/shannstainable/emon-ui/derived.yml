@@ -142,21 +142,60 @@ sankey:
       now: Power board / HWS
       window: {method: counter, of: [Power board / HWS (pulse)]}
 
-    # The export estimate is Inverter Two's output less the average import, which no
-    # single Influx series holds, so a past window is rebuilt from bucketed means: close
-    # to derived/export/today, not equal to it, and marked "≈" on the diagram.
+    # The export estimate (derived/export/now, below) has no single Influx series, so a
+    # past window takes the split view's figure, rebuilt a bucket at a time: close to
+    # derived/export/today, not equal to it, and marked "≈" on the diagram.
     - id: export
       label: Export
       side: load
       domain: solar
       now: derived/export/now
-      window:
-        method: expr
-        expr: "max(0, {Inverter Two / pvInputPower} - {import_avg})"
-        scalars:
-          import_avg: {feed: Power board / Imported, agg: mean, positive_only: true}
+      window: {method: split}
 
   other: {id: other, label: House and losses, side: load, domain: other}
+
+  # The other view: which source fed which load, no house in the middle (supply.py,
+  # DESIGN 6.7). The wiring, from the owner (30 Oct 2026): two circuits that never meet.
+  # Main is Inverters One and Three with Banks 1 to 3, and carries the car and the hot
+  # water. Office is Inverter Two with the Leaf bank (the old Nissan Leaf pack; the car
+  # called Leaf is a load on Main) and is the only one that exports, and only solar.
+  # Everything the house uses is on the two circuits; an import is an occasional load
+  # straight off the grid, and a manual battery charge from the grid perhaps once a year,
+  # which shows as Unmatched. LiFePO monitor 4's Inverter 2 shunt is disconnected.
+  split:
+    circuits:
+      - id: main
+        label: Main
+        solar:
+          id: solar_main
+          label: Solar Main
+          power: [Inverter One / pvInputPower, Inverter Three / pvInputPower]
+        battery:
+          id: banks
+          label: Banks 1–3
+          power: [LiFePO monitor 5 / Battery-510Ah, LiFePO monitor 5 / Battery-320Ah,
+                  LiFePO monitor 5 / Battery-280Ah]
+          out: [LiFePO monitor 5 / Battery-510Ah (pulseIn), LiFePO monitor 5 / Battery-320Ah (pulseIn),
+                LiFePO monitor 5 / Battery-280Ah (pulseIn)]
+          in: [LiFePO monitor 5 / Battery-510Ah (pulseOut), LiFePO monitor 5 / Battery-320Ah (pulseOut),
+               LiFePO monitor 5 / Battery-280Ah (pulseOut)]
+        loads:
+          - {id: car, label: Car, domain: car, power: Power board / Car, counter: Power board / Car (pulse)}
+          - {id: hws, label: Hot water, domain: heat, power: Power board / HWS, counter: Power board / HWS (pulse)}
+        house: {id: house_main, label: House Main}
+      - id: office
+        label: Office
+        solar: {id: solar_office, label: Solar Office, power: [Inverter Two / pvInputPower]}
+        # No shunt: in and out from the BMS's power, + out of the battery.
+        battery: {id: leaf_bank, label: Leaf bank, power: [BMS - Leaf Bank / power]}
+        export: {id: export, label: Export, now: derived/export/now}
+        house: {id: house_office, label: House Office}
+    grid:
+      id: grid
+      label: Grid
+      power: Power board / Imported
+      counter: Power board / Imported (pulse)
+      to: {id: grid_direct, label: Direct from grid}
 
 # Battery banks: a card each on the Energy page (banks.py, DESIGN 6.6).
 #
@@ -165,8 +204,8 @@ sankey:
 # 320 Ah (258 Ah at 81 %), so the 510 Ah shunt is Bank 3's. The Main battery monitor's
 # own Bank 1/2/3 shunts have read 0 W with counters that have not moved since at least
 # 18 Oct, so in and out come from LiFePO monitor 5, where pulseIn is discharge (above).
-# Sign: positive is out of the battery, as the owner reads it; a BMS reports the
-# opposite, so its power is scaled by -1. The Leaf bank has no shunt.
+# Sign: positive is out of the battery, as the owner reads it, and as the Leaf bank's BMS
+# reports it (+160 W overnight, -65 W at midday, 29-30 Oct 2026). The Leaf bank has no shunt.
 banks:
   periods: [now, today, yesterday, week, month]
   list:
@@ -245,7 +284,7 @@ banks:
         spread: 0.05
       values:
         - {label: Voltage,     feed: BMS - Leaf Bank / batteryVoltage, decimals: 2}
-        - {label: Power,       feed: BMS - Leaf Bank / power, decimals: 0, scale: -1}
+        - {label: Power,       feed: BMS - Leaf Bank / power, decimals: 0}
         - {label: Temperature, feed: BMS - Leaf Bank / temperature, decimals: 1}
         - {label: Remaining,   feed: BMS - Leaf Bank / resCapacity, decimals: 0}
         - {label: Cycles,      feed: BMS - Leaf Bank / lifetimeCycles, decimals: 0}
@@ -259,19 +298,29 @@ derived:
     unit: W
     kind: power
 
-  # Node-RED's export estimate, kept as it is (owner, 21 Oct 2026): Inverter Two's output
-  # less the average of every positive import reading since midnight. Not night-time only,
-  # whatever its comment says; 0 before the first import of the day.
-  - id: import/average
+  # The export estimate (owner, 30 Oct 2026; nothing meters export). Inverter Two's solar,
+  # less what charges the Leaf bank, less the Office circuit's own load, taken as the Leaf
+  # bank's mean discharge while Inverter Two makes nothing, since midnight: by day, the
+  # night just gone. Node-RED's took off the average import instead, from when Inverter
+  # Two's circuit ran from the grid at night; with the Leaf bank carrying it, the import
+  # is near 0 and that counted the Leaf bank's charge and the office's load as export.
+  # supply.py rebuilds the same a bucket at a time for a past period.
+  - id: office/nightDischarge
+    op: expr
+    expr: "max(0, {BMS - Leaf Bank / power}) if {Inverter Two / pvInputPower} <= 0 else 0"
+    unit: W
+    kind: power
+  - id: office/nightLoad
     op: mean
-    feed: Power board / Imported
+    feed: derived/office/nightDischarge
     positive_only: true
     unit: W
     kind: power
+    decimals: 0
   - id: export/now
     op: expr
-    expr: "max(0, {Inverter Two / pvInputPower} - {derived/import/average})"
-    defaults: {derived/import/average: 0}
+    expr: "max(0, {Inverter Two / pvInputPower} - max(0, -{BMS - Leaf Bank / power}) - {derived/office/nightLoad})"
+    defaults: {derived/office/nightLoad: 0}
     unit: W
     kind: power
     decimals: 0

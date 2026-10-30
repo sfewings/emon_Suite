@@ -194,6 +194,19 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] Owner approved it, 29 Oct 2026; merged to master (`ab3f560`) and production's
       emon_live restarted. Live at shannstainable.fewings.org/live/#energy.
 
+### 2h. Supply to demand on the Sankey (30 Oct 2026; Pi)
+- [x] Owner's decisions: the two circuits (DESIGN 6.7), export estimate option 2 (the
+      Leaf bank's night discharge as the office's load), a switch on the existing tile,
+      House Main and House Office.
+- [x] `split:` in derived.yml's `sankey:`, `supply.py`, `/api/energy?view=split`; the
+      house view's export takes the split figure (method `split`); new
+      `derived/export/now`; the linter knows the block; `tests/test_supply.py` (21).
+- [x] Leaf bank power sign in the banks card fixed (its BMS already reports + as out).
+- [x] `ui/tiles/sankey.js`: the view switch and the split drawing.
+- [x] Checked on the Pi against the real Influx, every period, in a development
+      instance on port 5004.
+- [ ] Owner's approval; merge to master and restart production's emon_live.
+
 Done when: the family uses the new page on phones and the desktop, and daily totals
 survive a restart. Way back: Instant Data is untouched until the last step.
 
