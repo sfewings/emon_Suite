@@ -764,3 +764,8 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   times in the 19:00 hour of 29 Oct, the 2g development instance. Fixed in app.py:
   `--client-id` / `MQTT_CLIENT_ID`, defaulting to `emon-live` when publishing and
   `emon-live-view-<port>` otherwise, so a read-only instance can no longer collide.
+- **2026-10-30, 21:16.** Owner approved supply to demand. Merged to master (`d8e4406`),
+  production's emon_live restarted: healthy, replay rebuilt today's export with the new
+  estimate (14.96 kWh against Node-RED's 18.05), `derived/office/nightLoad` 166 W, and
+  /live/api/energy answers both views, now and today, through nginx with nothing failed;
+  Unmatched 59 Wh today. The development instance on 5004 is stopped.

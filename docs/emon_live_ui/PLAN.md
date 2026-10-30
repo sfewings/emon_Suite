@@ -205,7 +205,8 @@ Goal: a phone-friendly replacement for Instant Data, running beside it.
 - [x] `ui/tiles/sankey.js`: the view switch and the split drawing.
 - [x] Checked on the Pi against the real Influx, every period, in a development
       instance on port 5004.
-- [ ] Owner's approval; merge to master and restart production's emon_live.
+- [x] Owner approved it, 30 Oct 2026; merged to master (`d8e4406`) and production's
+      emon_live restarted. Live at shannstainable.fewings.org/live/#energy.
 
 Done when: the family uses the new page on phones and the desktop, and daily totals
 survive a restart. Way back: Instant Data is untouched until the last step.
