@@ -213,7 +213,38 @@ class RecordingService:
         from .data_processor import DataProcessor
         processor = DataProcessor(self.database, str(self.plots_dir),
                                   self.charts_config, self.plot_defaults)
-        return processor.process_recording(recording_id, plot_config, export_config)
+        # Falsy, not just None: the web interface passes data.get('plot_config', []),
+        # so an ordinary "process this" request arrives with an empty list meaning
+        # "nothing specified", not "draw no charts".
+        if not plot_config:
+            plot_config = self._event_plot_config(recording_id)
+        return processor.process_recording(recording_id, plot_config, export_config,
+                                           skip_feeds=self._event_skip_feeds(recording_id))
+
+    def _event_config_for(self, recording_id: int) -> Dict:
+        """The event config a recording was made under, or {} if it cannot be found."""
+        if not self.event_configs:
+            return {}
+        recording = self.database.get_recording(recording_id)
+        if not recording:
+            return {}
+        return self.event_configs().get(recording.get('event_key')) or {}
+
+    def _event_plot_config(self, recording_id: int) -> Optional[List[Dict]]:
+        """The charts the event config declares, or None to auto-generate everything.
+
+        The event files have carried a `plots:` block since they were written, and until
+        now nothing read it: every caller passed no plot_config and the processor fell
+        straight through to auto-generation. Reading it is what lets a chart be composed
+        by hand — all the temperatures together, the pack's cells against its voltage —
+        rather than only as the grouping rules happen to fall.
+        """
+        plots = self._event_config_for(recording_id).get('plots')
+        return plots or None
+
+    def _event_skip_feeds(self, recording_id: int) -> List[str]:
+        """Feed-name patterns the event config asks not to be charted at all."""
+        return self._event_config_for(recording_id).get('skip_feeds') or []
 
     def process_in_background(self, recording_id: int) -> threading.Thread:
         def run():

@@ -272,23 +272,25 @@ class _FakeDB:
     def get_recording_topics(self, recording_id):
         return sorted({r['topic'] for r in self.rows})
 
-    def get_recording_data(self, recording_id, topic_filter=None):
-        return [r for r in self.rows if r['topic'] == topic_filter]
+    def get_recording_data(self, recording_id, topic_filter=None, limit=None):
+        rows = [r for r in self.rows if r['topic'] == topic_filter]
+        return rows[:limit] if limit else rows
 
 
-def _rows(n=60, drop_lon_at=None, speed_topic='gps/speed/0'):
+def _rows(n=60, drop_speed_at=None, speed_topic='gps/speed/0'):
+    """Rows as the publisher writes them: one JSON object per fix, speed alongside.
+
+    Position carries lat and lon together, so there is no pair to drop; speed is still
+    its own topic and still has to be matched onto a fix, which drop_speed_at exercises.
+    """
     t0 = datetime(2026, 8, 29, 9, 0, 0)
     rows = []
     for i in range(n):
         ts = t0 + timedelta(seconds=2 * i)
-        rows.append({'topic': 'gps/latitude/0', 'timestamp': ts.isoformat(),
-                     'payload': str(CLUB_LAT + i * 1e-4)})
-        if i != drop_lon_at:
-            # Offset, as separate MQTT topics really are.
-            rows.append({'topic': 'gps/longitude/0',
-                         'timestamp': (ts + timedelta(milliseconds=180)).isoformat(),
-                         'payload': str(CLUB_LON + i * 1e-4)})
-        if speed_topic:
+        rows.append({'topic': 'gps/position/0', 'timestamp': ts.isoformat(),
+                     'payload': json.dumps({'lat': CLUB_LAT + i * 1e-4,
+                                            'lon': CLUB_LON + i * 1e-4})})
+        if speed_topic and i != drop_speed_at:
             rows.append({'topic': speed_topic,
                          'timestamp': (ts + timedelta(milliseconds=340)).isoformat(),
                          'payload': str(2.0 + (i % 5))})
@@ -305,7 +307,7 @@ def _processor(tmp_path, rows, charts=None):
 
 def test_speeds_line_up_with_coordinates(tmp_path):
     processor = _processor(tmp_path, _rows())
-    coords, speeds = processor._get_gps_track(1, ['gps/latitude/0', 'gps/longitude/0'])
+    coords, speeds = processor._get_gps_track(1, ['gps/position/0'])
     assert len(coords) == 60
     assert len(speeds) == len(coords)
     assert all(s is not None for s in speeds)
@@ -314,37 +316,41 @@ def test_speeds_line_up_with_coordinates(tmp_path):
         assert speed == 2.0 + (i % 5), i
 
 
-def test_a_dropped_longitude_does_not_shift_every_later_speed(tmp_path):
+def test_a_dropped_speed_does_not_shift_every_later_speed(tmp_path):
     """The bug this guards against: building coordinates and speeds in separate
     passes leaves index i of one belonging to index i+1 of the other from the
-    first unmatched latitude onwards, so the whole back half of the track is
-    coloured with the wrong speeds."""
-    # 20 s apart, so a dropped longitude has no neighbour inside the 5 s window.
+    first unmatched reading onwards, so the whole back half of the track is
+    coloured with the wrong speeds.
+
+    A fix can no longer be half-missing, since position carries lat and lon together,
+    but speed is still its own topic and still has to line up with the fix it belongs
+    to. A fix whose speed is missing keeps its place in the track and gets no colour,
+    rather than borrowing the next one's.
+    """
+    # 20 s apart, so a dropped speed has no neighbour inside the 5 s window.
     t0 = datetime(2026, 8, 29, 9, 0, 0)
     rows = []
     for i in range(20):
         ts = t0 + timedelta(seconds=20 * i)
-        rows.append({'topic': 'gps/latitude/0', 'timestamp': ts.isoformat(),
-                     'payload': str(CLUB_LAT + i * 1e-4)})
+        rows.append({'topic': 'gps/position/0', 'timestamp': ts.isoformat(),
+                     'payload': json.dumps({'lat': CLUB_LAT + i * 1e-4,
+                                            'lon': CLUB_LON + i * 1e-4})})
         if i != 5:
-            rows.append({'topic': 'gps/longitude/0',
-                         'timestamp': (ts + timedelta(milliseconds=180)).isoformat(),
-                         'payload': str(CLUB_LON + i * 1e-4)})
-        rows.append({'topic': 'gps/speed/0',
-                     'timestamp': (ts + timedelta(milliseconds=340)).isoformat(),
-                     'payload': str(float(i))})
+            rows.append({'topic': 'gps/speed/0',
+                         'timestamp': (ts + timedelta(milliseconds=340)).isoformat(),
+                         'payload': str(float(i))})
 
     processor = _processor(tmp_path, rows)
-    coords, speeds = processor._get_gps_track(1, ['gps/latitude/0', 'gps/longitude/0'])
-    assert len(coords) == 19, "the unmatched latitude is dropped from the track"
+    coords, speeds = processor._get_gps_track(1, ['gps/position/0'])
+    assert len(coords) == 20, "every fix is whole and keeps its place"
     assert len(speeds) == len(coords)
-    # Fix 5 is gone, so from there on the speed must skip 5 too.
-    assert speeds == [float(i) for i in range(20) if i != 5]
+    # Fix 5 has no speed; every other fix keeps its own.
+    assert speeds == [None if i == 5 else float(i) for i in range(20)]
 
 
 def test_a_recording_with_no_speed_topic_still_plots(tmp_path):
     processor = _processor(tmp_path, _rows(speed_topic=None))
-    coords, speeds = processor._get_gps_track(1, ['gps/latitude/0', 'gps/longitude/0'])
+    coords, speeds = processor._get_gps_track(1, ['gps/position/0'])
     assert len(coords) == 60
     assert speeds == [None] * 60
 
@@ -358,7 +364,7 @@ def test_a_differently_numbered_gps_unit_finds_its_own_speed(tmp_path):
     streams = processor._find_gps_streams(1)
     assert [s.key for s in streams] == ['1']
     assert streams[0].speed == 'gps/speed/1'
-    coords, speeds = processor._get_gps_track(1, ['gps/latitude/1', 'gps/longitude/1'])
+    coords, speeds = processor._get_gps_track(1, ['gps/position/1'])
     assert len(coords) == 60 and all(s is not None for s in speeds)
 
 
@@ -373,7 +379,7 @@ def test_the_chart_map_and_the_osm_map_have_different_stems(tmp_path):
     outdir = tmp_path / 'plots' / '1'
     outdir.mkdir(parents=True, exist_ok=True)
     png = processor._generate_route_map(
-        1, {'title': 'Route Map', 'topics': ['gps/latitude/0', 'gps/longitude/0']},
+        1, {'title': 'Route Map', 'topics': ['gps/position/0']},
         outdir)
     assert png.exists() and png.suffix == '.png'
     for html in outdir.glob('*.html'):
@@ -390,7 +396,7 @@ def test_the_route_map_is_produced_on_the_chart_and_off_it(tmp_path):
         outdir = tmp_path / label.replace(' ', '_') / 'out'
         outdir.mkdir(parents=True, exist_ok=True)
         png = processor._generate_route_map(
-            1, {'title': 'Route Map', 'topics': ['gps/latitude/0', 'gps/longitude/0']},
+            1, {'title': 'Route Map', 'topics': ['gps/position/0']},
             outdir)
         assert png.exists() and png.stat().st_size > 5000, label
 
@@ -402,7 +408,7 @@ def test_too_few_fixes_is_still_an_error(tmp_path):
     outdir.mkdir(parents=True, exist_ok=True)
     try:
         processor._generate_route_map(
-            1, {'title': 'Route Map', 'topics': ['gps/latitude/0', 'gps/longitude/0']},
+            1, {'title': 'Route Map', 'topics': ['gps/position/0']},
             outdir)
     except ValueError:
         return

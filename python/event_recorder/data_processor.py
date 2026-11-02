@@ -10,6 +10,7 @@ Calculates statistics including distance, speed, energy consumption.
 
 import bisect
 import csv
+import fnmatch
 import logging
 import math
 import os
@@ -36,18 +37,79 @@ from .models import Artefacts, Database, ImageType
 logger = logging.getLogger(__name__)
 
 
+# === The emon envelope (emon_live_ui DESIGN 4.2) ===
+#
+# Readings now arrive on emon/<node>/<sub>/<field>[/<idx>] as one JSON object each:
+# the value under "v", the unit under "u", and the feed's own name under "group" and
+# "name", which is what a plot legend wants. A recording still holds bare numeric
+# payloads on legacy topics, so everything here accepts both.
+#
+# Parsed here rather than by importing pyemonlib.emon_feed: that package reaches a
+# compiled extension this service has no other use for, and the envelope is a versioned
+# format ("s") of five keys. If it gains a version, this is the one place to look.
+
+def _envelope(payload) -> Optional[Dict]:
+    """The envelope dict for a payload, or None when it is not one."""
+    if not isinstance(payload, str) or not payload.lstrip().startswith('{'):
+        return None
+    try:
+        obj = json.loads(payload)
+    except ValueError:
+        return None
+    # The same three keys emon_feed.parse requires before trusting an object.
+    if isinstance(obj, dict) and 's' in obj and 'v' in obj and 'node' in obj:
+        return obj
+    return None
+
+
+def _payload_number(payload) -> Optional[float]:
+    """The numeric value of a payload, envelope or bare, or None if it has none.
+
+    An envelope whose value is an object (gps position) has no number and gives None,
+    which is what keeps a position out of a line plot.
+    """
+    envelope = _envelope(payload)
+    if envelope is not None:
+        value = envelope.get('v')
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value)
+    try:
+        return float(payload)
+    except (TypeError, ValueError):
+        return None
+
+
+def _payload_object(payload) -> Optional[Dict]:
+    """The object a payload carries: an envelope's "v", or a bare JSON object.
+
+    gps/position/<n> publishes {"lat":..,"lon":..,"ts":..} bare on the legacy topic and
+    wrapped in an envelope on emon/..., and the track reader wants the same dict either
+    way.
+    """
+    envelope = _envelope(payload)
+    if envelope is not None:
+        value = envelope.get('v')
+        return value if isinstance(value, dict) else None
+    if not isinstance(payload, str) or not payload.lstrip().startswith('{'):
+        return None
+    try:
+        obj = json.loads(payload)
+    except ValueError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 class GpsStream(NamedTuple):
     """One GPS unit's topics in a recording.
 
-    `position` is gps/position/<key> and is preferred: it carries lat, lon and
-    the fix time in one payload. `latitude`/`longitude` are the older pair, kept
-    because recordings already in the database have only those.
+    `position` carries lat, lon and the fix time in one payload, so a fix needs no
+    join. It is the only source: the separate latitude and longitude topics they
+    replaced were sampled either side of a fix and had to be matched by timestamp.
     """
 
     key: str                      # the subnode, '0' or '1', which names outputs
-    position: Optional[str]
-    latitude: Optional[str]
-    longitude: Optional[str]
+    position: str
     speed: Optional[str]
 
 
@@ -133,8 +195,25 @@ class DataProcessor:
         'winddirection': 'Wind Direction',
     }
 
-    # Axis labels used for 3-axis sensors (acc / gyro / mag).
-    _AXIS_LABELS: Dict[int, str] = {0: 'X', 1: 'Y', 2: 'Z'}
+    # Recorded under emon/# but not readings: emon/config is the retained configuration
+    # document the bridge publishes for tools and lint (emon_live_ui DESIGN 5). It has no
+    # value to plot, and charting it produced an 'EMON Config' chart of nothing.
+    _NOT_A_FEED: frozenset = frozenset({'emon/config'})
+
+    # Axis labels used for 3-axis sensors (acc / gyro / mag). The boat's axes, spelled
+    # out: the IMU reports x, y, z by index (emon_decoder._imu) and nothing downstream
+    # says which way each one points, so a legend reading 'X' tells a reader nothing.
+    _AXIS_LABELS: Dict[int, str] = {
+        0: 'X (bow-stern)',
+        1: 'Y (port-starboard)',
+        2: 'Z (vertical)',
+    }
+
+    # What a derived attitude series is called on a legend.
+    _DERIVED_LABELS: Dict[str, str] = {
+        'derived/roll':  'Roll (+ to starboard)',
+        'derived/pitch': 'Pitch (+ bow up)',
+    }
     _AXIS_TOPICS: frozenset = frozenset({'acc', 'gyro', 'mag'})
 
     # Colour cycle for auto-generated series.
@@ -163,9 +242,11 @@ class DataProcessor:
         self.plots_dir.mkdir(parents=True, exist_ok=True)
 
         # How far apart two readings may be and still belong to the same fix.
-        # Only used for the topics that genuinely arrive separately: speed, and
-        # latitude/longitude in recordings made before gps/position existed.
+        # Only speed arrives separately now: position carries lat and lon together.
         self.GPS_MATCH_TOLERANCE = timedelta(seconds=5)
+
+        # {recording_id: {topic: envelope}}, built on demand by _feed_index.
+        self._feed_index_cache: Dict[int, Dict[str, Dict]] = {}
 
         # Plot defaults
         plot_defaults = plot_defaults or {}
@@ -212,7 +293,72 @@ class DataProcessor:
                 self._charts = None
         return self._charts
 
-    def _auto_generate_plot_config(self, recording_id: int) -> List[Dict]:
+    def _resolve_declared(self, recording_id: int,
+                          plot_config: Optional[List[Dict]]) -> List[Dict]:
+        """Turn the event config's `plots:` entries into drawable specs.
+
+        A declared chart selects its series by feed name:
+
+            - title: "Temperatures"
+              feeds: ["*/temperature"]
+            - title: "Battery"
+              feeds: ["SevCon / capVoltage", "Main Battery / batteryVoltage"]
+              right_feeds: ["Main Battery / cellVoltage *"]
+              right_ylabel: "Cell V"
+
+        `feeds` goes on the left axis and `right_feeds` on a second axis on the right,
+        for quantities that belong on one chart but share no scale. Specs that name
+        `topics` instead are passed through untouched, which is what the map specs and
+        any hand-written legacy config do.
+
+        A chart whose feeds match nothing in this recording is dropped rather than drawn
+        empty: the boat does not carry every sensor on every sail.
+        """
+        resolved = []
+        for spec in plot_config or []:
+            spec = dict(spec)
+            if spec.get('type') == 'statistics_table':
+                continue        # built from the computed statistics, not from topics
+            if not spec.get('feeds') and not spec.get('right_feeds'):
+                if spec.get('topics'):
+                    resolved.append(spec)
+                continue
+
+            left = self._resolve_feeds(recording_id, spec.get('feeds') or [])
+            right = self._resolve_feeds(recording_id, spec.get('right_feeds') or [])
+            right = [t for t in right if t not in left]
+            if not left and not right:
+                logger.info(f"Declared chart {spec.get('title')!r} matches no feed here")
+                continue
+
+            spec['type'] = spec.get('type', 'multi_line')
+            spec['topics'] = left + right
+            spec['right_topics'] = right
+            spec.setdefault('legend', True)
+            spec.setdefault('labels', self._declared_labels(recording_id, left + right))
+            if not spec.get('ylabel'):
+                spec['ylabel'] = self._group_ylabel(left or right, recording_id)
+            if right and not spec.get('right_ylabel'):
+                spec['right_ylabel'] = self._group_ylabel(right, recording_id)
+            spec.setdefault('colors', [self._AUTO_COLORS[i % len(self._AUTO_COLORS)]
+                                       for i in range(len(spec['topics']))])
+            resolved.append(spec)
+        return resolved
+
+    def _declared_labels(self, recording_id: int, topics: List[str]) -> List[str]:
+        """Legend labels for a declared chart: the feed name, or the derived one's."""
+        labels = []
+        for topic in topics:
+            if topic in self._DERIVED_ATTITUDE:
+                labels.append(self._DERIVED_LABELS[topic])
+            else:
+                labels.append(self._feed_name(recording_id, topic)
+                              or self._topic_readable_name(topic))
+        return labels
+
+    def _auto_generate_plot_config(self, recording_id: int,
+                                   skip_feeds: Optional[List[str]] = None,
+                                   declared_topics: Optional[set] = None) -> List[Dict]:
         """
         Auto-generate plot configurations from recorded topics.
 
@@ -236,39 +382,44 @@ class DataProcessor:
         Returns:
             List of plot configuration dicts (all type 'multi_line' or 'map')
         """
-        topics = self.database.get_recording_topics(recording_id)
+        topics = [t for t in self.database.get_recording_topics(recording_id)
+                  if t not in self._NOT_A_FEED]
         if not topics:
             return []
 
         plot_config = []
         skip_topics: set = set()
 
+        # Feeds the event config asks not to be charted, and the ones already drawn by
+        # a chart it declared: both are off the auto-generated list below, so a declared
+        # chart does not also appear as a second, automatic one.
+        skip_topics.update(self._resolve_feeds(recording_id, skip_feeds or []))
+        skip_topics.update(declared_topics or ())
+
         # ── 1. GPS position streams → route maps ──────────────────────────
-        # One map per GPS unit. gps/position/<n> is preferred and needs no
-        # pairing; the latitude/longitude topics are used for recordings made
-        # before it existed. Whichever a stream uses, its topics are taken off
-        # the list below: a latitude plotted against time is not a chart anyone
-        # asked for.
+        # One map per GPS unit, from its position topic. That topic is taken off the
+        # list below: a position plotted against time is not a chart anyone asked for.
         streams = self._find_gps_streams(recording_id)
         for i, stream in enumerate(streams):
             title = 'Route Map' if len(streams) == 1 else f'Route Map {i}'
-            if stream.position:
-                map_topics = [stream.position]
-            else:
-                map_topics = [stream.latitude, stream.longitude]
             plot_config.append({
                 'type': 'map',
                 'title': title,
-                'topics': map_topics,
+                'topics': [stream.position],
             })
-            skip_topics.update(t for t in (stream.position, stream.latitude,
-                                           stream.longitude) if t)
+            skip_topics.add(stream.position)
+            # The unit's own latitude and longitude feeds go too. The map is what a
+            # position is for; a latitude against time is a sawtooth nobody reads. They
+            # used to disappear by being part of the GPS stream, but the envelope makes
+            # each of them a named feed in its own right, so they have to be named here.
+            skip_topics.update(self._stream_coordinate_topics(recording_id, stream))
 
         # ── 2. Group remaining topics by structural prefix ─────────────────
         remaining = [t for t in topics if t not in skip_topics]
+        feeds = self._feed_index(recording_id)
         groups: Dict[str, List[str]] = defaultdict(list)
         for topic in remaining:
-            groups[self._topic_group_key(topic)].append(topic)
+            groups[self._topic_group_key(topic, feeds.get(topic))].append(topic)
 
         # ── 3. Apply semantic merges (e.g. heading + course) ───────────────
         groups = self._apply_semantic_merges(dict(groups))
@@ -276,9 +427,9 @@ class DataProcessor:
         # ── 4. Build one multi_line spec per group ─────────────────────────
         for group_topics in sorted(groups.values(), key=lambda g: g[0]):
             group_topics = sorted(group_topics)
-            title   = self._group_plot_title(group_topics)
-            ylabel  = self._group_ylabel(group_topics)
-            labels  = self._group_series_labels(group_topics)
+            title   = self._group_plot_title(group_topics, recording_id)
+            ylabel  = self._group_ylabel(group_topics, recording_id)
+            labels  = self._group_series_labels(group_topics, recording_id)
             colors  = [self._AUTO_COLORS[i % len(self._AUTO_COLORS)]
                        for i in range(len(group_topics))]
             plot_config.append({
@@ -291,8 +442,36 @@ class DataProcessor:
                 'legend': True,
             })
 
+        # ── 5. No two charts may share a title ─────────────────────────────
+        # The title becomes the PNG's filename, so a repeat silently overwrites: two
+        # sensor families both reporting 'temperature' (the wind sensors and the
+        # pressure/temperature/humidity ones) left one chart where there were two. The
+        # node tells them apart and is what the group key already grouped them by.
+        self._disambiguate_titles(plot_config, recording_id)
+
         logger.info(f"Auto-generated {len(plot_config)} plot configs from {len(topics)} topics")
         return plot_config
+
+    def _disambiguate_titles(self, plot_config: List[Dict], recording_id: int) -> None:
+        """Make every title unique, in place, leaving already-unique ones alone."""
+        counts: Dict[str, int] = defaultdict(int)
+        for spec in plot_config:
+            counts[spec['title']] += 1
+
+        feeds = self._feed_index(recording_id)
+        used = {t for t, n in counts.items() if n == 1}
+        for spec in plot_config:
+            if counts[spec['title']] == 1:
+                continue
+            nodes = {e.get('node', '') for t in spec['topics']
+                     for e in [feeds.get(t)] if e is not None}
+            stem = f"{nodes.pop()} {spec['title']}" if len(nodes) == 1 else spec['title']
+            candidate, n = stem, 1
+            while candidate in used:
+                n += 1
+                candidate = f"{stem} {n}"
+            spec['title'] = candidate
+            used.add(candidate)
 
     def _topic_to_title(self, topic: str) -> str:
         """Convert MQTT topic path to readable plot title."""
@@ -322,14 +501,21 @@ class DataProcessor:
             return part.upper()
         return part.capitalize()
 
-    def _topic_group_key(self, topic: str) -> str:
+    def _topic_group_key(self, topic: str, envelope: Optional[Dict] = None) -> str:
         """
         Return the grouping key for a topic.
 
-        The key is the topic path with the trailing numeric channel/axis index
-        stripped, so that anemometer/temperature/0,1,2 all map to the same
-        key 'anemometer/temperature'.
+        With an envelope the key is '<node>/<field>', which is what makes one chart of
+        readings that differ only by subnode: the boat's three wind sources publish
+        windSpeed on emon/mwv/0, /1 and /2, and stripping a trailing index would leave
+        three separate keys where the legacy anemometer/windSpeed/0,1,2 gave one.
+
+        Without one, the key is the topic path with the trailing numeric channel or axis
+        index stripped, so anemometer/temperature/0,1,2 all map to 'anemometer/
+        temperature' as before.
         """
+        if envelope is not None:
+            return f"{envelope.get('node', '')}/{envelope.get('field', '')}"
         parts = topic.split('/')
         if parts and parts[-1].isdigit():
             return '/'.join(parts[:-1])
@@ -353,12 +539,17 @@ class DataProcessor:
                         groups[primary].extend(groups.pop(key))
         return groups
 
-    def _group_plot_title(self, topics: List[str]) -> str:
+    def _group_plot_title(self, topics: List[str],
+                          recording_id: Optional[int] = None) -> str:
         """
         Derive a chart title from the group of topics.
 
-        Finds the longest common MQTT path prefix and converts it to a readable
-        title.  When topics come from entirely different topic families
+        Envelopes give the title outright: the sensor's group name when every series
+        shares one ('Main Battery'), otherwise the reading they have in common
+        ('windSpeed'). A path prefix is only readable by accident; a name is deliberate.
+
+        Otherwise, finds the longest common MQTT path prefix and converts it to a
+        readable title. When topics come from entirely different topic families
         (semantic merge), the distinct roots are joined with ' / '.
 
         A numeric component is kept only when named components follow it. An
@@ -368,6 +559,34 @@ class DataProcessor:
         last survived. A trailing number is the channel or axis index, which is
         already drawn as a separate series, so it stays out of the title.
         """
+        if recording_id is not None:
+            feeds = self._feed_index(recording_id)
+            named = [feeds.get(t) for t in topics]
+            if all(e is not None for e in named):
+                groups = {e.get('group', '') for e in named}
+                fields = {e.get('field', '') for e in named}
+                one_group = groups.pop() if len(groups) == 1 else ''
+                # The field verbatim, not title-cased: it is already the name the
+                # decoder chose, and _readable_component would flatten cellVoltage to
+                # 'Cellvoltage'. The legends use their names verbatim for the same
+                # reason, so a chart and its legend agree.
+                one_field = fields.pop() if len(fields) == 1 else ''
+                # Both when both are known. The title becomes the PNG's filename
+                # (_title_to_stem), so 'Main Battery' alone would have the pack's seven
+                # charts write one file and only the last survive — the same collision
+                # the prefix rule below guards against for the IMU.
+                title = ' '.join(p for p in (one_group, one_field) if p)
+                if title:
+                    return title
+                # Neither is shared: a semantically merged group, where the feeds come
+                # from different sensors and measure differently-named things that mean
+                # the same (course and heading). Name it for what it holds. Without this
+                # it fell through to the common topic prefix, which for envelopes is the
+                # literal 'emon'.
+                named_fields = sorted(f for f in fields if f)
+                if named_fields:
+                    return ' / '.join(named_fields)
+
         split_topics = [t.split('/') for t in topics]
         common: List[str] = []
         for components in zip(*split_topics):
@@ -384,13 +603,23 @@ class DataProcessor:
         roots = sorted({t.split('/')[0] for t in topics})
         return ' / '.join(self._readable_component(r) for r in roots)
 
-    def _group_ylabel(self, topics: List[str]) -> str:
+    def _group_ylabel(self, topics: List[str],
+                      recording_id: Optional[int] = None) -> str:
         """
         Return the Y-axis label (with units) for a group of topics.
 
-        Searches the combined topic strings for the first matching keyword
-        in _TOPIC_UNITS.  Longer/more-specific keywords are tried first.
+        An envelope states its unit, so when every series in the group agrees on one it
+        is used verbatim and nothing is guessed. _TOPIC_UNITS below is the fallback for
+        legacy topics: it searches the combined topic strings for the first matching
+        keyword, longest first.
         """
+        if recording_id is not None:
+            feeds = self._feed_index(recording_id)
+            units = {e.get('u') for t in topics
+                     for e in [feeds.get(t)] if e is not None and e.get('u')}
+            if len(units) == 1:
+                return units.pop()
+
         combined = ' '.join(topics).lower()
         # Sort by keyword length descending so more-specific terms win
         for keyword, unit in sorted(self._TOPIC_UNITS.items(),
@@ -415,11 +644,20 @@ class DataProcessor:
             readable.append(self._readable_component(part))
         return ' '.join(readable)
 
-    def _group_series_labels(self, topics: List[str]) -> List[str]:
+    def _group_series_labels(self, topics: List[str],
+                             recording_id: Optional[int] = None) -> List[str]:
         """
         Generate per-series legend labels for the topics in a group.
 
-        Strategy:
+        A feed that carries an envelope is labelled by the name emon_config gave it:
+        'Main Battery / power', 'True wind / windSpeed'. That is the whole point of the
+        envelope lane, and it beats anything reconstructed from a topic path.
+
+        Where every series in a group shares a group name, the shared half is dropped and
+        only what distinguishes them is kept, so a chart of one battery's sixteen cells
+        reads 'cellVoltage 0..15' rather than repeating 'Main Battery /' sixteen times.
+
+        Without envelopes the old reconstruction applies:
         - Find the longest common MQTT path prefix shared by all topics.
         - When topics share a prefix (same family, different channel index):
             * Single trailing digit on a 3-axis sensor (acc/gyro/mag) → X/Y/Z
@@ -428,6 +666,17 @@ class DataProcessor:
         - When there is no common prefix (topics from different families,
           e.g. after a semantic merge) → full readable name for each topic.
         """
+        if recording_id is not None:
+            feeds = self._feed_index(recording_id)
+            named = [feeds.get(t) for t in topics]
+            if all(e is not None and e.get('name') for e in named):
+                groups = {e.get('group', '') for e in named}
+                if len(groups) == 1 and len(topics) > 1:
+                    # One sensor's channels: its name is in the title already.
+                    return [e['name'] for e in named]
+                return [f"{e['group']} / {e['name']}" if e.get('group') else e['name']
+                        for e in named]
+
         if len(topics) == 1:
             return [self._topic_readable_name(topics[0])]
 
@@ -466,7 +715,8 @@ class DataProcessor:
         return labels
 
     def process_recording(self, recording_id: int, plot_config: List[Dict] = None,
-                          export_config: Dict = None) -> Dict:
+                          export_config: Dict = None,
+                          skip_feeds: List[str] = None) -> Dict:
         """
         Process recording: generate plots, statistics, and export files.
 
@@ -512,6 +762,14 @@ class DataProcessor:
             cleared = self.database.delete_plot_images(recording_id)
             for stale_map in output_dir.glob('*.html'):
                 stale_map.unlink()
+            # The PNGs too. Only the database rows and the maps were cleared before,
+            # which was invisible while every run drew the same chart set under the same
+            # filenames. Once the charts are composed from config, a regrouped run draws
+            # fewer or differently-named files and the previous run's were left in the
+            # directory: not in the post, since that follows the database rows, but
+            # misleading to anyone reading the directory. User uploads live elsewhere.
+            for stale_plot in output_dir.glob('*.png'):
+                stale_plot.unlink()
             if cleared:
                 logger.info(f"Cleared {cleared} plot image record(s) from previous run")
             cleared = self.database.delete_recording_exports(recording_id)
@@ -525,9 +783,16 @@ class DataProcessor:
                 'status': 'success'
             }
 
-            # Auto-generate plot config if none provided
-            if not plot_config:
-                plot_config = self._auto_generate_plot_config(recording_id)
+            # Charts the event config declares are drawn first, in the order it lists
+            # them, and the feeds they use are then left out of the automatic ones, so
+            # a hand-composed chart does not reappear as an automatic duplicate.
+            # Anything the config says nothing about is still grouped automatically:
+            # a sensor added to the boat shows up without the config being edited.
+            declared = self._resolve_declared(recording_id, plot_config)
+            auto = self._auto_generate_plot_config(
+                recording_id, skip_feeds=skip_feeds,
+                declared_topics={t for spec in declared for t in spec['topics']})
+            plot_config = declared + auto
 
             # Generate plots
             if plot_config:
@@ -726,23 +991,47 @@ class DataProcessor:
         # Create plot
         fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
 
+        # Series the spec puts on a second axis, for quantities that belong on one
+        # chart but share no scale: a pack's 3.3 V cells against its 55 V total, or a
+        # motor's amps against the battery's watts. Dashed, so which axis a line is
+        # read against is visible without tracing it back to the legend.
+        right_topics = set(plot_spec.get('right_topics') or ())
+        right_ax = ax.twinx() if right_topics else None
+        handles = []
+
         for i, topic in enumerate(topics):
-            data = self._get_topic_data(recording_id, topic)
+            data = self._series_for(recording_id, topic)
             if data:
                 timestamps, values = data
                 timestamps = [self._utc_to_local(t) for t in timestamps]
-                label = labels[i] if i < len(labels) else topic
+                # The spec's own label wins; otherwise the feed's name, and only then
+                # the topic, which is what a reader can make least of.
+                label = (labels[i] if i < len(labels)
+                         else self._feed_name(recording_id, topic) or topic)
                 color = colors[i % len(colors)]
-                ax.plot(timestamps, values, linewidth=self.default_linewidth,
-                        label=label, color=color)
+                target = right_ax if topic in right_topics else ax
+                line, = target.plot(timestamps, values,
+                                    linewidth=self.default_linewidth,
+                                    label=label, color=color,
+                                    linestyle='--' if topic in right_topics else '-')
+                handles.append(line)
 
         ax.set_title(title, fontsize=16, fontweight='bold')
         ax.set_xlabel('Time', fontsize=12)
         ax.set_ylabel(ylabel, fontsize=12)
         ax.grid(True, alpha=0.3)
+        if right_ax is not None:
+            right_ax.set_ylabel(plot_spec.get('right_ylabel', ''), fontsize=12)
 
         if show_legend:
-            ax.legend(fontsize=10, loc='best')
+            # One legend for both axes; twinx draws its own otherwise and they overlap.
+            # Outside the axes on the right: these charts carry up to twenty series and
+            # 'best' puts the box over the data.
+            ncol = 2 if len(handles) > 10 else 1
+            ax.legend(handles, [h.get_label() for h in handles], fontsize=8, ncol=ncol,
+                      loc='upper left', bbox_to_anchor=(1.08 if right_ax is not None
+                                                        else 1.01, 1.0),
+                      borderaxespad=0, frameon=False)
 
         # Format x-axis
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
@@ -779,7 +1068,7 @@ class DataProcessor:
             Path to generated map image
         """
         title = plot_spec.get('title', 'Route Map')
-        topics = plot_spec.get('topics', ['gps/latitude/0', 'gps/longitude/0'])
+        topics = plot_spec.get('topics', ['gps/position/0'])
 
         coords, speeds = self._get_gps_track(recording_id, topics)
         if not coords or len(coords) < 2:
@@ -1113,7 +1402,9 @@ class DataProcessor:
                 if isinstance(timestamp, str):
                     timestamp = datetime.fromisoformat(timestamp)
 
-                value = float(record['payload'])
+                value = _payload_number(record['payload'])
+                if value is None:
+                    continue
 
                 timestamps.append(timestamp)
                 values.append(value)
@@ -1125,6 +1416,183 @@ class DataProcessor:
 
         return (timestamps, values)
 
+    def _feed_index(self, recording_id: int) -> Dict[str, Dict]:
+        """{topic: envelope} for every topic in the recording that carries one.
+
+        One row per topic is enough: a feed's name, unit and kind are the same in every
+        envelope it publishes, only "v" and "t" differ. Legacy topics are absent from the
+        result, which is how callers tell the two apart.
+
+        Cached per recording: the labels, the y-axis units and the GPS stream search all
+        want it while one recording is being processed.
+        """
+        cached = self._feed_index_cache.get(recording_id)
+        if cached is not None:
+            return cached
+
+        index = {}
+        for topic in self.database.get_recording_topics(recording_id):
+            rows = self.database.get_recording_data(recording_id, topic_filter=topic,
+                                                    limit=1)
+            if not rows:
+                continue
+            envelope = _envelope(rows[0]['payload'])
+            if envelope is not None:
+                index[topic] = envelope
+
+        self._feed_index_cache[recording_id] = index
+        logger.info(f"Feed index: {len(index)} named feeds in recording {recording_id}")
+        return index
+
+    # Attitude derived from the IMU's accelerometer, as angles of the gravity vector.
+    #
+    # Roll is emon_feed.heel: atan2(y, z), positive heeled to starboard. The sign was
+    # measured on a recorded race rather than taken from the axis convention
+    # (enchantee_racing store.derive_heel), so it is the trustworthy one.
+    #
+    # Pitch is atan2(-x, hypot(y, z)), positive bow up. Its sign has NOT been checked
+    # against a known moment the way roll's was; the axes are x bow-stern, y
+    # port-starboard, z down, so this follows from the convention and should be verified
+    # on a recording where the bow is known to have lifted.
+    #
+    # Heave is deliberately absent. It needs vertical acceleration integrated twice,
+    # which wants 10-50 Hz and a high-pass filter to stop the drift. This IMU reports at
+    # about 1 Hz, so a two-second wave is already at Nyquist and most sea state aliases
+    # away. Anything computed from it would look like heave and not be heave.
+    _DERIVED_ATTITUDE = ('derived/roll', 'derived/pitch')
+
+    # Below this much gravity the boat is being thrown about and the angle means
+    # nothing. Same threshold as emon_feed.HEEL_MIN_G.
+    _ATTITUDE_MIN_G = 0.5
+
+    def _derived_attitude(self, recording_id: int,
+                          which: str) -> Optional[Tuple[List[datetime], List[float]]]:
+        """'derived/roll' or 'derived/pitch' in degrees, from the IMU acc feeds.
+
+        The three axes arrive as separate readings stamped within the same message, so
+        they are matched on their arrival timestamp; a sample missing any axis is
+        dropped rather than guessed.
+        """
+        axes = {}
+        for topic, envelope in self._feed_index(recording_id).items():
+            if envelope.get('node') == 'imu' and envelope.get('field') == 'acc':
+                idx = envelope.get('idx')
+                if idx in (0, 1, 2):
+                    axes[idx] = topic
+        if len(axes) != 3:
+            logger.info(f"No IMU acceleration in recording {recording_id}: no {which}")
+            return None
+
+        # Keyed on the envelope's own "t", not on the row's arrival time. The three axes
+        # are three separate MQTT messages stamped as each arrives, milliseconds apart,
+        # so arrival times never match exactly; but all three carry the reading time of
+        # the one decoded IMU message, which does. Same trap the latitude/longitude pair
+        # used to need a nearest-neighbour join for.
+        series: Dict[int, Dict[float, float]] = {}
+        arrivals: Dict[float, datetime] = {}
+        for idx, topic in axes.items():
+            by_time = {}
+            for record in self.database.get_recording_data(
+                    recording_id, topic_filter=topic) or []:
+                envelope = _envelope(record['payload'])
+                if envelope is None:
+                    continue
+                reading_time = envelope.get('t')
+                value = envelope.get('v')
+                if not isinstance(reading_time, (int, float)):
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                by_time[float(reading_time)] = float(value)
+                stamp = record['timestamp']
+                if isinstance(stamp, str):
+                    stamp = datetime.fromisoformat(stamp)
+                arrivals.setdefault(float(reading_time), stamp)
+            if not by_time:
+                return None
+            series[idx] = by_time
+
+        timestamps, values = [], []
+        for reading_time in sorted(series[0]):
+            if reading_time not in series[1] or reading_time not in series[2]:
+                continue
+            stamp = arrivals[reading_time]
+            x, y, z = (series[0][reading_time], series[1][reading_time],
+                       series[2][reading_time])
+            if which == 'derived/roll':
+                if math.hypot(y, z) < self._ATTITUDE_MIN_G:
+                    continue
+                angle = math.degrees(math.atan2(y, z))
+            else:
+                if math.hypot(x, math.hypot(y, z)) < self._ATTITUDE_MIN_G:
+                    continue
+                angle = math.degrees(math.atan2(-x, math.hypot(y, z)))
+            timestamps.append(stamp)
+            values.append(angle)
+
+        logger.info(f"{which}: {len(values)} samples from {len(series[0])} IMU readings")
+
+        return (timestamps, values) if timestamps else None
+
+    def _series_for(self, recording_id: int,
+                    topic: str) -> Optional[Tuple[List[datetime], List[float]]]:
+        """A plottable series for a topic, or for one of the derived attitude names."""
+        if topic in self._DERIVED_ATTITUDE:
+            return self._derived_attitude(recording_id, topic)
+        return self._get_topic_data(recording_id, topic)
+
+    def _resolve_feeds(self, recording_id: int,
+                       patterns: List[str]) -> List[str]:
+        """Topics whose feed name matches any of the glob patterns, in pattern order.
+
+        Patterns are matched against the feed name ('Main Battery / power'), not the
+        topic, which is the whole point of naming feeds: an event config says what it
+        wants in the words emon_config uses, and never has to know that the pack reports
+        over the BMS on emon/bms/1/power.
+
+        fnmatch, so 'Main Battery / cellVoltage *' takes all sixteen cells and
+        '*/temperature' takes every sensor's temperature. A pattern matching nothing is
+        not an error: a recording may simply not contain that sensor.
+        """
+        feeds = self._feed_index(recording_id)
+        names = {topic: self._feed_name(recording_id, topic) for topic in feeds}
+
+        found: List[str] = []
+        for pattern in patterns:
+            if pattern in self._DERIVED_ATTITUDE:
+                found.append(pattern)
+                continue
+            # Sorted by the digits in the name where there are any, so cellVoltage 2
+            # comes before cellVoltage 10 rather than after it, as a plain sort gives.
+            matched = sorted((topic for topic, name in names.items()
+                              if name and fnmatch.fnmatch(name, pattern)),
+                             key=lambda t: self._name_sort_key(names[t]))
+            if not matched:
+                # Also allow a raw topic, so a legacy recording and a hand-written
+                # config that names one still work.
+                matched = [t for t in self.database.get_recording_topics(recording_id)
+                           if t == pattern]
+            if not matched:
+                logger.info(f"No feed matches {pattern!r} in recording {recording_id}")
+            found.extend(t for t in matched if t not in found)
+        return found
+
+    @staticmethod
+    def _name_sort_key(name: str) -> tuple:
+        """Natural sort: 'cellVoltage 2' before 'cellVoltage 10'."""
+        return tuple((int(part), '') if part.isdigit() else (0, part)
+                     for part in re.split(r'(\d+)', name or ''))
+
+    def _feed_name(self, recording_id: int, topic: str) -> Optional[str]:
+        """'Main Battery / power' for a topic, or None if it carries no envelope."""
+        envelope = self._feed_index(recording_id).get(topic)
+        if not envelope:
+            return None
+        group, name = envelope.get('group', ''), envelope.get('name', '')
+        if group and name:
+            return f"{group} / {name}"
+        return name or None
+
     # === GPS Track Reading ===
     #
     # One place builds a track, and everything that needs one uses it: route
@@ -1132,12 +1600,11 @@ class DataProcessor:
     # joins of the latitude and longitude topics, two of them duplicated
     # forward-fill loops, and they did not agree with each other.
     #
-    # gps/position/<n> is the preferred source and needs no join at all: it
-    # carries lat, lon and the fix time in one JSON payload precisely so the two
-    # halves of a fix cannot be sampled either side of it. The separate
-    # gps/latitude/<n> and gps/longitude/<n> topics are still read, because every
-    # recording made before the publisher was changed has only those, and a
-    # recording already in the database must stay processable.
+    # The position topic is now the only source. It carries lat, lon and the fix time in
+    # one payload precisely so the two halves of a fix cannot be sampled either side of
+    # it, and the separate latitude and longitude topics it replaced are no longer read
+    # (owner's decision, 2 Nov 2026). A recording made before the publisher changed, and
+    # so holding only the pair, no longer yields a track.
 
     @staticmethod
     def _nearest_index(sorted_times: List[datetime], target: datetime,
@@ -1155,11 +1622,13 @@ class DataProcessor:
 
     def _find_gps_streams(self, recording_id: int) -> List['GpsStream']:
         """
-        Find each GPS unit's topics in a recording.
+        Find each GPS unit's position and speed topics in a recording.
 
-        A unit is identified by the subnode on the end of its topics, so a
-        recording from two receivers yields two streams. gps/position/<n> wins
-        over the latitude/longitude pair for the same subnode.
+        A unit is identified by its subnode, so a recording from two receivers yields two
+        streams. Envelopes are matched on "field", which says what a reading is without
+        the topic having to spell it: emon/gps/0/position and the legacy gps/position/0
+        both resolve to the same stream. Legacy topics, which carry no envelope, fall
+        back to the topic text.
 
         Args:
             recording_id: Recording ID
@@ -1167,43 +1636,57 @@ class DataProcessor:
         Returns:
             List of GpsStream, ordered by subnode
         """
-        topics = self.database.get_recording_topics(recording_id)
+        feeds = self._feed_index(recording_id)
 
-        positions, latitudes, longitudes, speeds = {}, {}, {}, {}
-        for topic in topics:
-            lowered = topic.lower()
-            key = topic.rsplit('/', 1)[-1]
-            if 'position' in lowered:
+        positions, speeds = {}, {}
+        for topic in self.database.get_recording_topics(recording_id):
+            envelope = feeds.get(topic)
+            if envelope is not None:
+                if envelope.get('node') != 'gps':
+                    continue
+                field = envelope.get('field', '')
+                key = str(envelope.get('sub', ''))
+            else:
+                lowered = topic.lower()
+                if not lowered.startswith('gps/'):
+                    continue
+                field = ('position' if 'position' in lowered
+                         else 'speed' if 'speed' in lowered else '')
+                key = topic.rsplit('/', 1)[-1]
+            if field == 'position':
                 positions[key] = topic
-            elif 'latitude' in lowered:
-                latitudes[key] = topic
-            elif 'longitude' in lowered:
-                longitudes[key] = topic
-            elif 'speed' in lowered:
+            elif field == 'speed':
                 speeds[key] = topic
 
-        streams = []
-        for key in sorted(set(positions) | set(latitudes)):
-            position = positions.get(key)
-            latitude = latitudes.get(key)
-            longitude = longitudes.get(key)
-            if not position and not (latitude and longitude):
-                # A latitude with no longitude and no position is not a track.
-                continue
-            streams.append(GpsStream(key=key, position=position,
-                                     latitude=latitude, longitude=longitude,
-                                     speed=speeds.get(key)))
-        return streams
+        return [GpsStream(key=key, position=positions[key], speed=speeds.get(key))
+                for key in sorted(positions)]
+
+    def _stream_coordinate_topics(self, recording_id: int,
+                                  stream: 'GpsStream') -> List[str]:
+        """The stream's latitude and longitude topics, which the map supersedes."""
+        found = []
+        for topic, envelope in self._feed_index(recording_id).items():
+            if (envelope.get('node') == 'gps'
+                    and str(envelope.get('sub', '')) == stream.key
+                    and envelope.get('field') in ('latitude', 'longitude')):
+                found.append(topic)
+        # Legacy recordings name them directly.
+        for topic in self.database.get_recording_topics(recording_id):
+            lowered = topic.lower()
+            if (lowered.startswith('gps/')
+                    and ('latitude' in lowered or 'longitude' in lowered)
+                    and topic.rsplit('/', 1)[-1] == stream.key):
+                found.append(topic)
+        return found
 
     def _stream_for_topics(self, recording_id: int,
                            topics: List[str]) -> Optional['GpsStream']:
         """
         Resolve a plot spec's topic list to a GPS stream.
 
-        A spec may name a position topic, or a latitude/longitude pair, because
-        an event config written by hand can say either and older configs say the
-        pair. Matched on the subnode so a spec naming the legacy pair still gets
-        the position topic when the recording has one.
+        Matched on the subnode, the last path component, so a spec naming the legacy
+        gps/position/0 still resolves to the recording's emon/gps/0/position. A spec
+        that matches nothing gets the first stream, as before.
 
         Args:
             recording_id: Recording ID
@@ -1232,10 +1715,7 @@ class DataProcessor:
         Returns:
             List of TrackFix. Speed is None where no reading matched.
         """
-        if stream.position:
-            fixes = self._read_position_topic(recording_id, stream.position)
-        else:
-            fixes = self._read_latlon_topics(recording_id, stream)
+        fixes = self._read_position_topic(recording_id, stream.position)
 
         if not fixes:
             return []
@@ -1271,7 +1751,9 @@ class DataProcessor:
                 payload = record['payload']
                 if isinstance(payload, (bytes, bytearray)):
                     payload = payload.decode('utf-8', 'replace')
-                fix = json.loads(payload) if isinstance(payload, str) else payload
+                fix = _payload_object(payload)
+                if fix is None:
+                    raise ValueError('not a position payload')
                 lat = float(fix['lat'])
                 lon = float(fix['lon'])
                 if not (math.isfinite(lat) and math.isfinite(lon)):
@@ -1281,8 +1763,12 @@ class DataProcessor:
                 if isinstance(arrived, str):
                     arrived = datetime.fromisoformat(arrived)
 
+                # The legacy payload puts the fix time in "ts" beside lat and lon; an
+                # envelope carries the reading's own "t" instead, and its "v" holds only
+                # the position. Both are epoch seconds.
                 fix_time = None
-                raw_ts = fix.get('ts')
+                envelope = _envelope(payload)
+                raw_ts = fix.get('ts') if envelope is None else envelope.get('t')
                 if isinstance(raw_ts, (int, float)) and math.isfinite(raw_ts):
                     try:
                         # utcfromtimestamp, not fromtimestamp: the exports label
@@ -1301,43 +1787,6 @@ class DataProcessor:
         if skipped:
             logger.warning(f"{topic}: skipped {skipped} unreadable position payload(s)")
         fixes.sort(key=lambda f: f.ts)
-        return fixes
-
-    def _read_latlon_topics(self, recording_id: int,
-                            stream: 'GpsStream') -> List['TrackFix']:
-        """
-        Read fixes by joining the separate latitude and longitude topics.
-
-        For recordings made before gps/position/<n> existed. Latitude and
-        longitude arrive as two messages whose timestamps differ by
-        milliseconds, so they are matched nearest-neighbour within a tolerance;
-        exact equality almost never matches. A latitude with no longitude inside
-        the window is dropped, which is why this returns whole fixes rather than
-        two lists a caller might zip together and misalign.
-
-        Args:
-            recording_id: Recording ID
-            stream: The stream to read
-
-        Returns:
-            List of TrackFix without speeds
-        """
-        lat_data = self._get_topic_data(recording_id, stream.latitude)
-        lon_data = self._get_topic_data(recording_id, stream.longitude)
-        if not lat_data or not lon_data:
-            return []
-
-        lat_pairs = sorted(zip(*lat_data), key=lambda p: p[0])
-        lon_pairs = sorted(zip(*lon_data), key=lambda p: p[0])
-        lon_times = [p[0] for p in lon_pairs]
-
-        fixes = []
-        for lat_ts, lat_value in lat_pairs:
-            idx = self._nearest_index(lon_times, lat_ts, self.GPS_MATCH_TOLERANCE)
-            if idx is None:
-                continue
-            fixes.append(TrackFix(ts=lat_ts, fix_ts=None, lat=lat_value,
-                                  lon=lon_pairs[idx][1], sog=None))
         return fixes
 
     def _attach_speeds(self, recording_id: int, stream: 'GpsStream',
@@ -1511,14 +1960,23 @@ class DataProcessor:
         if not streams:
             return None
 
-        all_topics = self.database.get_recording_topics(recording_id)
-        ext_topics = [
-            t for t in all_topics
-            if t.lower().startswith('gps/')
-            and 'latitude' not in t.lower()
-            and 'longitude' not in t.lower()
-            and 'position' not in t.lower()
-        ]
+        # The GPS unit's other readings: course, speed and anything else it sends, but
+        # not the position itself, which is the track. An envelope names its node, so
+        # emon/gps/<n>/<field> is recognised by that rather than by the topic prefix.
+        feeds = self._feed_index(recording_id)
+        ext_topics = []
+        for topic in self.database.get_recording_topics(recording_id):
+            envelope = feeds.get(topic)
+            if envelope is not None:
+                if envelope.get('node') == 'gps' and envelope.get('field') != 'position':
+                    ext_topics.append(topic)
+                continue
+            lowered = topic.lower()
+            if (lowered.startswith('gps/')
+                    and 'latitude' not in lowered
+                    and 'longitude' not in lowered
+                    and 'position' not in lowered):
+                ext_topics.append(topic)
         # Timestamps parsed to datetimes, not left as the strings the database
         # returns. They are forward-filled against a fix's arrival time below,
         # and that is a datetime; comparing it with a string would either raise
@@ -1666,6 +2124,14 @@ class DataProcessor:
         energy_stats = self._calculate_energy_statistics(recording_id)
         stats.update(energy_stats)
 
+        # Efficiency needs both, so it is computed here rather than inside either.
+        # It used to be computed inside _calculate_energy_statistics against that
+        # function's own local dict, which never holds distance_km: that arrives from
+        # _calculate_gps_statistics and is merged above. The test was therefore never
+        # true and the post template's {efficiency} has never had a value.
+        if stats.get('distance_km', 0) > 0 and 'energy_used_wh' in stats:
+            stats['efficiency_wh_per_km'] = stats['energy_used_wh'] / stats['distance_km']
+
         return stats
 
     def _calculate_gps_statistics(self, recording_id: int) -> Dict:
@@ -1693,8 +2159,10 @@ class DataProcessor:
 
         stats['distance_km'] = total_distance / 1000  # Convert to km
 
-        # Get speed data
-        speed_data = self._get_topic_data(recording_id, 'gps/speed/0')
+        # Speed from the same stream the track came from, rather than a hardcoded
+        # gps/speed/0, which names neither the envelope topic nor a second receiver's.
+        speed_data = (self._get_topic_data(recording_id, streams[0].speed)
+                      if streams[0].speed else None)
         if speed_data:
             timestamps, speeds = speed_data
             stats['max_speed'] = max(speeds)
@@ -1702,12 +2170,29 @@ class DataProcessor:
 
         return stats
 
+    def _power_topic(self, recording_id: int) -> Optional[str]:
+        """The topic carrying battery power, or None if the recording has none."""
+        topics = self.database.get_recording_topics(recording_id)
+        if 'battery/power/0/0' in topics:
+            return 'battery/power/0/0'
+
+        for topic, envelope in sorted(self._feed_index(recording_id).items()):
+            if envelope.get('kind') == 'power' and envelope.get('node') == 'bms':
+                logger.info(f"Energy statistics from {self._feed_name(recording_id, topic)}")
+                return topic
+        return None
+
     def _calculate_energy_statistics(self, recording_id: int) -> Dict:
         """Calculate energy consumption statistics."""
         stats = {}
 
-        # Get battery power data
-        power_data = self._get_topic_data(recording_id, 'battery/power/0/0')
+        # The battery power feed. battery/power/0/0 is the shunt topic and is kept for
+        # recordings that have it, but the boat has no shunt: its pack reports over the
+        # BMS, so an envelope whose kind is 'power' on the bms node is used instead.
+        topic = self._power_topic(recording_id)
+        if not topic:
+            return stats
+        power_data = self._get_topic_data(recording_id, topic)
         if not power_data:
             return stats
 
@@ -1722,10 +2207,8 @@ class DataProcessor:
 
         stats['energy_used_wh'] = abs(total_energy)
 
-        # Calculate efficiency (Wh/km)
-        if 'distance_km' in stats and stats['distance_km'] > 0:
-            stats['efficiency_wh_per_km'] = stats['energy_used_wh'] / stats['distance_km']
-
+        # Efficiency is not computed here: it needs distance_km, which this function has
+        # no access to. See _calculate_statistics, where the two are merged.
         return stats
 
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:

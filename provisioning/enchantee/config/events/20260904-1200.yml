@@ -33,76 +33,104 @@ events:
       distance_threshold: 20              # meters - max movement while "stopped"
       duration: 180                       # seconds - must be stationary continuously
 
-    # MQTT topics to record during session
+    # MQTT topics to record during session.
+    #
+    # emon/# is the envelope lane (DESIGN 4.2): one retained JSON message per reading,
+    # carrying the feed's group and name, so a plot legend can say "Main Battery / power"
+    # rather than "bms/power/1". It replaces the per-node legacy patterns below it
+    # (temperature, sevCon, imu, anemometer, bms, pth), which carried the same readings
+    # under names nothing could resolve.
+    #
+    # gps/# and rssi/# are gone too: both are published on the envelope lane as well, and
+    # recording both lanes stored every GPS reading twice. The replay showed what that
+    # costs — charts pairing 'EMON GPS Latitude' with 'GPS Latitude 0', and a second
+    # route map's worth of position rows. The track reader finds its stream by the
+    # envelope's node and field now, so it no longer needs the gps/ prefix.
+    #
+    # The battery/... patterns are gone for a different reason. The boat has no bat
+    # shunt; emon_config names that node Unused, so it publishes nothing on either lane,
+    # and no line of 20260913_Frostbite_1.TXT carries one.
+    #
+    # monitor_topics above still names gps/position/0: that is the trigger's own
+    # subscription, not a recorded topic, and the legacy lane is still published.
     record_topics:
-      - "gps/#"                          # All GPS data
-      - "battery/power/+/+"              # Battery power (all banks)
-      - "battery/voltage/+/+"            # Battery voltages
-      - "temperature/#"                  # temperatures (# not *: * is not an MQTT wildcard)
-      - "sevCon/#"                       # Motor controller data
-      - "imu/0/mag/+"                    # Inertial measurement unit data
-      - "imu/0/acc/+"                    # Inertial measurement unit data
-      - "imu/0/gyro/+"                   # Inertial measurement unit data
-      - "imu/0/heading"                  # Inertial measurement unit data
-      - "anemometer/#"                   # Wind speed/direction data
-      - "bms/batterySoC/#"               # Battery management system
-      - "bms/power/#"                    # Battery management system
-      - "bms/resCapacity/#"              # Battery management system
-      - "bms/+"                          # Battery management system
-      - "pth/#"                          # Pressure, temperature, humidity data
-      - "rssi/#"                         # Signal strength data
+      - "emon/#"                         # Envelope lane: every named feed, with its name
 
-    # Plot generation configuration
+    # Charts for the post, composed by feed name (emon_live_ui DESIGN 5), drawn in this
+    # order and ahead of the automatic ones. Any feed not named here is still grouped
+    # automatically, so a sensor added to the boat appears without this being edited.
+    #
+    # This block used to name raw topics and was never read: every caller passed no
+    # plot_config and the processor went straight to auto-generation. It names feeds now
+    # because that is the one thing a person editing this file can be expected to know;
+    # nobody should have to remember that the pack reports power on emon/bms/1/power.
+    # Patterns are fnmatch against the feed name.
+    #
+    # The route map and the statistics table are NOT listed. Both are produced
+    # automatically: the map from whichever GPS stream the recording holds, the table
+    # from the computed statistics. Listing them here would draw each twice.
     plots:
-      # Speed over time
-      - type: "line"
-        title: "Speed Over Time"
-        topics: ["gps/speed/0"]
-        ylabel: "Speed (km/h)"
-        color: "#667eea"
+      # Everything that measures a temperature, on one chart. Light Banner's channel is
+      # named Bimini in emon_config, not 'temperature', so it is named outright.
+      - title: "Temperatures"
+        # Note the spaces: a feed name is 'group / name', so the pattern needs
+        # '* / temperature'. '*/temperature' matches nothing at all.
+        feeds:
+          - "* / temperature"
+          - "SevCon / *Temperature"
+          - "Light Banner / Bimini"
+        ylabel: "degC"
 
-      # Battery power comparison (multiple banks)
-      - type: "multi_line"
-        title: "Battery Power (All Banks)"
-        topics:
-          - "battery/power/0/0"
-          - "battery/power/0/1"
-        ylabel: "Power (W)"
-        labels: ["Bank 1", "Bank 2"]
-        legend: true
-        colors: ["#667eea", "#764ba2"]
+      # The pack: its total voltage and state of charge against the sixteen cells.
+      # Cells are on the right axis because 3.3 V against a 55 V pack on one scale
+      # leaves the cells a flat line exactly where a diverging cell would show.
+      - title: "Battery and cells"
+        feeds:
+          - "SevCon / capVoltage"
+          - "Main Battery / batteryVoltage"
+          - "Main Battery / batterySoC"
+        right_feeds:
+          - "Main Battery / cellVoltage *"
+        ylabel: "Volts, and SoC %"
+        right_ylabel: "Cell voltage (V)"
 
-      # Battery voltage
-      - type: "line"
-        title: "Battery Voltage"
-        topics: ["battery/voltage/0/0"]
-        ylabel: "Voltage (V)"
-        color: "#667eea"
+      # What the motor draws against what the pack delivers; amps and watts, so two axes.
+      - title: "Motor current and battery power"
+        feeds:
+          - "SevCon / batteryCurrent"
+        right_feeds:
+          - "Main Battery / power"
+        ylabel: "Current (A)"
+        right_ylabel: "Power (W)"
 
-      # GPS route map
-      # Drawn over the offline chart fetched from enchantee_racing and coloured
-      # by speed over ground; see the charts section of
-      # event_recorder_config.yml. The boat has no internet, so OpenStreetMap
-      # tiles are unreachable on the water. An interactive OSM map is still
-      # written alongside for the WordPress post, which is read ashore.
-      - type: "map"
-        title: "Track Route"
-        topics: ["gps/position/0"]
-        markers: ["start", "end"]
+      # Boat speed against the three wind sources, all in knots already.
+      - title: "Boat speed and wind speed"
+        feeds:
+          - "Enchantee-GPS / speed"
+          - "*wind / windSpeed"
+        ylabel: "Knots"
 
-      # Statistics summary table
-      - type: "statistics_table"
-        title: "Track Summary"
-        metrics:
-          - topic: "gps/speed/0"
-            stats: ["max", "mean"]
-            labels: ["Max Speed (km/h)", "Avg Speed (km/h)"]
-          - topic: "battery/power/0/0"
-            stats: ["min", "max", "mean", "total_energy"]
-            labels: ["Min Power (W)", "Max Power (W)", "Avg Power (W)", "Energy Used (Wh)"]
-          - topic: "gps/distance"
-            stats: ["total"]
-            labels: ["Distance (km)"]
+      # Attitude from the IMU's accelerometer, as angles of the gravity vector.
+      #
+      # Roll is emon_feed.heel, atan2(y, z), and its sign was measured on a recorded
+      # race. Pitch follows from the axis convention (x bow-stern, y port-starboard)
+      # but its sign has NOT been checked against a known moment: verify it on a
+      # recording where the bow is known to have lifted before trusting it.
+      #
+      # Heave is not here and cannot be. It needs vertical acceleration integrated
+      # twice, which wants 10-50 Hz and a high-pass filter to stop the drift; this IMU
+      # reports at about 1 Hz, so a two-second wave is already at Nyquist and the sea
+      # state aliases away. The result would look like heave without being heave.
+      - title: "Pitch and roll"
+        feeds:
+          - "derived/roll"
+          - "derived/pitch"
+        ylabel: "Degrees"
+
+    # Recorded, but not worth a chart of its own.
+    skip_feeds:
+      - "Light Banner / supplyV"
+      - "Main Battery / resCapacity"
 
     # Export files generated during processing and attached to the WordPress post
     exports:
@@ -172,73 +200,88 @@ events:
       radius: 50                            # meters - zone radius around anchor
       duration: 15                          # seconds inside zone before triggering
 
+    # As track_recording above: emon/# is the envelope lane and carries the feed names.
+    # race/# is the exception that stays: enchantee_racing publishes it directly, so it
+    # goes through no decoder and has no envelope.
     record_topics:
-      - "gps/#"                          # All GPS data
-      - "battery/power/+/+"              # Battery power (all banks)
-      - "battery/voltage/+/+"            # Battery voltages
-      - "temperature/#"                  # temperatures (# not *: * is not an MQTT wildcard)
-      - "sevCon/#"                       # Motor controller data
-      - "imu/#"                          # Inertial measurement unit data
-      - "anemometer/#"                   # Wind speed/direction data
-      - "bms/batterySoC/#"               # Battery management system
-      - "bms/power/#"                    # Battery management system
-      - "bms/resCapacity/#"              # Battery management system
-      - "bms/+"                          # Battery management system
-      - "pth/#"                          # Pressure, temperature, humidity data
-      - "rssi/#"                         # Signal strength data
+      - "emon/#"                         # Envelope lane: every named feed, with its name
       - "race/#"                         # Race events from enchantee_racing: starts, roundings, finish (FR-30)
 
-    # Plot generation configuration
+    # Charts for the post, composed by feed name (emon_live_ui DESIGN 5), drawn in this
+    # order and ahead of the automatic ones. Any feed not named here is still grouped
+    # automatically, so a sensor added to the boat appears without this being edited.
+    #
+    # This block used to name raw topics and was never read: every caller passed no
+    # plot_config and the processor went straight to auto-generation. It names feeds now
+    # because that is the one thing a person editing this file can be expected to know;
+    # nobody should have to remember that the pack reports power on emon/bms/1/power.
+    # Patterns are fnmatch against the feed name.
+    #
+    # The route map and the statistics table are NOT listed. Both are produced
+    # automatically: the map from whichever GPS stream the recording holds, the table
+    # from the computed statistics. Listing them here would draw each twice.
     plots:
-      # Speed over time
-      - type: "line"
-        title: "Speed Over Time"
-        topics: ["gps/speed/0"]
-        ylabel: "Speed (km/h)"
-        color: "#667eea"
+      # Everything that measures a temperature, on one chart. Light Banner's channel is
+      # named Bimini in emon_config, not 'temperature', so it is named outright.
+      - title: "Temperatures"
+        # Note the spaces: a feed name is 'group / name', so the pattern needs
+        # '* / temperature'. '*/temperature' matches nothing at all.
+        feeds:
+          - "* / temperature"
+          - "SevCon / *Temperature"
+          - "Light Banner / Bimini"
+        ylabel: "degC"
 
-      # Battery power comparison (multiple banks)
-      - type: "multi_line"
-        title: "Battery Power (All Banks)"
-        topics:
-          - "battery/power/0/0"
-          - "battery/power/0/1"
-        ylabel: "Power (W)"
-        labels: ["Bank 1", "Bank 2"]
-        legend: true
-        colors: ["#667eea", "#764ba2"]
+      # The pack: its total voltage and state of charge against the sixteen cells.
+      # Cells are on the right axis because 3.3 V against a 55 V pack on one scale
+      # leaves the cells a flat line exactly where a diverging cell would show.
+      - title: "Battery and cells"
+        feeds:
+          - "SevCon / capVoltage"
+          - "Main Battery / batteryVoltage"
+          - "Main Battery / batterySoC"
+        right_feeds:
+          - "Main Battery / cellVoltage *"
+        ylabel: "Volts, and SoC %"
+        right_ylabel: "Cell voltage (V)"
 
-      # Battery voltage
-      - type: "line"
-        title: "Battery Voltage"
-        topics: ["battery/voltage/0/0"]
-        ylabel: "Voltage (V)"
-        color: "#667eea"
+      # What the motor draws against what the pack delivers; amps and watts, so two axes.
+      - title: "Motor current and battery power"
+        feeds:
+          - "SevCon / batteryCurrent"
+        right_feeds:
+          - "Main Battery / power"
+        ylabel: "Current (A)"
+        right_ylabel: "Power (W)"
 
-      # GPS route map
-      # Drawn over the offline chart fetched from enchantee_racing and coloured
-      # by speed over ground; see the charts section of
-      # event_recorder_config.yml. The boat has no internet, so OpenStreetMap
-      # tiles are unreachable on the water. An interactive OSM map is still
-      # written alongside for the WordPress post, which is read ashore.
-      - type: "map"
-        title: "Track Route"
-        topics: ["gps/position/0"]
-        markers: ["start", "end"]
+      # Boat speed against the three wind sources, all in knots already.
+      - title: "Boat speed and wind speed"
+        feeds:
+          - "Enchantee-GPS / speed"
+          - "*wind / windSpeed"
+        ylabel: "Knots"
 
-      # Statistics summary table
-      - type: "statistics_table"
-        title: "Track Summary"
-        metrics:
-          - topic: "gps/speed/0"
-            stats: ["max", "mean"]
-            labels: ["Max Speed (km/h)", "Avg Speed (km/h)"]
-          - topic: "battery/power/0/0"
-            stats: ["min", "max", "mean", "total_energy"]
-            labels: ["Min Power (W)", "Max Power (W)", "Avg Power (W)", "Energy Used (Wh)"]
-          - topic: "gps/distance"
-            stats: ["total"]
-            labels: ["Distance (km)"]
+      # Attitude from the IMU's accelerometer, as angles of the gravity vector.
+      #
+      # Roll is emon_feed.heel, atan2(y, z), and its sign was measured on a recorded
+      # race. Pitch follows from the axis convention (x bow-stern, y port-starboard)
+      # but its sign has NOT been checked against a known moment: verify it on a
+      # recording where the bow is known to have lifted before trusting it.
+      #
+      # Heave is not here and cannot be. It needs vertical acceleration integrated
+      # twice, which wants 10-50 Hz and a high-pass filter to stop the drift; this IMU
+      # reports at about 1 Hz, so a two-second wave is already at Nyquist and the sea
+      # state aliases away. The result would look like heave without being heave.
+      - title: "Pitch and roll"
+        feeds:
+          - "derived/roll"
+          - "derived/pitch"
+        ylabel: "Degrees"
+
+    # Recorded, but not worth a chart of its own.
+    skip_feeds:
+      - "Light Banner / supplyV"
+      - "Main Battery / resCapacity"
 
     # WordPress publishing settings
     wordpress:
