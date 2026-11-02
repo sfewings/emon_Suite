@@ -777,3 +777,6 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   Front yard node (mains, bore) last reported 28 Oct, so those read 0 until it returns.
   The test capture gained its four retained `emon/wtr/1/...` messages, taken from the
   broker.
+- **2026-10-30, 22:03.** Owner approved the House page changes. Merged to master
+  (`65ce59a`), production's emon_live restarted: healthy, 63 derived feeds, the page
+  checked through nginx. The development instance on 5004 is stopped.
