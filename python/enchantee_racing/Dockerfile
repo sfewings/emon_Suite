@@ -57,8 +57,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY enchantee_racing/app.py \
      enchantee_racing/mqtt_client.py \
      enchantee_racing/store.py \
+     enchantee_racing/emon_feed_import.py \
      enchantee_racing/manifest.webmanifest \
      ./
+
+# emon_feed, the shared envelope format and boat angles. Outside /app on purpose: the
+# compose bind-mounts the app directory over /app, which would hide anything put there,
+# and this copy is what lets the image run with no mount at all. emon_feed_import.py
+# prefers a mounted checkout and falls back to here.
+#
+# One standard-library file, not the pyemonlib wheel: no compiled extension and no
+# numpy, so python:3.13-slim stays as small as choice 1 above intends.
+COPY pyEmon/pyemonlib/emon_feed.py /opt/pyemonlib/pyemonlib/emon_feed.py
+RUN touch /opt/pyemonlib/pyemonlib/__init__.py
 COPY enchantee_racing/engine/    ./engine/
 COPY enchantee_racing/templates/ ./templates/
 COPY enchantee_racing/static/    ./static/

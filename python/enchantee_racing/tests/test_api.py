@@ -9,6 +9,7 @@ So the tests that matter here are the ones that would pass with a broken lock an
 a missing one: two devices tapping Next at the same instant, and a fix arriving mid-tap.
 """
 
+from conftest import LEGACY, feed
 import json
 import sys
 import threading
@@ -388,22 +389,22 @@ def test_a_fix_arriving_over_mqtt_drives_the_race():
     mark = nav.as_latlon(_context().marks["dolphin-east-42b"])
     events = []
     ticker["t"] = T0 + 20.0
-    mqtt_client.handle_message(store, "gps/course/0", b"200")
-    mqtt_client.handle_message(store, "gps/speed/0", b"5.0")
+    feed(store, "gps/course/0", b"200")
+    feed(store, "gps/speed/0", b"5.0")
 
     # closing on the mark, then the mark astern for three fixes
     approach = nav.destination(mark, 20.0, 30.0)
-    mqtt_client.handle_message(store, "gps/course/0", str(nav.bearing(approach, mark)).encode())
-    mqtt_client.handle_message(store, "gps/position/0", _fix_payload(approach),
+    feed(store, "gps/course/0", str(nav.bearing(approach, mark)).encode())
+    feed(store, "gps/position/0", _fix_payload(approach),
                               on_events=events.append)
     assert store.race_state()[0].armed_leg == 0
 
     away = nav.norm360(nav.bearing(approach, mark) + 180.0)
-    mqtt_client.handle_message(store, "gps/course/0", str(away).encode())
+    feed(store, "gps/course/0", str(away).encode())
     for step in range(3):
         ticker["t"] = T0 + 21.0 + step
         departing = nav.destination(mark, 20.0, 40.0 + step * 10)
-        mqtt_client.handle_message(store, "gps/position/0", _fix_payload(departing),
+        feed(store, "gps/position/0", _fix_payload(departing),
                                   on_events=events.append)
 
     assert [e["type"] for e in events] == ["rounded"]
@@ -423,7 +424,22 @@ def _racing_store(ticker):
 
 
 def _round_dolphin_east(store, ticker, on_message):
-    """Drive the boat through a real rounding, delivering each message via on_message."""
+    """Drive the boat through a real rounding, delivering each message via on_message.
+
+    on_message takes a topic and payload off the broker, so these go through the
+    envelope wrapper the way MqttClient receives them, rather than as the bare
+    legacy payloads they were until 3 Nov 2026.
+    """
+    deliver = on_message
+
+    def on_message(topic, payload):
+        value = payload.decode() if isinstance(payload, (bytes, bytearray)) else payload
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            pass
+        deliver(*mqtt_client.demo_envelope(LEGACY[topic], value))
+
     mark = nav.as_latlon(_context().marks["dolphin-east-42b"])
     ticker["t"] = T0 + 20.0
     on_message("gps/course/0", b"200")
@@ -585,8 +601,8 @@ def test_a_fix_uses_the_course_and_speed_that_arrived_with_it():
     _client_, store, _ticker, _published = _client()
     store.set_race_context(_context())
     store.apply_race(lambda s, c, n: race.select(s, c, "frostbite-3", n))
-    mqtt_client.handle_message(store, "gps/course/0", b"123.4")
-    mqtt_client.handle_message(store, "gps/speed/0", b"6.5")
+    feed(store, "gps/course/0", b"123.4")
+    feed(store, "gps/speed/0", b"6.5")
 
     seen = {}
     original = race.on_fix
@@ -597,7 +613,7 @@ def test_a_fix_uses_the_course_and_speed_that_arrived_with_it():
 
     race.on_fix = spy
     try:
-        mqtt_client.handle_message(store, "gps/position/0", b'{"lat":-32.0,"lon":115.8}')
+        feed(store, "gps/position/0", b'{"lat":-32.0,"lon":115.8}')
     finally:
         race.on_fix = original
     assert seen == {"cog": 123.4, "sog": 6.5}

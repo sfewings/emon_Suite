@@ -13,10 +13,12 @@ Bare asserts and no fixtures, so this runs under pytest and standalone with
 `python tests/test_gar.py`, which is the only way to run it on the Pi.
 """
 
+from conftest import feed
 import json
 import re
 import sys
 from pathlib import Path
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # for standalone runs
@@ -159,24 +161,35 @@ def test_heel_goes_stale_with_the_older_axis():
     assert derive_heel(s.snapshot(), T0)["age"] == 20.0
 
 
-def test_heel_subscribes_to_the_topics_emon_mqtt_actually_publishes():
-    """emon_mqtt names the axes by index, imu/0/acc/0 to 2, not x, y and z. Subscribing to
-    acc/y passed every other test here and showed nothing on a replay, so the names are
-    held to pyemonlib's source, which runs on the Pi without its compiled half.
+def test_heel_subscribes_to_the_axis_names_emon_config_actually_gives():
+    """The heel axes are named, not indexed, and the names are the boat's.
 
-    Since the emon_live_ui merge (27 Oct 2026) emon_mqtt.py is a shim and the legacy
-    topics are built by emon_decoder.py's _imu, one MQTT thunk per field and axis; the wire
-    is unchanged (emon_live_ui's A/B check)."""
+    This used to pin imu/0/acc/1 and /2, because emon_mqtt names the axes by index and
+    subscribing to acc/y passed every other test here while showing nothing on a replay.
+    The same trap moved rather than closed: the app reads envelopes now and asks for
+    'IMU Sensor / acc port-starboard', a name that exists only because emon_config says
+    axis1 is port-starboard. Get that wrong and heel is silently absent again.
+
+    So both ends are held to the source: emon_config for the axis names, and
+    emon_decoder for putting the field in front of them."""
     import mqtt_client
-    source = (ROOT.parent / "pyEmon" / "pyemonlib" / "emon_decoder.py").read_text(encoding="utf-8")
-    imu = re.search(r"def _imu\(.*?\n(?=def )", source, re.S)
+    decoder = (ROOT.parent / "pyEmon" / "pyemonlib" / "emon_decoder.py").read_text(encoding="utf-8")
+    imu = re.search(r"def _imu\(.*?\n(?=def )", decoder, re.S)
     assert imu, "no _imu in emon_decoder.py"
     assert re.search(r'for field, unit in \(\("acc", "g"\)', imu.group(0)), \
         "emon_decoder's _imu no longer loops over acc"
-    assert re.search(r'for axis in range\(3\):.*?f"imu/\{s\}/\{field\}/\{axis\}"', imu.group(0), re.S), \
-        "emon_decoder no longer publishes the accelerometer as imu/<subnode>/acc/<index>"
-    assert mqtt_client.TOPICS["imu/0/acc/1"] == "accy"
-    assert mqtt_client.TOPICS["imu/0/acc/2"] == "accz"
+    assert 'f"{field} {axis_name}"' in imu.group(0), \
+        "emon_decoder no longer names the axes '<field> <axis>'"
+
+    config = yaml.safe_load(
+        (ROOT.parent.parent / "provisioning" / "enchantee" / "emon_config"
+         / "20261103-1426.yml").read_text(encoding="utf-8"))
+    axes = config["imu"][0]
+    assert axes["axis1"] == "port-starboard" and axes["axis2"] == "vertical", \
+        "the boat's axis names changed; the feeds below changed with them"
+
+    assert mqtt_client.FEEDS[f"IMU Sensor / acc {axes['axis1']}"] == "accy"
+    assert mqtt_client.FEEDS[f"IMU Sensor / acc {axes['axis2']}"] == "accz"
 
 
 def test_heel_is_positive_to_starboard_in_the_recorded_race():
@@ -223,7 +236,7 @@ def test_the_demo_heels_to_starboard():
     import mqtt_client
     s, _ = _store()
     for topic, value in mqtt_client.demo_readings(0):
-        mqtt_client.handle_message(s, topic, str(value))
+        feed(s, topic, str(value))
     assert 5 < derive_heel(s.snapshot(), T0)["v"] < 20
 
 
