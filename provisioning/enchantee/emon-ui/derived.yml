@@ -15,6 +15,7 @@ influx:
   Boat reference wind / windDirection:  anemometer anemometer/windDirection/0
   Apparent wind / windDirection:        anemometer anemometer/windDirection/1
   IMU Sensor / heading:                 imu imu/0/heading
+  IMU Sensor / acc 0:                   imu imu/0/acc/0
   IMU Sensor / acc 1:                   imu imu/0/acc/1
   IMU Sensor / acc 2:                   imu imu/0/acc/2
   Enchantee-GPS / course:               gps gps/course/0
@@ -52,6 +53,21 @@ derived:
   # From the IMU on the anemometer node: atan2(acc y, acc z), positive to starboard.
   - id: boat/heel
     op: heel
+    y: IMU Sensor / acc 1
+    z: IMU Sensor / acc 2
+    decimals: 0
+
+  # The fore-and-aft angle, atan2(-acc x, hypot(acc y, acc z)), positive bow up. All
+  # three axes, so it holds up while the boat is heeled.
+  #
+  # Heel's sign was measured on a recorded race; this one follows from the axis
+  # convention (x at the bow) and is supported by the 13 Sep 2026 Frostbite recording,
+  # where x sits at about +0.05 g and this reads about 3 degrees bow down. It has not
+  # been checked against a moment the bow is known to have lifted; the owner will do
+  # that while sailing and invert it here if it proves wrong.
+  - id: boat/pitch
+    op: pitch
+    x: IMU Sensor / acc 0
     y: IMU Sensor / acc 1
     z: IMU Sensor / acc 2
     decimals: 0

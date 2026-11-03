@@ -65,6 +65,11 @@
           "big": true,
           "decimals": 0,
           "tint": "heel"
+        },
+        {
+          "feed": "derived/boat/pitch",
+          "label": "Pitch",
+          "decimals": 0
         }
       ],
       "cols": 2,

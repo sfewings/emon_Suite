@@ -393,6 +393,32 @@ def heel(acc_y: Optional[float], acc_z: Optional[float],
     return math.degrees(math.atan2(acc_y, acc_z))
 
 
+def pitch(acc_x: Optional[float], acc_y: Optional[float], acc_z: Optional[float],
+          min_g: float = HEEL_MIN_G) -> Optional[float]:
+    """Pitch in degrees, positive bow up, from the IMU's three axes in g.
+
+    atan2(-x, hypot(y, z)): the angle of the boat's fore-and-aft axis out of the
+    horizontal, with the other two taken together as whatever is left of gravity. Where
+    heel needs two axes, this needs all three, so a boat heeled hard still reports the
+    pitch it actually has rather than one measured against a tilted reference.
+
+    Unlike heel, whose sign was measured on a recorded race, this one follows from the
+    axis convention: x points at the bow, so pitching the bow up swings x above the
+    horizontal and the gravity it reads goes negative, which the minus restores to
+    bow-up-positive. Supported by the 13 Sep 2026 Frostbite recording, where x sits at
+    about +0.05 g and this gives about -3 degrees of bow-down trim, but not yet checked
+    against a moment the bow is known to have lifted.
+
+    None below min_g of total gravity, as heel does: thrown about, the angle means
+    nothing.
+    """
+    if not _num(acc_x, acc_y, acc_z):
+        return None
+    if math.sqrt(acc_x ** 2 + acc_y ** 2 + acc_z ** 2) < min_g:
+        return None
+    return math.degrees(math.atan2(-acc_x, math.hypot(acc_y, acc_z)))
+
+
 def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres, haversine on a sphere. As event_recorder."""
     p1, p2 = math.radians(lat1), math.radians(lat2)
