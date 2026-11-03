@@ -370,11 +370,15 @@ def test_a_differently_numbered_gps_unit_finds_its_own_speed(tmp_path):
 
 # --- what reaches WordPress -----------------------------------------------------------
 
-def test_the_chart_map_and_the_osm_map_have_different_stems(tmp_path):
-    """The publisher drops any image whose filename stem matches a map HTML, so
-    that the interactive map replaces its own screenshot. If the chart PNG shared
-    a stem with the folium HTML it would be dropped from the post, and it is the
-    map that must reach it."""
+def test_the_route_map_is_the_only_map_written(tmp_path):
+    """The interactive OpenStreetMap copy was dropped on 3 Nov 2026: the chart map is
+    drawn over the vector chart of the sailing area, which is the better of the two and
+    the only one that works on the boat.
+
+    This used to assert the two maps had different filename stems, because the publisher
+    drops any image whose stem matches a map HTML and the chart PNG would have been the
+    one dropped. With no HTML written there is nothing to collide with, and the PNG
+    reaches the post unconditionally."""
     processor = _processor(tmp_path, _rows(), _tiny_charts())
     outdir = tmp_path / 'plots' / '1'
     outdir.mkdir(parents=True, exist_ok=True)
@@ -382,9 +386,7 @@ def test_the_chart_map_and_the_osm_map_have_different_stems(tmp_path):
         1, {'title': 'Route Map', 'topics': ['gps/position/0']},
         outdir)
     assert png.exists() and png.suffix == '.png'
-    for html in outdir.glob('*.html'):
-        assert html.stem != png.stem, \
-            "the chart map would be excluded from the WordPress post"
+    assert list(outdir.glob('*.html')) == [], "no interactive map is written now"
 
 
 def test_the_route_map_is_produced_on_the_chart_and_off_it(tmp_path):

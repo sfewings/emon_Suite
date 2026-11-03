@@ -3,8 +3,8 @@ Data processor for generating plots and statistics from recorded data.
 
 Uses matplotlib for time-series plots and for GPS route maps, which are drawn
 over the offline vector chart fetched from enchantee_racing (see chart_map.py)
-and coloured by speed over ground. folium still writes an interactive
-OpenStreetMap view alongside, for the WordPress post.
+and coloured by speed over ground. That is the only map now: the interactive
+OpenStreetMap copy folium wrote alongside it was dropped on 3 Nov 2026.
 Calculates statistics including distance, speed, energy consumption.
 """
 
@@ -140,12 +140,6 @@ class DataProcessor:
     - Statistics calculation
     - Statistics summary tables
     """
-
-    # Cap on the points folium writes into the interactive map's inline JS. A
-    # long recording carries far more fixes than a browser needs to draw a
-    # recognisable track, and every one of them is embedded verbatim in the
-    # WordPress post.
-    OSM_MAX_POLYLINE_POINTS = 2000
 
     # ── Automatic plot grouping / labelling tables ────────────────────────────
 
@@ -644,6 +638,26 @@ class DataProcessor:
             readable.append(self._readable_component(part))
         return ' '.join(readable)
 
+    def _axis_labels(self, envelopes: List[Dict]) -> Optional[List[str]]:
+        """Axis labels for a three-axis sensor's channels, or None if it is not one.
+
+        Every envelope must be the same field of the same sensor and carry an index in
+        range: a chart mixing acc with gyro, or holding only two of the three axes, is
+        not what these labels describe.
+        """
+        fields = {e.get('field', '') for e in envelopes}
+        groups = {e.get('group', '') for e in envelopes}
+        if len(fields) != 1 or len(groups) != 1:
+            return None
+        if fields.pop() not in self._AXIS_TOPICS:
+            return None
+        indexes = [e.get('idx') for e in envelopes]
+        # All three, exactly once each. Two of the three is a partial chart that these
+        # labels would misdescribe, and a repeated index is not a set of axes at all.
+        if sorted(i for i in indexes if i is not None) != sorted(self._AXIS_LABELS):
+            return None
+        return [self._AXIS_LABELS[i] for i in indexes]
+
     def _group_series_labels(self, topics: List[str],
                              recording_id: Optional[int] = None) -> List[str]:
         """
@@ -670,6 +684,15 @@ class DataProcessor:
             feeds = self._feed_index(recording_id)
             named = [feeds.get(t) for t in topics]
             if all(e is not None and e.get('name') for e in named):
+                # A three-axis sensor is labelled by what each axis points along, not
+                # by its index. 'acc 0' says nothing about the boat; 'X (bow-stern)'
+                # does, and the index-to-axis mapping is only written down in
+                # emon_decoder._imu. This has to come before the group check below,
+                # which would otherwise return the envelope names and never reach it.
+                axis_labels = self._axis_labels(named)
+                if axis_labels:
+                    return axis_labels
+
                 groups = {e.get('group', '') for e in named}
                 if len(groups) == 1 and len(topics) > 1:
                     # One sensor's channels: its name is in the title already.
@@ -1023,6 +1046,15 @@ class DataProcessor:
         if right_ax is not None:
             right_ax.set_ylabel(plot_spec.get('right_ylabel', ''), fontsize=12)
 
+        # `invert` / `right_invert` flip an axis. The pack reports power negative while
+        # it is being drawn from, so inverting that axis puts "motor working harder"
+        # upwards on both scales and the two lines rise and fall together instead of
+        # mirroring each other.
+        if plot_spec.get('invert'):
+            ax.invert_yaxis()
+        if right_ax is not None and plot_spec.get('right_invert'):
+            right_ax.invert_yaxis()
+
         if show_legend:
             # One legend for both axes; twinx draws its own otherwise and they overlap.
             # Outside the axes on the right: these charts carry up to twenty series and
@@ -1054,10 +1086,8 @@ class DataProcessor:
 
         The returned PNG is drawn with matplotlib over the offline vector chart
         fetched from enchantee_racing, because the host has no internet on the
-        water and OpenStreetMap tiles are unreachable there. An interactive
-        folium map is written alongside it, on a different filename stem, so the
-        WordPress post still carries the OpenStreetMap view for anyone reading it
-        ashore.
+        water and OpenStreetMap tiles are unreachable there. It is the only map
+        the post carries.
 
         Args:
             recording_id: Recording ID
@@ -1074,9 +1104,12 @@ class DataProcessor:
         if not coords or len(coords) < 2:
             raise ValueError("Insufficient GPS data for route map")
 
-        output_path = self._generate_chart_route_map(title, coords, speeds, output_dir)
-        self._generate_osm_map_html(title, coords, output_dir)
-        return output_path
+        # The interactive OpenStreetMap view that used to be written alongside this is
+        # gone (owner's decision, 3 Nov 2026). The chart map is drawn over the vector
+        # chart of the sailing area, which is the better map of the two and the only one
+        # that works on the boat; the OSM copy was a second rendering of the same track
+        # for a reader ashore, and the post is clearer with one map in it.
+        return self._generate_chart_route_map(title, coords, speeds, output_dir)
 
     def _generate_chart_route_map(self, title: str,
                                   coords: List[Tuple[float, float]],
@@ -1208,91 +1241,6 @@ class DataProcessor:
         """
         return re.sub(r'[^a-z0-9-]+', '_', title.lower()).strip('_') or 'plot'
 
-    @staticmethod
-    def _downsample_coords(coords: List[Tuple[float, float]],
-                           max_points: int) -> List[Tuple[float, float]]:
-        """
-        Thin a coordinate list to at most max_points, keeping the last fix.
-
-        Args:
-            coords: List of (latitude, longitude)
-            max_points: Maximum number of points to keep
-
-        Returns:
-            The thinned list, or coords unchanged if it is already short enough
-        """
-        if len(coords) <= max_points:
-            return coords
-
-        stride = math.ceil(len(coords) / max_points)
-        thinned = coords[::stride]
-        # Striding lands on the end only when the length divides exactly; append
-        # it otherwise so the drawn track still reaches the End marker.
-        if thinned[-1] != coords[-1]:
-            thinned.append(coords[-1])
-        return thinned
-
-    def _generate_osm_map_html(self, title: str,
-                               coords: List[Tuple[float, float]],
-                               output_dir: Path) -> Optional[Path]:
-        """
-        Write the interactive OpenStreetMap view for the WordPress post.
-
-        Generating this needs no internet; only viewing it does, which is the
-        WordPress reader's situation and not the boat's. Written with an `_osm`
-        suffix so it does not share a filename stem with the chart PNG: the
-        publisher drops any image whose stem matches a map HTML, and the chart
-        map is the one that must reach the post.
-
-        Args:
-            title: Plot title
-            coords: List of (latitude, longitude)
-            output_dir: Output directory
-
-        Returns:
-            Path to the HTML file, or None if folium is unavailable
-        """
-        try:
-            import folium
-        except ImportError:
-            logger.info("folium not installed; no interactive map for WordPress")
-            return None
-
-        try:
-            center_lat = sum(lat for lat, lon in coords) / len(coords)
-            center_lon = sum(lon for lat, lon in coords) / len(coords)
-
-            track = self._downsample_coords(coords, self.OSM_MAX_POLYLINE_POINTS)
-
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
-            folium.PolyLine(track, color='#667eea', weight=4, opacity=0.8).add_to(m)
-            # prefix='fa' so the markers draw from Font Awesome. folium's
-            # default is Bootstrap 3's glyphicons, whose stylesheet also resets
-            # html and body, so the publisher leaves it out of the post and
-            # those icons would have come through blank.
-            folium.Marker(coords[0], popup='Start',
-                          icon=folium.Icon(color='green', icon='play',
-                                           prefix='fa')).add_to(m)
-            folium.Marker(coords[-1], popup='End',
-                          icon=folium.Icon(color='red', icon='stop',
-                                           prefix='fa')).add_to(m)
-            # Two corner points, not the track: folium serialises whatever it is
-            # given straight into the JS, so passing the coordinate list here
-            # would write the whole track into the file a second time.
-            m.fit_bounds([
-                [min(lat for lat, _ in coords), min(lon for _, lon in coords)],
-                [max(lat for lat, _ in coords), max(lon for _, lon in coords)],
-            ])
-
-            stem = f"{self._title_to_stem(title)}_osm"
-            html_path = output_dir / f"{stem}.html"
-            m.save(str(html_path))
-            logger.info(f"Generated interactive OSM map: {html_path.name}")
-            return html_path
-        except Exception as e:
-            logger.warning(f"Could not generate interactive OSM map: {e}")
-            return None
-
     def _generate_statistics_table(self, recording_id: int, statistics: Dict, output_dir: Path) -> Optional[Path]:
         """
         Generate statistics summary table as image.
@@ -1334,6 +1282,9 @@ class DataProcessor:
             table_data.append(['Energy Used', f"{statistics['energy_used_wh']:.1f} Wh"])
         if 'efficiency_wh_per_km' in statistics:
             table_data.append(['Efficiency', f"{statistics['efficiency_wh_per_km']:.1f} Wh/km"])
+
+        if 'battery_cycles' in statistics:
+            table_data.append(['Battery Cycles', f"{statistics['battery_cycles']:.0f}"])
 
         # Create figure
         fig, ax = plt.subplots(figsize=(8, len(table_data) * 0.4 + 1))
@@ -1576,6 +1527,14 @@ class DataProcessor:
                 logger.info(f"No feed matches {pattern!r} in recording {recording_id}")
             found.extend(t for t in matched if t not in found)
         return found
+
+    def _last_feed_value(self, recording_id: int, pattern: str) -> Optional[float]:
+        """The final reading of the first feed matching `pattern`, or None."""
+        topics = self._resolve_feeds(recording_id, [pattern])
+        if not topics:
+            return None
+        data = self._get_topic_data(recording_id, topics[0])
+        return data[1][-1] if data and data[1] else None
 
     @staticmethod
     def _name_sort_key(name: str) -> tuple:
@@ -2123,6 +2082,13 @@ class DataProcessor:
         # Energy statistics
         energy_stats = self._calculate_energy_statistics(recording_id)
         stats.update(energy_stats)
+
+        # The pack's lifetime cycle count. A slowly-rising counter, so the last value is
+        # the fact worth keeping; it was a chart of a near-flat line, which said less
+        # than one number in the table.
+        cycles = self._last_feed_value(recording_id, 'Main Battery / lifetimeCycles')
+        if cycles is not None:
+            stats['battery_cycles'] = cycles
 
         # Efficiency needs both, so it is computed here rather than inside either.
         # It used to be computed inside _calculate_energy_statistics against that

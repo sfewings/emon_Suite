@@ -95,6 +95,9 @@ events:
         right_ylabel: "Cell voltage (V)"
 
       # What the motor draws against what the pack delivers; amps and watts, so two axes.
+      # The power axis is inverted: the pack reports power negative while it is being
+      # drawn from, so without this the two lines mirror each other and the chart reads
+      # as a disagreement rather than as one quantity seen from both ends.
       - title: "Motor current and battery power"
         feeds:
           - "SevCon / batteryCurrent"
@@ -102,6 +105,7 @@ events:
           - "Main Battery / power"
         ylabel: "Current (A)"
         right_ylabel: "Power (W)"
+        right_invert: true
 
       # Boat speed against the three wind sources, all in knots already.
       - title: "Boat speed and wind speed"
@@ -127,10 +131,13 @@ events:
           - "derived/pitch"
         ylabel: "Degrees"
 
-    # Recorded, but not worth a chart of its own.
+    # Recorded, but not worth a chart of its own. lifetimeCycles is a slowly-rising
+    # counter whose chart was a flat line; its last value is in the statistics table
+    # instead, as 'Battery Cycles'.
     skip_feeds:
       - "Light Banner / supplyV"
       - "Main Battery / resCapacity"
+      - "Main Battery / lifetimeCycles"
 
     # Export files generated during processing and attached to the WordPress post
     exports:
@@ -246,6 +253,9 @@ events:
         right_ylabel: "Cell voltage (V)"
 
       # What the motor draws against what the pack delivers; amps and watts, so two axes.
+      # The power axis is inverted: the pack reports power negative while it is being
+      # drawn from, so without this the two lines mirror each other and the chart reads
+      # as a disagreement rather than as one quantity seen from both ends.
       - title: "Motor current and battery power"
         feeds:
           - "SevCon / batteryCurrent"
@@ -253,6 +263,7 @@ events:
           - "Main Battery / power"
         ylabel: "Current (A)"
         right_ylabel: "Power (W)"
+        right_invert: true
 
       # Boat speed against the three wind sources, all in knots already.
       - title: "Boat speed and wind speed"
@@ -278,10 +289,13 @@ events:
           - "derived/pitch"
         ylabel: "Degrees"
 
-    # Recorded, but not worth a chart of its own.
+    # Recorded, but not worth a chart of its own. lifetimeCycles is a slowly-rising
+    # counter whose chart was a flat line; its last value is in the statistics table
+    # instead, as 'Battery Cycles'.
     skip_feeds:
       - "Light Banner / supplyV"
       - "Main Battery / resCapacity"
+      - "Main Battery / lifetimeCycles"
 
     # WordPress publishing settings
     wordpress:

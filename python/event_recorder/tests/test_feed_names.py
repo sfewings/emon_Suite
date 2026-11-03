@@ -193,6 +193,31 @@ def test_the_config_document_is_not_charted(tmp_path):
     assert not any('config' in s['title'].lower() for s in specs)
 
 
+def test_the_imu_axes_are_labelled_by_what_they_point_along(tmp_path):
+    """'acc 0' says nothing about the boat. Which index is which is written down only
+    in emon_decoder._imu, so the chart is the place to spell it out."""
+    rows = []
+    for idx in range(3):
+        rows += _envelope_rows(f'emon/imu/0/acc/{idx}', 'imu', 0, 'acc',
+                               'IMU Sensor', f'acc {idx}', 'g', 'acc', idx=idx)
+    processor = _processor(tmp_path, rows)
+    spec = [s for s in processor._auto_generate_plot_config(1)
+            if s['type'] == 'multi_line'][0]
+    assert spec['labels'] == ['X (bow-stern)', 'Y (port-starboard)', 'Z (vertical)']
+
+
+def test_a_two_axis_group_is_not_given_axis_labels(tmp_path):
+    """Only a whole three-axis sensor gets them; two of the three is something else."""
+    rows = []
+    for idx in range(2):
+        rows += _envelope_rows(f'emon/imu/0/gyro/{idx}', 'imu', 0, 'gyro',
+                               'IMU Sensor', f'gyro {idx}', 'deg/s', 'gyro', idx=idx)
+    processor = _processor(tmp_path, rows)
+    spec = [s for s in processor._auto_generate_plot_config(1)
+            if s['type'] == 'multi_line'][0]
+    assert spec['labels'] == ['gyro 0', 'gyro 1']
+
+
 # --- derived attitude --------------------------------------------------------------
 
 def _imu_acc_rows(samples):
