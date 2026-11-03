@@ -203,11 +203,6 @@ class DataProcessor:
         2: 'Z (vertical)',
     }
 
-    # What a derived attitude series is called on a legend.
-    _DERIVED_LABELS: Dict[str, str] = {
-        'derived/roll':  'Roll (+ to starboard)',
-        'derived/pitch': 'Pitch (+ bow up)',
-    }
     _AXIS_TOPICS: frozenset = frozenset({'acc', 'gyro', 'mag'})
 
     # Colour cycle for auto-generated series.
@@ -340,15 +335,9 @@ class DataProcessor:
         return resolved
 
     def _declared_labels(self, recording_id: int, topics: List[str]) -> List[str]:
-        """Legend labels for a declared chart: the feed name, or the derived one's."""
-        labels = []
-        for topic in topics:
-            if topic in self._DERIVED_ATTITUDE:
-                labels.append(self._DERIVED_LABELS[topic])
-            else:
-                labels.append(self._feed_name(recording_id, topic)
-                              or self._topic_readable_name(topic))
-        return labels
+        """Legend labels for a declared chart: the feed's own name."""
+        return [self._feed_name(recording_id, topic)
+                or self._topic_readable_name(topic) for topic in topics]
 
     def _auto_generate_plot_config(self, recording_id: int,
                                    skip_feeds: Optional[List[str]] = None,
@@ -1023,7 +1012,7 @@ class DataProcessor:
         handles = []
 
         for i, topic in enumerate(topics):
-            data = self._series_for(recording_id, topic)
+            data = self._get_topic_data(recording_id, topic)
             if data:
                 timestamps, values = data
                 timestamps = [self._utc_to_local(t) for t in timestamps]
@@ -1395,103 +1384,6 @@ class DataProcessor:
         logger.info(f"Feed index: {len(index)} named feeds in recording {recording_id}")
         return index
 
-    # Attitude derived from the IMU's accelerometer, as angles of the gravity vector.
-    #
-    # Roll is emon_feed.heel: atan2(y, z), positive heeled to starboard. The sign was
-    # measured on a recorded race rather than taken from the axis convention
-    # (enchantee_racing store.derive_heel), so it is the trustworthy one.
-    #
-    # Pitch is atan2(-x, hypot(y, z)), positive bow up. Its sign has NOT been checked
-    # against a known moment the way roll's was; the axes are x bow-stern, y
-    # port-starboard, z down, so this follows from the convention and should be verified
-    # on a recording where the bow is known to have lifted.
-    #
-    # Heave is deliberately absent. It needs vertical acceleration integrated twice,
-    # which wants 10-50 Hz and a high-pass filter to stop the drift. This IMU reports at
-    # about 1 Hz, so a two-second wave is already at Nyquist and most sea state aliases
-    # away. Anything computed from it would look like heave and not be heave.
-    _DERIVED_ATTITUDE = ('derived/roll', 'derived/pitch')
-
-    # Below this much gravity the boat is being thrown about and the angle means
-    # nothing. Same threshold as emon_feed.HEEL_MIN_G.
-    _ATTITUDE_MIN_G = 0.5
-
-    def _derived_attitude(self, recording_id: int,
-                          which: str) -> Optional[Tuple[List[datetime], List[float]]]:
-        """'derived/roll' or 'derived/pitch' in degrees, from the IMU acc feeds.
-
-        The three axes arrive as separate readings stamped within the same message, so
-        they are matched on their arrival timestamp; a sample missing any axis is
-        dropped rather than guessed.
-        """
-        axes = {}
-        for topic, envelope in self._feed_index(recording_id).items():
-            if envelope.get('node') == 'imu' and envelope.get('field') == 'acc':
-                idx = envelope.get('idx')
-                if idx in (0, 1, 2):
-                    axes[idx] = topic
-        if len(axes) != 3:
-            logger.info(f"No IMU acceleration in recording {recording_id}: no {which}")
-            return None
-
-        # Keyed on the envelope's own "t", not on the row's arrival time. The three axes
-        # are three separate MQTT messages stamped as each arrives, milliseconds apart,
-        # so arrival times never match exactly; but all three carry the reading time of
-        # the one decoded IMU message, which does. Same trap the latitude/longitude pair
-        # used to need a nearest-neighbour join for.
-        series: Dict[int, Dict[float, float]] = {}
-        arrivals: Dict[float, datetime] = {}
-        for idx, topic in axes.items():
-            by_time = {}
-            for record in self.database.get_recording_data(
-                    recording_id, topic_filter=topic) or []:
-                envelope = _envelope(record['payload'])
-                if envelope is None:
-                    continue
-                reading_time = envelope.get('t')
-                value = envelope.get('v')
-                if not isinstance(reading_time, (int, float)):
-                    continue
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    continue
-                by_time[float(reading_time)] = float(value)
-                stamp = record['timestamp']
-                if isinstance(stamp, str):
-                    stamp = datetime.fromisoformat(stamp)
-                arrivals.setdefault(float(reading_time), stamp)
-            if not by_time:
-                return None
-            series[idx] = by_time
-
-        timestamps, values = [], []
-        for reading_time in sorted(series[0]):
-            if reading_time not in series[1] or reading_time not in series[2]:
-                continue
-            stamp = arrivals[reading_time]
-            x, y, z = (series[0][reading_time], series[1][reading_time],
-                       series[2][reading_time])
-            if which == 'derived/roll':
-                if math.hypot(y, z) < self._ATTITUDE_MIN_G:
-                    continue
-                angle = math.degrees(math.atan2(y, z))
-            else:
-                if math.hypot(x, math.hypot(y, z)) < self._ATTITUDE_MIN_G:
-                    continue
-                angle = math.degrees(math.atan2(-x, math.hypot(y, z)))
-            timestamps.append(stamp)
-            values.append(angle)
-
-        logger.info(f"{which}: {len(values)} samples from {len(series[0])} IMU readings")
-
-        return (timestamps, values) if timestamps else None
-
-    def _series_for(self, recording_id: int,
-                    topic: str) -> Optional[Tuple[List[datetime], List[float]]]:
-        """A plottable series for a topic, or for one of the derived attitude names."""
-        if topic in self._DERIVED_ATTITUDE:
-            return self._derived_attitude(recording_id, topic)
-        return self._get_topic_data(recording_id, topic)
-
     def _resolve_feeds(self, recording_id: int,
                        patterns: List[str]) -> List[str]:
         """Topics whose feed name matches any of the glob patterns, in pattern order.
@@ -1510,9 +1402,6 @@ class DataProcessor:
 
         found: List[str] = []
         for pattern in patterns:
-            if pattern in self._DERIVED_ATTITUDE:
-                found.append(pattern)
-                continue
             # Sorted by the digits in the name where there are any, so cellVoltage 2
             # comes before cellVoltage 10 rather than after it, as a plain sort gives.
             matched = sorted((topic for topic, name in names.items()
@@ -1543,10 +1432,18 @@ class DataProcessor:
                      for part in re.split(r'(\d+)', name or ''))
 
     def _feed_name(self, recording_id: int, topic: str) -> Optional[str]:
-        """'Main Battery / power' for a topic, or None if it carries no envelope."""
+        """'Main Battery / power' for a topic, or None if it carries no envelope.
+
+        Mirrors emon_feed.feed_key. A derived feed (emon_live's derived.yml) carries no
+        group or name at all: it is keyed 'derived/<id>' off the id in its field, which
+        is how 'derived/boat/heel' is written in a chart's `feeds`.
+        """
         envelope = self._feed_index(recording_id).get(topic)
         if not envelope:
             return None
+        if envelope.get('node') == 'derived':
+            field = envelope.get('field', '')
+            return f"derived/{field}" if field else None
         group, name = envelope.get('group', ''), envelope.get('name', '')
         if group and name:
             return f"{group} / {name}"

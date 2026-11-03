@@ -218,59 +218,43 @@ def test_a_two_axis_group_is_not_given_axis_labels(tmp_path):
     assert spec['labels'] == ['gyro 0', 'gyro 1']
 
 
-# --- derived attitude --------------------------------------------------------------
+# --- derived feeds ---------------------------------------------------------------------
 
-def _imu_acc_rows(samples):
-    """One IMU message per (x, y, z), as three separate envelopes.
-
-    The three arrive as three MQTT messages stamped milliseconds apart on arrival, but
-    all carry the same envelope 't' from the one decoded line. Written that way here
-    because matching them on arrival time instead silently produced an empty chart.
-    """
+def _derived_rows(feed_id, n=10, first=0.0, unit='deg'):
+    """A derived feed as emon_live publishes it: no group and no name, the id in
+    'field', keyed 'derived/<id>' (emon_feed.feed_key)."""
     rows = []
-    for i, (x, y, z) in enumerate(samples):
-        reading_time = (T0 + timedelta(seconds=i)).timestamp()
-        for idx, value in enumerate((x, y, z)):
-            arrived = T0 + timedelta(seconds=i, milliseconds=40 * idx)
-            rows.append({
-                'topic': f'emon/imu/0/acc/{idx}',
-                'timestamp': arrived.isoformat(),
-                'payload': json.dumps({'s': 1, 'v': value, 'u': 'g', 'kind': 'acc',
-                                       'node': 'imu', 'sub': 0, 'field': 'acc',
-                                       'idx': idx, 'group': 'IMU Sensor',
-                                       'name': f'acc {idx}', 't': reading_time})})
+    for i in range(n):
+        stamp = T0 + timedelta(seconds=i)
+        rows.append({
+            'topic': f'emon/derived/{feed_id}',
+            'timestamp': stamp.isoformat(),
+            'payload': json.dumps({'s': 1, 'v': first + i, 'u': unit, 'kind': 'angle',
+                                   'node': 'derived', 'field': feed_id,
+                                   't': stamp.timestamp()})})
     return rows
 
 
-def test_roll_and_pitch_are_derived_from_the_three_acc_axes(tmp_path):
-    # Upright, then heeled to starboard, then bow up.
-    processor = _processor(tmp_path, _imu_acc_rows([
-        (0.0, 0.0, 1.0),
-        (0.0, 0.5, 0.866),      # 30 degrees of heel to starboard
-        (-0.5, 0.0, 0.866),     # 30 degrees bow up
-    ]))
-
-    _, roll = processor._derived_attitude(1, 'derived/roll')
-    _, pitch = processor._derived_attitude(1, 'derived/pitch')
-
-    assert abs(roll[0]) < 1e-6
-    assert abs(roll[1] - 30.0) < 0.5, "positive roll is heel to starboard"
-    assert abs(pitch[2] - 30.0) < 0.5, "positive pitch is bow up"
+def test_a_derived_feed_is_named_by_its_id(tmp_path):
+    """It carries no group or name, so building a name from those gives None and a
+    chart asking for 'derived/boat/heel' would match nothing and come out empty."""
+    processor = _processor(tmp_path, _derived_rows('boat/heel'))
+    assert processor._feed_name(1, 'emon/derived/boat/heel') == 'derived/boat/heel'
 
 
-def test_attitude_survives_axes_arriving_as_separate_messages(tmp_path):
-    """Keyed on the envelope's 't', not the row's arrival time: the axes are three
-    messages whose arrival times differ, so an exact match on those finds nothing and
-    the chart comes out empty."""
-    processor = _processor(tmp_path, _imu_acc_rows([(0.0, 0.1, 0.99)] * 20))
-    result = processor._derived_attitude(1, 'derived/roll')
-    assert result is not None
-    assert len(result[1]) == 20, "every sample lines up, none dropped"
-
-
-def test_attitude_is_absent_without_an_imu(tmp_path):
-    processor = _processor(tmp_path, _battery_rows())
-    assert processor._derived_attitude(1, 'derived/roll') is None
+def test_a_chart_can_ask_for_derived_feeds_by_name(tmp_path):
+    """Attitude is emon_live's to compute now (DESIGN D3); event_recorder only charts
+    what the boat already publishes."""
+    rows = _derived_rows('boat/heel') + _derived_rows('boat/pitch', first=-3.0)
+    processor = _processor(tmp_path, rows)
+    spec = processor._resolve_declared(1, [{
+        'title': 'Pitch and heel',
+        'feeds': ['derived/boat/heel', 'derived/boat/pitch'],
+        'ylabel': 'Degrees',
+    }])[0]
+    assert spec['topics'] == ['emon/derived/boat/heel', 'emon/derived/boat/pitch']
+    assert spec['labels'] == ['derived/boat/heel', 'derived/boat/pitch']
+    assert processor._get_topic_data(1, 'emon/derived/boat/heel') is not None
 
 
 # --- statistics ------------------------------------------------------------------------

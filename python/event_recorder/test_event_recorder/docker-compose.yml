@@ -138,6 +138,46 @@ services:
     depends_on:
       - mosquitto
 
+  # emon_live, for its derived feeds. Attitude, the boat angles and the energy totals
+  # are computed here and published on emon/derived/..., and event_recorder records them
+  # like any other feed (DESIGN D3: one calculation, not one per consumer). Without this
+  # running, a recording has no derived/boat/heel or derived/boat/pitch and the charts
+  # asking for them are dropped rather than drawn empty.
+  #
+  # PUBLISH_DERIVED=1 is what puts them on the broker; the default is off, so a test run
+  # does not publish over a real site's feeds. MQTT_CLIENT_ID keeps it away from the id a
+  # production instance uses, since the broker evicts a duplicate id (app.py says so, and
+  # the race app did exactly that to this stack on 2 Nov 2026).
+  #
+  # python:3.11-slim with the source mounted rather than sfewings32/emon_live, which is
+  # built on the Pi for aarch64 and is not on Docker Hub for this laptop. Dependencies
+  # are installed at start, so give it a few seconds longer than the others.
+  emon_live:
+    image: python:3.11-slim
+    container_name: test_emon_live
+    ports:
+      - "5004:5004"
+    volumes:
+      - ../../..:/repo:ro
+    working_dir: /repo/python/emon_live
+    command:
+      - sh
+      - -c
+      - >
+        pip install --quiet --root-user-action=ignore -r requirements.txt &&
+        python app.py
+        --broker mosquitto --broker-port 1883
+        --port 5004
+        --site /repo/provisioning/enchantee/emon-ui
+        --influx none
+    environment:
+      - TZ=${TIMEZONE}
+      - PUBLISH_DERIVED=1
+      - MQTT_CLIENT_ID=emon-live-test
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
   # The race app is deliberately NOT a service here. One already runs on this laptop as
   # the `racing_replay` container, published on the host at 5003, and that is what
   # charts.base_url in config/event_recorder_config.yml points at. It subscribes to this
