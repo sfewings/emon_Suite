@@ -100,6 +100,55 @@ services:
       - wordpress
     restart: unless-stopped
 
+  # Replays a recorded sail into the test broker, in real time, as the boat's bridge
+  # would: legacy topics and emon/... envelopes alike, from the image's own decoder.
+  # That is what gives this environment real feed names ('Main Battery / power') rather
+  # than invented ones, and it is the only way to exercise the envelope lane without
+  # the boat.
+  #
+  # Under a profile, so `docker compose up -d` still brings up just the stack:
+  #     docker compose --profile replay up -d replay      # start the sail
+  #     docker compose logs -f replay                     # watch it
+  #     docker compose --profile replay down              # or: stop replay
+  #
+  # The log and the emon_config are the boat's own, mounted read-only out of the
+  # repository. The config is what names every feed, so it must be the one that was
+  # current when the log was recorded.
+  #
+  # speed 10 replays the 3 h 20 m sail in about 20 minutes; passes 1 stops at the end
+  # rather than looping, so the recording's stop condition can fire.
+  replay:
+    image: sfewings32/emon_serial_to_mqtt:latest
+    container_name: test_replay
+    profiles: ["replay"]
+    command:
+      - python
+      - /ab/replay_live.py
+      - mosquitto
+      - /emon_config/20260211-1447.yml
+      - /ab/20260913_Frostbite_1.TXT
+      - "10"
+      - "1"
+    volumes:
+      - ../../pyEmon/tests/ab/replay_live.py:/ab/replay_live.py:ro
+      - ../../enchantee_racing/tests/data/20260913_Frostbite_1.TXT:/ab/20260913_Frostbite_1.TXT:ro
+      - ../../../provisioning/enchantee/emon_config:/emon_config:ro
+    environment:
+      - TZ=${TIMEZONE}
+    depends_on:
+      - mosquitto
+
+  # The race app is deliberately NOT a service here. One already runs on this laptop as
+  # the `racing_replay` container, published on the host at 5003, and that is what
+  # charts.base_url in config/event_recorder_config.yml points at. It subscribes to this
+  # stack's broker through the published 1883, so it sees the replay and its UI is live
+  # at http://localhost:5003/ while a recording is being made.
+  #
+  # Adding a second instance here does not work: the app uses a fixed MQTT client id
+  # ('enchantee-racing', mqtt_client.py), so two of them take turns evicting each other
+  # from the broker, once a second, for ever. If this stack should own the race app,
+  # stop racing_replay first.
+
 volumes:
   mosquitto-data:
   mosquitto-logs:

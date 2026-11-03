@@ -39,8 +39,9 @@ class _FakeDB:
     def get_recording_topics(self, recording_id):
         return sorted({r['topic'] for r in self.rows})
 
-    def get_recording_data(self, recording_id, topic_filter=None):
-        return [r for r in self.rows if r['topic'] == topic_filter]
+    def get_recording_data(self, recording_id, topic_filter=None, limit=None):
+        rows = [r for r in self.rows if r['topic'] == topic_filter]
+        return rows[:limit] if limit else rows
 
     def get_recording(self, recording_id):
         return {'name': 'Test', 'start_time': T0.isoformat()}
@@ -98,30 +99,24 @@ def test_the_position_topic_is_found_as_a_stream(tmp_path):
     assert streams[0].speed == 'gps/speed/0'
 
 
-def test_the_position_topic_wins_over_the_split_topics(tmp_path):
+def test_the_split_topics_are_ignored_beside_a_position(tmp_path):
     """A recording spanning the publisher change has both. The single message is
     the one that cannot pair a latitude with the wrong longitude."""
     processor = _processor(tmp_path, _position_rows() + _split_rows())
     streams = processor._find_gps_streams(1)
     assert len(streams) == 1, "one GPS unit, not two"
     assert streams[0].position == 'gps/position/0'
-    assert streams[0].latitude == 'gps/latitude/0'   # noted, but not used
     fixes = processor._get_track(1, streams[0])
     assert all(f.fix_ts is not None for f in fixes), \
         "fix_ts only comes from the position payload, so this proves it was read"
 
 
-def test_the_split_topics_still_work_on_their_own(tmp_path):
-    """Every recording made before the publisher changed has only these. This is
-    the test that fails if the legacy path is deleted as redundant."""
+def test_the_split_topics_alone_are_no_longer_a_track(tmp_path):
+    """The latitude/longitude pair is no longer read (owner's decision, 2 Nov 2026):
+    position carries both halves of a fix together, and a recording old enough to have
+    only the pair is older than anything that still needs processing."""
     processor = _processor(tmp_path, _split_rows())
-    streams = processor._find_gps_streams(1)
-    assert len(streams) == 1
-    assert streams[0].position is None
-    fixes = processor._get_track(1, streams[0])
-    assert len(fixes) == 30
-    assert all(f.fix_ts is None for f in fixes)
-    assert all(f.sog is not None for f in fixes)
+    assert processor._find_gps_streams(1) == []
 
 
 def test_two_receivers_are_two_streams(tmp_path):
@@ -206,11 +201,13 @@ def test_the_auto_plot_config_asks_for_the_position_topic(tmp_path):
             assert 'gps/position/0' not in spec.get('topics', [])
 
 
-def test_the_auto_plot_config_still_pairs_a_legacy_recording(tmp_path):
+def test_the_auto_plot_config_draws_no_map_for_a_legacy_recording(tmp_path):
+    """No position topic, so no track and no route map. The latitude and longitude
+    readings are still plotted against time by the grouping rules, which is not much
+    use but is not wrong either."""
     processor = _processor(tmp_path, _split_rows())
     maps = [s for s in processor._auto_generate_plot_config(1) if s['type'] == 'map']
-    assert len(maps) == 1
-    assert maps[0]['topics'] == ['gps/latitude/0', 'gps/longitude/0']
+    assert maps == []
 
 
 def test_a_legacy_plot_spec_still_finds_a_position_recording(tmp_path):
@@ -259,13 +256,13 @@ def test_kml_and_gpx_export_from_a_position_recording(tmp_path):
     assert 'speed' in gpx.lower()
 
 
-def test_gpx_export_still_works_for_a_legacy_recording(tmp_path):
+def test_gpx_export_writes_nothing_for_a_legacy_recording(tmp_path):
+    """No position topic, no stream, no track to export. Returns None rather than an
+    empty GPX file the publisher would attach to a post."""
     processor = _processor(tmp_path, _split_rows(n=40))
     outdir = tmp_path / 'exports'
     outdir.mkdir(parents=True, exist_ok=True)
-    gpx_path = processor.generate_gpx_export(1, outdir)
-    assert gpx_path is not None
-    assert gpx_path.read_text(encoding='utf-8').count('<trkpt') == 40
+    assert processor.generate_gpx_export(1, outdir) is None
 
 
 # --- the live trigger monitor ----------------------------------------------------------

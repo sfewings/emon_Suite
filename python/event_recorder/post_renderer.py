@@ -470,6 +470,7 @@ def statistics_table_html(statistics: Dict) -> str:
         'start_time', 'end_time', 'duration',
         'distance_km', 'max_speed', 'avg_speed',
         'total_energy_wh', 'avg_power_w', 'max_power_w',
+        'battery_cycles',
         'message_count',
     ]
     label_map = {
@@ -487,6 +488,9 @@ def statistics_table_html(statistics: Dict) -> str:
         'total_energy_wh':   ('Total Energy',      'Wh'),
         'avg_power_w':       ('Average Power',     'W'),
         'max_power_w':       ('Max Power',         'W'),
+        # The pack's lifetime cycle count, a number rather than a chart of a
+        # near-flat line.
+        'battery_cycles':    ('Battery Cycles',    ''),
         'message_count':     ('Messages Recorded', ''),
     }
     skip = {'duration_seconds'}
@@ -495,7 +499,10 @@ def statistics_table_html(statistics: Dict) -> str:
         label, unit = label_map.get(key, (key.replace('_', ' ').title(), ''))
         if key == 'distance_km' and isinstance(value, (int, float)):
             value = float(value) / 1.852
-        if isinstance(value, float):
+        if key == 'battery_cycles' and isinstance(value, (int, float)):
+            # A whole number of cycles; '34.00' reads as a measurement it is not.
+            formatted = f"{value:.0f}"
+        elif isinstance(value, float):
             formatted = f"{value:.2f}"
         else:
             formatted = html.escape(str(value))
