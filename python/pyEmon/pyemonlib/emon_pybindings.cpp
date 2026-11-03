@@ -4,8 +4,12 @@
 #define __linux__
 #define MQTT_LIB
 
-//Relative to this file: python/pyEmon/pyemonlib -> repository root
-#include "../../../EmonShared/EmonShared.cpp"
+// Found on the include path, which setup.py points at EmonShared/ (EMON_SHARED_DIR to
+// override). It used to be "../../../EmonShared/EmonShared.cpp", relative to this file,
+// which meant the extension could only be compiled with the whole repository laid out
+// around it: a build from a copy of python/pyEmon alone died on "compilation
+// terminated" with nothing to say which header was missing.
+#include "EmonShared.cpp"
 
 namespace py = pybind11;
 
