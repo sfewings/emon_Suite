@@ -206,6 +206,20 @@ def test_the_imu_axes_are_labelled_by_what_they_point_along(tmp_path):
     assert spec['labels'] == ['X (bow-stern)', 'Y (port-starboard)', 'Z (vertical)']
 
 
+def test_a_config_named_axis_beats_the_built_in_label(tmp_path):
+    """emon_config can name the axes (imu axis0/1/2, enchantee from 20261103-1426) and
+    then the envelope carries 'acc fore-aft'. That came from the boat; the table here
+    is only for recordings made before it, which still read 'acc 0'."""
+    rows = []
+    for idx, axis in enumerate(('fore-aft', 'port-starboard', 'vertical')):
+        rows += _envelope_rows(f'emon/imu/0/acc/{idx}', 'imu', 0, 'acc',
+                               'IMU Sensor', f'acc {axis}', 'g', 'acc', idx=idx)
+    processor = _processor(tmp_path, rows)
+    spec = [s for s in processor._auto_generate_plot_config(1)
+            if s['type'] == 'multi_line'][0]
+    assert spec['labels'] == ['acc fore-aft', 'acc port-starboard', 'acc vertical']
+
+
 def test_a_two_axis_group_is_not_given_axis_labels(tmp_path):
     """Only a whole three-axis sensor gets them; two of the three is something else."""
     rows = []

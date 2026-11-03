@@ -633,12 +633,22 @@ class DataProcessor:
         Every envelope must be the same field of the same sensor and carry an index in
         range: a chart mixing acc with gyro, or holding only two of the three axes, is
         not what these labels describe.
+
+        Only where the axes are *unnamed*. emon_config can name them (imu axis0/1/2,
+        enchantee from 20261103-1426), and then the envelope carries 'acc fore-aft' and
+        that is the better label: it came from the boat rather than from this table.
+        A recording made before that still reads 'acc 0' and gets these.
         """
         fields = {e.get('field', '') for e in envelopes}
         groups = {e.get('group', '') for e in envelopes}
         if len(fields) != 1 or len(groups) != 1:
             return None
-        if fields.pop() not in self._AXIS_TOPICS:
+        field = fields.pop()
+        if field not in self._AXIS_TOPICS:
+            return None
+        # The unnamed default is '<field> <idx>' (emon_decoder _Out.reading). Anything
+        # else is a name somebody chose, and it wins.
+        if any(e.get('name') != f"{field} {e.get('idx')}" for e in envelopes):
             return None
         indexes = [e.get('idx') for e in envelopes]
         # All three, exactly once each. Two of the three is a partial chart that these

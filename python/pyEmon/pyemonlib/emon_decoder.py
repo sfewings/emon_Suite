@@ -646,10 +646,17 @@ def _imu(line: str, ns: Mapping, t: float) -> Optional[List[Emission]]:
     o = _Out("imu", s, ns, t, line)
     o.emit(o.reading("heading", p.heading, "deg", "bearing"), None,
            lambda: ("imu", _tags(f"imu/{s}/heading", ns[s]["name"], ns[s]["name"]), p.heading))
+    # The axes are named in emon_config as axis0, axis1, axis2, because which way each
+    # one points is a fact about how the sensor was mounted on this boat and emon_config
+    # is where that belongs. The field stays in front of it, so acc, mag and gyro do not
+    # all end up with the same three names: duplicates are a lint error (DESIGN 5).
+    # Absent, the index is used and the name is 'acc 0' as before.
     for field, unit in (("acc", "g"), ("mag", "uT"), ("gyro", "deg/s")):
         values = getattr(p, field)
         for axis in range(3):
-            o.emit(o.reading(field, float(values[axis]), unit, field, axis),
+            axis_name = o.setting(s, f"axis{axis}", axis)
+            o.emit(o.reading(field, float(values[axis]), unit, field, axis,
+                             name=f"{field} {axis_name}"),
                    lambda field=field, axis=axis: (f"imu/{s}/{field}/{axis}", float(getattr(p, field)[axis])),
                    lambda field=field, axis=axis: (
                        "imu", _tags(f"imu/{s}/{field}/{axis}", ns[s]["name"], ns[s]["name"] + f" - {field}[{axis}]"),

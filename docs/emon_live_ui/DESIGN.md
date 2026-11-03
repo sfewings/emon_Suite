@@ -342,6 +342,13 @@ dropped, and the per-site branches of `emon-node-red` are archived.
 - **Fields with no name in config** (bms, gps, imu, pth, mwv, leaf, inv, svc, air, bee):
   `group / field`, for example `Main Battery / batterySoC`, `True wind / windDirection`.
   Indexed unnamed fields add the index: `Main Battery / cellVoltage 3`, `IMU Sensor / acc 1`.
+- **The IMU's three axes can be named** (3 Nov 2026), with `axis0`, `axis1` and `axis2`
+  on the imu node, because which way each one points is a fact about how the sensor was
+  mounted and emon_config is where that belongs. The field stays in front, so the keys
+  name nine feeds and acc, mag and gyro cannot collide: enchantee's
+  `20261103-1426.yml` gives `IMU Sensor / acc fore-aft`, `IMU Sensor / gyro vertical`.
+  Without the keys the index is used and the name is `acc 0`, as above. `derived.yml`
+  names these feeds, so the two files change together.
 - **A named channel with no name in config**: `group / field idx`, e.g.
   `House temperatures / temperature 3`.
 - **One channel, two kinds** (pulse publishes `power` and `pulse` for each channel;

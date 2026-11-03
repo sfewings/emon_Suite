@@ -1,5 +1,9 @@
 # enchantee feed names: the 20260211-1447.yml config decoding 20260517_Frostbite_1.TXT
 # through emon_decoder (HANDOVER, enchantee Pi). One per line; for the page linter.
+#
+# The nine IMU axis names were updated by hand for emon_config 20261103-1426, which
+# names the axes (axis0/1/2) so they decode as 'acc fore-aft' rather than 'acc 0'.
+# Everything else is as captured.
 Anemometer / humidity
 Anemometer / pressure
 Anemometer / temperature
@@ -17,16 +21,16 @@ Enchantee-GPS / latitude
 Enchantee-GPS / longitude
 Enchantee-GPS / position
 Enchantee-GPS / speed
-IMU Sensor / acc 0
-IMU Sensor / acc 1
-IMU Sensor / acc 2
-IMU Sensor / gyro 0
-IMU Sensor / gyro 1
-IMU Sensor / gyro 2
+IMU Sensor / acc fore-aft
+IMU Sensor / acc port-starboard
+IMU Sensor / acc vertical
+IMU Sensor / gyro fore-aft
+IMU Sensor / gyro port-starboard
+IMU Sensor / gyro vertical
 IMU Sensor / heading
-IMU Sensor / mag 0
-IMU Sensor / mag 1
-IMU Sensor / mag 2
+IMU Sensor / mag fore-aft
+IMU Sensor / mag port-starboard
+IMU Sensor / mag vertical
 Light Banner / Bimini
 Light Banner / supplyV
 Main Battery / batterySoC

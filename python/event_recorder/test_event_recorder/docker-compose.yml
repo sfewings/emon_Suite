@@ -133,6 +133,15 @@ services:
       - ../../pyEmon/tests/ab/replay_live.py:/ab/replay_live.py:ro
       - ../../enchantee_racing/tests/data/20260913_Frostbite_1.TXT:/ab/20260913_Frostbite_1.TXT:ro
       - ../../../provisioning/enchantee/emon_config:/emon_config:ro
+      # The decoder and the envelope builder from this checkout, over the image's own.
+      # Without these the replay publishes whatever pyemonlib the image was built with,
+      # which is the released one: a decoder change here would appear to do nothing and
+      # the names on the broker would be the old ones. Only the .py files, never the
+      # directory: emonSuite is a compiled extension built for the image's architecture
+      # and has to stay the image's (DESIGN 9.3, rebuild the wheel before the images).
+      - ../../pyEmon/pyemonlib/emon_decoder.py:/usr/local/lib/python3.13/site-packages/pyemonlib/emon_decoder.py:ro
+      - ../../pyEmon/pyemonlib/emon_feed.py:/usr/local/lib/python3.13/site-packages/pyemonlib/emon_feed.py:ro
+      - ../../pyEmon/pyemonlib/sink_mqtt.py:/usr/local/lib/python3.13/site-packages/pyemonlib/sink_mqtt.py:ro
     environment:
       - TZ=${TIMEZONE}
     depends_on:

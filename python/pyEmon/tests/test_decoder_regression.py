@@ -241,6 +241,36 @@ def test_envelopes_are_well_formed_named_and_unique(fakes, tmp_path, config, cap
     capsys.readouterr()
 
 
+def test_imu_axes_take_their_names_from_the_config():
+    """Which way each axis points is a fact about how the sensor was mounted, so it is
+    named in emon_config (imu axis0/1/2) and travels in every envelope. Without those
+    keys the name is the index, as it always was."""
+    from pyemonlib import emon_decoder
+    line = "imu,0,0.1,0.2,0.3,0.4,0.5,0.6,700,800,900,180.0"
+
+    unnamed = {0: {"name": "IMU Sensor"}}
+    names = [e.reading.name for e in emon_decoder.decode(line, unnamed, T_FIXED)
+             if e.reading is not None and e.reading.field == "acc"]
+    assert names == ["acc 0", "acc 1", "acc 2"]
+
+    named = {0: {"name": "IMU Sensor", "axis0": "fore-aft",
+                 "axis1": "port-starboard", "axis2": "vertical"}}
+    emissions = [e for e in emon_decoder.decode(line, named, T_FIXED)
+                 if e.reading is not None]
+    acc = [e.reading.name for e in emissions if e.reading.field == "acc"]
+    assert acc == ["acc fore-aft", "acc port-starboard", "acc vertical"]
+
+    # The field stays in front, or acc, mag and gyro would share three names and
+    # DESIGN 5 makes a duplicate name a lint error.
+    gyro = [e.reading.name for e in emissions if e.reading.field == "gyro"]
+    assert gyro == ["gyro fore-aft", "gyro port-starboard", "gyro vertical"]
+    assert len({e.reading.name for e in emissions}) == len(emissions)
+
+    # The legacy topics are indexed and unaffected: naming is an envelope-only change.
+    topics = [e.mqtt()[0] for e in emissions if e.mqtt is not None]
+    assert "imu/0/acc/0" in topics and "imu/0/gyro/2" in topics
+
+
 def test_the_sample_covers_every_payload_type():
     from pyemonlib import emon_decoder
     nodes = {line.split(",", 1)[0].rstrip("0123456789") for line in _lines()}

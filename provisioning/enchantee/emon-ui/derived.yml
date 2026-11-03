@@ -15,9 +15,12 @@ influx:
   Boat reference wind / windDirection:  anemometer anemometer/windDirection/0
   Apparent wind / windDirection:        anemometer anemometer/windDirection/1
   IMU Sensor / heading:                 imu imu/0/heading
-  IMU Sensor / acc 0:                   imu imu/0/acc/0
-  IMU Sensor / acc 1:                   imu imu/0/acc/1
-  IMU Sensor / acc 2:                   imu imu/0/acc/2
+  # The accelerometer axes are named in emon_config from 20261103-1426 (axis0/1/2), so
+  # the feeds are 'acc fore-aft' and not 'acc 0'. The Influx series on the right are the
+  # legacy topics and did not change: they are still indexed.
+  IMU Sensor / acc fore-aft:            imu imu/0/acc/0
+  IMU Sensor / acc port-starboard:      imu imu/0/acc/1
+  IMU Sensor / acc vertical:            imu imu/0/acc/2
   Enchantee-GPS / course:               gps gps/course/0
   Enchantee-GPS / speed:                gps gps/speed/0
   Main Battery / power:                 power bms/power/1
@@ -53,8 +56,8 @@ derived:
   # From the IMU on the anemometer node: atan2(acc y, acc z), positive to starboard.
   - id: boat/heel
     op: heel
-    y: IMU Sensor / acc 1
-    z: IMU Sensor / acc 2
+    y: IMU Sensor / acc port-starboard
+    z: IMU Sensor / acc vertical
     decimals: 0
 
   # The fore-and-aft angle, atan2(-acc x, hypot(acc y, acc z)), positive bow up. All
@@ -67,9 +70,9 @@ derived:
   # that while sailing and invert it here if it proves wrong.
   - id: boat/pitch
     op: pitch
-    x: IMU Sensor / acc 0
-    y: IMU Sensor / acc 1
-    z: IMU Sensor / acc 2
+    x: IMU Sensor / acc fore-aft
+    y: IMU Sensor / acc port-starboard
+    z: IMU Sensor / acc vertical
     decimals: 0
 
   # --- Main battery energy ---------------------------------------------------------

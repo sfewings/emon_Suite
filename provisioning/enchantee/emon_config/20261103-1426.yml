@@ -1,0 +1,70 @@
+temp:
+  0:
+    name: Light Banner
+    t0: Bimini
+disp:
+  0:
+    name: Unused
+scl:
+  0:
+    name: Unused
+pulse:
+  0:
+    name: Unused
+    p0: Unused
+    p0_wPerPulse: 0.25
+bat:
+  0:
+    name: Unused
+    s0: Unused
+    v0: Rail
+    v0_reference: true
+    v1: Unused
+air:
+  0:
+    name: Unused
+inv: #inverters
+  0:
+    name: Unused
+bee:
+  0:
+bms:
+  0:
+    name: Unused
+  1:
+    name: Main Battery
+svc:
+  0:
+    name: SevCon
+gps:
+  0:
+    name: Enchantee-GPS
+  1:
+    name: RaspPi-GPS
+pth:
+  0:
+    name: Cabin GPS
+  1:
+    name: Anemometer
+mwv:
+  0:
+    name: Boat reference wind
+  1:
+    name: Apparent wind
+  2:
+    name: True wind
+imu:
+  0:
+    name: IMU Sensor
+    # Which way each accelerometer, gyro and magnetometer axis points on this boat.
+    # The decoder puts the field in front, so these name nine feeds:
+    # 'IMU Sensor / acc fore-aft', 'IMU Sensor / gyro vertical' and so on. Mounted
+    # orientation is a fact about this installation, which is what emon_config is for,
+    # and naming it here carries it in every envelope instead of leaving consumers to
+    # hard-code that index 0 is the bow-stern axis.
+    #
+    # Heel is atan2(port-starboard, vertical) and its sign was measured on a recorded
+    # race, so these three are not guesses: see emon-ui/derived.yml.
+    axis0: fore-aft
+    axis1: port-starboard
+    axis2: vertical
