@@ -153,6 +153,9 @@ def main(argv: Optional[list] = None) -> int:
                         help="derived.yml; default <site>/derived.yml when there is one")
     parser.add_argument("--influx", default=os.environ.get("INFLUX_URL", "http://localhost:8086"),
                         help="where to seed derived values from on start; 'none' to skip")
+    parser.add_argument("--influx-wait", type=float,
+                        default=float(os.environ.get("INFLUX_WAIT_S", 600)),
+                        help="seconds to wait for Influx to answer before seeding; 0 not to wait")
     parser.add_argument("--publish", action="store_true",
                         default=os.environ.get("PUBLISH_DERIVED", "0") not in ("0", "", "false", "no"),
                         help="publish derived values on emon/derived/... (off for test runs)")
@@ -192,6 +195,11 @@ def main(argv: Optional[list] = None) -> int:
             # messages that follow are recognised as older (derived.Derived.on_value).
             import influx
             store = influx.Influx(args.influx)
+            # And after Influx answers. A watchdog reset cold-boots the Pi, and Influx
+            # 1.x takes minutes to open its shards while this is up in seconds; without
+            # the wait every seeding query is refused, the day's totals count from the
+            # restart and a month total stays wrong for the rest of the month.
+            store.wait_ready(args.influx_wait)
             state.accept_derived(influx.seed(state.derived, store))
             if sankey or banks_block:
                 series = dict(state.derived.influx)
