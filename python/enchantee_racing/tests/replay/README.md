@@ -212,10 +212,25 @@ Taking the Python from source and only the compiled part from the build tree is
 deliberate: putting the whole build tree on the path would silently use a stale
 `emon_mqtt.py` the day someone edits it without rebuilding.
 
-## emon_config.yml
+## emon_config
 
-Minimal, and only here because `emon_mqtt` looks up a node name to publish `rssi/<node>`
-when a record carries an RSSI suffix, which in this recording is the 1,954 `gps/1`
-records. Without it those raise inside `emon_mqtt`, which catches and prints, so this
-file exists to keep 1,954 harmless tracebacks off the console. Nothing the app subscribes
-to depends on any of it.
+The replay uses the boat's own config, `provisioning/enchantee/emon_config/`, and has no
+copy of its own. The app picks readings out of the envelopes by the names that config
+gives (`Enchantee-GPS / speed`, `IMU Sensor / heading`, `SevCon / rpm`, the full list is
+`FEEDS` in `mqtt_client.py`), so the replay has to publish under exactly those names.
+
+`-s` takes the directory, and `EmonSettings` loads the newest `YYYYMMDD-HHMM.yml` in force
+by the wall clock, as the boat does. Handed a file instead, it still scans that file's
+directory, so `-s some/dir/emon_config.yml` does not mean what it looks like.
+
+There used to be a minimal `emon_config.yml` here, from before the app read envelopes,
+when names only mattered for `rssi/<node>`. After the 3 Nov 2026 switch its names no
+longer matched and a replay published every reading under names the app drops. If a
+replay leaves the screens frozen on old values while the broker is clearly busy, a name
+mismatch is the first thing to check:
+
+```
+python -c "import json,urllib.request as u; print(json.load(u.urlopen('http://127.0.0.1:5002/api/state'))['fields']['hdg'])"
+```
+
+An `age` that keeps growing during a replay means nothing is landing.

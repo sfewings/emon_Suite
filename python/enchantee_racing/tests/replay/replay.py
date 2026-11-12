@@ -40,7 +40,21 @@ PROJECT = HERE.parent.parent          # python/enchantee_racing
 PYTHON_DIR = PROJECT.parent           # python/
 
 LOG_TIME_FORMAT = "%d/%m/%Y %H:%M:%S"
-DEFAULT_SETTINGS = HERE / "emon_config.yml"
+DEFAULT_SETTINGS = PYTHON_DIR.parent / "provisioning" / "enchantee" / "emon_config"
+"""The boat's own emon_config directory, not a copy kept beside this script.
+
+A directory, because EmonSettings treats it as one whatever it is given: handed a file,
+it scans that file's directory and loads the newest YYYYMMDD-HHMM.yml in force now.
+Pointing at the directory says so. "Now" is the wall clock, not the recording's, and
+that is what is wanted: the app matches envelopes by the names the current config
+gives (mqtt_client.FEEDS), so a replay has to publish under today's names even for a
+race recorded under older ones.
+
+This used to be a minimal emon_config.yml here, written when the app read legacy topics
+and the names only mattered for rssi/<node>. On 3 Nov 2026 the app switched to reading
+envelopes by name, the copy's names stopped matching, and a replay published every
+reading under names the app drops. The broker looked busy and the screens sat frozen
+on whatever retained values were already there."""
 
 DRAIN_S = 2.0
 """How long to let paho write before exiting. Everything here is published at QoS 0, so
@@ -225,7 +239,8 @@ def main(argv=None):
                         help="skip to this time on the log's own clock")
     parser.add_argument("--stop", type=parse_clock, metavar="HH:MM")
     parser.add_argument("-s", "--settings", default=str(DEFAULT_SETTINGS),
-                        help="emon_config.yml, needed only to name nodes in rssi topics")
+                        help="emon_config directory; the newest dated file in force is used "
+                             "(default: the boat's, provisioning/enchantee/emon_config)")
     parser.add_argument("--summary", action="store_true",
                         help="describe the file and exit, publishing nothing")
     parser.add_argument("--types", default=",".join(RACING_TYPES),
