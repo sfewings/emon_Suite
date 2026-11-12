@@ -28,6 +28,8 @@ import threading
 import time
 from typing import Any, Callable, Mapping, NamedTuple, Optional
 
+from emon_feed_import import emon_feed
+
 from engine import nav, race
 from engine import waypoint as waypoint_module
 
@@ -62,17 +64,20 @@ MOTOR_HOLD_S = 10.0
 flip the panels back and forth. The same hold idiom the leg engine uses after an
 advance (DESIGN 9.1, 11.2)."""
 
-LEEWAY_MIN_SOG_KT = 1.0
+LEEWAY_MIN_SOG_KT = emon_feed.LEEWAY_MIN_SOG_KT
 """Below this speed leeway is not reported at all. COG is the direction of a GPS velocity,
 and at a knot or less that velocity is mostly noise, so COG - HDG swings through tens of
 degrees on a boat sitting still. Blanked rather than dimmed, like position past its cutoff:
-a dimmed number still reads as a number (DESIGN 9.12)."""
+a dimmed number still reads as a number (DESIGN 9.12).
 
-HEEL_MIN_G = 0.5
+Taken from emon_feed, which this app's own value was copied into (PLAN 1b), so the boat's
+pages and this app cannot drift apart on where the threshold sits."""
+
+HEEL_MIN_G = emon_feed.HEEL_MIN_G
 """Heel is not reported when the y and z axes between them carry less than this much of
 gravity. The board is level-ish on a boat, so the pair should hold nearly all of 1 g; well
 short of that it is lying on its end or the readings are nonsense, and atan2 of two
-near-zero numbers is any angle at all."""
+near-zero numbers is any angle at all. From emon_feed, as above."""
 
 PENDING_EVENTS_MAX = 200
 """How many unpublished race events to hold. A race produces a couple of dozen, so this is
@@ -591,20 +596,29 @@ def derive(snapshot: Snapshot, now: float) -> dict:
     # TWA is measured nowhere on this boat: it is the true wind direction seen from
     # the bow. Timestamped with the older of its two inputs, so it goes stale as soon
     # as either does (DESIGN 3).
+    # emon_feed.twa, not a second copy of the arithmetic: the boat's pages compute the
+    # same angle from the same function (PLAN 1b moved it there from here), and two
+    # implementations of a signed bearing difference is exactly the sort of thing that
+    # quietly disagrees by 360. The timestamping stays here, because emon_feed returns
+    # a number and this app needs the age with it.
     twa = None
     if twd and hdg:
-        twa = Reading(nav.norm180(twd.v - hdg.v), min(twd.t, hdg.t))
+        value = emon_feed.twa(twd.v, hdg.v)
+        if value is not None:
+            twa = Reading(value, min(twd.t, hdg.t))
 
-    # AWA comes straight off the masthead unit on anemometer/windDirection/0, already
-    # bow relative. If that topic is not being published, derive it from the compass
-    # version on windDirection/1 instead (DESIGN 3).
+    # AWA comes straight off the masthead unit, 'Boat reference wind / windDirection',
+    # already bow relative. If that feed is not being published, derive it from the
+    # compass version on 'Apparent wind / windDirection' instead (DESIGN 3).
+    # emon_feed.awa takes both and prefers the measured one, which is this same rule.
     awa = live("awa")
+    awd = live("awd")
     if awa:
-        awa = Reading(nav.norm180(awa.v), awa.t)
-    else:
-        awd = live("awd")
-        if awd and hdg:
-            awa = Reading(nav.norm180(awd.v - hdg.v), min(awd.t, hdg.t))
+        value = emon_feed.awa(awa.v)
+        awa = Reading(value, awa.t) if value is not None else None
+    elif awd and hdg:
+        value = emon_feed.awa(None, awd.v, hdg.v)
+        awa = Reading(value, min(awd.t, hdg.t)) if value is not None else None
 
     # The page swaps the wind panels for the SevCon readings while the motor turns.
     # Counting from the arrival time rather than from now is what makes a SevCon that
@@ -644,10 +658,11 @@ def derive_leeway(snapshot: Snapshot, now: float) -> Optional[dict]:
     if any(r is None or not isinstance(r.v, (int, float)) for r in readings):
         return None
     cog, hdg, sog = readings
-    if sog.v < LEEWAY_MIN_SOG_KT:
+    value = emon_feed.leeway(cog.v, hdg.v, sog.v, LEEWAY_MIN_SOG_KT)
+    if value is None:
         return None
     oldest = min(r.t for r in readings)
-    return {"v": nav.norm180(cog.v - hdg.v), "age": now - oldest}
+    return {"v": value, "age": now - oldest}
 
 
 def derive_heel(snapshot: Snapshot, now: float) -> Optional[dict]:
@@ -670,9 +685,10 @@ def derive_heel(snapshot: Snapshot, now: float) -> Optional[dict]:
     if any(r is None or not isinstance(r.v, (int, float)) for r in readings):
         return None
     y, z = readings
-    if math.hypot(y.v, z.v) < HEEL_MIN_G:
+    value = emon_feed.heel(y.v, z.v, HEEL_MIN_G)
+    if value is None:
         return None
-    return {"v": math.degrees(math.atan2(y.v, z.v)), "age": now - min(y.t, z.t)}
+    return {"v": value, "age": now - min(y.t, z.t)}
 
 
 def derive_recording(snapshot: Snapshot, now: float) -> dict:

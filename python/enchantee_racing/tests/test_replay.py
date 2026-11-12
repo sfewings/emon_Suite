@@ -76,16 +76,26 @@ def test_stop_ends_the_read_rather_than_filtering():
     assert len(list(replay.records(huge, stop=clock_time(19, 0)))) == 5
 
 
-def test_the_racing_types_are_the_ones_that_become_subscribed_topics():
-    """If the app subscribes to a topic no replayed record produces, replay is useless.
+def test_the_racing_types_are_the_ones_that_produce_the_feeds_read():
+    """If the app reads a feed no replayed record produces, replay is useless.
 
-    The mapping from record type to topic prefix is not mechanical, so it is written out
-    here: this test is what catches a new subscription whose data replay never sends.
+    The app subscribes to emon/# now, so a topic prefix no longer says which record type
+    feeds it; the feed's group does. The mapping is not mechanical either way, so it is
+    written out here: this test is what catches a feed whose data replay never sends.
     """
-    prefix_for = {"gps": "gps/", "imu": "imu/", "mwv": "anemometer/", "svc": "sevCon/"}
-    assert set(prefix_for) == set(replay.RACING_TYPES)
-    for topic in mqtt_client.TOPICS:
-        assert any(topic.startswith(p) for p in prefix_for.values()), topic
+    type_for_group = {
+        "Enchantee-GPS": "gps",
+        "IMU Sensor": "imu",
+        "True wind": "mwv",
+        "Apparent wind": "mwv",
+        "Boat reference wind": "mwv",
+        "SevCon": "svc",
+    }
+    assert set(type_for_group.values()) == set(replay.RACING_TYPES)
+
+    for name in list(mqtt_client.FEEDS) + [mqtt_client.POSITION_FEED]:
+        group = name.split(" / ")[0]
+        assert group in type_for_group, name
 
 
 def test_the_type_filter_strips_trailing_digits_like_emon_mqtt_does():

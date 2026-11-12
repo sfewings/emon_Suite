@@ -14,6 +14,7 @@ Bare asserts and no fixtures, so this runs under pytest and also standalone with
 `python tests/test_hud.py`.
 """
 
+from conftest import LEGACY, feed
 import json
 import re
 import sys
@@ -224,49 +225,60 @@ def test_a_non_numeric_value_in_the_store_is_not_reported():
 # --- the topic map --------------------------------------------------------
 
 
-def test_every_topic_the_flow_subscribed_to_is_mapped():
-    """From the mqtt-in nodes on the Sailing HUD tab, and DESIGN 3."""
-    assert mqtt_client.TOPICS == {
-        "gps/speed/0": "sog",
-        "gps/course/0": "cog",
-        "imu/0/heading": "hdg",
-        "imu/0/acc/1": "accy",    # not the flow's: heel for GAR (DESIGN 9.12)
-        "imu/0/acc/2": "accz",
-        "anemometer/windSpeed/2": "tws",
-        "anemometer/windDirection/2": "twd",
-        "anemometer/windSpeed/1": "aws",
-        "anemometer/windDirection/0": "awa",
-        "anemometer/windDirection/1": "awd",
-        "sevCon/rpm0": "rpm",
-        "sevCon/current0": "cur",
-        "sevCon/temperature/controller/0": "ctrl",
-        "sevCon/temperature/motor/0": "mot",
+def test_every_reading_the_flow_subscribed_to_is_mapped():
+    """From the mqtt-in nodes on the Sailing HUD tab, and DESIGN 3, as feed names.
+
+    Named rather than numbered since 3 Nov 2026. The names come from emon_config and
+    the mapping is one to one with the fourteen topics this used to list: conftest.LEGACY
+    records which topic became which name."""
+    assert mqtt_client.FEEDS == {
+        "Enchantee-GPS / speed": "sog",
+        "Enchantee-GPS / course": "cog",
+        "IMU Sensor / heading": "hdg",
+        # not the flow's: heel for GAR (DESIGN 9.12)
+        "IMU Sensor / acc port-starboard": "accy",
+        "IMU Sensor / acc vertical": "accz",
+        "True wind / windSpeed": "tws",
+        "True wind / windDirection": "twd",
+        "Apparent wind / windSpeed": "aws",
+        "Boat reference wind / windDirection": "awa",
+        "Apparent wind / windDirection": "awd",
+        "SevCon / rpm": "rpm",
+        "SevCon / batteryCurrent": "cur",
+        "SevCon / controllerTemperature": "ctrl",
+        "SevCon / motorTemperature": "mot",
     }
+    assert set(LEGACY.values()) - {mqtt_client.POSITION_FEED} == set(mqtt_client.FEEDS), \
+        "LEGACY and FEEDS disagree about which feeds this app reads"
 
 
-def test_position_is_subscribed_and_handled_apart_from_the_bare_numbers():
+def test_position_is_handled_apart_from_the_bare_numbers():
     """DESIGN build order step 5, done: pyemonlib publishes it, and this reads it."""
-    assert mqtt_client.POSITION_TOPIC == "gps/position/0"
-    assert mqtt_client.POSITION_TOPIC not in mqtt_client.TOPICS  # not a bare number
-    assert mqtt_client.POSITION_TOPIC in mqtt_client.SUBSCRIPTIONS
-    # Plus the recorder's status, for the dot on the Log link (DESIGN 9.13)
-    assert set(mqtt_client.SUBSCRIPTIONS) == (set(mqtt_client.TOPICS)
-                                              | {mqtt_client.POSITION_TOPIC,
-                                                 mqtt_client.RECORDING_TOPIC})
+    assert mqtt_client.POSITION_FEED == "Enchantee-GPS / position"
+    assert mqtt_client.POSITION_FEED not in mqtt_client.FEEDS  # its value is an object
+
+
+def test_one_subscription_carries_every_reading():
+    """The fourteen topic subscriptions became one. What the app wants is identified by
+    the name inside each message, so the topic only has to reach it; the recorder's
+    status is still a topic, for the dot on the Log link (DESIGN 9.13)."""
+    assert set(mqtt_client.SUBSCRIPTIONS) == {mqtt_client.ENVELOPE_TOPIC,
+                                              mqtt_client.RECORDING_TOPIC}
+    assert mqtt_client.ENVELOPE_TOPIC == "emon/#"
 
 
 def test_a_position_fix_is_parsed_and_stored():
     """The payload exactly as pyemonlib.emon_mqtt.gpsMessage publishes it."""
     s, _ = _store()
     payload = b'{"lat":-32.0039101,"lon":115.8137589,"ts":1787132108}'
-    assert mqtt_client.handle_message(s, "gps/position/0", payload) is True
+    assert feed(s, "gps/position/0", payload) is True
     assert s.get(store_module.POSITION_KEY).v == {"lat": -32.0039101, "lon": 115.8137589}
 
 
 def test_a_position_fix_does_not_disturb_the_hud_payload():
     """position is not a HUD field, and /hud/data must keep the shape it was ported at."""
     s, _ = _store()
-    mqtt_client.handle_message(s, "gps/position/0", b'{"lat":-32.0,"lon":115.8,"ts":1}')
+    feed(s, "gps/position/0", b'{"lat":-32.0,"lon":115.8,"ts":1}')
     payload = derive(s.snapshot(), T0)
     assert set(payload) == {"now", "motor", "fields"}
     assert set(payload["fields"]) == set(store_module.FIELDS)
@@ -279,7 +291,7 @@ def test_a_garbled_fix_is_dropped_rather_than_believed():
     for payload in [b"not json", b"[]", b'{"lat":-32.0}', b'{"lat":null,"lon":115.8}',
                     b'{"lat":"south","lon":115.8}', b'{"lat":91.0,"lon":115.8}',
                     b'{"lat":-32.0,"lon":181.0}', b'{"lat":1000.0,"lon":1000.0}', b""]:
-        assert mqtt_client.handle_message(s, "gps/position/0", payload) is False, payload
+        assert feed(s, "gps/position/0", payload) is False, payload
     assert s.get(store_module.POSITION_KEY) is None
 
 
@@ -297,7 +309,7 @@ def test_a_not_a_number_fix_is_dropped():
                     b'{"lat":NaN,"lon":NaN}', b'{"lat":Infinity,"lon":115.8}',
                     b'{"lat":-32.0,"lon":-Infinity}']:
         s, _ = _store()
-        assert mqtt_client.handle_message(s, "gps/position/0", payload) is False, payload
+        assert feed(s, "gps/position/0", payload) is False, payload
         assert s.get(store_module.POSITION_KEY) is None, payload
 
 
@@ -311,14 +323,14 @@ def test_zero_zero_is_a_real_coordinate_and_is_kept():
     """Nought degrees by nought is in the Gulf of Guinea, not a no-fix sentinel, and the
     publisher's own comment says so. Filtering it would be inventing a rule."""
     s, _ = _store()
-    assert mqtt_client.handle_message(s, "gps/position/0", b'{"lat":0.0,"lon":0.0}') is True
+    assert feed(s, "gps/position/0", b'{"lat":0.0,"lon":0.0}') is True
     assert s.get(store_module.POSITION_KEY).v == {"lat": 0.0, "lon": 0.0}
 
 
 def test_position_goes_stale_at_five_seconds_not_fifteen():
     """A bearing off a 15 s old fix at 6 knots is 46 m out (DESIGN 9.5)."""
     s, _ = _store()
-    mqtt_client.handle_message(s, "gps/position/0", b'{"lat":-32.0,"lon":115.8}', ts=T0)
+    feed(s, "gps/position/0", b'{"lat":-32.0,"lon":115.8}', ts=T0)
     cutoff = store_module.POSITION_STALE_S
     assert cutoff == 5.0 and cutoff < store_module.STALE_S
     assert store_module.derive_position(s.snapshot(), T0 + cutoff - 0.1)["stale"] is False
@@ -335,7 +347,7 @@ def test_no_fix_yet_reports_none_rather_than_a_guess():
 def test_api_state_carries_the_hud_payload_and_the_position():
     store, _ = _store()
     store.set("sog", 5.58)
-    mqtt_client.handle_message(store, "gps/position/0",
+    feed(store, "gps/position/0",
                                b'{"lat":-32.0039101,"lon":115.8137589,"ts":1787132108}')
     client, _ = _client(store)
     response = client.get("/api/state")
@@ -356,7 +368,7 @@ def test_api_state_carries_the_hud_payload_and_the_position():
 def test_a_fix_is_a_position_engine_nav_can_use_directly():
     """as_latlon takes the stored dict, so nothing has to convert between the two."""
     s, _ = _store()
-    mqtt_client.handle_message(s, "gps/position/0", b'{"lat":-32.0039101,"lon":115.8137589}')
+    feed(s, "gps/position/0", b'{"lat":-32.0039101,"lon":115.8137589}')
     fix = nav.as_latlon(s.get(store_module.POSITION_KEY).v)
     assert fix == nav.LatLon(-32.0039101, 115.8137589)
     # About 250 m from Club Buoy 32A, which is where the boat was at 13:35 that day.
@@ -365,21 +377,21 @@ def test_a_fix_is_a_position_engine_nav_can_use_directly():
 
 def test_handle_message_stores_under_the_mapped_key():
     s, _ = _store()
-    assert mqtt_client.handle_message(s, "imu/0/heading", b"192.4") is True
+    assert feed(s, "imu/0/heading", b"192.4") is True
     assert s.get("hdg").v == 192.4
 
 
 def test_handle_message_drops_what_it_cannot_use():
     """The broker carries far more than this app cares about."""
     s, _ = _store()
-    assert mqtt_client.handle_message(s, "battery/soc/0", b"91") is False
-    assert mqtt_client.handle_message(s, "gps/speed/0", b"no fix") is False
+    assert feed(s, "battery/soc/0", b"91") is False
+    assert feed(s, "gps/speed/0", b"no fix") is False
     assert s.snapshot().values == {}
 
 
 def test_handle_message_accepts_an_explicit_arrival_time():
     s, _ = _store()
-    mqtt_client.handle_message(s, "gps/speed/0", b"15.9", ts=T0 - 9)
+    feed(s, "gps/speed/0", b"15.9", ts=T0 - 9)
     assert s.get("sog").t == T0 - 9
 
 
@@ -458,12 +470,28 @@ def test_the_demo_interval_scales_the_distance_sailed():
     assert nav.distance_m(origin, quick.position) > 8 * nav.distance_m(origin, tenth.position)
 
 
-def test_demo_readings_only_use_real_topics():
-    """The demo goes in through the same topic map a real message does."""
+def test_demo_readings_only_use_real_feeds():
+    """The demo goes in through the same feed map a real message does, so a demo reading
+    named something the app does not read would be silently dropped rather than shown."""
     for tick in (1, 7, 40):
-        for topic, value in mqtt_client.demo_readings(tick) + mqtt_client.demo_motor_readings(tick):
-            assert topic in mqtt_client.TOPICS, topic
+        for name, value in mqtt_client.demo_readings(tick) + mqtt_client.demo_motor_readings(tick):
+            assert name in mqtt_client.FEEDS, name
             assert isinstance(value, float)
+
+
+def test_the_demo_is_delivered_as_envelopes_not_written_straight_into_the_store():
+    """What the demo is for is checking the display at the dock with no boat. If it
+    bypassed the envelope path it would still look right with that path completely
+    broken, which is the one thing it is there to catch."""
+    topic, payload = mqtt_client.demo_envelope("Enchantee-GPS / speed", 15.9)
+    assert topic.startswith("emon/")
+    body = json.loads(payload)
+    assert body["v"] == 15.9
+    assert body["group"] == "Enchantee-GPS" and body["name"] == "speed"
+
+    s, _ = _store()
+    assert mqtt_client.handle_message(s, topic, payload.encode()) is True
+    assert s.get("sog").v == 15.9
 
 
 def test_the_demo_looks_like_a_boat_beating_upwind():

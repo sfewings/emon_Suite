@@ -28,6 +28,7 @@ by pages. The operators themselves are emon_feed's; this module wires them to fe
     awa           measured; or awd, hdg the masthead's bow-relative reading, else awd - hdg
     leeway        cog, hdg, sog         min_sog (kn, default 1): below it, no value
     heel          y, z (acc, in g)      min_g (default 0.5); positive heeled to starboard
+    pitch         x, y, z (acc, in g)   min_g (default 0.5); positive bow up
 
 Every entry also takes `unit`, `kind` and `decimals`.
 
@@ -76,13 +77,19 @@ NAV = {
         v["cog"], v["hdg"], v["sog"], float(s.get("min_sog", emon_feed.LEEWAY_MIN_SOG_KT)))),
     "heel": (("y", "z"), lambda v, s: emon_feed.heel(
         v["y"], v["z"], float(s.get("min_g", emon_feed.HEEL_MIN_G)))),
+    # All three axes, not two: pitch measures the fore-and-aft axis against what is
+    # left of gravity in the other two, so it stays right while the boat is heeled.
+    "pitch": (("x", "y", "z"), lambda v, s: emon_feed.pitch(
+        v["x"], v["y"], v["z"], float(s.get("min_g", emon_feed.HEEL_MIN_G)))),
 }
-REQUIRED = {"twa": ("twd", "hdg"), "leeway": ("cog", "hdg", "sog"), "heel": ("y", "z")}
+REQUIRED = {"twa": ("twd", "hdg"), "leeway": ("cog", "hdg", "sog"), "heel": ("y", "z"),
+            "pitch": ("x", "y", "z")}
 TOTALS = ("daily_delta", "integrate")
 """Ops whose new period starts from zero, so a boundary publishes 0 at once rather than
 leaving yesterday's total up until the first reading of the day."""
 
-DEFAULT_UNITS = {"integrate": "Wh", "twa": "deg", "awa": "deg", "leeway": "deg", "heel": "deg"}
+DEFAULT_UNITS = {"integrate": "Wh", "twa": "deg", "awa": "deg", "leeway": "deg",
+                 "heel": "deg", "pitch": "deg"}
 
 LIVE_S = 900.0
 """Replay depth for an input that only feeds live expressions."""

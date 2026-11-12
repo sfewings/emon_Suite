@@ -56,7 +56,20 @@ This starts:
    - Email: Your email address
    - Click "Install WordPress"
 
-3. **Generate Application Password:**
+3. **Set the site timezone** (Settings → General → Timezone) to the one this machine
+   is in, the same as `TIMEZONE` in `.env`. A fresh WordPress is on UTC.
+
+   This matters for publishing, not just for display. The publisher sends the
+   recording's *local* start time as the post date, so on a UTC site a sail recorded
+   at 12:55 Perth is read as 12:55 UTC, which is still hours away: WordPress gives the
+   post status `future` and schedules it instead of publishing it. Nothing reports a
+   failure — the publisher returns a URL, and that URL 404s until the time passes.
+   Drafts never showed this up, because a draft is not scheduled.
+
+   It lives in the database, so `docker compose down -v` loses it and it has to be set
+   again.
+
+4. **Generate Application Password:**
    - Log into WordPress admin: http://localhost:8080/wp-admin
    - Go to: Users → Profile
    - Scroll to "Application Passwords"
@@ -64,7 +77,7 @@ This starts:
    - Click "Add New Application Password"
    - **Copy the password** (format: `xxxx xxxx xxxx xxxx xxxx xxxx`)
 
-4. **Update .env file:**
+5. **Update .env file:**
    ```bash
    nano .env
    ```
@@ -74,7 +87,7 @@ This starts:
    WP_APP_PASSWORD=xxxx xxxx xxxx xxxx xxxx xxxx  # Paste your password
    ```
 
-5. **Restart event_recorder:**
+6. **Restart event_recorder:**
    ```bash
    docker-compose restart event_recorder
    ```

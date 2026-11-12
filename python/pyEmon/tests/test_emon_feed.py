@@ -180,6 +180,34 @@ def test_heel_needs_both_axes_and_enough_gravity():
     assert ef.heel(0.1, 0.1) is None
 
 
+def test_pitch_is_the_fore_and_aft_angle_and_is_positive_bow_up():
+    for deg in (9.0, -6.0):
+        # Bow up by deg: x reads -sin(deg), z the rest. The minus in pitch() is what
+        # turns that back into a positive angle.
+        x, z = -math.sin(math.radians(deg)), math.cos(math.radians(deg))
+        assert abs(ef.pitch(x, 0.0, z) - deg) < 1e-9
+    assert ef.pitch(0.0, 0.0, 1.0) == 0.0, "level is zero"
+
+
+def test_pitch_survives_heel_where_two_axes_would_not():
+    """Heel takes y and z; pitch takes all three, so a boat heeled 30 degrees still
+    reports the pitch it actually has rather than one measured against a tilted
+    reference."""
+    p, h = math.radians(10.0), math.radians(30.0)
+    x = -math.sin(p)
+    y = math.cos(p) * math.sin(h)
+    z = math.cos(p) * math.cos(h)
+    assert abs(ef.pitch(x, y, z) - 10.0) < 1e-9
+    assert abs(ef.heel(y, z) - 30.0) < 1e-9, "and heel still reads the heel"
+
+
+def test_pitch_needs_all_three_axes_and_enough_gravity():
+    assert ef.pitch(None, 0.0, 1.0) is None
+    assert ef.pitch(0.0, None, 1.0) is None
+    assert ef.pitch(0.0, 0.0, None) is None
+    assert ef.pitch(0.1, 0.1, 0.1) is None, "thrown about: the angle means nothing"
+
+
 # --- maths: the recorder's ----------------------------------------------------------------
 
 def test_distance_is_a_degree_of_latitude_on_a_sphere():

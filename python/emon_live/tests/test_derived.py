@@ -253,6 +253,29 @@ def test_heel_is_positive_to_starboard_and_needs_gravity():
     assert values(d.on_value("I / acc 2", 0.1, t + 1)) == {"derived/heel": None}
 
 
+def test_pitch_is_positive_bow_up_and_holds_up_heeled():
+    d = engine({"id": "pitch", "op": "pitch", "x": "I / acc 0", "y": "I / acc 1",
+                "z": "I / acc 2", "decimals": 0})
+    t = local(2026, 10, 27, 14)
+    # 10 degrees bow up, upright: x reads -sin(10).
+    d.on_value("I / acc 0", -0.1736, t)
+    d.on_value("I / acc 1", 0.0, t)
+    assert values(d.on_value("I / acc 2", 0.9848, t)) == {"derived/pitch": 10.0}
+
+    # The same 10 degrees of bow-up with 30 degrees of heel on top. Reading only two
+    # axes would measure against a tilted reference and get this wrong.
+    t += 1
+    d.on_value("I / acc 0", -0.1736, t)
+    d.on_value("I / acc 1", 0.4924, t)
+    assert values(d.on_value("I / acc 2", 0.8529, t)) == {"derived/pitch": 10.0}
+
+    # Thrown about: published once as null so pages blank it, as heel does.
+    t += 1
+    d.on_value("I / acc 0", 0.1, t)
+    d.on_value("I / acc 1", 0.1, t)
+    assert values(d.on_value("I / acc 2", 0.1, t)) == {"derived/pitch": None}
+
+
 def test_nav_ops_name_their_missing_inputs():
     with pytest.raises(ValueError, match="twa needs hdg"):
         engine({"id": "x", "op": "twa", "twd": "a"})
@@ -260,6 +283,8 @@ def test_nav_ops_name_their_missing_inputs():
         engine({"id": "x", "op": "awa", "awd": "a"})
     with pytest.raises(ValueError, match="heel needs y, z"):
         engine({"id": "x", "op": "heel"})
+    with pytest.raises(ValueError, match="pitch needs x, y, z"):
+        engine({"id": "x", "op": "pitch"})
 
 
 def test_battery_energy_splits_by_sign():

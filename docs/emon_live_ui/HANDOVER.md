@@ -352,6 +352,16 @@ the menu. The route and the block are inert without it.
   at most that; Node-RED's day totals still restart (memory context); emon_live's replay.
   Another session on 23 Oct added zram, `sar` and `/var/log/memtop.log` (top processes by
   memory, every minute): read those first after a stall.
+- **A reset is a cold boot, and Influx is slow to open.** After the early-November 2026
+  reset emon_live was serving within seconds while Influx 1.x was still opening the shards
+  of a database holding data since 2019, so every seeding query was refused, each was
+  logged and skipped, and nothing retried: the day's totals counted from the restart, and
+  `rain/month` and `rain/year`, which have no midnight roll to put them right, stayed at
+  the rainfall since the reset. `depends_on` in the compose file waits for the container,
+  not for the database. Since 5 Nov 2026 `influx.Influx.wait_ready` polls
+  `SHOW MEASUREMENTS LIMIT 1` for up to ten minutes (`INFLUX_WAIT_S`) before seeding, and
+  a seeding query dropped by the transport is retried. After any reset, check:
+  `docker logs emon_live 2>&1 | grep -E "influx ready|not answering|seeding incomplete"`.
 - **Every Influx query must be time-bounded** (`WHERE time > ...`), and never `SELECT *`
   without one; `ORDER BY time DESC LIMIT n` does not limit the scan. On 21 Oct 2026 an
   unbounded `SELECT * FROM rain|pulse ORDER BY time DESC LIMIT 3` was followed by the Pi
@@ -780,3 +790,17 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
 - **2026-10-30, 22:03.** Owner approved the House page changes. Merged to master
   (`65ce59a`), production's emon_live restarted: healthy, 63 derived feeds, the page
   checked through nginx. The development instance on 5004 is stopped.
+- **2026-11-05, the Windows laptop. Seeding now waits for Influx.** The owner reported
+  that after a watchdog reset a few days earlier the House page's daily totals were all
+  zero, and that rain month and year were still zero days later. The seeding mechanism
+  (`influx.seed`, called from `app.py` before the MQTT subscribe) was in place and
+  correct; what it lacked was any tolerance for Influx not being up yet, and every
+  failure was swallowed per feed with no retry. Diagnosis and fix in the Machines bullet
+  above. Added `Influx.wait_ready` and a transport-only retry in `query_series`,
+  `--influx-wait` / `INFLUX_WAIT_S` (default 600 s), and a `seeding incomplete: N queries
+  failed` summary line to grep for. New `tests/test_influx_ready.py`, 7 tests, no clock
+  and no Influx, and they need no time zone so they run on Windows too. **Not yet run on
+  a Pi**: it needs only `docker restart emon_live` at shannstainable, then the grep in
+  the Machines bullet. Rain month and year will stay wrong until 1 Dec / 1 Jan unless the
+  restart happens while Influx is up, which it will be, so the restart itself repairs
+  them.

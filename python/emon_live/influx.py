@@ -16,6 +16,16 @@ reset it (HANDOVER, 21 Oct 2026). Each input is replayed only as far back as
 Derived.replay_since says it must be, never more than 36 hours, and a baseline query
 looks in a window that widens only if it finds nothing.
 
+**Seeding waits for Influx before it asks anything.** After a watchdog reset the whole Pi
+cold-boots and Influx 1.x spends minutes opening the shards of a database with data since
+2019, while emon_live is up in seconds; `depends_on` waits for the container, not for the
+database. Before the hardware watchdog reset of early November 2026 every seeding query
+was then refused, each failure was logged and skipped, and nothing retried: the day's
+totals counted from the restart, and `rain/month` and `rain/year`, which have no midnight
+roll to rescue them, stayed at the rainfall since the reset. So `wait_ready` polls a cheap
+bounded query until the database answers, and a query that fails on the transport is
+retried a few times rather than abandoning its feed.
+
 Standard library only: InfluxQL over HTTP, as the 1.x /query endpoint takes it.
 """
 
@@ -39,6 +49,24 @@ MAX_REPLAY_S = 36 * 3600
 
 BASELINE_WINDOWS_S = (6 * 3600, 7 * 86400, 400 * 86400)
 
+READY_WAIT_S = 600.0
+"""How long wait_ready will wait for Influx to answer before seeding gives up on it. Ten
+minutes covers a cold boot's shard opening; past that something is wrong and emon_live is
+better serving live values than not starting."""
+
+READY_PROBE_TIMEOUT_S = 5.0
+"""A readiness probe is meta-only and must be quick; a slow one means not ready yet."""
+
+READY_BACKOFF_S = (1.0, 2.0, 5.0, 10.0, 15.0)
+"""Gaps between probes, the last repeated."""
+
+QUERY_ATTEMPTS = 3
+"""A seeding query that fails on the transport is tried this many times in all. A query
+Influx itself rejects is not retried: it would be rejected again."""
+
+QUERY_RETRY_S = (2.0, 5.0)
+"""Gaps between those attempts."""
+
 
 def _quote(text: str) -> str:
     return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
@@ -53,16 +81,64 @@ class Influx:
                  timeout: float = 30.0) -> None:
         self.url, self.db, self.timeout = url.rstrip("/"), db, timeout
 
-    def query_series(self, q: str) -> List[dict]:
-        """Every series of the answer, each {name, tags, columns, values}, times as epoch
-        milliseconds: what a GROUP BY returns."""
+    def _ask(self, q: str, timeout: Optional[float] = None) -> List[dict]:
+        """One attempt. An unreachable or hung Influx raises OSError, a query Influx
+        rejects RuntimeError; the two are told apart so only the first is retried."""
         params = urllib.parse.urlencode({"db": self.db, "q": q, "epoch": "ms"})
-        with urllib.request.urlopen(f"{self.url}/query?{params}", timeout=self.timeout) as r:
+        with urllib.request.urlopen(f"{self.url}/query?{params}",
+                                    timeout=self.timeout if timeout is None else timeout) as r:
             body = json.loads(r.read().decode("utf-8"))
         result = (body.get("results") or [{}])[0]
         if "error" in result:
             raise RuntimeError(result["error"])
         return result.get("series") or []
+
+    def query_series(self, q: str) -> List[dict]:
+        """Every series of the answer, each {name, tags, columns, values}, times as epoch
+        milliseconds: what a GROUP BY returns.
+
+        Retried while the failure is the transport's: Influx restarting under a query, or
+        a connection refused by a database that has not finished opening.
+        """
+        for attempt in range(QUERY_ATTEMPTS):
+            try:
+                return self._ask(q)
+            except (OSError, json.JSONDecodeError) as ex:
+                if attempt == QUERY_ATTEMPTS - 1:
+                    raise
+                pause = QUERY_RETRY_S[min(attempt, len(QUERY_RETRY_S) - 1)]
+                log.warning("influx query failed (%s); retrying in %.0f s", ex, pause)
+                _time.sleep(pause)
+        return []  # unreachable: the last attempt either returns or raises
+
+    def wait_ready(self, limit: float = READY_WAIT_S, now: Optional[float] = None) -> bool:
+        """Poll until the database answers a cheap bounded query, or `limit` passes.
+
+        `SHOW MEASUREMENTS LIMIT 1` reads only metadata, so it costs nothing and scans no
+        points (the module docstring's rule), but it is answered only once the database
+        is open: exactly the question seeding needs to ask.
+        """
+        started = _time.time() if now is None else now
+        attempt = 0
+        while True:
+            try:
+                self._ask("SHOW MEASUREMENTS LIMIT 1", timeout=READY_PROBE_TIMEOUT_S)
+            except Exception as ex:
+                waited = _time.time() - started
+                if waited >= limit:
+                    log.error("influx at %s still not answering after %.0f s: %s",
+                              self.url, waited, ex)
+                    return False
+                pause = READY_BACKOFF_S[min(attempt, len(READY_BACKOFF_S) - 1)]
+                if attempt == 0:
+                    log.info("waiting for influx at %s: %s", self.url, ex)
+                _time.sleep(min(pause, max(0.0, limit - waited)))
+                attempt += 1
+                continue
+            waited = _time.time() - started
+            if waited >= 1.0:
+                log.info("influx ready after %.0f s", waited)
+            return True
 
     def query(self, q: str) -> List[list]:
         """Rows of the first series, times as epoch milliseconds."""
@@ -202,8 +278,10 @@ class Window:
 def seed(derived: Derived, influx: Influx, now: Optional[float] = None) -> List[emon_feed.Reading]:
     """Baselines, then the replay. Returns the derived readings as they stand at the end,
     one per feed, to publish. A failure is logged and seeding carries on without that
-    feed: emon_live must start, with today's totals counting from now if need be."""
+    feed: emon_live must start, with today's totals counting from now if need be. How
+    many failed is logged at the end, as one line to grep for after a restart."""
     now = _time.time() if now is None else now
+    failed = 0
 
     for entry in derived.long_periods():
         series = derived.influx.get(entry.inputs[0])
@@ -215,7 +293,9 @@ def seed(derived: Derived, influx: Influx, now: Optional[float] = None) -> List[
         try:
             found = influx.first(*series, since=start, until=now)
         except Exception as ex:
-            log.error("derived/%s: baseline query failed: %s", entry.id, ex)
+            log.error("derived/%s: baseline query failed, so it counts from now: %s",
+                      entry.id, ex)
+            failed += 1
             continue
         if found is not None:
             derived.seed_baseline(entry.key, found[1], found[0])
@@ -234,6 +314,7 @@ def seed(derived: Derived, influx: Influx, now: Optional[float] = None) -> List[
             rows = influx.rows(*series, since=since, until=now)
         except Exception as ex:
             log.error("replay of %r failed: %s", name, ex)
+            failed += 1
             continue
         events.extend((t, name, v) for t, v in rows)
         log.debug("replay %s: %d rows", name, len(rows))
@@ -246,4 +327,7 @@ def seed(derived: Derived, influx: Influx, now: Optional[float] = None) -> List[
     for reading in derived.tick(now):
         latest[reading.key] = reading
     log.info("replayed %d readings into %d derived feeds", len(events), len(latest))
+    if failed:
+        log.error("seeding incomplete: %d queries failed; those feeds count from now, and "
+                  "a month or year total will be wrong until its period rolls", failed)
     return list(latest.values())

@@ -6,6 +6,7 @@ numbers the page renders are right and blank when they should, and that the page
 handful of properties the deployment depends on and a careless edit would remove.
 """
 
+from conftest import feed
 import json
 import re
 import sys
@@ -57,7 +58,7 @@ def test_navigation_gives_distance_and_bearing_to_the_current_mark():
     store, _ticker = _racing_store()
     mark = nav.as_latlon(_context().marks["dolphin-east-42b"])
     boat = nav.destination(mark, 250.0, 1200.0)      # 1200 m away, mark bearing 070
-    mqtt_client.handle_message(store, "gps/course/0", b"70")
+    feed(store, "gps/course/0", b"70")
     store.on_position({"lat": boat.lat, "lon": boat.lon})
 
     block = store.state()["race"]
@@ -73,7 +74,7 @@ def test_the_relative_bearing_is_signed_port_negative():
     bearing = nav.bearing(boat, mark)
 
     for offset, expected_sign in ((-30.0, +1), (+30.0, -1)):
-        mqtt_client.handle_message(store, "gps/course/0",
+        feed(store, "gps/course/0",
                                    str(nav.norm360(bearing + offset)).encode())
         store.on_position({"lat": boat.lat, "lon": boat.lon})
         relative = store.state()["race"]["nav"]["relative"]
@@ -124,7 +125,7 @@ def test_the_leg_type_comes_free_from_the_wind_direction():
     bearing = nav.bearing(boat, mark)
 
     for offset, expected in ((5.0, "beat"), (90.0, "reach"), (175.0, "run")):
-        mqtt_client.handle_message(store, "anemometer/windDirection/2",
+        feed(store, "anemometer/windDirection/2",
                                    str(nav.norm360(bearing + offset)).encode())
         store.on_position({"lat": boat.lat, "lon": boat.lon})
         assert store.state()["race"]["nav"]["leg_type"] == expected, offset
@@ -144,7 +145,7 @@ def test_the_leg_after_this_one_is_named_with_its_transit_angle_and_type():
     beyond = nav.as_latlon(marks["sanders-99"])
     boat = nav.destination(mark, 250.0, 900.0)          # closing on bearing 070
 
-    mqtt_client.handle_message(store, "gps/course/0", b"70")
+    feed(store, "gps/course/0", b"70")
     store.on_position({"lat": boat.lat, "lon": boat.lon})
     block = store.state()["race"]["nav"]
 
@@ -168,7 +169,7 @@ def test_the_next_leg_type_is_the_leg_after_the_rounding_not_this_one():
 
     # A wind dead against the leg after the rounding: that leg is a beat, and the one
     # being sailed now is something else entirely.
-    mqtt_client.handle_message(store, "anemometer/windDirection/2", str(onward).encode())
+    feed(store, "anemometer/windDirection/2", str(onward).encode())
     store.on_position({"lat": boat.lat, "lon": boat.lon})
     block = store.state()["race"]["nav"]
     assert block["next_leg_type"] == "beat"
@@ -200,9 +201,9 @@ def test_time_to_line_is_distance_over_speed_made_good_towards_it():
     approach = nav.bearing(inner, outer) + 90.0
     boat = nav.destination(middle, approach, 200.0)
 
-    mqtt_client.handle_message(store, "gps/course/0",
+    feed(store, "gps/course/0",
                                str(nav.bearing(boat, middle)).encode())
-    mqtt_client.handle_message(store, "gps/speed/0", b"5.0")   # straight at it
+    feed(store, "gps/speed/0", b"5.0")   # straight at it
     store.on_position({"lat": boat.lat, "lon": boat.lon})
 
     line = store.state()["race"]["line"]
@@ -218,8 +219,8 @@ def test_reaching_along_the_line_is_not_approaching_it():
     inner, outer = course_module.start_line(CONFIG["lines"])
     boat = nav.destination(nav.midpoint(inner, outer), nav.bearing(inner, outer) + 90.0, 150.0)
 
-    mqtt_client.handle_message(store, "gps/course/0", str(nav.bearing(inner, outer)).encode())
-    mqtt_client.handle_message(store, "gps/speed/0", b"6.0")
+    feed(store, "gps/course/0", str(nav.bearing(inner, outer)).encode())
+    feed(store, "gps/speed/0", b"6.0")
     store.on_position({"lat": boat.lat, "lon": boat.lon})
     assert store.state()["race"]["line"]["seconds"] is None
 
@@ -1009,7 +1010,7 @@ def test_the_log_link_lights_while_the_recorder_is_recording():
     assert store.state()["recording"] == {"active": False}
 
     status = json.dumps({"recording_id": 7, "status": "active", "duration": "00:12:00"})
-    assert mqtt_client.handle_message(store, "event_recorder/recording/7/status", status)
+    assert feed(store, "event_recorder/recording/7/status", status)
     assert store.state()["recording"] == {"active": True}
 
     clock[0] += store_module.RECORDING_STALE_S + 1

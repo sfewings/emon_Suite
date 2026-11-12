@@ -36,43 +36,62 @@ import math
 import threading
 from typing import Any, Callable, Optional
 
+from emon_feed_import import emon_feed
+
 from engine import nav
 from store import RECORDING_KEY, Store, parse_number
 
 log = logging.getLogger(__name__)
 
-TOPICS = {
-    "gps/speed/0": "sog",
-    "gps/course/0": "cog",
-    "imu/0/heading": "hdg",
-    # The accelerometer's y and z, in g, for heel on the GAR dial (DESIGN 9.12). Not
-    # FIELDS: heel is derived from them in store.py, as leeway is from cog and hdg.
-    "imu/0/acc/1": "accy",
-    "imu/0/acc/2": "accz",
-    "anemometer/windSpeed/2": "tws",
-    "anemometer/windDirection/2": "twd",
-    "anemometer/windSpeed/1": "aws",
-    "anemometer/windDirection/0": "awa",  # measured relative to the bow
-    "anemometer/windDirection/1": "awd",  # apparent wind as a compass bearing, fallback
-    "sevCon/rpm0": "rpm",
-    "sevCon/current0": "cur",
-    "sevCon/temperature/controller/0": "ctrl",
-    "sevCon/temperature/motor/0": "mot",
+FEEDS = {
+    "Enchantee-GPS / speed": "sog",
+    "Enchantee-GPS / course": "cog",
+    "IMU Sensor / heading": "hdg",
+    # The accelerometer's athwartships and vertical axes, in g, for heel on the GAR dial
+    # (DESIGN 9.12). Not FIELDS: heel is derived from them in store.py, as leeway is
+    # from cog and hdg. The axes are named in emon_config, so these read as directions
+    # rather than as indices 1 and 2.
+    "IMU Sensor / acc port-starboard": "accy",
+    "IMU Sensor / acc vertical": "accz",
+    "True wind / windSpeed": "tws",
+    "True wind / windDirection": "twd",
+    "Apparent wind / windSpeed": "aws",
+    # The masthead unit's own bow-relative reading.
+    "Boat reference wind / windDirection": "awa",
+    # Apparent wind as a compass bearing, the fallback awa is computed from.
+    "Apparent wind / windDirection": "awd",
+    "SevCon / rpm": "rpm",
+    "SevCon / batteryCurrent": "cur",
+    "SevCon / controllerTemperature": "ctrl",
+    "SevCon / motorTemperature": "mot",
 }
+"""Feed name to HUD field. Was a map of legacy MQTT topics; the boat publishes an
+envelope per reading now (emon_live_ui DESIGN 4.2) carrying the name emon_config gives
+the channel, and a name survives a node being renumbered where a topic does not."""
+
+POSITION_FEED = "Enchantee-GPS / position"
+"""Apart from FEEDS because its value is an object, not a bare number."""
 
 RACE_EVENT_TOPIC = "race/event"
 """Outbound. Every race transition is published here for event_recorder to log, which is
 what makes next season's replay tests possible (DESIGN 11.9)."""
 
-POSITION_TOPIC = "gps/position/0"
-"""Handled apart from TOPICS because its payload is a JSON object, not a bare number."""
+ENVELOPE_TOPIC = "emon/#"
+"""Every reading the boat decodes, one retained JSON envelope each. One subscription in
+place of the fourteen topics this app used to name: what it wants is identified by the
+name inside the message, so the topic only has to reach it."""
 
 RECORDING_TOPIC = "event_recorder/recording/+/status"
 """event_recorder's status for each recording in progress, once a second (its FR-22). Only
 whether one is running is used, for the dot on the Log link (DESIGN 9.13). A wildcard,
 because the recording id is in the topic."""
 
-SUBSCRIPTIONS = tuple(sorted(TOPICS)) + (POSITION_TOPIC, RECORDING_TOPIC)
+SUBSCRIPTIONS = (ENVELOPE_TOPIC, RECORDING_TOPIC)
+"""The legacy topics are gone (3 Nov 2026). The boat publishes both lanes, but reading
+the envelopes is what lets the legacy ones be switched off (PLAN, "Later": stop
+publishing legacy topics), and listening to both would have kept this app as a reason
+not to. A bridge rolled back to an image without the envelope decoder blanks the HUD
+until it is rolled forward; every image published on 3 Nov carries it."""
 
 DEFAULT_BROKER = "localhost"
 DEFAULT_PORT = 1883
@@ -129,17 +148,6 @@ def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] =
     MqttClient._on_message. The parameter stays because it is how a test observes the
     events a single fix produced, with no store drain and no broker involved.
     """
-    if topic == POSITION_TOPIC:
-        position = parse_position(payload)
-        if position is None:
-            return False
-        # on_position rather than set, because a fix is the one reading that makes the race
-        # engine run, and it has to see the course and speed that arrived alongside it.
-        for event in store.on_position(position, ts):
-            if on_events is not None:
-                on_events(event)
-        return True
-
     if topic.startswith("event_recorder/recording/") and topic.endswith("/status"):
         try:
             status = json.loads(payload if isinstance(payload, str) else payload.decode())
@@ -150,10 +158,30 @@ def handle_message(store: Store, topic: str, payload: Any, ts: Optional[float] =
         store.set(RECORDING_KEY, status, ts)
         return True
 
-    key = TOPICS.get(topic)
+    # Everything else is an envelope, and what it is is in the message rather than in
+    # the topic. emon/config, derived feeds and every channel this app does not use all
+    # arrive here too and fall out at the FEEDS lookup.
+    reading = emon_feed.parse(topic, payload)
+    if reading is None:
+        return False
+    name = emon_feed.feed_key(reading)
+
+    if name == POSITION_FEED:
+        position = parse_position(reading.value)
+        if position is None:
+            return False
+        # on_position rather than set, because a fix is the one reading that makes the
+        # race engine run, and it has to see the course and speed that arrived
+        # alongside it.
+        for event in store.on_position(position, ts):
+            if on_events is not None:
+                on_events(event)
+        return True
+
+    key = FEEDS.get(name)
     if key is None:
         return False
-    value = parse_number(payload)
+    value = parse_number(reading.value)
     if value is None:
         return False
     store.set(key, value, ts)
@@ -263,15 +291,15 @@ def demo_readings(tick: int) -> list:
     # rest wobbles so GAR's fading heel lines have something to show.
     heel = math.radians(12.0 + math.sin(tick / 2.0) * 5.0)
     return [
-        ("gps/speed/0", sog),
-        ("gps/course/0", (hdg + 4.0) % 360.0),
-        ("imu/0/heading", hdg),
-        ("imu/0/acc/1", math.sin(heel)),
-        ("imu/0/acc/2", math.cos(heel)),
-        ("anemometer/windSpeed/2", tws),
-        ("anemometer/windDirection/2", twd % 360.0),
-        ("anemometer/windSpeed/1", tws + 6.0),
-        ("anemometer/windDirection/0", (304.0 + wobble * 4.0) % 360.0),
+        ("Enchantee-GPS / speed", sog),
+        ("Enchantee-GPS / course", (hdg + 4.0) % 360.0),
+        ("IMU Sensor / heading", hdg),
+        ("IMU Sensor / acc port-starboard", math.sin(heel)),
+        ("IMU Sensor / acc vertical", math.cos(heel)),
+        ("True wind / windSpeed", tws),
+        ("True wind / windDirection", twd % 360.0),
+        ("Apparent wind / windSpeed", tws + 6.0),
+        ("Boat reference wind / windDirection", (304.0 + wobble * 4.0) % 360.0),
     ]
 
 
@@ -279,11 +307,29 @@ def demo_motor_readings(tick: int) -> list:
     """The SevCon running, so the motor panels can be checked at the dock."""
     wobble = math.sin(tick / 11.0)
     return [
-        ("sevCon/rpm0", 1450.0 + wobble * 120.0),
-        ("sevCon/current0", 62.4 + wobble * 8.0),
-        ("sevCon/temperature/controller/0", 41.0 + wobble * 2.0),
-        ("sevCon/temperature/motor/0", 58.0 + wobble * 3.0),
+        ("SevCon / rpm", 1450.0 + wobble * 120.0),
+        ("SevCon / batteryCurrent", 62.4 + wobble * 8.0),
+        ("SevCon / controllerTemperature", 41.0 + wobble * 2.0),
+        ("SevCon / motorTemperature", 58.0 + wobble * 3.0),
     ]
+
+
+def demo_envelope(name: str, value: Any) -> tuple:
+    """A (topic, payload) pair for a demo reading, shaped like the boat's envelopes.
+
+    The demo feeds these through handle_message rather than writing into the store
+    directly, so it goes down the same parse and feed-name path a real reading does. A
+    demo that bypassed that would still look right on the dock with envelope handling
+    completely broken, which is the one thing it is there to catch.
+
+    group and name are the feed name split back apart; the topic is synthetic, because
+    nothing downstream reads it once the envelope is parsed.
+    """
+    group, _, field = name.partition(" / ")
+    body = {"s": emon_feed.ENVELOPE_VERSION, "v": value,
+            "node": "demo", "field": field, "group": group, "name": field}
+    topic = "emon/demo/" + field.replace(" ", "_")
+    return topic, json.dumps(body, separators=(",", ":"))
 
 
 DEMO_START = {"lat": -32.002349, "lon": 115.812409}
@@ -315,8 +361,8 @@ class DemoDriver:
         readings = demo_readings(self.tick)
         if self.motor:
             readings = readings + demo_motor_readings(self.tick)
-        for topic, value in readings:
-            handle_message(self.store, topic, value)
+        for name, value in readings:
+            handle_message(self.store, *demo_envelope(name, value))
 
         # Dead reckon the position from the speed and course this same tick published,
         # rather than inventing a track alongside them. A demo boat whose position
@@ -325,13 +371,12 @@ class DemoDriver:
         # under test. The original inject nodes had no position to publish, so there is
         # nothing to port here (DESIGN 9.1).
         readings = dict(readings)
-        sog_knots = readings["gps/speed/0"]
-        cog = readings["gps/course/0"]
+        sog_knots = readings["Enchantee-GPS / speed"]
+        cog = readings["Enchantee-GPS / course"]
         metres = sog_knots * nav.METRES_PER_NM / 3600.0 * self.interval_s
         self.position = nav.destination(self.position, cog, metres)
-        handle_message(self.store, POSITION_TOPIC, json.dumps(
-            {"lat": round(self.position.lat, 7), "lon": round(self.position.lon, 7)},
-            separators=(",", ":")))
+        handle_message(self.store, *demo_envelope(POSITION_FEED, {
+            "lat": round(self.position.lat, 7), "lon": round(self.position.lon, 7)}))
 
     def _run(self) -> None:
         while not self._stop.is_set():
