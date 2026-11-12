@@ -211,7 +211,7 @@ CREATE TABLE configurations (
 **Schema changes since initial design:**
 
 - `status` CHECK constraint extended with `'processed'` state: represents a recording where data processing (plots, statistics, exports) is complete but the post has not yet been published to WordPress. This state enables the Publish button in the web UI.
-- `recording_exports` table added (2026-02-26): tracks CSV/KML/GPX files generated per recording.
+- `recording_exports` table added (2026-02-26): tracks CSV/KML/GPX files generated per recording. Its `export_type` CHECK gained `'log'` on 12 Nov 2026 for the boat's raw daily log (FR-18), with a migration that recreates the table on existing databases.
 - `service_settings` table added (2026-03-06): key/value store for runtime-configurable settings (`key TEXT PRIMARY KEY, value TEXT NOT NULL`). Migrated automatically on startup for existing databases.
 
 ---
@@ -571,6 +571,33 @@ CREATE TABLE configurations (
 - GPX uses `application/gpx+xml` MIME type
 - WordPress blocks both MIME types by default — resolved by FR-20
 - Implemented in `data_processor.py → _generate_exports()`
+
+**The boat's raw daily log (12 Nov 2026).** A fourth export type, `log`, attaches
+`emon_log`'s own `/share/Input/<YYYYMMDD>.TXT` to the post as the raw record of the
+day. It differs from the other three in every respect worth knowing:
+
+- **Not generated — referenced where it lies.** Nothing copies, moves or writes to it.
+  That is safe because `RecordingService.delete()` removes a recording's own
+  directories rather than following export paths, so no code here can reach the boat's
+  logs; the compose mount is `:ro` as well.
+- **Named by the boat's day, not the recording's.** `emon_log` names the file in the
+  container's timezone, so the recording is converted to local time and every date it
+  touches is looked for: a sail crossing midnight attaches one file per day, an
+  overnight passage one per day throughout (`DataProcessor.find_raw_logs`).
+- **The whole day, not the recorded part.** Two sails on one day attach the same file
+  to both posts. Intended: it is the boat's record of the day, not of the recording.
+- **Off unless the directory is mounted.** `service.raw_log_dir` (or `RAW_LOG_DIR`),
+  default `/share/Input`; a directory that is not there is treated as not configured,
+  since the recorder also runs on machines with no `emon_log` beside it.
+- `.txt` had to be given `text/plain` in `_get_mime_type`: WordPress checks the
+  declared type against the one it derives from the extension and refuses the upload
+  when they disagree, and `.txt` was falling through to `application/octet-stream`.
+- `recording_exports.export_type`'s CHECK constraint gained `'log'`, with a migration
+  that recreates the table for databases written before this. Without it `add_export`,
+  which uses `INSERT OR IGNORE`, would reject every raw log **silently**.
+- Size is not the CSV problem: a three-hour sail is about 3 MB of raw log, where the
+  CSV of the same recording is a quarter-gigabyte, because the CSV forward-fills every
+  topic at every timestamp.
 
 ---
 

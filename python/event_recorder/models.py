@@ -101,6 +101,9 @@ class ExportType:
     CSV = 'csv'
     KML = 'kml'
     GPX = 'gpx'
+    # The boat's own daily log, written by emon_log and referenced where it lies
+    # rather than copied or generated. See DataProcessor.find_raw_logs.
+    LOG = 'log'
 
 
 class Database:
@@ -232,22 +235,36 @@ class Database:
             )
             if not cursor.fetchone():
                 logger.info("Migrating: adding recording_exports table")
-                conn.execute("""
-                    CREATE TABLE recording_exports (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        recording_id INTEGER NOT NULL,
-                        export_type TEXT NOT NULL CHECK(export_type IN ('csv', 'kml', 'gpx')),
-                        file_path TEXT NOT NULL UNIQUE,
-                        label TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
-                    )
-                """)
+                conn.execute(self.RECORDING_EXPORTS_SQL)
                 conn.execute("""
                     CREATE INDEX IF NOT EXISTS idx_recording_exports_recording_id
                     ON recording_exports(recording_id)
                 """)
                 logger.info("Migration complete: recording_exports table added")
+            else:
+                # An existing table whose CHECK predates the 'log' type (12 Nov 2026).
+                # It has to be recreated: SQLite cannot ALTER a CHECK constraint, and
+                # add_export uses INSERT OR IGNORE, so without this a raw log is
+                # rejected and *silently* dropped - the export simply never appears.
+                row = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' "
+                    "AND name='recording_exports'").fetchone()
+                if row and "'log'" not in row['sql']:
+                    logger.info("Migrating recording_exports: adding the 'log' type")
+                    conn.execute("ALTER TABLE recording_exports RENAME TO recording_exports_old")
+                    conn.execute(self.RECORDING_EXPORTS_SQL)
+                    conn.execute("""
+                        INSERT INTO recording_exports
+                            (id, recording_id, export_type, file_path, label, created_at)
+                        SELECT id, recording_id, export_type, file_path, label, created_at
+                        FROM recording_exports_old
+                    """)
+                    conn.execute("DROP TABLE recording_exports_old")
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_recording_exports_recording_id
+                        ON recording_exports(recording_id)
+                    """)
+                    logger.info("Migration complete: recording_exports accepts logs")
 
             self._repair_dangling_references(conn)
 
@@ -288,6 +305,21 @@ class Database:
     # changed it, so a republish updates that post rather than making another,
     # and refuses to overwrite edits made in wp-admin since. FR-24 adds the
     # draft itself to this table.
+    # One definition, used by the initial schema and by both migrations below, so the
+    # copies cannot drift. 'log' is the boat's own daily .TXT, referenced where it
+    # lies rather than generated (DataProcessor.find_raw_logs).
+    RECORDING_EXPORTS_SQL = """
+        CREATE TABLE IF NOT EXISTS recording_exports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recording_id INTEGER NOT NULL,
+            export_type TEXT NOT NULL CHECK(export_type IN ('csv', 'kml', 'gpx', 'log')),
+            file_path TEXT NOT NULL UNIQUE,
+            label TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
+        )
+    """
+
     POST_DRAFTS_SQL = """
         CREATE TABLE IF NOT EXISTS post_drafts (
             recording_id INTEGER PRIMARY KEY,
@@ -595,18 +627,8 @@ class Database:
                 )
             """)
 
-            # Recording exports table - CSV, KML, GPX download files
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS recording_exports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    recording_id INTEGER NOT NULL,
-                    export_type TEXT NOT NULL CHECK(export_type IN ('csv', 'kml', 'gpx')),
-                    file_path TEXT NOT NULL UNIQUE,
-                    label TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE
-                )
-            """)
+            # Recording exports table - CSV, KML, GPX and raw log download files
+            conn.execute(self.RECORDING_EXPORTS_SQL)
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_recording_exports_recording_id
                 ON recording_exports(recording_id)

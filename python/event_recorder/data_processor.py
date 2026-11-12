@@ -48,6 +48,16 @@ logger = logging.getLogger(__name__)
 # compiled extension this service has no other use for, and the envelope is a versioned
 # format ("s") of five keys. If it gains a version, this is the one place to look.
 
+def _as_datetime(value) -> Optional[datetime]:
+    """A recording's stored time as a datetime, whether it came back as one or as text."""
+    if value is None or isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
 def _envelope(payload) -> Optional[Dict]:
     """The envelope dict for a payload, or None when it is not one."""
     if not isinstance(payload, str) or not payload.lstrip().startswith('{'):
@@ -214,7 +224,8 @@ class DataProcessor:
     # ─────────────────────────────────────────────────────────────────────────
 
     def __init__(self, database: Database, plots_dir: str = "/data/plots",
-                 charts_config: Dict = None, plot_defaults: Dict = None):
+                 charts_config: Dict = None, plot_defaults: Dict = None,
+                 raw_log_dir: str = None):
         """
         Initialize data processor.
 
@@ -225,10 +236,15 @@ class DataProcessor:
                 basemap fetched from enchantee_racing. None uses defaults.
             plot_defaults: The `plots` service config section, giving dpi,
                 figure size, style and line width. None uses defaults.
+            raw_log_dir: Where emon_log writes the boat's daily .TXT logs,
+                normally /share/Input. None (the default) leaves raw logs out
+                of the exports, which is what a deployment without that
+                directory mounted gets.
         """
         self.database = database
         self.plots_dir = Path(plots_dir)
         self.plots_dir.mkdir(parents=True, exist_ok=True)
+        self.raw_log_dir = Path(raw_log_dir) if raw_log_dir else None
 
         # How far apart two readings may be and still belong to the same fix.
         # Only speed arrives separately now: position carries lat and lon together.
@@ -257,7 +273,8 @@ class DataProcessor:
         self._charts = None
         self._charts_loaded = False
 
-        logger.info(f"DataProcessor initialized (plots_dir={plots_dir})")
+        logger.info(f"DataProcessor initialized (plots_dir={plots_dir}, "
+                    f"raw_log_dir={self.raw_log_dir})")
 
     def _load_charts(self) -> Optional[Dict]:
         """
@@ -887,6 +904,13 @@ class DataProcessor:
                 if gpx_path:
                     self.database.add_export(recording_id, 'gpx', str(gpx_path), 'GPS Track')
                     results['exports'].append({'type': 'gpx', 'path': str(gpx_path), 'label': 'GPS Track'})
+
+            if export_config.get('logs', False):
+                recording = self.database.get_recording(recording_id) or {}
+                for log_path, label in self.find_raw_logs(recording):
+                    self.database.add_export(recording_id, 'log', str(log_path), label)
+                    results['exports'].append({'type': 'log', 'path': str(log_path),
+                                               'label': label})
 
             logger.info(f"Processing complete: {len(results['plots'])} plots, "
                         f"{len(results['exports'])} exports")
@@ -1736,7 +1760,55 @@ class DataProcessor:
         the process endpoint's export_config when it is wanted.
         """
         has_gps = bool(self._find_gps_streams(recording_id))
-        return {'csv': False, 'kml': has_gps, 'gpx': has_gps}
+        # Logs whenever the directory is there: they are the boat's own record of the
+        # day and cost nothing to attach, being referenced rather than generated.
+        return {'csv': False, 'kml': has_gps, 'gpx': has_gps,
+                'logs': bool(self.raw_log_dir)}
+
+    def find_raw_logs(self, recording: Dict) -> List[Tuple[Path, str]]:
+        """The boat's own daily log files covering a recording, as (path, label).
+
+        emon_log writes one file per day, /share/Input/<YYYYMMDD>.TXT, named in the
+        container's timezone, which is the boat's. A recording is converted to local
+        time and every date it touches is looked for, so a sail that crosses midnight
+        or an overnight passage attaches a file per day rather than only the first
+        (owner's decision, 12 Nov 2026).
+
+        The whole day is attached, not the part of it the recording covers: the file is
+        offered as the boat's raw record, and two sails on one day attach the same file
+        to both posts, which is intended.
+
+        The file is referenced where it lies and never copied, moved or written to.
+        That is safe because `delete()` removes a recording's own directories rather
+        than following export paths, so nothing here can reach the boat's logs.
+
+        A day whose file is missing is skipped without complaint: the recorder may have
+        been started partway through a day whose log was never written, or the
+        directory may be a deployment that keeps logs elsewhere.
+        """
+        if not self.raw_log_dir:
+            return []
+        if not self.raw_log_dir.is_dir():
+            logger.warning(f"Raw log directory {self.raw_log_dir} is not there; "
+                           "no logs attached")
+            return []
+
+        start = self._utc_to_local(_as_datetime(recording.get('start_time')))
+        if start is None:
+            return []
+        # A recording still running has no end; its logs run to today.
+        end = self._utc_to_local(_as_datetime(recording.get('end_time'))) or datetime.now()
+
+        found = []
+        day = start.date()
+        while day <= end.date():
+            path = self.raw_log_dir / f"{day:%Y%m%d}.TXT"
+            if path.is_file():
+                found.append((path, f"Raw log {day:%Y-%m-%d}"))
+            else:
+                logger.info(f"No raw log for {day:%Y-%m-%d} in {self.raw_log_dir}")
+            day += timedelta(days=1)
+        return found
 
     def generate_csv_export(self, recording_id: int, output_dir: Path) -> Optional[Path]:
         """

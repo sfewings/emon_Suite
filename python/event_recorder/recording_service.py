@@ -44,6 +44,7 @@ class RecordingService:
                  uploads_dir: str = "/data/uploads",
                  charts_config: Optional[Dict] = None,
                  plot_defaults: Optional[Dict] = None,
+                 raw_log_dir: Optional[str] = None,
                  wordpress_publisher=None,
                  wordpress_config: Optional[Callable[[], Dict]] = None,
                  event_configs: Optional[Callable[[], Dict]] = None,
@@ -57,6 +58,7 @@ class RecordingService:
             uploads_dir: The crew's photos, one directory per recording
             charts_config: The `charts` service config section
             plot_defaults: The `plots` service config section
+            raw_log_dir: Where emon_log writes the boat's daily .TXT logs
             wordpress_publisher: WordPressPublisher, or None when not configured
             wordpress_config: Returns the current `wordpress.default_site`
                 section. A callable rather than a dict, because the config
@@ -68,6 +70,7 @@ class RecordingService:
         self.uploads_dir = Path(uploads_dir)
         self.charts_config = charts_config
         self.plot_defaults = plot_defaults
+        self.raw_log_dir = raw_log_dir
         self.wordpress_publisher = wordpress_publisher
         self.wordpress_config = wordpress_config
         # Returns the enabled event configs, {key: config}. A callable, like
@@ -212,7 +215,8 @@ class RecordingService:
         # interface and the tests should not pay for until something is drawn
         from .data_processor import DataProcessor
         processor = DataProcessor(self.database, str(self.plots_dir),
-                                  self.charts_config, self.plot_defaults)
+                                  self.charts_config, self.plot_defaults,
+                                  raw_log_dir=self.raw_log_dir)
         # Falsy, not just None: the web interface passes data.get('plot_config', []),
         # so an ordinary "process this" request arrives with an empty list meaning
         # "nothing specified", not "draw no charts".

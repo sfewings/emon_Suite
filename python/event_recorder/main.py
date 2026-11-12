@@ -18,6 +18,7 @@ import argparse
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 import paho.mqtt.client as mqtt
 
@@ -128,6 +129,7 @@ class EventRecorderService:
             uploads_dir=str(self.data_dir / "uploads"),
             charts_config=self.config.get('charts', {}),
             plot_defaults=self.config.get_plot_config(),
+            raw_log_dir=self._raw_log_dir(),
             wordpress_publisher=self.wordpress_publisher,
             wordpress_config=self.config.get_wordpress_config,
             event_configs=self.config.get_enabled_event_configs,
@@ -144,6 +146,7 @@ class EventRecorderService:
             port=5000,
             charts_config=self.config.get('charts', {}),
             plot_defaults=self.config.get_plot_config(),
+            raw_log_dir=self._raw_log_dir(),
             recording_service=self.recordings
         )
         self.web_thread = None
@@ -225,6 +228,25 @@ class EventRecorderService:
         except Exception as e:
             logger.error(f"Service failed to start: {e}")
             raise
+
+    def _raw_log_dir(self) -> Optional[str]:
+        """Where emon_log writes the boat's daily .TXT logs, or None if not mounted.
+
+        `service.raw_log_dir` in the config, or RAW_LOG_DIR in the environment, which
+        is how a deployment that keeps its logs somewhere else says so. A configured
+        directory that is not there is treated as not configured: the recorder is
+        deployed on machines with no emon_log beside it, and a missing mount should
+        cost a line in the log rather than an export that fails every recording.
+        """
+        configured = os.environ.get(
+            'RAW_LOG_DIR', self.config.get('service.raw_log_dir', '/share/Input'))
+        if not configured:
+            return None
+        if not Path(configured).is_dir():
+            logger.info(f"No raw log directory at {configured}; "
+                        "the boat's daily logs will not be attached to posts")
+            return None
+        return configured
 
     def _run_recovery(self):
         """Run power outage recovery on startup."""

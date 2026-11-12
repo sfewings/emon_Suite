@@ -79,6 +79,7 @@ class WebInterface:
                  host: str = "0.0.0.0", port: int = 5000,
                  charts_config: Optional[Dict] = None,
                  plot_defaults: Optional[Dict] = None,
+                 raw_log_dir: Optional[str] = None,
                  recording_service: Optional[RecordingService] = None):
         """
         Initialize web interface.
@@ -97,6 +98,9 @@ class WebInterface:
                 data processor so a reprocess from here draws the same as one
                 the service starts itself. Not to be confused with the
                 per-request plot_config, which lists the plots to draw.
+            raw_log_dir: Where emon_log writes the boat's daily .TXT logs,
+                passed to the data processor so a reprocess from here attaches
+                the same raw logs as one the service starts itself.
             recording_service: What every route that changes a recording
                 calls (TR-10). main.py passes the service's own; without one,
                 as in the tests, a service that records nothing is built here
@@ -109,6 +113,7 @@ class WebInterface:
         self.uploads_dir = Path(uploads_dir)
         self.charts_config = charts_config
         self.plot_defaults = plot_defaults
+        self.raw_log_dir = raw_log_dir
         self.host = host
         self.port = port
 
@@ -118,6 +123,7 @@ class WebInterface:
             uploads_dir=uploads_dir,
             charts_config=charts_config,
             plot_defaults=plot_defaults,
+            raw_log_dir=raw_log_dir,
             wordpress_publisher=wordpress_publisher,
         )
 

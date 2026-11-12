@@ -513,6 +513,10 @@ class WordPressPublisher:
             '.csv': 'text/csv',
             '.kml': 'application/vnd.google-earth.kml+xml',
             '.gpx': 'application/gpx+xml',
+            # The boat's raw daily log. WordPress checks the declared type against
+            # the one it derives from the extension and refuses the upload when they
+            # disagree, so .txt must not fall through to octet-stream.
+            '.txt': 'text/plain',
         }
         return mime_types.get(ext, 'application/octet-stream')
 

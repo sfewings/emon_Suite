@@ -200,6 +200,10 @@ services:
     volumes:
       - ./config:/config
       - ./data:/data
+      # The boat's daily logs, written by emon_log above, attached to a published
+      # post as its raw record of the day. Read-only: event_recorder references
+      # these files where they lie and must never write to or delete them.
+      - /share/Input:/share/Input:ro
     environment:
 #      - MQTT_BROKER=localhost
 #      - MQTT_PORT=1883

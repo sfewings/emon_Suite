@@ -8,6 +8,9 @@
 # the recordings already in the database were made.
 #
 # What changed from 20261103-1329.yml:
+#   - exports now include `logs: true`, attaching the boat's own daily .TXT log to
+#     the published post. Needs /share/Input mounted into the event_recorder
+#     container, which docker-compose.yml now does, read-only.
 #   - {efficiency}, Wh per km, is gone from the post template. The statistic it read
 #     is gone with it: on a boat that sails most of its distance it measures nothing
 #     a reader of the blog can use (owner's decision, 12 Nov 2026).
@@ -224,6 +227,12 @@ events:
       csv: false
       kml: true
       gpx: true
+      # The boat's own daily log, /share/Input/<YYYYMMDD>.TXT, attached as the raw
+      # record of the day. The whole day, not just the recorded part: two sails on
+      # one day attach the same file to both posts, and a sail that crosses midnight
+      # attaches one file per day (owner's decision, 12 Nov 2026). Referenced where
+      # it lies, so this costs no disk and nothing here can alter it.
+      logs: true
 
     # WordPress publishing settings
     wordpress:
