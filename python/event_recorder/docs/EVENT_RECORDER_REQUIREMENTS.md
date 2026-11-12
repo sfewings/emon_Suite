@@ -788,9 +788,16 @@ WordPress block markup for both the preview and the published post
   categories from the draft. Whether the block editor opens every block without a
   validation warning needs a browser; not yet checked.
 - The publisher's content helpers moved to `post_renderer.py` (`local_time`,
-  `format_duration`, `apply_template`, `pop_primary_route_map`,
-  `statistics_table_html`, `extract_folium_embed`); the publisher keeps thin
-  delegating methods for its callers.
+  `format_duration`, `pop_primary_route_map`, `statistics_table_html`,
+  `extract_folium_embed`); the publisher keeps thin delegating methods for its callers.
+- **`apply_template` is gone (12 Nov 2026).** With it went `PostContext.template`, the
+  `template` argument on `publish()` / `publish_recording()` and the optional `template`
+  field on `POST /api/recordings/<id>/publish`. Nothing ever supplied one: the event
+  config's `wordpress.template` was never read and `_publish_options()` never set it, so
+  every post has always been composed from the draft's blocks (FR-25). It substituted
+  six placeholders, while the templates written in the configs name `{distance}`,
+  `{max_speed}` and `{energy_used}`, so anything that had reached it would have raised
+  `KeyError` and published the template as literal text.
 
 - The current output is raw HTML with only `wp:more` and `wp:html` delimited, so
   wp-admin opens it as one Classic block. The 7-Oct post shows what follows: the classic
@@ -1213,6 +1220,18 @@ each one tap from the top of the event page, each placed on the track by its tim
   than `metres`), `weekday_evening` (boat time, +8), `race_started` (a `race/event` of
   type `start`), `track_enters` (`bbox`). All are answered in SQL with `json_extract`,
   and the answer is cached for a minute per recording, as the page asks every 5 s.
+- **The track rules read feeds, not topics (12 Nov 2026).** `moved` and `track_enters`
+  asked `models` for `gps/position/0`, which the boat stopped recording when
+  `record_topics` became `emon/#`: both saw a recording with no fixes in it, so for the
+  whole season every sail was filed under "Track Logs" alone. The same bug blanked the
+  wind line (FR-26) and the live summary (FR-31). The five `models` questions
+  (`track_extent`, `has_fix_within`, `positions_since`, `max_value_since`,
+  `numeric_series`) now take one or more *feed* patterns, matched with `GLOB` against
+  both the topic and the envelope's `group / name`, with the fix read from `$.v.lat`
+  or the legacy `$.lat`. Callers name both lanes — `('* / position', 'gps/position/0')`
+  — because a feed-name glob has a ` / ` in it and so can never match a legacy topic.
+  `race/event` is **not** affected: the racing app publishes it directly and `race/#`
+  is in `record_topics`, so it is current rather than legacy.
 - **A recording nobody wrote up** publishes with its suggested categories: publishing
   now uses the draft the page would show, stored or not.
 - **Categories are never created** by the publisher. A name the site does not have is

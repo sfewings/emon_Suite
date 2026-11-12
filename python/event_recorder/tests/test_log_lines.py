@@ -4,6 +4,7 @@ Run in the dev container (dev/README.md):
     python -m pytest event_recorder/tests/test_log_lines.py
 """
 
+import json
 import time
 from datetime import datetime, timedelta
 
@@ -12,8 +13,7 @@ import pytest
 from event_recorder import post_renderer
 from event_recorder.models import Database, RecordingStatus
 from event_recorder.post_renderer import LAYOUT_SHIP_LOG, PostContext, render
-from event_recorder.post_suggestions import (WIND_DIRECTION_TOPIC, WIND_SPEED_TOPIC,
-                                             wind_line)
+from event_recorder.post_suggestions import wind_line
 from event_recorder.recording_service import RecordingService
 
 
@@ -30,13 +30,40 @@ def _recording(db):
 
 
 def _wind(db, rid, directions, speeds, every=timedelta(seconds=15)):
+    """A pre-envelope recording: bare numbers on the legacy topics."""
     start = datetime(2026, 9, 13, 5, 30)
     db.add_messages_batch(
-        [(rid, start + i * every, WIND_DIRECTION_TOPIC, str(d)) for i, d in enumerate(directions)] +
-        [(rid, start + i * every, WIND_SPEED_TOPIC, str(s)) for i, s in enumerate(speeds)])
+        [(rid, start + i * every, 'anemometer/windDirection/2', str(d))
+         for i, d in enumerate(directions)] +
+        [(rid, start + i * every, 'anemometer/windSpeed/2', str(s))
+         for i, s in enumerate(speeds)])
+
+
+def _wind_envelopes(db, rid, directions, speeds, every=timedelta(seconds=15)):
+    """The boat as it records now: envelopes on emon/mwv/2/*, named 'True wind'."""
+    start = datetime(2026, 9, 13, 5, 30)
+
+    def rows(field, values):
+        return [(rid, start + i * every, f"emon/mwv/2/{field}",
+                 json.dumps({'s': 1, 'v': v, 't': (start + i * every).timestamp(),
+                             'node': 'mwv', 'sub': 2, 'field': field,
+                             'group': 'True wind', 'name': field}))
+                for i, v in enumerate(values)]
+
+    db.add_messages_batch(rows('windDirection', directions) + rows('windSpeed', speeds))
 
 
 # === The wind line ===
+
+def test_the_wind_is_read_from_the_envelopes_the_boat_records(db):
+    """The reason no published post has carried a wind line since record_topics became
+    emon/#: wind_line asked for anemometer/windDirection/2, which is no longer recorded.
+    The reading lives in an envelope now, found by its feed name."""
+    rid = _recording(db)
+    _wind_envelopes(db, rid, [245 + (i % 9) for i in range(200)],
+                    [8 + (i % 6) for i in range(200)])
+    assert wind_line(db, rid) == "WSW 8-13 kts"
+
 
 def test_a_steady_sea_breeze(db):
     rid = _recording(db)

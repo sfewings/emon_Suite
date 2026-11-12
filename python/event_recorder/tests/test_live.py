@@ -42,6 +42,33 @@ def _north(steps, lat=-32.0, lon=115.8, per_step=MILE_NORTH / 30):
     return [(lat + i * per_step, lon) for i in range(steps + 1)]
 
 
+def _envelope_fixes(db, rid, points, start=START, every=timedelta(seconds=10)):
+    """The boat as it records now: emon/gps/0/position, the fix nested under `v`."""
+    db.add_messages_batch(
+        [(rid, start + i * every, "emon/gps/0/position",
+          json.dumps({"s": 1, "v": {"lat": lat, "lon": lon}, "t": 0,
+                      "node": "gps", "sub": 0, "field": "position",
+                      "group": "Enchantee-GPS", "name": "position"}))
+         for i, (lat, lon) in enumerate(points)])
+
+
+def test_the_live_summary_reads_the_envelopes_the_boat_records(db):
+    """Why the page's distance and top speed sat at zero all season: the summary asked
+    for gps/position/0 and gps/speed/0, which record_topics stopped recording."""
+    rid = db.create_recording("x")
+    _envelope_fixes(db, rid, _north(30))
+    db.add_messages_batch(
+        [(rid, START + timedelta(seconds=10 * i), "emon/gps/0/speed",
+          json.dumps({"s": 1, "v": speed, "t": 0, "node": "gps", "sub": 0,
+                      "field": "speed", "group": "Enchantee-GPS", "name": "speed"}))
+         for i, speed in enumerate([4.0, 11.5, 7.25])])
+
+    summary = LiveSummaries(db).summary(rid)
+    assert summary["distance_nm"] == pytest.approx(1.0, abs=0.01)
+    assert summary["max_sog"] == 11.5
+    assert len(summary["track"]) > 1
+
+
 def test_a_mile_sailed_is_a_mile(db):
     rid = db.create_recording("x")
     _fixes(db, rid, _north(30))          # a mile in 300 s: 12 knots

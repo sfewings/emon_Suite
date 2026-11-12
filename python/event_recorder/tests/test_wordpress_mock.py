@@ -315,35 +315,8 @@ except Exception as e:
 
 print()
 
-# Test 10: Test Template Substitution
-print("STEP 10: Test Template Substitution (Mocked)")
-try:
-    recording_data = {
-        'start_time': '2026-02-12 09:44:33',
-        'end_time': '2026-02-12 09:44:48',
-        'name': 'Test Track',
-        'description': 'Test description',
-        'message_count': 26
-    }
-
-    template = "<h2>{name}</h2><p>Started: {start_time}</p><p>Messages: {message_count}</p>"
-
-    result = wp._apply_template(recording_data, template)
-
-    expected = "<h2>Test Track</h2><p>Started: 2026-02-12 09:44:33</p><p>Messages: 26</p>"
-
-    if result == expected:
-        print(f"[PASS] Template substitution works correctly")
-        print(f"  Output: {result[:50]}...")
-    else:
-        print(f"[FAIL] Template substitution failed")
-        print(f"  Expected: {expected}")
-        print(f"  Got: {result}")
-        sys.exit(1)
-
-except Exception as e:
-    print(f"[FAIL] Template substitution test failed: {e}")
-    sys.exit(1)
+# Test 10 was template substitution. The template path is gone (12 Nov 2026):
+# nothing ever supplied one, and the post is composed from the draft's blocks.
 
 print()
 print("="*70)
@@ -359,7 +332,6 @@ print("  [PASS] Post creation")
 print("  [PASS] Recording publication")
 print("  [PASS] Error handling")
 print("  [PASS] Retry logic (exponential backoff)")
-print("  [PASS] Template substitution")
 print()
 print("Code Quality: [PASS] EXCELLENT")
 print("  - All WordPress API endpoints implemented correctly")

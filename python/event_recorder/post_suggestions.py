@@ -32,7 +32,15 @@ logger = logging.getLogger(__name__)
 # saving, and the container's TZ is not to be trusted with it
 BOAT_OFFSET = timedelta(hours=8)
 
-POSITION_TOPIC = 'gps/position/0'
+# The boat's fixes. Any GPS unit's position will do for "did the boat go anywhere", so
+# the feed name is a glob (DESIGN 5), with the legacy topic beside it for recordings
+# made before the envelopes.
+#
+# This was gps/position/0 alone, which the boat stopped recording when record_topics
+# became emon/#: _moved and _track_enters saw a recording with no fixes in it, so since
+# then no category has been suggested from the track and every sail was filed under
+# "Track Logs" alone.
+POSITION_FEEDS = ('* / position', 'gps/position/0')
 
 
 # === Categories ===
@@ -59,7 +67,7 @@ def _always(rule, recording, database):
 
 def _moved(rule, recording, database):
     """The boat went somewhere: its fixes span more than `metres` (default 200)."""
-    span = database.track_extent(recording['id'], POSITION_TOPIC)
+    span = database.track_extent(recording['id'], POSITION_FEEDS)
     if not span:
         return False
     south, west, north, east = span
@@ -89,7 +97,7 @@ def _race_started(rule, recording, database):
 def _track_enters(rule, recording, database):
     """A fix inside `bbox`: [south, west, north, east]."""
     south, west, north, east = (float(x) for x in rule['bbox'])
-    return database.has_fix_within(recording['id'], POSITION_TOPIC, south, west, north, east)
+    return database.has_fix_within(recording['id'], POSITION_FEEDS, south, west, north, east)
 
 
 _RULES = {
@@ -103,9 +111,12 @@ _RULES = {
 
 # === Wind (FR-26) ===
 
-# The true wind the racing app reads, from the anemometer sketch
-WIND_DIRECTION_TOPIC = 'anemometer/windDirection/2'
-WIND_SPEED_TOPIC = 'anemometer/windSpeed/2'
+# The true wind the racing app reads, named as emon_config names it (DESIGN 5). These
+# were the legacy topics anemometer/windDirection/2 and anemometer/windSpeed/2, which
+# the boat stopped recording when record_topics became emon/# — so the wind line came
+# out blank and no published post has carried one since.
+WIND_DIRECTION_FEEDS = ('True wind / windDirection', 'anemometer/windDirection/2')
+WIND_SPEED_FEEDS = ('True wind / windSpeed', 'anemometer/windSpeed/2')
 
 # Less than this much wind data is not a day's wind
 WIND_MIN_SPAN = timedelta(minutes=10)
@@ -131,8 +142,8 @@ def wind_line(database, recording_id: int) -> str:
     guessed when there is too little wind data, or the direction wandered too
     far to name one quarter.
     """
-    directions = database.numeric_series(recording_id, WIND_DIRECTION_TOPIC)
-    speeds = [v for _, v in database.numeric_series(recording_id, WIND_SPEED_TOPIC)]
+    directions = database.numeric_series(recording_id, WIND_DIRECTION_FEEDS)
+    speeds = [v for _, v in database.numeric_series(recording_id, WIND_SPEED_FEEDS)]
     if len(directions) < WIND_MIN_SAMPLES or not speeds:
         return ''
     if directions[-1][0] - directions[0][0] < WIND_MIN_SPAN:

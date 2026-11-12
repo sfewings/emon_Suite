@@ -282,10 +282,10 @@ def test_energy_comes_from_the_bms_when_there_is_no_shunt(tmp_path):
     assert stats['energy_used_wh'] > 0
 
 
-def test_efficiency_is_computed_from_distance_and_energy(tmp_path):
-    """It used to be computed inside _calculate_energy_statistics against that
-    function's own dict, which never holds distance_km, so {efficiency} in the post
-    template was never filled."""
+def test_efficiency_is_not_reported(tmp_path):
+    """Wh per km is gone (owner's decision, 12 Nov 2026): on a boat that sails most of
+    its distance it measures nothing a reader of the blog can use. Distance and energy,
+    which it was built from, are still reported in their own right."""
     rows = _battery_rows(n=60)
     for i in range(60):
         rows.append({'topic': 'emon/gps/0/position',
@@ -300,9 +300,37 @@ def test_efficiency_is_computed_from_distance_and_energy(tmp_path):
     stats = processor.calculate_statistics(1)
     assert stats.get('distance_km', 0) > 0
     assert stats.get('energy_used_wh', 0) > 0
-    assert 'efficiency_wh_per_km' in stats, "distance and energy are both present"
-    assert stats['efficiency_wh_per_km'] == (stats['energy_used_wh']
-                                             / stats['distance_km'])
+    assert 'efficiency_wh_per_km' not in stats
+
+
+def test_the_weather_comes_from_the_anemometers_own_sensor(tmp_path):
+    """Temperature, humidity and pressure as min, mean and max over the recording.
+
+    The boat carries two pth sensors; these are the masthead one, named 'Anemometer'
+    in emon_config, so a cabin reading cannot be reported as the day's weather.
+    """
+    rows = []
+    for field, unit, kind, first in (('temperature', 'C', 'temperature', 18.0),
+                                     ('humidity', '%', 'humidity', 60.0),
+                                     ('pressure', 'hPa', 'pressure', 1010.0)):
+        rows += _envelope_rows(f'emon/pth/1/{field}', 'pth', 1, field,
+                               'Anemometer', field, unit, kind, n=5, first=first)
+        # The cabin sensor, which must not be mistaken for the weather outside
+        rows += _envelope_rows(f'emon/pth/0/{field}', 'pth', 0, field,
+                               'Cabin GPS', field, unit, kind, n=5, first=first + 100)
+
+    stats = _processor(tmp_path, rows).calculate_statistics(1)
+    # _envelope_rows counts up by one from `first`, so 18..22, 60..64, 1010..1014
+    assert (stats['air_temperature_min'], stats['air_temperature_mean'],
+            stats['air_temperature_max']) == (18.0, 20.0, 22.0)
+    assert (stats['humidity_min'], stats['humidity_max']) == (60.0, 64.0)
+    assert (stats['pressure_min'], stats['pressure_max']) == (1010.0, 1014.0)
+
+
+def test_a_recording_without_a_weather_sensor_simply_omits_it(tmp_path):
+    stats = _processor(tmp_path, _battery_rows()).calculate_statistics(1)
+    assert not [key for key in stats if key.startswith(('air_temperature', 'humidity',
+                                                        'pressure'))]
 
 
 # --- the GPS stream, found by envelope rather than by topic text ------------------------

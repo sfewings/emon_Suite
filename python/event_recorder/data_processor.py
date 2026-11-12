@@ -1279,8 +1279,6 @@ class DataProcessor:
         # Add energy stats
         if 'energy_used_wh' in statistics:
             table_data.append(['Energy Used', f"{statistics['energy_used_wh']:.1f} Wh"])
-        if 'efficiency_wh_per_km' in statistics:
-            table_data.append(['Efficiency', f"{statistics['efficiency_wh_per_km']:.1f} Wh/km"])
 
         if 'battery_cycles' in statistics:
             table_data.append(['Battery Cycles', f"{statistics['battery_cycles']:.0f}"])
@@ -1997,14 +1995,43 @@ class DataProcessor:
         if cycles is not None:
             stats['battery_cycles'] = cycles
 
-        # Efficiency needs both, so it is computed here rather than inside either.
-        # It used to be computed inside _calculate_energy_statistics against that
-        # function's own local dict, which never holds distance_km: that arrives from
-        # _calculate_gps_statistics and is merged above. The test was therefore never
-        # true and the post template's {efficiency} has never had a value.
-        if stats.get('distance_km', 0) > 0 and 'energy_used_wh' in stats:
-            stats['efficiency_wh_per_km'] = stats['energy_used_wh'] / stats['distance_km']
+        # The weather the boat sailed in, from the anemometer's own sensor
+        stats.update(self._calculate_environment_statistics(recording_id))
 
+        # Wh per km was here. It is a motor-efficiency number on a sailing boat, where
+        # the distance is mostly made under sail and the energy mostly goes elsewhere,
+        # so it says nothing a blog reader can use (owner's decision, 12 Nov 2026).
+
+        return stats
+
+    # The anemometer carries a pressure/temperature/humidity sensor, so these are the
+    # readings from the masthead rather than from inside the cabin. Named feeds, not
+    # topics: 'Anemometer' is the pth subnode's name in emon_config (DESIGN 5).
+    ENVIRONMENT_FEEDS = (
+        ('air_temperature', 'Anemometer / temperature'),
+        ('humidity',        'Anemometer / humidity'),
+        ('pressure',        'Anemometer / pressure'),
+    )
+
+    def _calculate_environment_statistics(self, recording_id: int) -> Dict:
+        """Min, max and mean of each weather reading over the recording.
+
+        A missing sensor is not an error: the keys are simply absent and the table
+        leaves those rows out, as it does for every other statistic.
+        """
+        stats = {}
+        for key, pattern in self.ENVIRONMENT_FEEDS:
+            topics = self._resolve_feeds(recording_id, [pattern])
+            values = []
+            for topic in topics:
+                data = self._get_topic_data(recording_id, topic)
+                if data and data[1]:
+                    values.extend(v for v in data[1] if v is not None)
+            if not values:
+                continue
+            stats[f'{key}_min'] = min(values)
+            stats[f'{key}_max'] = max(values)
+            stats[f'{key}_mean'] = sum(values) / len(values)
         return stats
 
     def _calculate_gps_statistics(self, recording_id: int) -> Dict:

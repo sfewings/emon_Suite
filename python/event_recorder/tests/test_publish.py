@@ -42,7 +42,7 @@ class FakeWordPress:
         return dict(post) if post else None
 
     def publish_recording(self, recording_data, images, exports=None, statistics=None,
-                          map_htmls=None, template=None, category="Track Logs",
+                          map_htmls=None, category="Track Logs",
                           auto_publish=False, post_id=None, progress=None,
                           blocks=None, draft=None):
         if self.gate:

@@ -95,14 +95,13 @@ class PostContext:
 
     def __init__(self, recording: Dict, media: List[Dict] = None,
                  statistics: Optional[Dict] = None, map_htmls: List[str] = None,
-                 downloads: List[Dict] = None, template: str = None,
+                 downloads: List[Dict] = None,
                  draft: Optional[Dict] = None):
         self.recording = recording
         self.media = media or []
         self.statistics = statistics
         self.map_htmls = map_htmls or []
         self.downloads = downloads or []
-        self.template = template
         self.draft = draft or {}
 
     @property
@@ -185,10 +184,6 @@ def _list(items_html: List[str]) -> str:
 def _track_summary(block, ctx, state):
     """The Track Summary heading, date and duration of today's post."""
     rec = ctx.recording
-    if ctx.template:
-        # A custom template is the author's own HTML; kept as it is
-        return _html_block(apply_template(rec, ctx.template))
-
     start = local_time(rec.get('start_time'))
     out = _heading('Track Summary')
     out += _paragraph('<strong>Date:</strong> ' +
@@ -420,24 +415,14 @@ def log_time_line(recording: Dict) -> str:
     return f"{clock(start)}-{clock(end)}" if end else clock(start)
 
 
-def apply_template(recording_data: Dict, template: str) -> str:
-    """Apply template with placeholder substitution."""
-    values = {
-        'start_time': recording_data.get('start_time', 'N/A'),
-        'end_time': recording_data.get('end_time', 'N/A'),
-        'duration': format_duration(
-            recording_data.get('start_time'),
-            recording_data.get('end_time')
-        ),
-        'name': recording_data.get('name', 'Track Log'),
-        'description': recording_data.get('description', ''),
-        'message_count': recording_data.get('message_count', 0)
-    }
-    try:
-        return template.format(**values)
-    except KeyError as e:
-        logger.warning(f"Template placeholder not found: {e}")
-        return template
+# apply_template() was here, with PostContext.template and the branch in
+# _track_summary() that used them. Nothing ever supplied a template: the event config's
+# `wordpress.template` was never read, _publish_options() never set one, and the only
+# other way in was an optional field on the publish API that no caller sends. The post
+# is composed from the draft's blocks instead (FR-25). It also substituted only six
+# placeholders, so the templates written in the configs, which name {distance},
+# {max_speed} and {energy_used}, would have raised KeyError and published the template
+# as literal text had anything reached it. Removed 12 Nov 2026.
 
 
 def pop_primary_route_map(plots: List[Dict]) -> Optional[Dict]:
@@ -464,6 +449,10 @@ def pop_primary_route_map(plots: List[Dict]) -> Optional[Dict]:
     return primary
 
 
+# Weather statistics, which read as false precision at two decimals
+_ONE_DECIMAL = {'air_temperature', 'humidity', 'pressure'}
+
+
 def statistics_table_html(statistics: Dict) -> str:
     """Render statistics dict as an HTML table, inline-styled as the posts have it."""
     ordered_keys = [
@@ -471,6 +460,9 @@ def statistics_table_html(statistics: Dict) -> str:
         'distance_km', 'max_speed', 'avg_speed',
         'total_energy_wh', 'avg_power_w', 'max_power_w',
         'battery_cycles',
+        'air_temperature_min', 'air_temperature_mean', 'air_temperature_max',
+        'humidity_min', 'humidity_mean', 'humidity_max',
+        'pressure_min', 'pressure_mean', 'pressure_max',
         'message_count',
     ]
     label_map = {
@@ -491,6 +483,18 @@ def statistics_table_html(statistics: Dict) -> str:
         # The pack's lifetime cycle count, a number rather than a chart of a
         # near-flat line.
         'battery_cycles':    ('Battery Cycles',    ''),
+        # The weather over the sail, from the sensor in the anemometer at the
+        # masthead. Min, mean and max rather than one number: a reader wants to
+        # know it was 18 to 24 degrees, not that the average was 21.
+        'air_temperature_min':  ('Air Temperature (min)',  '°C'),
+        'air_temperature_mean': ('Air Temperature (mean)', '°C'),
+        'air_temperature_max':  ('Air Temperature (max)',  '°C'),
+        'humidity_min':         ('Humidity (min)',         '%'),
+        'humidity_mean':        ('Humidity (mean)',        '%'),
+        'humidity_max':         ('Humidity (max)',         '%'),
+        'pressure_min':         ('Air Pressure (min)',     'hPa'),
+        'pressure_mean':        ('Air Pressure (mean)',    'hPa'),
+        'pressure_max':         ('Air Pressure (max)',     'hPa'),
         'message_count':     ('Messages Recorded', ''),
     }
     skip = {'duration_seconds'}
@@ -499,7 +503,11 @@ def statistics_table_html(statistics: Dict) -> str:
         label, unit = label_map.get(key, (key.replace('_', ' ').title(), ''))
         if key == 'distance_km' and isinstance(value, (int, float)):
             value = float(value) / 1.852
-        if key == 'battery_cycles' and isinstance(value, (int, float)):
+        if key.rsplit('_', 1)[0] in _ONE_DECIMAL and isinstance(value, (int, float)):
+            # A tenth of a degree or a millibar is as fine as these sensors read;
+            # '62.37 %' claims a precision the humidity sensor does not have.
+            formatted = f"{value:.1f}"
+        elif key == 'battery_cycles' and isinstance(value, (int, float)):
             # A whole number of cycles; '34.00' reads as a measurement it is not.
             formatted = f"{value:.0f}"
         elif isinstance(value, float):

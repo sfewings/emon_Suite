@@ -434,7 +434,7 @@ class RecordingService:
             return dict(job) if job else None
 
     def publish(self, recording_id: int, category: str = 'Track Logs',
-                template: str = None, auto_publish: Optional[bool] = None,
+                auto_publish: Optional[bool] = None,
                 progress: Optional[Callable[[str, int, int], None]] = None) -> Dict:
         """
         Publish a recording to WordPress, there and then. start_publish() runs
@@ -512,7 +512,6 @@ class RecordingService:
                 exports=inputs['exports'],
                 statistics=inputs['statistics'],
                 map_htmls=inputs['map_htmls'],
-                template=template,
                 category=category,
                 auto_publish=auto_publish,
                 post_id=post_id,

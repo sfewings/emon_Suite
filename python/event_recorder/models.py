@@ -976,65 +976,131 @@ class Database:
             """, (recording_id,))
             return [dict(row) for row in cursor.fetchall()]
 
-    # === Questions the category rules ask (FR-30) ===
-    # Answered in SQL, so a recording's fixes are never loaded into Python to
-    # answer a yes or no
+    # === Questions the category rules and the live summary ask (FR-30, FR-31) ===
+    #
+    # Answered in SQL, so a recording's fixes are never loaded into Python to answer a
+    # yes or no.
+    #
+    # Each takes a *feed*, not a topic. A recording holds one of two lanes depending on
+    # when it was made: the envelopes the boat publishes now, which carry the reading in
+    # `v` and the feed's own name in `group` and `name` (DESIGN 4.2, 5), or the bare
+    # payloads on legacy topics that recordings made before the migration hold. The
+    # clause and the value expressions below read both, so a caller names the feed it
+    # wants and gets an answer from whichever lane the recording was made in.
+    #
+    # These all asked for a legacy topic until 12 Nov 2026, which is why they went quiet
+    # when record_topics became emon/#: the topics they named are no longer recorded, so
+    # the category rules saw a boat that never moved and the live summary a track with no
+    # fixes in it. Neither failed; both simply found nothing.
+    #
+    # GLOB, not '=', so a caller that should not care which GPS unit answered can ask for
+    # '* / position'. A name with no wildcard in it matches itself, as GLOB has no
+    # special characters a feed name uses.
+    #
+    # A caller may pass several patterns, and generally should: a feed-name glob cannot
+    # match a legacy topic, which has no ' / ' in it, so naming both ('* / position' and
+    # 'gps/position/0') is what keeps a recording made either side of the migration
+    # answering the same question.
 
-    def track_extent(self, recording_id: int, topic: str) -> Optional[Tuple[float, float, float, float]]:
+    # The envelope nests the fix under `v`; the legacy gps/position payload had lat and
+    # lon at the top level beside a `ts`.
+    _LAT = "COALESCE(json_extract(payload, '$.v.lat'), json_extract(payload, '$.lat'))"
+    _LON = "COALESCE(json_extract(payload, '$.v.lon'), json_extract(payload, '$.lon'))"
+
+    # A scalar reading. The envelope's `v` where it holds a number, else the whole
+    # payload, which on a legacy topic is the bare number itself. Asking a feed whose
+    # `v` is an object (a position) for a number is a caller error rather than a
+    # difference between the lanes: it yields 0, as casting '{"lat"...' always did.
+    _NUMBER = ("COALESCE(CASE WHEN json_valid(payload)"
+               "            AND json_type(payload, '$.v') IN ('integer', 'real')"
+               "           THEN json_extract(payload, '$.v') END,"
+               "         CAST(payload AS REAL))")
+
+    @staticmethod
+    def _match(feed) -> Tuple[str, Dict[str, str]]:
+        """A WHERE fragment matching any of `feed`, and the parameters it needs.
+
+        `feed` is one pattern or several. Each is tried against the topic and against
+        the envelope's feed name, so one list covers both lanes.
+        """
+        patterns = [feed] if isinstance(feed, str) else list(feed)
+        clauses, params = [], {}
+        for i, pattern in enumerate(patterns):
+            key = f'feed{i}'
+            params[key] = pattern
+            clauses.append(f"topic GLOB :{key}"
+                           f" OR (json_valid(payload)"
+                           f"     AND json_extract(payload, '$.group') || ' / '"
+                           f"         || json_extract(payload, '$.name') GLOB :{key})")
+        return '(' + ' OR '.join(clauses) + ')', params
+
+    def track_extent(self, recording_id: int,
+                     feed) -> Optional[Tuple[float, float, float, float]]:
         """(south, west, north, east) of a recording's fixes, or None if it has none."""
+        where, params = self._match(feed)
         with self.get_connection() as conn:
-            row = conn.execute("""
-                SELECT MIN(json_extract(payload, '$.lat')), MIN(json_extract(payload, '$.lon')),
-                       MAX(json_extract(payload, '$.lat')), MAX(json_extract(payload, '$.lon'))
+            row = conn.execute(f"""
+                SELECT MIN({self._LAT}), MIN({self._LON}),
+                       MAX({self._LAT}), MAX({self._LON})
                 FROM recording_data
-                WHERE recording_id = ? AND topic = ? AND json_valid(payload)
-            """, (recording_id, topic)).fetchone()
+                WHERE recording_id = :rid AND {where}
+            """, {'rid': recording_id, **params}).fetchone()
             return tuple(row) if row and row[0] is not None else None
 
-    def has_fix_within(self, recording_id: int, topic: str,
+    def has_fix_within(self, recording_id: int, feed,
                        south: float, west: float, north: float, east: float) -> bool:
+        where, params = self._match(feed)
         with self.get_connection() as conn:
-            return conn.execute("""
+            return conn.execute(f"""
                 SELECT 1 FROM recording_data
-                WHERE recording_id = ? AND topic = ? AND json_valid(payload)
-                  AND json_extract(payload, '$.lat') BETWEEN ? AND ?
-                  AND json_extract(payload, '$.lon') BETWEEN ? AND ?
+                WHERE recording_id = :rid AND {where}
+                  AND {self._LAT} BETWEEN :south AND :north
+                  AND {self._LON} BETWEEN :west AND :east
                 LIMIT 1
-            """, (recording_id, topic, south, north, west, east)).fetchone() is not None
+            """, {'rid': recording_id, 'south': south, 'north': north,
+                  'west': west, 'east': east, **params}).fetchone() is not None
 
-    def positions_since(self, recording_id: int, topic: str,
+    def positions_since(self, recording_id: int, feed,
                         after: Optional[datetime]) -> List[Tuple[datetime, float, float]]:
         """(timestamp, lat, lon) of fixes after `after` (or all), oldest first (FR-31)."""
-        stamp = after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
+        where, params = self._match(feed)
         with self.get_connection() as conn:
-            rows = conn.execute("""
-                SELECT timestamp, json_extract(payload, '$.lat'), json_extract(payload, '$.lon')
+            rows = conn.execute(f"""
+                SELECT timestamp, {self._LAT}, {self._LON}
                 FROM recording_data
-                WHERE recording_id = ? AND topic = ? AND timestamp > ? AND json_valid(payload)
+                WHERE recording_id = :rid AND {where} AND timestamp > :after
                 ORDER BY timestamp
-            """, (recording_id, topic, stamp)).fetchall()
+            """, {'rid': recording_id, 'after': self._stamp(after), **params}).fetchall()
         return [(datetime.fromisoformat(str(t)), float(lat), float(lon))
                 for t, lat, lon in rows if lat is not None and lon is not None]
 
-    def max_value_since(self, recording_id: int, topic: str,
+    def max_value_since(self, recording_id: int, feed,
                         after: Optional[datetime]) -> Optional[float]:
-        """The largest bare number on a topic after `after` (or ever) (FR-31)."""
-        stamp = after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
+        """The largest reading of a feed after `after` (or ever) (FR-31)."""
+        where, params = self._match(feed)
         with self.get_connection() as conn:
-            return conn.execute("""
-                SELECT MAX(CAST(payload AS REAL)) FROM recording_data
-                WHERE recording_id = ? AND topic = ? AND timestamp > ?
-            """, (recording_id, topic, stamp)).fetchone()[0]
+            return conn.execute(f"""
+                SELECT MAX({self._NUMBER}) FROM recording_data
+                WHERE recording_id = :rid AND {where} AND timestamp > :after
+            """, {'rid': recording_id, 'after': self._stamp(after),
+                  **params}).fetchone()[0]
 
-    def numeric_series(self, recording_id: int, topic: str) -> List[Tuple[datetime, float]]:
-        """(timestamp, value) for a topic carrying bare numbers, oldest first (FR-26)."""
+    def numeric_series(self, recording_id: int,
+                       feed) -> List[Tuple[datetime, float]]:
+        """(timestamp, value) for a feed carrying numbers, oldest first (FR-26)."""
+        where, params = self._match(feed)
         with self.get_connection() as conn:
-            rows = conn.execute("""
-                SELECT timestamp, CAST(payload AS REAL) FROM recording_data
-                WHERE recording_id = ? AND topic = ?
+            rows = conn.execute(f"""
+                SELECT timestamp, {self._NUMBER} FROM recording_data
+                WHERE recording_id = :rid AND {where}
                 ORDER BY timestamp
-            """, (recording_id, topic)).fetchall()
+            """, {'rid': recording_id, **params}).fetchall()
         return [(datetime.fromisoformat(str(t)), v) for t, v in rows if v is not None]
+
+    @staticmethod
+    def _stamp(after: Optional[datetime]) -> str:
+        """`after` as the text the timestamp column is compared against, or '' for all."""
+        return after.strftime('%Y-%m-%d %H:%M:%S.%f') if after else ''
 
     def has_payload(self, recording_id: int, topic: str, fragment: str) -> bool:
         """Whether any message on `topic` contains `fragment`."""

@@ -78,6 +78,26 @@ def _fixes(db, rid, *points):
                            for i, (lat, lon) in enumerate(points)])
 
 
+def _envelope_fixes(db, rid, *points):
+    """The boat as it records now: emon/gps/0/position, the fix nested under `v`."""
+    db.add_messages_batch(
+        [(rid, datetime(2026, 10, 7, 9, 30, i), "emon/gps/0/position",
+          json.dumps({"s": 1, "v": {"lat": lat, "lon": lon}, "t": 0,
+                      "node": "gps", "sub": 0, "field": "position",
+                      "group": "Enchantee-GPS", "name": "position"}))
+         for i, (lat, lon) in enumerate(points)])
+
+
+def test_the_track_rules_read_the_envelopes_the_boat_records(db):
+    """Why no sail has been filed as a Ship's Log since record_topics became emon/#:
+    the rules asked for gps/position/0, which is no longer recorded, so a boat that
+    sailed to Rottnest looked like one that never left the mooring."""
+    rec = _recording(db, start="2026-10-10 01:00:00")
+    _envelope_fixes(db, rec["id"], (-32.0014, 115.8094), (-31.9960, 115.5400))
+    assert suggest_categories(RULES, rec, db) == \
+        ["Track Logs", "Ship's Log", "Rottnest"]
+
+
 def test_a_twilight_sail_on_the_river(db):
     rec = _recording(db)
     _fixes(db, rec["id"], (-32.0014, 115.8094), (-32.0100, 115.7800))

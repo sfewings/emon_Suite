@@ -814,7 +814,6 @@ class WordPressPublisher:
         exports: List[Dict] = None,
         statistics: Dict = None,
         map_htmls: List[str] = None,
-        template: str = None,
         category: str = "Track Logs",
         auto_publish: bool = False,
         post_id: int = None,
@@ -831,7 +830,6 @@ class WordPressPublisher:
             exports: List of export file dicts
             statistics: Optional statistics dict from statistics_summary.json
             map_htmls: Optional list of folium HTML file paths to embed as interactive maps
-            template: HTML template string (with {placeholders})
             category: WordPress category name
             auto_publish: Publish immediately (vs draft)
             post_id: Update this post rather than create one (TR-11)
@@ -918,7 +916,6 @@ class WordPressPublisher:
             content = self._build_post_content(
                 recording_data,
                 media_ids,
-                template,
                 download_links=download_links,
                 statistics=statistics,
                 map_htmls=map_htmls,
@@ -989,7 +986,6 @@ class WordPressPublisher:
         self,
         recording_data: Dict,
         media_ids: List[Dict],
-        template: str = None,
         download_links: List[Dict] = None,
         statistics: Dict = None,
         map_htmls: List[str] = None,
@@ -1003,14 +999,10 @@ class WordPressPublisher:
         """
         ctx = post_renderer.PostContext(
             recording_data, media=media_ids, statistics=statistics,
-            map_htmls=map_htmls, downloads=download_links, template=template,
-            draft=draft)
+            map_htmls=map_htmls, downloads=download_links, draft=draft)
         return post_renderer.render(blocks or post_renderer.LAYOUT_TRACK_LOG, ctx)
 
     # Kept for the callers they had; the work is post_renderer's now
-
-    def _apply_template(self, recording_data: Dict, template: str) -> str:
-        return post_renderer.apply_template(recording_data, template)
 
     def _format_duration(self, start_time: str, end_time: str) -> str:
         return post_renderer.format_duration(start_time, end_time)

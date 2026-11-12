@@ -15,8 +15,15 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
-POSITION_TOPIC = 'gps/position/0'
-SPEED_TOPIC = 'gps/speed/0'
+# Named feeds, with the legacy topic beside each for recordings made before the
+# envelopes (DESIGN 5). Any GPS unit's fixes will do for how far and how fast, so
+# neither names a unit.
+#
+# These were gps/position/0 and gps/speed/0 alone, which the boat stopped recording when
+# record_topics became emon/#: the page's distance and top speed sat at zero and the
+# live track stayed empty, with nothing logged to say why.
+POSITION_FEEDS = ('* / position', 'gps/position/0')
+SPEED_FEEDS = ('* / speed', 'gps/speed/0')
 
 REFRESH_SECONDS = 10
 
@@ -79,8 +86,8 @@ class LiveSummaries:
             self._state.pop(recording_id, None)
 
     def _catch_up(self, recording_id: int, state: Dict):
-        fixes = self.database.positions_since(recording_id, POSITION_TOPIC, state['after'])
-        top = self.database.max_value_since(recording_id, SPEED_TOPIC, state['after'])
+        fixes = self.database.positions_since(recording_id, POSITION_FEEDS, state['after'])
+        top = self.database.max_value_since(recording_id, SPEED_FEEDS, state['after'])
         if top is not None and (state['max_sog'] is None or top > state['max_sog']):
             state['max_sog'] = round(top, 1)
 

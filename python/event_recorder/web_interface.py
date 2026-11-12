@@ -533,7 +533,6 @@ class WebInterface:
                 job = self.recordings.start_publish(
                     recording_id,
                     category=data.get('category', 'Track Logs'),
-                    template=data.get('template', None),
                     auto_publish=data.get('auto_publish', None)
                 )
                 return jsonify({'success': True, 'job': job}), 202
