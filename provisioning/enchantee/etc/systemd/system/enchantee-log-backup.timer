@@ -1,0 +1,12 @@
+[Unit]
+Description=Copy the boat's daily serial log onto the HOMEMONITOR USB stick every 10 minutes
+Documentation=file:///share/emon_Suite/provisioning/enchantee/README.md
+
+[Timer]
+OnCalendar=*:0/10
+# A run missed while the Pi was off happens at the next boot, not ten minutes later
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

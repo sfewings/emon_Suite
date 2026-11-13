@@ -1,0 +1,52 @@
+#!/bin/bash
+# enchantee-log-backup -- copy the boat's daily serial log onto the HOMEMONITOR USB stick.
+#
+# emon_log writes every serial line to /share/Input/<yyyymmdd>.TXT. This copies today's
+# and yesterday's file to $STICK/backup/Input/, each only when it differs from the copy
+# already there. Run every 10 minutes by enchantee-log-backup.timer (README section 11).
+#
+# It took over from Node-RED's "Enchantee support" tab, which did the same every 10
+# minutes and once more at 00:05 for the day before. That 00:05 run worked the date out
+# two days back, so the last minutes before each midnight were never copied; copying
+# yesterday's file on every run, as here, covers them.
+#
+# The stick must be mounted. If it is not, this fails loudly and writes nothing:
+# creating the folder anyway, as the Node-RED flow did, would put the "backup" on the
+# Pi's own disk under /media/pi/HOMEMONITOR, where it looks like it worked.
+#
+# Each copy is written under a temporary name and renamed into place, so a stick pulled
+# mid-copy leaves the last good copy, not half a file under the real name.
+#
+# Every setting can be overridden from the environment, for testing:
+#   LOG_DIR (/share/Input), STICK (/media/pi/HOMEMONITOR), BACKUP_SUBDIR (backup/Input)
+
+set -euo pipefail
+
+LOG_DIR="${LOG_DIR:-/share/Input}"
+STICK="${STICK:-/media/pi/HOMEMONITOR}"
+BACKUP_SUBDIR="${BACKUP_SUBDIR:-backup/Input}"
+
+if ! mountpoint -q "$STICK"; then
+    echo "enchantee-log-backup: $STICK is not mounted; is the HOMEMONITOR stick plugged in? Nothing copied." >&2
+    exit 1
+fi
+
+dest="$STICK/$BACKUP_SUBDIR"
+mkdir -p "$dest"
+
+copied=0
+for day in "$(date -d yesterday +%Y%m%d)" "$(date +%Y%m%d)"; do
+    src="$LOG_DIR/$day.TXT"
+    dst="$dest/$day.TXT"
+    # No log for a day is normal: the receiver logs nothing while the boat's nodes are off
+    [ -f "$src" ] || continue
+    if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+        continue
+    fi
+    cp --preserve=timestamps "$src" "$dst.part"
+    mv -f "$dst.part" "$dst"
+    echo "enchantee-log-backup: copied $day.TXT ($(stat -c %s "$dst") bytes)"
+    copied=$((copied + 1))
+done
+
+[ "$copied" -gt 0 ] || echo "enchantee-log-backup: nothing new to copy"

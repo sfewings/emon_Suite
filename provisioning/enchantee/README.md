@@ -839,6 +839,36 @@ pdftoppm -r 300 -png -singlefile enchantee-urls.pdf /tmp/qr && zbarimg -q --raw 
 
 `zbarimg` comes from `zbar-tools`, and `pdftoppm` from `poppler-utils`.
 
+## 11. Daily log backup to the HOMEMONITOR stick
+
+`emon_log` writes every serial line to `/share/Input/<yyyymmdd>.TXT`. A copy goes to the
+USB stick labelled `HOMEMONITOR` (vfat, auto-mounted at `/media/pi/HOMEMONITOR`), in
+`backup/Input/`, every 10 minutes: today's file and yesterday's, each only when it differs
+from the copy already there, so the last minutes before midnight are covered too.
+
+```bash
+sudo install -m 755 usr/local/bin/enchantee-log-backup /usr/local/bin/
+sudo install -m 644 etc/systemd/system/enchantee-log-backup.service \
+                    etc/systemd/system/enchantee-log-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now enchantee-log-backup.timer
+```
+
+Check it with `journalctl -u enchantee-log-backup` (one line per run, the files copied)
+and `systemctl list-timers enchantee-log-backup.timer`.
+
+[`enchantee-log-backup`](usr/local/bin/enchantee-log-backup) fails, and writes nothing,
+when the stick is not mounted: creating the folder anyway would put the backup on the
+Pi's own disk under `/media/pi/HOMEMONITOR`, where it looks as if it worked. Each copy is
+written under a temporary name and renamed into place, so pulling the stick mid-copy
+leaves the last good copy. It runs as `pi`, at low CPU and disk priority, and the timer
+is `Persistent`, so a run missed while the Pi was off happens at the next boot.
+
+This took over from Node-RED's "Enchantee support" tab (13 Nov 2026), whose 00:05 run
+worked its date out two days back and so never copied each day's last minutes.
+
+---
+
 ## File manifest
 
 Copy each to the path its directory mirrors.
@@ -856,6 +886,8 @@ Copy each to the path its directory mirrors.
 | [`usr/local/bin/enchantee-mode-gui`](usr/local/bin/enchantee-mode-gui) | `/usr/local/bin/enchantee-mode-gui` | mode 755, needs zenity |
 | [`home/pi/Desktop/Enchantee-Wifi-Mode.desktop`](home/pi/Desktop/Enchantee-Wifi-Mode.desktop) | `/home/pi/Desktop/` and `/home/pi/.local/share/applications/` | mode 755 on the Desktop copy |
 | [`etc/systemd/system/enchantee-mode-restore.service`](etc/systemd/system/enchantee-mode-restore.service) | `/etc/systemd/system/` | `systemctl enable` it; see section 7.11 |
+| [`usr/local/bin/enchantee-log-backup`](usr/local/bin/enchantee-log-backup) | `/usr/local/bin/` | mode 755; daily log onto the HOMEMONITOR stick, see section 11 |
+| [`etc/systemd/system/enchantee-log-backup.service`](etc/systemd/system/enchantee-log-backup.service), [`.timer`](etc/systemd/system/enchantee-log-backup.timer) | `/etc/systemd/system/` | `systemctl enable --now` the timer; see section 11 |
 | [`etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg`](etc/cloud/cloud.cfg.d/99-enchantee-hostname.cfg) | `/etc/cloud/cloud.cfg.d/` | stops cloud-init resetting the hostname |
 | [`tests/hotspot-check.sh`](tests/hotspot-check.sh) | run in place | end-to-end hotspot verification; see Verification |
 | [`tools/make-qr-sheet.py`](tools/make-qr-sheet.py) | run in place | builds the printable QR sheet; see section 10 |

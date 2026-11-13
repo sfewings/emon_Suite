@@ -804,3 +804,15 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   the Machines bullet. Rain month and year will stay wrong until 1 Dec / 1 Jan unless the
   restart happens while Influx is up, which it will be, so the restart itself repairs
   them.
+- **2026-11-13, enchantee. Node-RED's log backup replaced**, ahead of removing Node-RED
+  there (owner). The boat's Node-RED had one job besides its dashboards: the
+  "Enchantee support" tab copying `/share/Input/<today>.TXT` to the HOMEMONITOR USB stick
+  (`/media/pi/HOMEMONITOR/backup/Input/`) every 10 minutes, and at 00:05 a file it
+  meant to be yesterday's but dated two days back. Now `enchantee-log-backup` and its
+  systemd timer (provisioning/enchantee README section 11): today's and yesterday's file,
+  only when changed, never when the stick is not mounted, written via a temporary name.
+  Tested against a non-mount (refused, nothing written) and in a test folder on the
+  stick (copy, skip, recopy; removed after). Installed and enabled 20:58; runs beside
+  Node-RED's copy for a day, both writing the same files. Next, with the owner: remove
+  Node-RED from the boat (container, compose service, nginx `/nodered/` block, the
+  `Enchantee` branch of emon-node-red).

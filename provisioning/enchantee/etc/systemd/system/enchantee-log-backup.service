@@ -1,0 +1,14 @@
+[Unit]
+Description=Copy the boat's daily serial log onto the HOMEMONITOR USB stick
+Documentation=file:///share/emon_Suite/provisioning/enchantee/README.md
+# Started by enchantee-log-backup.timer, every 10 minutes.
+
+[Service]
+Type=oneshot
+# As pi: the stick is vfat, mounted for uid 1000, and the logs are world-readable
+User=pi
+Group=pi
+ExecStart=/usr/local/bin/enchantee-log-backup
+# Behind everything else on the Pi for CPU and disk
+Nice=10
+IOSchedulingClass=idle
