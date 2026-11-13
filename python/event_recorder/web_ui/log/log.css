@@ -115,6 +115,10 @@ input:disabled, textarea:disabled { background: #ece8e2; color: #666; }
 }
 .chip[aria-pressed="true"] { background: #7a1a1a; color: #fff; }
 .chip .x { margin-left: 8px; font-weight: bold; }
+/* Names offered under the crew field: dashed, so they read as not yet on the crew */
+.offers { margin-top: 8px; }
+.offers:empty { display: none; }
+.chip.offer { border-style: dashed; }
 
 /* Grid gap is fine on iOS 12; it is flexbox gap that is not */
 .photos {

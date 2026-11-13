@@ -57,9 +57,9 @@
   <div class="field">
     <span class="label">Crew <span class="saved" data-saved="crew"></span></span>
     <div id="crew" class="chips"></div>
-    <input id="crew-add" type="text" list="crew-names" autocomplete="off"
+    <input id="crew-add" type="text" autocomplete="off" autocapitalize="words"
            placeholder="Add a name" aria-label="Add a crew name">
-    <datalist id="crew-names"></datalist>
+    <div id="crew-offers" class="chips offers" aria-label="Names sailed before"></div>
   </div>
 
   <!-- FR-26: worked out from the recording until the crew type over them, and back to

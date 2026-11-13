@@ -43,8 +43,8 @@
     var dirty = {};                // field -> true while an edit is not yet saved
     var timers = {};
     var publishTimer = null;
-    var shownCrew = null;          // the chips and datalist as last written, to
-    var shownNames = null;         // leave both alone on a poll that changed neither
+    var shownCrew = null;          // the chips and the offered names as last written,
+    var shownNames = null;         // to leave both alone on a poll that changed neither
 
     function $(id) { return document.getElementById(id); }
 
@@ -232,19 +232,37 @@
         }
         $('crew-add').disabled = locked();
 
-        var names = '';
+        showOffers();
+    }
+
+    // The names offered under the field (FR-30), drawn here rather than left to a
+    // <datalist>: an iPhone's Safari shows a datalist only in the strip above its
+    // keyboard, two or three names at a time and not always, where a laptop drops down
+    // a list that narrows with each letter. These narrow the same way everywhere: the
+    // most sailed first, names starting with what is typed ahead of names containing it.
+    var OFFERED = 8;
+    function showOffers() {
+        // A name already on the crew is not offered, however it was capitalised
+        var aboard = (state.draft.crew || []).join('\n').toLowerCase().split('\n');
+        var typed = $('crew-add').value.replace(/,/g, ' ').trim().toLowerCase();
         var suggestions = state.crew_suggestions || [];
-        for (var j = 0; j < suggestions.length; j++) {
-            if (crew.indexOf(suggestions[j]) === -1) {
-                names += '<option value="' + escapeHtml(suggestions[j]) + '">';
-            }
+        var starting = [], containing = [];
+        for (var i = 0; i < suggestions.length; i++) {
+            if (aboard.indexOf(suggestions[i].toLowerCase()) !== -1) continue;
+            var at = suggestions[i].toLowerCase().indexOf(typed);
+            if (at === 0) starting.push(suggestions[i]);
+            else if (at > 0) containing.push(suggestions[i]);
         }
-        // Writing the datalist closes the suggestion popup and, on the Pi's
-        // browser, costs more than the rest of the render; the five-second poll
-        // almost never changes it
-        if (names !== shownNames) {
-            $('crew-names').innerHTML = names;
-            shownNames = names;
+        var offered = starting.concat(containing).slice(0, OFFERED);
+        var html = '';
+        for (var j = 0; j < offered.length; j++) {
+            html += '<button type="button" class="chip offer" data-name="' + escapeHtml(offered[j]) + '"' +
+                (locked() ? ' disabled' : '') + '>' + escapeHtml(offered[j]) + '</button>';
+        }
+        // Left alone when nothing changed, so a poll does not redraw a name mid-tap
+        if (html !== shownNames) {
+            $('crew-offers').innerHTML = html;
+            shownNames = html;
         }
     }
 
@@ -525,8 +543,8 @@
 
     function bindCrew() {
         var add = $('crew-add');
-        function addName() {
-            var name = add.value.replace(/,/g, ' ').trim();
+        function addName(chosen) {
+            var name = (typeof chosen === 'string' ? chosen : add.value).replace(/,/g, ' ').trim();
             if (!name) return;
             var crew = (state.draft.crew || []).slice();
             if (crew.indexOf(name) === -1) crew.push(name);
@@ -541,8 +559,21 @@
                 addName();
             }
         });
-        // Choosing a suggestion from the list fills the field without a key press
-        add.addEventListener('change', addName);
+        add.addEventListener('input', showOffers);
+        // Leaving the field with a name typed adds it. A moment later, because tapping an
+        // offered name leaves the field too: the tap empties the field first, and then
+        // there is nothing left here to add.
+        add.addEventListener('change', function () {
+            setTimeout(addName, 300);
+        });
+        // The mousedown is cancelled so the field keeps the focus, and an iPhone its
+        // keyboard, for the next name.
+        $('crew-offers').addEventListener('mousedown', function (e) { e.preventDefault(); });
+        $('crew-offers').addEventListener('click', function (e) {
+            var chip = e.target.closest ? e.target.closest('.chip') : null;
+            if (!chip || chip.disabled) return;
+            addName(chip.getAttribute('data-name'));
+        });
 
         $('crew').addEventListener('click', function (e) {
             var chip = e.target.closest ? e.target.closest('.chip') : null;
