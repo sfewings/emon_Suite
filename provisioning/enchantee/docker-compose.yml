@@ -127,25 +127,6 @@ services:
       start_period: 5s      
     restart: unless-stopped
 
-  node-red:
-    image: nodered/node-red:latest
-    container_name: node_red
-    environment:
-      - TZ=${TIMEZONE}
-    entrypoint: /data/entrypoint.sh
-    ports:
-      - "1880:1880"
-    volumes:
-      - /share/emon-node-red:/data
-      - /share:/share
-      # rslave so a USB drive mounted on the host after this container starts
-      # shows up inside it. With the default rprivate the backup flow only sees
-      # the bare mount point directory.
-      - /media:/containermedia:rslave
-    depends_on:
-      - mosquitto
-    restart: always
-
   emon_logtojson:
     image: sfewings32/emon_logtojson:latest
     container_name: emon_logtojson
@@ -251,7 +232,7 @@ services:
 
   emon_live:
     # The boat's pages (docs/emon_live_ui, DESIGN 4.4 and 6.4): nginx sends / here, in
-    # place of Node-RED's dashboard, which stays at /nodered/ui/. Built on the Pi
+    # place of Node-RED's dashboard (Node-RED removed 14 Nov 2026). Built on the Pi
     # (python/build.sh -c emon_live), not pulled. The image holds no code: python/,
     # ui/ and this site's emon-ui/ are mounted read-only, so a page edit is live and a
     # Python edit needs a restart.

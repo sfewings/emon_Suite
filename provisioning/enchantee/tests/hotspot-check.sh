@@ -124,7 +124,7 @@ check "masquerade rule present"          'nft list ruleset 2>/dev/null | grep -q
 check "ip forwarding enabled"            '[ "$(sysctl -n net.ipv4.ip_forward)" = 1 ]'
 
 say "6. Services over the hotspot address"
-for u in / /nodered/ /grafana/ /portainer/ /events/ /settings/; do
+for u in / /grafana/ /portainer/ /events/ /settings/; do
     code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "http://10.42.0.1$u")
     if [ "$code" = 200 ]; then ok "http://10.42.0.1$u -> 200"; else bad "http://10.42.0.1$u -> $code"; fi
 done

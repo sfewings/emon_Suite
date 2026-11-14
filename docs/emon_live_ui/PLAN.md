@@ -238,7 +238,9 @@ Goal: the boat's Node-RED pages replaced, on the iPad mini 3 and the Waveshare k
       Keep Node-RED's UI at `/nodered/ui/` until a sail has been done on the new pages.
       **Deployed 27 Oct 2026, 21:24** (owner's go-ahead): emon_live from the worktree,
       nginx `/` to it, the kiosk launcher on `#motor` (HANDOVER, "Deploying phase 3 at
-      enchantee"). Waiting on a day's sailing on the new pages.
+      enchantee"). Waiting on a day's sailing on the new pages. **14 Nov 2026**: Node-RED
+      removed from the boat, its `/nodered/` location with it, at the owner's word,
+      ahead of that sail (HANDOVER session log).
 
 Done when: a day's sailing on the new pages. Way back: restore the nginx `/` location.
 

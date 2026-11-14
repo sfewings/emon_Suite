@@ -49,7 +49,8 @@ restart of emon_live is the whole deployment. Steps and what to compare against 
 **Phase 1 deployed at shannstainable on 21 Oct 2026, 14:11. Phase 2 in progress.**
 **Phase 3 started on enchantee, 25 Oct 2026** (owner's request; see the session log).
 **Phase 3 deployed on enchantee, 27 Oct 2026, 21:24**: http://enchantee.local/ is emon_live,
-running from the worktree; Node-RED's dashboard is at /nodered/ui/. Waiting on a day's sailing.
+running from the worktree. Waiting on a day's sailing. **Node-RED removed from enchantee
+on 14 Nov 2026** (owner's decision, ahead of that sail; session log).
 The enchantee deploy and the merge to `master` were to wait until phase 2 was done; the
 owner brought both forward (27 Oct).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
@@ -381,9 +382,10 @@ the menu. The route and the block are inert without it.
 - Production checkout `/share/emon_Suite` is back on `master` (25 Oct 2026; nothing the
   boat runs differs from the branch, and its images come from Docker Hub). Development
   worktree `/share/emon_Suite-live` on `emon_live_ui`, as at shannstainable.
-- Node-RED user directory `/share/emon-node-red`, branch `Enchantee`, production.
-  Its dashboard is the reference for phase 3; INVENTORY 4 lists its widgets and their
-  topics, and the gauge ranges are in the flows (`ui_gauge` min, max, seg1, seg2).
+- **No Node-RED since 14 Nov 2026.** Its user directory `/share/emon-node-red` (branch
+  `Enchantee`, clean and level with origin) is left on disk as the reference it was for
+  phase 3: INVENTORY 4 lists its widgets and their topics, and the gauge ranges are in
+  the flows (`ui_gauge` min, max, seg1, seg2).
 - Venv `/home/pi/.cache/emon_live_venv`: `pytest flask paho-mqtt pyyaml`.
 - Feed names: the boat is often quiet at the dock (no serial for 10 minutes at a time), so
   names come from decoding a recording. `20260517_Frostbite_1.TXT` (untracked, in
@@ -816,3 +818,20 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   Node-RED's copy for a day, both writing the same files. Next, with the owner: remove
   Node-RED from the boat (container, compose service, nginx `/nodered/` block, the
   `Enchantee` branch of emon-node-red).
+- **2026-11-14, enchantee. Node-RED removed** (owner). First the backup check: 73 timer
+  runs since 20:58 the day before, every one a success and none copying anything, because
+  the receiver has logged nothing since 13 Nov 11:02 (the nodes are off at the dock;
+  `emon_serial` exits on 600 s without serial and restarts). The stick's 20261113.TXT
+  equals /share/Input's. So the timer is proven to run and to skip, and the copy itself
+  only in the 13 Nov stick test; the first real copy comes the next time the nodes are on
+  (`journalctl -u enchantee-log-backup | grep copied`). Node-RED's flows had no `mqtt out`
+  node and their only other outputs, the daily email, were on a disabled tab, so nothing
+  depended on them. Removed: the nginx `/nodered/` location (backup
+  `/home/pi/.cache/nginx_default_before_nodered_removal`; `/nodered/` now 404, every
+  other route 200, `/hud` 302), the `node_red` container, its compose service, and the
+  `nodered/node-red:latest` image (984 MB). Comments in enchantee-mode and
+  enchantee-dashboard (reinstalled), the QR sheet's main-display caption, hotspot-check
+  and the README follow. Left alone: `/share/emon-node-red` on disk and its `Enchantee`
+  branch on GitHub (archiving it, DESIGN 4.6, is the owner's call). Way back: restore the
+  service block from git, `docker compose -p enchantee up -d node-red` (pulls the image),
+  and the nginx backup.

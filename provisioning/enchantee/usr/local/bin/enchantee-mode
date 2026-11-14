@@ -1,6 +1,6 @@
 #!/bin/bash
 # enchantee-mode -- switch wlan0 between joining a wifi network and running the
-# "Enchantee" hotspot. The services (Node-RED / Grafana / Portainer / events)
+# "Enchantee" hotspot. The services (boat pages / Grafana / Portainer / events)
 # are reached at http://enchantee.local/ either way.
 #
 #   enchantee-mode status      show what is active right now

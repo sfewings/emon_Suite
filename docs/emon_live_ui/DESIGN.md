@@ -329,7 +329,7 @@ batteries green, heat red, water blue, rain slate, cars violet. Desktop 4 column
 Daily email, log backups, the single-site state machines of D5, and Grafana embeds where
 still wanted. On enchantee the log backup moved out of Node-RED on 13 Nov 2026,
 to a host systemd timer (`provisioning/enchantee`, README section 11), the last job its
-Node-RED had besides the dashboards, ahead of removing Node-RED there. No Dashboard 1 pages once each site's emon-ui reaches parity. In the final
+Node-RED had besides the dashboards, and Node-RED was removed there on 14 Nov 2026. No Dashboard 1 pages once each site's emon-ui reaches parity. In the final
 phase, each site's flows move to `provisioning/<site>/node-red/flows.json`, `flowFile` is
 read from an environment variable in a shared `settings.js`, the dashboard packages are
 dropped, and the per-site branches of `emon-node-red` are archived.

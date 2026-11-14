@@ -161,7 +161,7 @@ Services:
 
 | Container | Image | Host port | Reached at |
 |---|---|---|---|
-| `node_red` | nodered/node-red | 1880 | `/` and `/nodered/` |
+| `emon_live` | built on the Pi (`python/build.sh -c emon_live`) | 5003 | `/` |
 | `grafana1` | grafana/grafana | 3000 | `/grafana/` |
 | `portainer` | portainer/portainer-ce | 9000, 9443 | `/portainer/` |
 | `emon_settings_web` | sfewings32/emon_settings_web | 5001 | `/settings/` |
@@ -265,8 +265,7 @@ Routes, from [`etc/nginx/sites-available/default`](etc/nginx/sites-available/def
 
 | URL | Backend |
 |---|---|
-| `/` | Node-RED dashboard, `:1880/ui/` |
-| `/nodered/` | Node-RED flow editor, `:1880/` |
+| `/` | emon_live, the boat's pages, `:5003` |
 | `/grafana/` | Grafana, `:3000` |
 | `/portainer/` | Portainer, `:9000` |
 | `/events/` | event recorder, `:5000` on the host network |
@@ -300,11 +299,10 @@ actually requested a WebSocket and `Connection: close` otherwise. Hardcoding
 `Connection "upgrade"` on every location, as the earlier config did, sets the
 header on ordinary requests too.
 
-Node-RED dashboard 1.x (`node-red-dashboard` 3.x) emits **relative** asset paths
-(`css/app.min.css`, `socket.io/socket.io.js`), with no `<base href>`. That is
-why mapping the site root onto `/ui/` works: the browser asks for
-`/css/app.min.css` and nginx forwards it to `:1880/ui/css/app.min.css`. Dashboard
-2.0 behaves differently and this location would need revisiting.
+emon_live's pages use **relative** URLs only, so the same pages work at `/` and on
+`:5003` directly, and their Grafana panels reach `/grafana/` as `../grafana/`.
+Node-RED's dashboard sat at `/` before them; Node-RED was removed from the boat on
+14 Nov 2026.
 
 ### 7.4 Grafana under `/grafana/`
 
@@ -703,21 +701,15 @@ reboot what you want back is the intent.
 
 ---
 
-## 8. Node-RED dashboard on the local display
+## 8. Local display housekeeping
 
-Open `http://localhost:1880/ui` in a browser and make a desktop shortcut.
+The dashboard itself is opened by the launcher in section 9. Two desktop annoyances
+are worth switching off first.
 
 Stop the file manager prompting about executable text files: File Explorer →
 *Edit → Preferences → General* → uncheck *Ask what to do with executable text
 files*, and *Edit → Preferences → Advanced* → uncheck *Use Application Startup
 Notify by default*.
-
-Autostart it with the desktop:
-
-```bash
-mkdir -p /home/pi/.config/autostart
-# copy Enchantee.desktop into /home/pi/.config/autostart/
-```
 
 If the keyring prompt appears ("The application wants access to keyring
 'Default keyring' but it is locked"), reset it to a blank password:
@@ -762,7 +754,7 @@ somebody dismisses it by hand. `--disable-session-crashed-bubble` no longer
 suppresses it on this build, so the script marks the previous exit clean in the
 profile's `Preferences` before launching, which does work.
 
-**Wait for the dashboard to answer.** nginx and the node-red container are not
+**Wait for the dashboard to answer.** nginx and the emon_live container are not
 up the instant the desktop is, so launching straight away lands on a "site
 cannot be reached" page that nobody is there to reload. The script polls the URL
 for up to two minutes, then opens anyway.
@@ -815,10 +807,8 @@ The sheet carries a `WIFI:` join code for SSID `Enchantee` and one QR per
 service: `/`, `/hud`, `/grafana/`, `/events/`, `/settings/` and `/portainer/`.
 
 The heads-up display card points at `/hud`, which nginx redirects to `/race/hud`,
-the racing app's ported HUD. Node-RED's original is still served at
-`/nodered/hud` for the side-by-side comparison, but is not on the sheet: two
-cards captioned "heads-up display" would be worse than one, and `/hud` is the URL
-that keeps working once the Node-RED tab is retired.
+the racing app's ported HUD. The Node-RED original it was compared against went
+with Node-RED (14 Nov 2026).
 
 **The generated PDF contains the hotspot passphrase in scannable form.** That is
 what makes the join code work, and it is why this directory holds the generator
@@ -914,13 +904,13 @@ Not in this repo because it is runtime state, not configuration:
 From the Pi, on either mode:
 
 ```bash
-for u in / /nodered/ /grafana/ /portainer/ /events/ /settings/; do
+for u in / /grafana/ /portainer/ /events/ /settings/; do
     printf '%-12s ' "$u"
     curl -s -o /dev/null -w '%{http_code}\n' -m 10 "http://enchantee.local$u"
 done
 ```
 
-`/`, `/nodered/`, `/grafana/`, `/portainer/` and `/events/` should be `200`.
+`/`, `/grafana/`, `/portainer/` and `/events/` should be `200`.
 
 For the event recorder also confirm its assets resolve under the subpath, since
 that is what the root-relative change in section 7.6 fixes:
@@ -993,8 +983,8 @@ sudo journalctl -u enchantee-mode-restore.service -b -o cat
 **Each proxied app needs different treatment; there is no single recipe.**
 Grafana wants the `/grafana` prefix forwarded intact. Portainer wants
 `/portainer` stripped. The event recorder had no subpath support at all and its
-source had to be made root-relative. Node-RED's dashboard already emits relative
-paths, which is the only reason mapping it onto `/` works. Getting any of these
+source had to be made root-relative. emon_live's pages at `/` use relative URLs
+throughout. Getting any of these
 backwards produces a 404 or a page whose assets all fail. See sections
 [7.4](#74-grafana-under-grafana), [7.5](#75-portainer-under-portainer) and
 [7.6](#76-event-recorder-under-events).

@@ -14,7 +14,7 @@
 #     "on another computer". Renaming this Pi from EnchanteePi5 to enchantee did
 #     exactly that and silently broke every Chromium launch, autostart included.
 #
-#  2. Waits for the dashboard to answer. nginx and the node-red container are
+#  2. Waits for the dashboard to answer. nginx and the emon_live container are
 #     not up the instant the desktop is, so launching immediately lands on a
 #     "site cannot be reached" page that nobody is there to reload.
 
@@ -22,8 +22,7 @@ set -u
 
 # The Weather page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
 # DESIGN 6.4), in large text: this screen is small and read from across the cabin. The
-# iPad and phones open it without ?text=large. Node-RED's old dashboard is at
-# /nodered/ui/ for as long as it is kept.
+# iPad and phones open it without ?text=large.
 URL="${ENCHANTEE_URL:-http://enchantee.local/?text=large#weather}"
 PROFILE="$HOME/.config/chromium"
 WAIT_SECONDS=120
