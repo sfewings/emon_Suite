@@ -765,6 +765,24 @@ def test_nothing_above_the_app_takes_up_any_room():
     assert set(ids) == {"wake", "quiet", "pip", "notice", "rnd-defs"}, ids
 
 
+def test_a_home_screen_icon_opens_the_page_it_was_saved_from():
+    """iOS opens a Home Screen icon at the manifest's start_url, not at the address that
+    was saved. With one start_url of "./" every icon opened Race, including the one saved
+    from enchantee.local/, which nginx sends to GAR. Each page names itself in ?start=,
+    the scope stays the app root, and an unknown name falls back to Race."""
+    flask_app = app_module.create_app(Store(), CONFIG)
+    client = flask_app.test_client()
+    for query, start in (("", "./"), ("?start=gar", "gar"), ("?start=map", "map"),
+                         ("?start=hud", "hud"), ("?start=../x", "./"),
+                         ("?start=https://example.com/", "./")):
+        response = client.get("/manifest.webmanifest" + query)
+        assert response.status_code == 200
+        assert response.mimetype == "application/manifest+json"
+        doc = response.get_json(force=True)
+        assert doc["start_url"] == start, (query, doc["start_url"])
+        assert doc["scope"] == "./", "the scope must stay the app root, %r" % query
+
+
 def test_the_manifest_scopes_both_screens_into_one_web_app():
     """Modern iOS decides standalone-versus-browser by the manifest's scope.
 
@@ -797,14 +815,18 @@ def test_the_manifest_scopes_both_screens_into_one_web_app():
     assert '@app.get("/manifest.webmanifest")' in source, \
         "the manifest must be served from the app root for its relative scope to work"
 
-    # Every page links it, relatively, and keeps the meta that iOS 12 reads instead.
-    for what, page in (("index.html", _page()), ("hud.html", _page_hud()),
-                       ("map.html", _page_map()), ("gar.html", _page_gar())):
+    # Every page links it, relatively, naming itself so its Home Screen icon opens it,
+    # and keeps the meta that iOS 12 reads instead.
+    for what, page, wanted in (
+            ("index.html", _page(), "manifest.webmanifest"),
+            ("hud.html", _page_hud(), "manifest.webmanifest?start=hud"),
+            ("map.html", _page_map(), "manifest.webmanifest?start=map"),
+            ("gar.html", _page_gar(), "manifest.webmanifest?start=gar")):
         link = re.search(r'<link[^>]*rel="manifest"[^>]*>', page)
         assert link, "%s does not link the manifest" % what
         href = re.search(r'href="([^"]+)"', link.group(0))
-        assert href and href.group(1) == "manifest.webmanifest", \
-            "%s must link the manifest relatively, got %r" % (what, link.group(0))
+        assert href and href.group(1) == wanted, \
+            "%s must link the manifest relatively as %r, got %r" % (what, wanted, link.group(0))
         assert 'name="apple-mobile-web-app-capable" content="yes"' in page, \
             "%s dropped the meta iOS 12 uses, which ignores the manifest" % what
 

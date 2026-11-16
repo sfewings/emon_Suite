@@ -1103,6 +1103,11 @@ load-bearing:
   `/race/static/` and covered neither.
 - Every URL in it is **relative**, so one file is correct behind the nginx prefix and
   on the app's own port alike, with no host written down (CLAUDE.md).
+- **Each page names itself** (16 Nov 2026): GAR, Map and HUD link
+  `manifest.webmanifest?start=gar` (and so on), and the route sets `start_url` to that
+  screen. iOS opens an icon at `start_url`, not at the saved address, so with `./` alone
+  every icon opened Race, including one saved from `enchantee.local/`, which nginx sends
+  to GAR. Race links it plain. Only the names in `START_SCREENS` are accepted.
 
 **Script navigation on the nav links.** `location.assign` rather than letting the
 anchor do it, because iOS 12 predates scope enforcement and needs it. Both are kept;

@@ -77,6 +77,8 @@ log = logging.getLogger(__name__)
 mimetypes.add_type("audio/mp4", ".m4a")
 
 HERE = Path(__file__).resolve().parent
+# The screens a manifest's ?start= may name; Race, the app root, is the default
+START_SCREENS = ("gar", "map", "hud")
 CONFIG_DIR = HERE / "config"
 
 SERVABLE_CONFIG = ("marks", "courses", "lines", "coast", "depth",
@@ -212,9 +214,19 @@ def create_app(store: Store, config: dict | None = None) -> Flask:
 
         Read from disk on each request rather than cached, so it can be edited in place
         like the config documents. It is a handful of bytes and nothing polls it.
+
+        ?start=gar (or map, hud) sets start_url to that screen, and each page links the
+        manifest with its own name, so a Home Screen icon opens the page it was saved
+        from. iOS opens an icon at the manifest's start_url, not at the saved address, so
+        with the one "./" every icon opened Race, including the one saved from
+        enchantee.local/, which nginx sends to GAR (DESIGN 9.8.1).
         """
-        return send_from_directory(HERE, "manifest.webmanifest",
-                                   mimetype="application/manifest+json")
+        doc = json.loads((HERE / "manifest.webmanifest").read_text(encoding="utf-8"))
+        start = request.args.get("start")
+        if start in START_SCREENS:
+            doc["start_url"] = start
+        return app.response_class(json.dumps(doc, indent=2),
+                                  mimetype="application/manifest+json")
 
     @app.get("/api/config/<name>")
     def api_config(name):
