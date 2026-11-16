@@ -50,7 +50,8 @@ restart of emon_live is the whole deployment. Steps and what to compare against 
 **Phase 3 started on enchantee, 25 Oct 2026** (owner's request; see the session log).
 **Phase 3 deployed on enchantee, 27 Oct 2026, 21:24**: http://enchantee.local/ is emon_live,
 running from the worktree. Waiting on a day's sailing. **Node-RED removed from enchantee
-on 14 Nov 2026** (owner's decision, ahead of that sail; session log).
+on 14 Nov 2026** (owner's decision, ahead of that sail; session log). **emon_live moved to
+http://enchantee.local/live/ on 16 Nov 2026**; the root is now the race app's GAR page.
 The enchantee deploy and the merge to `master` were to wait until phase 2 was done; the
 owner brought both forward (27 Oct).
 2a (the emon_live skeleton) is done. 2b's code is done: 62 derived feeds for
@@ -835,3 +836,19 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   branch on GitHub (archiving it, DESIGN 4.6, is the owner's call). Way back: restore the
   service block from git, `docker compose -p enchantee up -d node-red` (pulls the image),
   and the nginx backup.
+- **2026-11-16, enchantee. New front-door URLs** (owner). `/` and `/hud` 302 to
+  `/race/gar`, `/log` (and `/log/`) to `/race/log/`, emon_live moves to `/live/`
+  (prefix stripped, `/live` 301s to `/live/`, as at shannstainable), and any other path
+  is a 404 where it used to reach emon_live. `/race/`, `/grafana/`, `/portainer/`,
+  `/events/`, `/settings/` unchanged. Redirects, not proxies, because the race app
+  builds its URLs from `location.pathname` and its manifest is scoped to `/race/`.
+  nginx installed (backup `/home/pi/.cache/nginx_default_before_live_move`); every route
+  200 with `-L`; `/live/`'s assets, `site/` documents and APIs all 200; both pages
+  rendered headless. The kiosk launcher opens `/live/?text=large#weather` (installed,
+  with the Dashboard desktop item's comment and the rc.xml comment); the window open at
+  the time was still on the old address and needs closing and reopening. QR sheet now
+  three across with eight cards (no `/hud` card, it is the same page as `/`),
+  regenerated with sudo at `/home/pi/enchantee-urls.pdf` (mode 600, holds the hotspot
+  passphrase), every code decoded with zbarimg. hotspot-check and the README checks
+  follow redirects. iPads or phones with emon_live saved to the Home Screen from `/`
+  now open GAR, and need saving again from `/live/`.

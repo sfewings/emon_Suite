@@ -15,9 +15,9 @@ The passphrase is read at run time and never stored here, which is why this repo
 holds the generator rather than the finished PDF. Keep the generated PDF out of
 git: it contains the hotspot password in scannable form.
 
-The heads-up display card points at /hud, which nginx redirects to /race/hud, the
-racing app's ported HUD. The Node-RED original it was compared against is gone,
-with Node-RED (14 Nov 2026).
+Since 16 Nov 2026 / opens the race app's GAR dial and /live/ the boat's live pages.
+/hud has no card: nginx sends it to the same GAR dial as /, and two cards for one
+page is worse than one.
 
 Needs only reportlab, which is already installed; its built-in QR widget draws
 vector codes that stay sharp at any print size.
@@ -43,8 +43,10 @@ ACCENT = HexColor("#1f6feb")
 
 # (title, url path, one-line description)
 SERVICES = [
-    ("Main display",     "/",              "Live boat pages, the usual screen"),
-    ("Heads-up display", "/hud",           "Large-format live readout"),
+    ("Instruments",      "/",              "GAR wind dial, map and HUD"),
+    ("Race",             "/race/",         "Start countdown and next mark"),
+    ("Log",              "/log/",          "Notes and photos for the day's post"),
+    ("Live boat pages",  "/live/",         "Weather, navigation, battery, motor"),
     ("Charts",           "/grafana/",      "Grafana history for all activities"),
     ("Event recorder",   "/events/",       "Track logs, photos and publishing"),
     ("Sensor settings",  "/settings/",     "Sensor configuration"),
@@ -147,7 +149,8 @@ def build(path):
     y -= 6 * mm
 
     # ---- service grid -----------------------------------------------------
-    cols, gap = 2, 8 * mm
+    # Three across: eight cards in two columns would need a fourth row the page has not got
+    cols, gap = 3, 6 * mm
     cw = (W - 2 * m - gap) / cols
     ch = 52 * mm
     q = 30 * mm

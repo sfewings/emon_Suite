@@ -214,6 +214,12 @@ reorganises the URLs: the navigation is relative links (`href="hud"` and
 `href="."`), and `hud.html` derives its API base by stripping a trailing `/hud`
 from `location.pathname`. A prefix of `/race/` and a prefix of `/hud/` both work.
 
+**Repointed, 2026-11-16 (owner):** the site root and `/hud` both 302 to `/race/gar`,
+and `/log` to `/race/log/`. Node-RED went on 14 Nov, and emon_live, which had the root
+since 27 Oct, moved to `/live/`. Redirects rather than serving GAR at `/`, for the
+reason above: every URL the app makes comes from `location.pathname`, and its manifest
+is scoped to `/race/`.
+
 **Added, 2026-10-09:** `location /race/log/`, proxied to event_recorder's `:5000/log/`,
 not to this app, in `provisioning/enchantee/etc/nginx/sites-available/default`. It sits
 inside `/race/` so that the post editor opens in this app's Home Screen window (9.13).
@@ -1367,8 +1373,8 @@ is a second tap for whichever face is not first.
 GAR is first. It started second, with the HUD opening from Race and Map and this
 paragraph saying to flip the two if GAR turned out to be the page most people use; once
 it carried leeway, heel and all eight corner readings, the crew asked for it first. The
-`/hud` short URL the crew types is nginx's, not the app's, and still opens the classic
-HUD.
+`/hud` short URL the crew types is nginx's, not the app's; it opened the classic HUD
+until 16 Nov 2026 and now opens GAR, like the site root (section 5).
 
 **What is copied from the Garmin:**
 

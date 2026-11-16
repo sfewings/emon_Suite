@@ -124,14 +124,15 @@ check "masquerade rule present"          'nft list ruleset 2>/dev/null | grep -q
 check "ip forwarding enabled"            '[ "$(sysctl -n net.ipv4.ip_forward)" = 1 ]'
 
 say "6. Services over the hotspot address"
-for u in / /grafana/ /portainer/ /events/ /settings/; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "http://10.42.0.1$u")
+# -L: / and /hud are redirects to the race app's GAR page, and /log to /race/log/
+for u in / /hud /log /live/ /race/ /grafana/ /portainer/ /events/ /settings/; do
+    code=$(curl -sL -o /dev/null -w '%{http_code}' -m 15 "http://10.42.0.1$u")
     if [ "$code" = 200 ]; then ok "http://10.42.0.1$u -> 200"; else bad "http://10.42.0.1$u -> $code"; fi
 done
 
 say "7. Services by name, as a client would reach them"
-for u in / /grafana/ /events/; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' -m 15 "http://enchantee.local$u")
+for u in / /live/ /grafana/ /events/; do
+    code=$(curl -sL -o /dev/null -w '%{http_code}' -m 15 "http://enchantee.local$u")
     if [ "$code" = 200 ]; then ok "http://enchantee.local$u -> 200"; else bad "http://enchantee.local$u -> $code"; fi
 done
 

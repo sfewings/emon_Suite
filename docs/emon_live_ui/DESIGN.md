@@ -596,6 +596,11 @@ publishes 5003, like shannstainable's, and its image is built on the Pi, not pul
 kiosk opens `http://enchantee.local/?text=large#weather` (`#dials`, then `#motor`, as
 the owner reordered the pages on 27 Oct) and waits on the URL without the fragment.
 
+**Moved to `/live/`, 16 Nov 2026 (owner).** The site root now 302s to the race app's GAR
+page, and nginx's `location /live/` proxies to `127.0.0.1:5003/`, as at shannstainable;
+anything unrouted is a 404. The pages needed no change, their URLs all being relative.
+The kiosk opens `http://enchantee.local/live/?text=large#weather`.
+
 ### 6.5 The Sankey, and energy over a past period
 
 **Added 29 Oct 2026** (owner's request: a diagram of where the power comes from and goes,

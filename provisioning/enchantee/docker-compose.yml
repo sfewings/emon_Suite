@@ -231,7 +231,7 @@ services:
     restart: always
 
   emon_live:
-    # The boat's pages (docs/emon_live_ui, DESIGN 4.4 and 6.4): nginx sends / here, in
+    # The boat's pages (docs/emon_live_ui, DESIGN 4.4 and 6.4): nginx sends /live/ here, in
     # place of Node-RED's dashboard (Node-RED removed 14 Nov 2026). Built on the Pi
     # (python/build.sh -c emon_live), not pulled. The image holds no code: python/,
     # ui/ and this site's emon-ui/ are mounted read-only, so a page edit is live and a

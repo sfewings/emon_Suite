@@ -8,7 +8,7 @@ This file covers the machine every subproject shares. The subprojects carry thei
 
 ## The live UI: `emon_live` and the site pages
 
-The pages at http://enchantee.local/ (and shannstainable's /live/) are `emon_live`
+The pages at http://enchantee.local/live/ (and shannstainable's /live/) are `emon_live`
 (`python/emon_live/`), the page engine in `ui/`, and each site's `provisioning/<site>/
 emon-ui/`, over the `emon/...` envelopes the bridges publish (`python/pyEmon/pyemonlib/
 emon_feed.py`). They came from branch `emon_live_ui`, merged on 27 Oct 2026. Before

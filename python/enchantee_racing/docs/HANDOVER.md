@@ -54,7 +54,9 @@ still to do.
   **302**s to `/race/hud` so the crew has a short URL for the instruments. The 302 is not
   an oversight: while the Node-RED HUD still exists (step 4) it is useful to be able to
   swing `/hud` between the two, and a 301 cached in every phone on the boat would make
-  that a nuisance. Node-RED's own HUD is untouched at `/nodered/hud`.
+  that a nuisance. Node-RED's own HUD is untouched at `/nodered/hud`. **Since 16 Nov
+  2026** `/` and `/hud` both 302 to `/race/gar`, and `/log` to `/race/log/`; Node-RED
+  is gone (14 Nov) and emon_live has moved to `/live/`.
 - **The GPS images were the real blocker, and it was not obvious.** The `gps/position`
   change was in `pyemonlib` source but the arm64 wheel in `pyEmon/dist/` predated it, and
   `platform.sh` installs that wheel, so every image on this Pi was still publishing
@@ -105,7 +107,7 @@ boat, and it is why every test file ends with one.
 
 Then <http://localhost:5002/> for the race screen and `/hud` for the instruments. On the
 Pi itself it is deployed, so use <http://enchantee.local/race/> and
-<http://enchantee.local/hud>.
+<http://enchantee.local/> (GAR).
 
 To run a **second** instance against a replayed race without disturbing the deployed one,
 which is how the display gets tested on a phone:

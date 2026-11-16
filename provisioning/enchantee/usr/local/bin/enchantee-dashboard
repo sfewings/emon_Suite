@@ -20,10 +20,10 @@
 
 set -u
 
-# The Weather page of emon_live, which nginx serves at / (emon_Suite docs/emon_live_ui,
-# DESIGN 6.4), in large text: this screen is small and read from across the cabin. The
+# The Weather page of emon_live, which nginx serves at /live/ (emon_Suite docs/
+# emon_live_ui, DESIGN 6.4; at / until 16 Nov 2026, which is now the race app's GAR), in large text: this screen is small and read from across the cabin. The
 # iPad and phones open it without ?text=large.
-URL="${ENCHANTEE_URL:-http://enchantee.local/?text=large#weather}"
+URL="${ENCHANTEE_URL:-http://enchantee.local/live/?text=large#weather}"
 PROFILE="$HOME/.config/chromium"
 WAIT_SECONDS=120
 

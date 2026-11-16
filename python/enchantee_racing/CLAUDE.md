@@ -26,8 +26,8 @@ their absence.
   `http://<current-ip>/`. Never hardcode a host.
 - The app is served behind an nginx prefix (`/race/`) and must also work when hit
   directly on its own port. **Use relative URLs only.** Build fetch targets from
-  `location.pathname`, the way the existing HUD page does. `/hud` is a 302 alias for
-  `/race/hud`, for the crew.
+  `location.pathname`, the way the existing HUD page does. `/` and `/hud` are 302
+  aliases for `/race/gar`, and `/log` for `/race/log/`, for the crew (16 Nov 2026).
 - **The browser floor is iOS 12**, set by the iPad mini 3 on the boat. No `clamp()`
   (Safari 13.1), no flexbox `gap` (14.1) and no `dvh` (15.4) without a fallback ahead
   of it. `min()` and `env()` are fine, and so is grid gap. Screen height comes from

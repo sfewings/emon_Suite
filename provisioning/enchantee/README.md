@@ -161,12 +161,12 @@ Services:
 
 | Container | Image | Host port | Reached at |
 |---|---|---|---|
-| `emon_live` | built on the Pi (`python/build.sh -c emon_live`) | 5003 | `/` |
+| `emon_live` | built on the Pi (`python/build.sh -c emon_live`) | 5003 | `/live/` |
 | `grafana1` | grafana/grafana | 3000 | `/grafana/` |
 | `portainer` | portainer/portainer-ce | 9000, 9443 | `/portainer/` |
 | `emon_settings_web` | sfewings32/emon_settings_web | 5001 | `/settings/` |
 | `event_recorder` | sfewings32/emon_event_recorder | 5000 (host net) | `/events/` |
-| `enchantee_racing` | sfewings32/emon_enchantee_racing | 5002 (host net) | `/race/`, and `/hud` |
+| `enchantee_racing` | sfewings32/emon_enchantee_racing | 5002 (host net) | `/race/`, and `/`, `/hud`, `/log` |
 | `influx` | arm32v7/influxdb | 8086 | direct |
 | `mqtt` | eclipse-mosquitto | 1883 | direct |
 | `emon_serial`, `emon_gpsd`, `emon_log`, `emon_influx`, `emon_logtojson` | | | no HTTP |
@@ -265,14 +265,17 @@ Routes, from [`etc/nginx/sites-available/default`](etc/nginx/sites-available/def
 
 | URL | Backend |
 |---|---|
-| `/` | emon_live, the boat's pages, `:5003` |
+| `/` | 302 to `/race/gar`, the race app's GAR dial |
+| `/live/` | emon_live, the boat's pages, `:5003` |
 | `/grafana/` | Grafana, `:3000` |
 | `/portainer/` | Portainer, `:9000` |
 | `/events/` | event recorder, `:5000` on the host network |
 | `/settings/` | emon settings web, `:5001` |
 | `/race/` | race support app, `:5002` on the host network |
 | `/race/api/config/{marks,courses,lines,coast,depth}` | config documents the map page draws from |
-| `/hud` | 302 to `/race/hud`, the race app's instrument HUD |
+| `/hud` | 302 to `/race/gar`, as `/` |
+| `/log` | 302 to `/race/log/`, the post editor |
+| anything else | 404 |
 
 The server block uses `server_name _` as the sole `default_server`. That is
 deliberate: it answers to `enchantee.local`, `10.42.0.1` and whatever DHCP
@@ -299,10 +302,12 @@ actually requested a WebSocket and `Connection: close` otherwise. Hardcoding
 `Connection "upgrade"` on every location, as the earlier config did, sets the
 header on ordinary requests too.
 
-emon_live's pages use **relative** URLs only, so the same pages work at `/` and on
-`:5003` directly, and their Grafana panels reach `/grafana/` as `../grafana/`.
+emon_live's pages use **relative** URLs only, so the same pages work at `/live/` and
+on `:5003` directly, and their Grafana panels reach `/grafana/` as `../grafana/`.
 Node-RED's dashboard sat at `/` before them; Node-RED was removed from the boat on
-14 Nov 2026.
+14 Nov 2026. emon_live had `/` from 27 Oct to 16 Nov 2026, when the owner gave it to
+the race app's GAR page. That is a redirect, not a proxy: the race app builds its URLs
+from `location.pathname` and its Home Screen manifest is scoped to `/race/`.
 
 ### 7.4 Grafana under `/grafana/`
 
@@ -804,11 +809,10 @@ the join code. Without it the sheet still builds, but the wifi code carries no
 passphrase and the phone will prompt for it.
 
 The sheet carries a `WIFI:` join code for SSID `Enchantee` and one QR per
-service: `/`, `/hud`, `/grafana/`, `/events/`, `/settings/` and `/portainer/`.
+service, three across: `/` (GAR), `/race/`, `/log/`, `/live/`, `/grafana/`,
+`/events/`, `/settings/` and `/portainer/`.
 
-The heads-up display card points at `/hud`, which nginx redirects to `/race/hud`,
-the racing app's ported HUD. The Node-RED original it was compared against went
-with Node-RED (14 Nov 2026).
+`/hud` has no card: nginx sends it to the same GAR page as `/`.
 
 **The generated PDF contains the hotspot passphrase in scannable form.** That is
 what makes the join code work, and it is why this directory holds the generator
@@ -904,13 +908,13 @@ Not in this repo because it is runtime state, not configuration:
 From the Pi, on either mode:
 
 ```bash
-for u in / /grafana/ /portainer/ /events/ /settings/; do
+for u in / /hud /log /live/ /race/ /grafana/ /portainer/ /events/ /settings/; do
     printf '%-12s ' "$u"
-    curl -s -o /dev/null -w '%{http_code}\n' -m 10 "http://enchantee.local$u"
+    curl -sL -o /dev/null -w '%{http_code}\n' -m 10 "http://enchantee.local$u"
 done
 ```
 
-`/`, `/grafana/`, `/portainer/` and `/events/` should be `200`.
+Every one should be `200`. `-L` follows the redirects of `/`, `/hud` and `/log`.
 
 For the event recorder also confirm its assets resolve under the subpath, since
 that is what the root-relative change in section 7.6 fixes:
@@ -983,7 +987,7 @@ sudo journalctl -u enchantee-mode-restore.service -b -o cat
 **Each proxied app needs different treatment; there is no single recipe.**
 Grafana wants the `/grafana` prefix forwarded intact. Portainer wants
 `/portainer` stripped. The event recorder had no subpath support at all and its
-source had to be made root-relative. emon_live's pages at `/` use relative URLs
+source had to be made root-relative. emon_live's pages at `/live/` use relative URLs
 throughout. Getting any of these
 backwards produces a 404 or a page whose assets all fail. See sections
 [7.4](#74-grafana-under-grafana), [7.5](#75-portainer-under-portainer) and

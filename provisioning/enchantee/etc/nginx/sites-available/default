@@ -8,13 +8,16 @@
 #   Wifi client  -> http://enchantee.local/    (mDNS/avahi)
 #   either       -> http://<current-ip>/       (always works)
 #
-#   /           -> emon_live pages     (emon_live   :5003)
+#   /           -> 302 to /race/gar, the race app's GAR dial
+#   /hud        -> 302 to /race/gar too, the short URL the crew already knows
+#   /log        -> 302 to /race/log/, the post editor
+#   /live/      -> emon_live pages     (emon_live   :5003)
 #   /grafana/   -> Grafana             (grafana1    :3000)   serve_from_sub_path=true
 #   /portainer/ -> Portainer           (portainer   :9000)   --base-url=/portainer
 #   /events/    -> event recorder     (host net   :5000)
 #   /settings/  -> emon settings web   (:5001)
-#   /race/      -> race support app    (host net   :5002)
-#   /hud        -> the race app's instrument HUD, a shortcut for the crew
+#   /race/      -> race support app    (host net   :5002), the race screen at /race/
+#   anything else -> 404
 #
 # The websocket $connection_upgrade map lives in /etc/nginx/conf.d/upgrade-map.conf
 ##
@@ -48,14 +51,26 @@ server {
     # for CPU this Pi has spare on a handful of requests per race.
     gzip_comp_level 6;
 
-    # emon_live, the boat's pages (emon_Suite docs/emon_live_ui, DESIGN 6.4). Every URL
-    # in them is relative, so they work here at / and on :5003 alike, and their Grafana
-    # panels reach /grafana/ as ../grafana/. Pages poll /api/state once a second; it is
-    # small and JSON, so the gzip_types above compress it.
+    # The front page is the race app's GAR dial (owner, 16 Nov 2026). A redirect, not a
+    # proxy of /race/gar at /: the race app builds every asset and API URL from
+    # location.pathname, and its Home Screen manifest is scoped to /race/, so its pages
+    # have to be seen at their /race/ addresses. 302, not 301, for the reason given on
+    # /hud below: a 301 is cached in every phone on the boat and these may be repointed.
+    location = / { return 302 /race/gar; }
+
+    # Anything not routed here is a 404. Until 16 Nov 2026 this location sent everything
+    # to emon_live, which now lives at /live/.
+    location / { return 404; }
+
+    # emon_live, the boat's pages (emon_Suite docs/emon_live_ui, DESIGN 6.4), at /live/
+    # since 16 Nov 2026, as at shannstainable. Every URL in them is relative, so they work
+    # here and on :5003 alike, and their Grafana panels reach /grafana/ as ../grafana/.
+    # Pages poll api/state once a second; it is small and JSON, so the gzip_types above
+    # compress it.
     #
     # Node-RED, whose dashboard this replaced, was removed from the boat on 14 Nov 2026
     # (docs/emon_live_ui/HANDOVER.md), and its /nodered/ location with it.
-    location / {
+    location /live/ {
         proxy_pass http://127.0.0.1:5003/;
         proxy_http_version 1.1;
         proxy_set_header Host              $http_host;
@@ -63,6 +78,7 @@ server {
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+    location = /live { return 301 /live/; }
 
     # Grafana. GF_SERVER_SERVE_FROM_SUB_PATH=true means Grafana wants to see the
     # /grafana prefix itself, so proxy_pass must NOT carry a URI (no trailing /).
@@ -145,8 +161,8 @@ server {
     # location.pathname, so it works here under /race/ and on its own port alike,
     # provided the page is at a directory-style URL. Hence the redirect below.
     #
-    # Screens: /race/ is the race screen, /race/hud the instrument HUD, and the
-    # navigation between them is relative links, so nothing here needs to know about
+    # Screens: /race/ is the race screen, /race/gar the GAR dial, /race/hud the
+    # instrument HUD, /race/map the map, and the navigation between them is relative links, so nothing here needs to know about
     # them individually.
     location /race/ {
         proxy_pass http://127.0.0.1:5002/;
@@ -177,16 +193,15 @@ server {
     }
     location = /race/log { return 301 /race/log/; }
 
-    # Shortcut, so the crew can type enchantee.local/hud and get the instruments.
-    #
-    # This is an exact match, so it takes precedence over the catch-all `location /`
-    # that sends everything else to emon_live, which has no /hud of its own. (It was
-    # claimed when `location /` rewrote the root onto Node-RED's :1880/ui/, where /hud
-    # did not exist either.) The Node-RED HUD it once swung between is gone with
-    # Node-RED (14 Nov 2026).
+    # Shortcuts the crew can type. /hud went to /race/hud, the classic HUD, until 16 Nov
+    # 2026, and now opens the GAR dial like / does; the classic HUD is one tap away in
+    # GAR's own nav cell. /log is the post editor at its /race/log/ address, inside the
+    # race app's Home Screen scope, where its back link to GAR works (above).
     #
     # 302 rather than the 301 used for the trailing-slash redirects above. Those are
-    # structural and permanent; this one is a convenience alias that may be repointed,
+    # structural and permanent; these are convenience aliases that may be repointed,
     # and a 301 cached in every phone on the boat would make that a nuisance to undo.
-    location = /hud { return 302 /race/hud; }
+    location = /hud  { return 302 /race/gar; }
+    location = /log  { return 302 /race/log/; }
+    location = /log/ { return 302 /race/log/; }
 }
