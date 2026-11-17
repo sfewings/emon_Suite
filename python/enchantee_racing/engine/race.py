@@ -321,9 +321,9 @@ def set_timer(state: State, context: Context, minutes: Optional[float], now: flo
     """
     if minutes is None:
         new = state._replace(mode=IDLE, start_at=None)
-        return new, [_event("timer", new, context, now)]
+        return new, [_timer_event(new, context, now)]
     new = state._replace(mode=PRESTART, start_at=now + minutes * 60.0, finished_at=None)
-    return new, [_event("timer", new, context, now)]
+    return new, [_timer_event(new, context, now)]
 
 
 def nudge_timer(state: State, context: Context, seconds: float, now: float):
@@ -331,7 +331,17 @@ def nudge_timer(state: State, context: Context, seconds: float, now: float):
     if state.start_at is None:
         return state, []
     new = state._replace(start_at=state.start_at + seconds)
-    return new, [_event("timer", new, context, now)]
+    return new, [_timer_event(new, context, now)]
+
+
+def _timer_event(state: State, context: Context, now: float) -> dict:
+    """A timer event carries T-0, null when the timer was cleared.
+
+    Without it a set and a cleared timer publish the same payload, and event_recorder,
+    which starts a race recording on the countdown, cannot tell a mis-tap undone from a
+    race about to start.
+    """
+    return _event("timer", state, context, now, start_at=state.start_at)
 
 
 def advance(state: State, context: Context, direction: int, now: float,

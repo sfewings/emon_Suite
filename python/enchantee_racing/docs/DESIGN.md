@@ -1955,6 +1955,10 @@ race/event  {type: "select"|"timer"|"start"|"rounded"|"breach"
              course, leg, leg_name, ts, lat, lon, source: "auto"|"manual"}
 ```
 
+A `timer` event also carries `start_at`, T-0 in epoch seconds, or null when the timer
+was cleared (17 Nov 2026). event_recorder starts a race recording on the countdown, and
+without it a mis-tap undone published the same payload as a race about to start.
+
 Recording `source` matters. A season of races where auto-advance fired correctly
 and was not overridden is the evidence needed to tighten the arming radius, and a
 cluster of manual overrides at one mark points straight at a bad coordinate.

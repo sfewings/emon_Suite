@@ -99,6 +99,19 @@ def test_a_hooter_sets_the_countdown_and_the_gun_starts_the_race():
     assert [e["type"] for e in events] == ["start"]
 
 
+def test_a_timer_event_says_when_the_gun_is_or_that_there_is_none():
+    # event_recorder starts a race recording on the countdown; a cleared timer must not
+    # read the same as a set one (DESIGN 11.9)
+    context = _context()
+    state, _ = race.select(race.initial(), context, "frostbite-3", T0)
+    state, events = race.set_timer(state, context, minutes=5, now=T0)
+    assert events[0]["start_at"] == T0 + 300.0
+    state, events = race.nudge_timer(state, context, -10.0, T0 + 1.0)
+    assert events[0]["start_at"] == T0 + 290.0
+    state, events = race.set_timer(state, context, minutes=None, now=T0 + 2.0)
+    assert events[0]["type"] == "timer" and events[0]["start_at"] is None
+
+
 def test_elapsed_counts_from_the_gun_not_from_crossing_the_line():
     """A flying start, and a boat ten minutes late is still scored (DESIGN 11.1)."""
     context = _context()
