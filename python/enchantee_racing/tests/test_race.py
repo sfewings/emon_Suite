@@ -2,12 +2,13 @@
 
 Two halves, and the second is the one that matters. The first drives each guard in
 isolation with synthetic geometry, which is how you find out that a rule does what it says.
-The second feeds the 16 August 2026 Frostbite recording through the engine fix by fix,
-which is how you find out whether the rules add up to a race. DESIGN 11 says the whole
+The second feeds recorded races through the engine fix by fix, Opening Day on 1 November
+and Frostbite course 1 on 13 September 2026, which is how you find out whether the rules
+add up to a race. DESIGN 11 says the whole
 module exists to be replayable; a state machine tested only against positions I invented
 would be testing my imagination.
 
-The recording is committed, at tests/data/, so the replay always runs. It is the test
+The recordings are committed, at tests/data/, so the replay always runs. It is the test
 that covers the riskiest logic in the project, and one that silently skips itself is
 worse than one that fails.
 """
@@ -27,9 +28,10 @@ LINES = json.loads((ROOT / "config" / "lines.json").read_text(encoding="utf-8"))
 COURSES = json.loads((ROOT / "config" / "courses.json").read_text(encoding="utf-8"))
 RACE_CONFIG = json.loads((ROOT / "config" / "race.json").read_text(encoding="utf-8"))
 
-TRACK = ROOT / "tests" / "data" / "20260816_Frostbite_3.TXT"
-"""Frostbite course 3, 16 August 2026. Sailed before the compass was calibrated, which
-does not matter here: the engine reads GPS position, COG and SOG and never the heading."""
+TRACK_OPENING_DAY = ROOT / "tests" / "data" / "20261101_OpeningDay_1.TXT"
+"""Opening Day Regatta course 1, 1 November 2026, the boat's daily log from the mooring and
+back. The race the event_recorder race recording was first tested against: the engine
+sailed it live with no hand on it, and its race/event log is the reference below."""
 
 TRACK_FROSTBITE_1 = ROOT / "tests" / "data" / "20260913_Frostbite_1.TXT"
 """Frostbite course 1, 13 September 2026, the default replay (tests/replay/README.md). The
@@ -662,7 +664,7 @@ def _read_track(path, start="13:30:00"):
     return fixes
 
 
-def _replay(context, start_clock="13:30:00", track=TRACK):
+def _replay(context, track, start_clock="13:30:00"):
     """Feed the recording through the engine from the gun, collecting the events."""
     fixes = _read_track(track, start=start_clock)
     start = fixes[0][0]
@@ -680,85 +682,71 @@ def _replay(context, start_clock="13:30:00", track=TRACK):
     return state, collected
 
 
+# Opening Day, 1 November 2026. The engine sailed this race live on the boat, and
+# event_recorder logged every transition (its recording 113). Replayed offline from the
+# 14:35:04 gun, it reproduces that log to the second, which is what these pin: a change to
+# the engine that would have sailed the day differently fails here.
+OPENING_DAY_ROUNDINGS = {1: "14:57:25", 2: "15:24:37", 3: "16:04:33", 4: "16:05:17",
+                         5: "16:14:55", 6: "16:29:54", 7: "16:44:14", 8: "16:55:32"}
+OPENING_DAY_FINISH = "17:11:29"
+
+
+def _seconds(clock):
+    hours, minutes, seconds = (int(p) for p in clock.split(":"))
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _replay_opening_day():
+    return _replay(_context("opening-day-1"), TRACK_OPENING_DAY, start_clock="14:35:04")
+
+
 def test_replaying_a_real_race_works_through_every_leg_in_order():
     """The test this module exists for.
 
-    Frostbite course 3, 16 August 2026, fed through fix by fix from the 13:30 gun. Nine
-    advances, in order, no leg skipped and none repeated, and the finish armed at the end.
+    Opening Day course 1 fed through fix by fix from the gun: eight automatic roundings in
+    order, no leg skipped and none repeated, no breach, and the race finished.
     """
-    context = _context()
-    state, events = _replay(context)
+    context = _context("opening-day-1")
+    state, events = _replay_opening_day()
 
-    advances = [(now, e["leg"]) for now, e in events if e["type"] == "rounded"]
-    assert [leg for _t, leg in advances] == list(range(1, context.last_leg + 1)), advances
-    assert state.leg == context.last_leg
-    assert state.finish_armed is True
-    assert state.finish_side in (-1, 1)
-    assert [e["type"] for _t, e in events if e["type"] == "breach"] == []
+    advances = [e for _now, e in events if e["type"] == "rounded"]
+    assert [e["leg"] for e in advances] == list(range(1, context.last_leg + 1)), advances
+    assert all(e["source"] == race.AUTO for e in advances)
+    assert state.mode == race.FINISHED
+    assert [e for _now, e in events if e["type"] == "breach"] == []
+    assert state.breaches == 0
 
 
 def test_the_replayed_race_finishes_once_on_the_fix_the_boat_crossed():
     """The whole engine, end to end, against a race that happened.
 
-    This test spent a day asserting that the replay did NOT finish. The boat's last crossing
-    fell 38 m outside the inner end of the line, so the [0, 1] parameter test rejected it,
-    correctly: the inner start mark had been digitized 71 m along the line towards 32A. It
-    was redigitized to within 1.6 m of the hand-supplied guess that preceded it, which
-    lengthened the line from 109 m to 178 m, and the finish now lands at t = 0.17.
-
-    Worth keeping in mind next time something here looks like a detection bug. The engine
-    was right, the rule was right, and the mark was wrong.
+    One finish, at 17:11:29, the second the boat logged it live, 79 per cent of the way
+    along the line from the inner mark. The 14:35 start crossed the line too and was
+    ignored, as every crossing before the last leg has to be.
     """
-    context = _context()
-    state, events = _replay(context)
+    state, events = _replay_opening_day()
 
     finishes = [(now, event) for now, event in events if event["type"] == "finish"]
     assert len(finishes) == 1, [now for now, _e in finishes]
     assert state.mode == race.FINISHED
 
     when, event = finishes[0]
-    assert abs(when - (15 * 3600 + 16 * 60 + 1)) < 5, when      # the boat crossed at 15:16:01
+    assert when == _seconds(OPENING_DAY_FINISH), when
     assert 0.0 <= event["along"] <= 1.0, event["along"]
+    assert abs(event["along"] - 0.789) < 0.01, event["along"]
     assert event["lat"] is not None and event["lon"] is not None
 
-    # An hour and three quarters, counted from the gun rather than from the line.
-    assert abs(race.elapsed(state, when) - 6361.0) < 30.0, race.elapsed(state, when)
-
-    # Three crossings while racing, every one of them ignored: the 13:30 start and the two
-    # roundings of 32A, which is the outer end of this line as well as a course mark. That
-    # is the hazard the whole finish design exists for, and it happened three times.
-    assert state.ignored_crossings == 3, state.ignored_crossings
-    assert state.breaches == 0
+    # Two hours thirty-six minutes, counted from the gun rather than from the line.
+    assert abs(race.elapsed(state, when) - 9385.0) < 2.0, race.elapsed(state, when)
+    assert state.ignored_crossings == 1, state.ignored_crossings
 
 
-def test_the_replay_advances_close_to_where_the_boat_actually_rounded():
-    """Within a minute on nine of the ten legs, and Hallmark is the known exception.
-
-    Hallmark is early because the boat approached to 36 m, turned, sailed 100 m away with
-    the mark astern for fifty seconds, then came back and rounded properly two minutes
-    later. That first pass is rounding-shaped and no rule distinguishes it (DESIGN 11.2).
-    The sequence recovers on its own: the engine spends the next leg pointing at Club Buoy
-    while the boat finishes with Hallmark, and everything after that lines up again.
-    """
-    rounded_at = {1: "13:51:38", 2: "14:05:13", 3: "14:11:23", 4: "14:13:17", 5: "14:21:08",
-                  6: "14:50:18", 7: "14:59:57", 8: "15:07:09", 9: "15:14:09"}
-
-    context = _context()
-    _state, events = _replay(context)
+def test_the_replay_rounds_every_mark_when_the_boat_did_on_the_day():
+    """Each rounding on the second the live engine logged it, Smith and Lucky Bay 44 s
+    apart among them: the 10 s hold after one advance must not swallow the next."""
+    _state, events = _replay_opening_day()
     fired = {e["leg"]: now for now, e in events if e["type"] == "rounded"}
-
-    late = {}
-    for leg, clock in rounded_at.items():
-        hours, minutes, seconds = (int(p) for p in clock.split(":"))
-        expected = hours * 3600 + minutes * 60 + seconds
-        assert leg in fired, leg
-        late[leg] = fired[leg] - expected
-
-    early = {leg: offset for leg, offset in late.items() if offset < -60.0}
-    assert set(early) <= {6}, late      # leg 6 is the advance off Hallmark
-    for leg, offset in late.items():
-        if leg not in early:
-            assert -60.0 <= offset <= 60.0, (leg, offset)
+    assert fired == {leg: _seconds(clock) for leg, clock in OPENING_DAY_ROUNDINGS.items()}
 
 
 # --- the whole race again: Frostbite course 1, 13 September 2026 -----------------------
@@ -769,7 +757,7 @@ def test_the_replay_advances_close_to_where_the_boat_actually_rounded():
 
 
 def _replay_frostbite_1():
-    return _replay(_context("frostbite-1"), track=TRACK_FROSTBITE_1)
+    return _replay(_context("frostbite-1"), TRACK_FROSTBITE_1)
 
 
 def test_frostbite_1_works_through_every_leg_with_no_hand_on_it():

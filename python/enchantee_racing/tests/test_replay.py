@@ -19,7 +19,9 @@ sys.path.insert(0, str(ROOT / "tests" / "replay"))
 import mqtt_client  # noqa: E402
 import replay  # noqa: E402
 
-# Real lines from tests/data/20260816_Frostbite_3.TXT, one of each kind the log carries.
+# Real lines from the 16 August 2026 Frostbite 3 log, one of each kind the log carries.
+# The log itself was removed from tests/data/ on 17 Nov 2026 as out of date; these lines
+# stay because they exercise only the line format, which has not changed.
 SAMPLE = """16/08/2026 13:02:24,gps,0,-32.001369476,115.809333801,299.25,0.07
 16/08/2026 13:02:25,imu,0,0.040,-0.078,0.996,0.186,0.339,0.922,-1404.900,-135.500,-84.300,68.00
 16/08/2026 13:02:25,mwv,0,12.3,351.0,22.3

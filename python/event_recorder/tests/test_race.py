@@ -286,6 +286,98 @@ def test_the_real_opening_day_course_is_titled_as_the_race_app_heads_it():
     assert identity['title'].startswith('Opening Day Regatta · Course 1')
 
 
+# === A real race: Opening Day, 1 November 2026 ===
+#
+# The boat's own log of the day, committed with the race app's replay tests, run through
+# the race app's engine for the race events exactly as it ran live, then through this
+# module. The figures are the ones recording 113 gave from the same race as the boat
+# recorded it, so a change to the analysis that would have told the day differently
+# fails here.
+
+RACING = ROOT / 'enchantee_racing'
+OPENING_DAY_LOG = RACING / 'tests' / 'data' / '20261101_OpeningDay_1.TXT'
+
+
+def _opening_day():
+    sys.path.insert(0, str(RACING))
+    from engine import course as course_module, nav, race
+
+    def seconds(clock):
+        h, m, sec = (int(p) for p in clock.split(':'))
+        return float(h * 3600 + m * 60 + sec)
+
+    track, twd, tws, awa = [], [], [], []
+    for line in open(OPENING_DAY_LOG, encoding='utf-8', errors='replace'):
+        f = line.rstrip().split(',')
+        if len(f) < 6:
+            continue
+        try:
+            t = seconds(f[0][11:])
+            if f[1] == 'gps' and f[2] == '0' and len(f) >= 7:
+                track.append((t, float(f[3]), float(f[4]), float(f[6]), float(f[5])))
+            elif f[1] == 'mwv' and f[2] == '2':
+                tws.append((t, float(f[3])))
+                twd.append((t, float(f[4])))
+            elif f[1] == 'mwv' and f[2] == '0':
+                awa.append((t, float(f[4])))
+        except ValueError:
+            continue
+
+    config = RACING / 'config'
+    docs = {name: json.loads((config / f'{name}.json').read_text())
+            for name in ('courses', 'marks', 'lines', 'race')}
+    chosen = [c for c in docs['courses']['courses'] if c['id'] == 'opening-day-1'][0]
+    context = race.Context(course=chosen, marks=course_module.index_marks(docs['marks']),
+                           lines=docs['lines'],
+                           config=race.Config.from_document(docs['race']))
+    gun = seconds('14:35:04')
+    state, events = race.select(race.initial(), context, 'opening-day-1', gun - 600)
+    state, more = race.set_timer(state, context, minutes=0, now=gun)
+    events += more
+    state, more = race.on_clock(state, context, gun)
+    events += more
+    for t, lat, lon, sog, cog in track:
+        if t < gun:
+            continue
+        state, more = race.on_fix(state, context, race.Fix(nav.LatLon(lat, lon), t, cog, sog), t)
+        events += more
+        if state.mode == race.FINISHED:
+            break
+
+    def geometry_for(course_id):
+        return ra.course_geometry(course_id, docs['courses'], docs['marks'], docs['lines'])
+
+    return ra.analyse(events, seconds('17:16:29'),
+                      [(t, lat, lon, sog) for t, lat, lon, sog, _cog in track],
+                      twd=twd, tws=tws, awa=awa, geometry_for=geometry_for)
+
+
+def test_opening_day_is_tabled_leg_by_leg_as_the_day_went():
+    if not OPENING_DAY_LOG.exists():
+        raise AssertionError(f"{OPENING_DAY_LOG} is committed; its absence is a broken checkout")
+    race = _opening_day()
+    legs = race['legs']
+    assert [r['name'] for r in legs] == [
+        'Miller', 'Dolphin East', 'Smith', 'Lucky Bay', 'Squadron', 'Dolphin West',
+        'Sanders', 'Hallmark', 'Finish']
+    assert [r['point_of_sail'] for r in legs] == [
+        'Close-hauled', 'Run', 'Close-hauled', 'Broad reach', 'Broad reach', 'Broad reach',
+        'Close-hauled', 'Broad reach', 'Close-hauled']
+    assert race['finished'] and not any(r['unfinished'] for r in legs)
+    assert abs(race['total']['length_m'] / 1852 - 9.40) < 0.01
+    assert abs(race['total']['duration_s'] - 9385) < 2
+    # As the boat recorded it: 11.74 nm sailed, 4.5 kn, a westerly of about 250
+    assert abs(race['total']['distance_m'] / 1852 - 11.74) < 0.15
+    assert abs(race['total']['avg_speed_kn'] - 4.5) < 0.1
+    assert abs(race['total']['twd'] - 250) < 3
+    # Upwind at the low thirties off the bow, on both tacks
+    for leg in (legs[0], legs[2], legs[8]):
+        assert 28 < leg['awa_port'] < 40 and 28 < leg['awa_starboard'] < 40, leg
+    # 73 m behind the line at the gun, from the track: the start event carries no fix
+    assert race['start']['side'] == 'behind'
+    assert abs(race['start']['distance_to_line_m'] - 73) < 10
+
+
 # === The post ===
 
 def test_the_post_table_has_a_row_per_leg_and_a_total_in_both_units():

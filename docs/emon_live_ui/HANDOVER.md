@@ -389,8 +389,9 @@ the menu. The route and the block are inert without it.
   the flows (`ui_gauge` min, max, seg1, seg2).
 - Venv `/home/pi/.cache/emon_live_venv`: `pytest flask paho-mqtt pyyaml`.
 - Feed names: the boat is often quiet at the dock (no serial for 10 minutes at a time), so
-  names come from decoding a recording. `20260517_Frostbite_1.TXT` (untracked, in
-  `python/enchantee_racing/tests/data/` of the production checkout) through the new
+  names come from decoding a recording. `20261101_OpeningDay_1.TXT` (in
+  `python/enchantee_racing/tests/data/`; the May Frostbite log this used to name was
+  removed on 17 Nov 2026 as out of date) through the new
   image's `emon_decoder` gives 65 names: docker cp a script, the config and the log to
   `/tmp` in `emon_serial`, run it, remove the three files by name.
 - **Test bench** (DESIGN 9.2): a throwaway broker on 127.0.0.1:1884, the Frostbite log

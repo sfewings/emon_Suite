@@ -159,10 +159,20 @@ The engine sails this race with no hand on it: nine automatic roundings and one 
 radius, and a tight rounding of Smith clipped the end of the Smith / Lucky Bay line and was
 logged as a breach.
 
-`tests/data/20260816_Frostbite_3.TXT`, Frostbite course 3 on 16 August 2026, stays: its
-tests pin the finish line's geometry and the early advance off Hallmark. It predates the
-compass calibration, which does not affect those tests, since the engine reads only GPS.
-Do not use it to judge anything drawn from the heading.
+## What is in the Opening Day recording
+
+`tests/data/20261101_OpeningDay_1.TXT`, 1 November 2026, 13:30 to 17:31, 95,060 records:
+Opening Day Regatta course 1, from the mooring and back, with the 14:35:04 gun. The boat's
+daily log with the 3,001 NUL bytes the logger left at its end removed, and nothing else
+changed. The engine sailed this race live with no hand on it, eight automatic roundings
+and the finish at 17:11:29, and the offline replay in `tests/test_race.py` reproduces that
+to the second. It is also the race event_recorder's race recording was tested against
+(event_recorder FR-32): replayed at 1x through the provisioned broker, with the race
+selected at 14:25:16 and the 10-minute hooter nudged so the gun falls at 14:35:04.
+
+The recordings from before 13 September 2026 (17 May Frostbite 1, 16 August Frostbite 3)
+were removed on 17 Nov 2026: they predate the compass calibration and carry older offsets
+and conventions in some of their logged data, so they no longer stand for the boat.
 
 ## Checking the replay actually landed
 
