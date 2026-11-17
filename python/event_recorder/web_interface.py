@@ -350,7 +350,8 @@ class WebInterface:
                 # nautical miles), and the interactive maps, each a page of its own
                 inputs = self.recordings._gather(recording_id)
                 recording['statistics_html'] = (
-                    post_renderer.statistics_table_html(inputs['statistics'])
+                    post_renderer.race_table_html(inputs['statistics'].get('race'))
+                    + post_renderer.statistics_table_html(inputs['statistics'])
                     if inputs['statistics'] else '')
                 recording['maps'] = [self._file_url(path) for path in inputs['map_htmls']]
 

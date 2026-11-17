@@ -274,10 +274,15 @@ def _photo_block(block, ctx, state):
 def _statistics(block, ctx, state):
     if not ctx.statistics:
         return ''
+    out = ''
+    # A race recording's legs, above the statistics they are the breakdown of (FR-32)
+    race = race_table_html(ctx.statistics.get('race'))
+    if race:
+        out += (_heading('Race') if block.get('heading', True) else '') + _html_block(race)
     table = statistics_table_html(ctx.statistics)
-    if not table:
-        return ''
-    return (_heading('Statistics') if block.get('heading', True) else '') + _html_block(table)
+    if table:
+        out += (_heading('Statistics') if block.get('heading', True) else '') + _html_block(table)
+    return out
 
 
 def _route_map(block, ctx, state):
@@ -497,7 +502,8 @@ def statistics_table_html(statistics: Dict) -> str:
         'pressure_max':         ('Air Pressure (max)',     'hPa'),
         'message_count':     ('Messages Recorded', ''),
     }
-    skip = {'duration_seconds'}
+    # 'race' is the leg table, drawn by race_table_html
+    skip = {'duration_seconds', 'race'}
 
     def make_row(key, value):
         label, unit = label_map.get(key, (key.replace('_', ' ').title(), ''))
@@ -539,6 +545,95 @@ def statistics_table_html(statistics: Dict) -> str:
 
     return ('<table style="border-collapse:collapse;width:100%;max-width:480px;">\n'
             + ''.join(rows) + '</table>')
+
+
+_CELL = 'padding:4px 8px;border:1px solid #ddd;text-align:right;white-space:nowrap;'
+_HEAD = 'padding:4px 8px;border:1px solid #ddd;background:#f2f2f2;text-align:center;'
+
+
+def _nm_km(metres) -> str:
+    """Both units, as the owner asked: nautical miles for the crew, km for everyone else."""
+    if not isinstance(metres, (int, float)):
+        return ''
+    return f"{metres / 1852.0:.2f} nm<br>{metres / 1000.0:.2f} km"
+
+
+def _hms(seconds) -> str:
+    if not isinstance(seconds, (int, float)):
+        return ''
+    seconds = int(round(seconds))
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+
+
+def _num(value, decimals=1, unit='') -> str:
+    if not isinstance(value, (int, float)):
+        return ''
+    return f"{value:.{decimals}f}{unit}"
+
+
+def race_table_html(race: Optional[Dict]) -> str:
+    """A race recording's legs as an HTML table, one row per leg and totals (FR-32).
+
+    Wind directions and angles are whole degrees; speeds one decimal, as the
+    instruments read. Each AWA is the mean angle off the bow on that tack, so a leg
+    sailed on one tack has the other blank.
+    """
+    if not isinstance(race, dict) or not race.get('legs'):
+        return ''
+
+    lines = []
+    course = race.get('course_name') or race.get('course')
+    if course:
+        lines.append(f"Course: {html.escape(str(course))}")
+    if race.get('gun_local'):
+        lines.append(f"Start: {html.escape(race['gun_local'])}")
+    if race.get('finish_local'):
+        lines.append(f"Finish: {html.escape(race['finish_local'])}")
+    elif not race.get('finished'):
+        lines.append('Not finished')
+    start = race.get('start') or {}
+    if isinstance(start.get('distance_to_line_m'), (int, float)):
+        where = f"{start['distance_to_line_m']:.0f} m"
+        if start.get('side'):
+            where += f" {html.escape(start['side'])}"
+        lines.append(f"At the gun: {where} the line" if start.get('side')
+                     else f"At the gun: {where} from the line")
+
+    headers = ['Leg', 'Mark', 'Leg length', 'Point of sail', 'Distance sailed',
+               'Duration', 'Avg speed (kn)', 'TWD (°)', 'TWS min (kn)', 'TWS mean (kn)',
+               'TWS max (kn)', 'AWA port (°)', 'AWA stbd (°)']
+
+    def row(cells, bold=False):
+        style = _CELL + ('font-weight:bold;background:#f8f8f8;' if bold else '')
+        return '  <tr>' + ''.join(f'<td style="{style}">{c}</td>' for c in cells) + '</tr>\n'
+
+    def wind_cells(r):
+        return [_num(r.get('avg_speed_kn')), _num(r.get('twd'), 0),
+                _num(r.get('tws_min')), _num(r.get('tws_mean')), _num(r.get('tws_max')),
+                _num(r.get('awa_port'), 0), _num(r.get('awa_starboard'), 0)]
+
+    body = ''
+    for leg in race['legs']:
+        name = html.escape(str(leg.get('name') or ''))
+        if leg.get('unfinished'):
+            name += ' (unfinished)'
+        body += row([str(leg.get('leg', '')), name, _nm_km(leg.get('length_m')),
+                     html.escape(leg.get('point_of_sail') or ''),
+                     _nm_km(leg.get('distance_m')), _hms(leg.get('duration_s'))]
+                    + wind_cells(leg))
+    total = race.get('total') or {}
+    body += row(['', 'Total', _nm_km(total.get('length_m')), '',
+                 _nm_km(total.get('distance_m')), _hms(total.get('duration_s'))]
+                + wind_cells(total), bold=True)
+
+    head = '  <tr>' + ''.join(f'<th style="{_HEAD}">{html.escape(h)}</th>'
+                              for h in headers) + '</tr>\n'
+    summary = (f'<p>{" · ".join(lines)}</p>\n' if lines else '')
+    # Thirteen columns do not fit a phone; the table scrolls inside its own box
+    # rather than widening the page
+    return (summary + '<div style="overflow-x:auto;">\n'
+            '<table style="border-collapse:collapse;font-size:0.85em;">\n'
+            + head + body + '</table>\n</div>')
 
 
 def extract_folium_embed(html_path: str, height: int = 500) -> str:

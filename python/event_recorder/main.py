@@ -104,6 +104,10 @@ class EventRecorderService:
             self.mqtt_broker,
             self.mqtt_port
         )
+        # The race event that starts a race recording belongs in it (FR-32)
+        self.trigger_monitor.on_trigger_message = (
+            lambda recording_id, topic, payload, timestamp:
+            self.data_recorder.buffer.add_message(recording_id, topic, payload, timestamp))
 
         self.recovery_manager = RecoveryManager(self.database)
 

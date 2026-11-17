@@ -34,6 +34,10 @@ CHART_DOCUMENTS = {
     'structures': 'pfsyc-structures/1',
     'navaids': 'pfsyc-navaids/1',
     'marks': 'pfsyc-marks/2',
+    # Not drawn: the race recording's leg table measures its legs from these, as
+    # enchantee_racing's own leg table does (FR-32)
+    'courses': 'pfsyc-courses/1',
+    'lines': 'pfsyc-lines/2',
 }
 
 DEFAULT_BASE_URL = 'http://localhost:5002'

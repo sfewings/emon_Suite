@@ -376,9 +376,13 @@ class ConfigManager:
             # Validate condition structure
             for condition_type in ['start_condition', 'stop_condition']:
                 if condition_type in event_config:
-                    condition = event_config[condition_type]
-                    if 'type' not in condition:
-                        errors.append(f"Event '{event_name}': {condition_type} missing 'type' field")
+                    # stop_condition may be a list, any one of which stops it (FR-32)
+                    conditions = event_config[condition_type]
+                    if not isinstance(conditions, list):
+                        conditions = [conditions]
+                    for condition in conditions:
+                        if not isinstance(condition, dict) or 'type' not in condition:
+                            errors.append(f"Event '{event_name}': {condition_type} missing 'type' field")
 
         return errors
 

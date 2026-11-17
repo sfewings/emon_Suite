@@ -223,7 +223,8 @@ class RecordingService:
         if not plot_config:
             plot_config = self._event_plot_config(recording_id)
         return processor.process_recording(recording_id, plot_config, export_config,
-                                           skip_feeds=self._event_skip_feeds(recording_id))
+                                           skip_feeds=self._event_skip_feeds(recording_id),
+                                           race=self._is_race(recording_id))
 
     def _event_config_for(self, recording_id: int) -> Dict:
         """The event config a recording was made under, or {} if it cannot be found."""
@@ -245,6 +246,11 @@ class RecordingService:
         """
         plots = self._event_config_for(recording_id).get('plots')
         return plots or None
+
+    def _is_race(self, recording_id: int) -> bool:
+        """A race recording: started by enchantee_racing's race events (FR-32)."""
+        start = self._event_config_for(recording_id).get('start_condition') or {}
+        return isinstance(start, dict) and start.get('type') == 'race_event'
 
     def _event_skip_feeds(self, recording_id: int) -> List[str]:
         """Feed-name patterns the event config asks not to be charted at all."""

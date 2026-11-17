@@ -32,6 +32,7 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 from . import chart_map
+from . import race_analysis
 from .models import Artefacts, Database, ImageType
 
 logger = logging.getLogger(__name__)
@@ -252,6 +253,10 @@ class DataProcessor:
 
         # {recording_id: {topic: envelope}}, built on demand by _feed_index.
         self._feed_index_cache: Dict[int, Dict[str, Dict]] = {}
+
+        # The race in the recording being processed, when it is a race recording
+        # (FR-32): its legs, the boat at the gun, and the times every chart marks.
+        self._race: Optional[Dict] = None
 
         # Plot defaults
         plot_defaults = plot_defaults or {}
@@ -755,7 +760,7 @@ class DataProcessor:
 
     def process_recording(self, recording_id: int, plot_config: List[Dict] = None,
                           export_config: Dict = None,
-                          skip_feeds: List[str] = None) -> Dict:
+                          skip_feeds: List[str] = None, race: bool = False) -> Dict:
         """
         Process recording: generate plots, statistics, and export files.
 
@@ -822,6 +827,18 @@ class DataProcessor:
                 'status': 'success'
             }
 
+            # A race recording (FR-32): worked out before the charts, which mark its
+            # start, roundings and finish. A race that cannot be read costs the leg
+            # table and the marks, never the recording's processing.
+            self._race = None
+            if race:
+                try:
+                    self._race = self.analyse_race(recording_id)
+                    if self._race is None:
+                        logger.info(f"Recording {recording_id}: no race began in it")
+                except Exception as e:
+                    logger.warning(f"Race analysis failed for recording {recording_id}: {e}")
+
             # Charts the event config declares are drawn first, in the order it lists
             # them, and the feeds they use are then left out of the automatic ones, so
             # a hand-composed chart does not reappear as an automatic duplicate.
@@ -854,6 +871,10 @@ class DataProcessor:
             # Calculate statistics
             logger.info("Calculating statistics")
             results['statistics'] = self.calculate_statistics(recording_id)
+            if self._race:
+                # Carried in the statistics so the post, the preview and the event page
+                # all get the leg table from the JSON sidecar they already read
+                results['statistics']['race'] = self._race
 
             # Generate statistics table as image
             stats_table_path = self._generate_statistics_table(
@@ -989,7 +1010,8 @@ class DataProcessor:
         fig, ax = plt.subplots(figsize=(self.default_width, self.default_height))
 
         ax.plot(timestamps, values, linewidth=self.default_linewidth, color=color)
-        ax.set_title(title, fontsize=16, fontweight='bold')
+        pad = self._mark_race(ax)
+        ax.set_title(title, fontsize=16, fontweight='bold', pad=pad)
         ax.set_xlabel('Time', fontsize=12)
         ax.set_ylabel(ylabel, fontsize=12)
         ax.grid(True, alpha=0.3)
@@ -1062,7 +1084,8 @@ class DataProcessor:
                                     linestyle='--' if topic in right_topics else '-')
                 handles.append(line)
 
-        ax.set_title(title, fontsize=16, fontweight='bold')
+        pad = self._mark_race(ax)
+        ax.set_title(title, fontsize=16, fontweight='bold', pad=pad)
         ax.set_xlabel('Time', fontsize=12)
         ax.set_ylabel(ylabel, fontsize=12)
         ax.grid(True, alpha=0.3)
@@ -1174,6 +1197,7 @@ class DataProcessor:
         ax.plot(lons[-1], lats[-1], 'o', markersize=10, markerfacecolor='#d64545',
                 markeredgecolor='#ffffff', markeredgewidth=1.2, label='End',
                 zorder=10)
+        self._draw_race_start(ax)
 
         # Limits come from the track, not from the chart: the coastline is
         # generated far wider than the sailing area for the ocean races, and
@@ -1217,6 +1241,154 @@ class DataProcessor:
             f"speed={'yes' if mappable is not None else 'no'})"
         )
         return output_path
+
+    # === Race recordings (FR-32) ===
+
+    RACE_FEEDS = {
+        # Named feed first, then the legacy topic a recording from before the emon/
+        # envelopes holds (anemometer subnode 2 is true wind, 0 the bow-relative reading)
+        'twd': ['True wind / windDirection', 'anemometer/windDirection/2'],
+        'tws': ['True wind / windSpeed', 'anemometer/windSpeed/2'],
+        'awa': ['derived/wind/awa', 'Boat reference wind / windDirection',
+                'anemometer/windDirection/0'],
+    }
+
+    @staticmethod
+    def _epoch(stamp) -> float:
+        if isinstance(stamp, str):
+            stamp = datetime.fromisoformat(stamp)
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.timestamp()
+
+    def _race_series(self, recording_id: int, key: str) -> List[Tuple[float, float]]:
+        """The first of RACE_FEEDS[key] the recording holds, as (epoch, value)."""
+        for pattern in self.RACE_FEEDS[key]:
+            topics = self._resolve_feeds(recording_id, [pattern])
+            data = self._get_topic_data(recording_id, topics[0]) if topics else None
+            if data:
+                return [(self._epoch(t), v) for t, v in zip(*data)]
+        return []
+
+    def analyse_race(self, recording_id: int) -> Optional[Dict]:
+        """The race in a recording, leg by leg (race_analysis.analyse), or None."""
+        recording = self.database.get_recording(recording_id)
+        if not recording:
+            return None
+        events = []
+        for row in self.database.get_recording_data(recording_id,
+                                                    topic_filter='race/event') or []:
+            event = _payload_object(row['payload'])
+            if event is not None:
+                events.append(event)
+        if not events:
+            return None
+
+        end = recording.get('end_time') or self.database.last_data_time(recording_id)
+        end = self._epoch(end) if end else max(float(e.get('ts') or 0) for e in events)
+
+        track = []
+        streams = self._find_gps_streams(recording_id)
+        if streams:
+            track = [(self._epoch(f.ts), f.lat, f.lon, f.sog)
+                     for f in self._get_track(recording_id, streams[0])]
+
+        charts = self._load_charts() or {}
+
+        def geometry_for(course_id):
+            return race_analysis.course_geometry(course_id, charts.get('courses'),
+                                                 charts.get('marks'), charts.get('lines'))
+
+        race = race_analysis.analyse(
+            events, end, track,
+            twd=self._race_series(recording_id, 'twd'),
+            tws=self._race_series(recording_id, 'tws'),
+            awa=self._race_series(recording_id, 'awa'),
+            geometry_for=geometry_for)
+        if race:
+            # Boat time for the post, which has no timezone of its own to convert with
+            for key in ('gun', 'finish'):
+                if race.get(key) is not None:
+                    race[f'{key}_local'] = self._race_time(race[key]).strftime('%H:%M:%S')
+        return race
+
+    def _race_time(self, epoch: float) -> datetime:
+        """An epoch time on the charts' axis: naive local, as _utc_to_local gives."""
+        return self._utc_to_local(datetime.utcfromtimestamp(epoch))
+
+    RACE_MARK_STYLE = {
+        'start':  {'color': '#2e9e4f', 'linestyle': '-'},
+        'leg':    {'color': '#6d6875', 'linestyle': '--'},
+        'finish': {'color': '#d64545', 'linestyle': '-'},
+    }
+
+    # Marks closer than this share a label: Smith and Lucky Bay are rounded under a
+    # minute apart, and two labels there print on top of each other
+    RACE_LABEL_MERGE = 0.015      # of the race's length
+
+    def _race_labels(self) -> List[Tuple[float, str, str]]:
+        """(epoch, label, kind) for each run of marks too close to label apart."""
+        marks = self._race['marks']
+        span = max(marks[-1]['t'] - marks[0]['t'], 1.0)
+        groups = []
+        for mark in marks:
+            if groups and mark['t'] - groups[-1][-1]['t'] < span * self.RACE_LABEL_MERGE:
+                groups[-1].append(mark)
+            else:
+                groups.append([mark])
+        out = []
+        for group in groups:
+            when = self._race_time(group[0]['t']).strftime('%H:%M')
+            kind = next((m['kind'] for m in group if m['kind'] != 'leg'), 'leg')
+            out.append((group[0]['t'], f" {', '.join(m['label'] for m in group)} {when}", kind))
+        return out
+
+    def _mark_race(self, ax) -> float:
+        """The start, each rounding and the finish, as labelled lines on a time chart.
+
+        Returns the title pad, in points, that clears the labels above the axes.
+        """
+        if not self._race or not self._race.get('marks'):
+            return 6.0
+        for mark in self._race['marks']:
+            style = self.RACE_MARK_STYLE.get(mark.get('kind'), self.RACE_MARK_STYLE['leg'])
+            ax.axvline(self._race_time(mark['t']), linewidth=0.8, alpha=0.8, zorder=0,
+                       **style)
+        longest = 0
+        for t, label, kind in self._race_labels():
+            style = self.RACE_MARK_STYLE.get(kind, self.RACE_MARK_STYLE['leg'])
+            # Above the plot, so a label never covers the data
+            ax.text(self._race_time(t), 1.0, label, transform=ax.get_xaxis_transform(),
+                    rotation=90, va='bottom', ha='center', fontsize=7,
+                    color=style['color'], clip_on=False)
+            longest = max(longest, len(label))
+        # About 4.3 points a character at 7 pt, and room to spare
+        return 10.0 + longest * 4.3
+
+    def _draw_race_start(self, ax) -> None:
+        """The start line, and where the boat was when the gun went (FR-32)."""
+        race = self._race
+        start = (race or {}).get('start')
+        if not start:
+            return
+        charts = self._load_charts() or {}
+        lines = charts.get('lines') or {}
+        try:
+            sf = lines['start_finish']
+            ax.plot([sf['inner']['lon'], sf['outer']['lon']],
+                    [sf['inner']['lat'], sf['outer']['lat']],
+                    '-', color='#1a1a1a', linewidth=1.4, label='Start line', zorder=9)
+        except (KeyError, TypeError):
+            pass
+        label = 'At the gun'
+        if start.get('distance_to_line_m') is not None:
+            label += f" ({start['distance_to_line_m']:.0f} m"
+            if start.get('side'):
+                label += f" {start['side']}"
+            label += ')'
+        ax.plot(start['lon'], start['lat'], '*', markersize=16,
+                markerfacecolor='#ffcc00', markeredgecolor='#1a1a1a',
+                markeredgewidth=1.0, label=label, zorder=11)
 
     @staticmethod
     def _utc_to_local(stamp: Optional[datetime]) -> Optional[datetime]:

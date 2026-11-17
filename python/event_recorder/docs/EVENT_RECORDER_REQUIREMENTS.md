@@ -91,6 +91,10 @@ The editor:
 - [x] **FR-30:** Categories and crew from the site, offered not typed
 - [x] **FR-31:** Live while recording
 
+### Race Recording ✅ Implemented (2026-11-17)
+
+- [x] **FR-32:** Race recording, with a leg table and the boat at the gun
+
 ---
 
 ## Functional Requirements
@@ -1337,6 +1341,76 @@ ticked; crew names are offered from those used before
 - [ ] The summary is also what FR-22 publishes, replacing its per-second `COUNT(*)` over
       `recording_data`
 
+### FR-32: Race Recording
+
+**Priority:** Should Have
+**Status:** ✅ Implemented (2026-11-17), not yet sailed.
+`race_analysis.py`; triggers in `trigger_monitor.py`; tests `tests/test_race.py`
+
+**Description:** A recording of one race, started and stopped by enchantee_racing's
+`race/event` messages (its DESIGN 11.9), with everything the anchor recording has plus
+a breakdown by leg. It runs beside `anchor_track_recording` and makes its own post; the
+crew publishes whichever suits the day. Specified by the owner on 17 Nov 2026.
+
+**Acceptance Criteria:**
+
+- [x] Starts when the countdown is set (`timer`), or when the leg is stepped forward by
+      hand because the race app was not started until after the gun (`rounded`), or at
+      the gun (`start`) if the countdown was missed. A cleared timer starts nothing:
+      enchantee_racing's `timer` event carries `start_at`, null when cleared
+- [x] Stops five minutes after the `finish`, or on return to the mooring
+      (`anchor_return`), whichever is first. A race abandoned in the race app is
+      stepped through every leg, which ends in a `finish`, so it is still a race
+      recording
+- [x] Everything in it is the race: the recording runs from the countdown to the end of
+      the grace period, so the statistics, charts and map cover only that
+- [x] The route map marks the boat's position at the gun and draws the start line, with
+      the distance to the line and whether the boat was behind it or over
+- [x] A leg table: leg, mark, leg length, point of sail, distance sailed, duration,
+      average speed, TWD, TWS min / mean / max, mean AWA on port and on starboard. A
+      total row: lengths, distances and durations summed, speeds and wind over the whole
+      race. Lengths and distances in nautical miles and km
+- [x] Every time chart marks the start, each rounding and the finish
+
+**Implementation Notes:**
+
+- **Config:** `start_condition: {type: race_event, events: [...]}`, and
+  `stop_condition` as a **list**, any one of which stops the recording:
+  `{type: race_finish, events: [finish], grace: 300}` and the `anchor_return` the anchor
+  recording uses. `on:` was the obvious key and is unusable: YAML reads it as `true`.
+  An image older than this requirement refuses to start on a list `stop_condition`, so
+  the events file and the image go live together.
+- **The triggering message is written into the recording.** `race/event` is not
+  retained and the recorder subscribes only once the recording exists, so the countdown
+  or the late step forward that began it would otherwise be missing from it. The trigger
+  monitor hands it over (`on_trigger_message`); if the recorder also caught it, the
+  analysis drops the duplicate by the payload's own `ts`.
+- **Legs come from the events, by leg index**, never by mark (courses repeat marks).
+  `start` begins leg 0, and a second `start` after a recall begins the race again;
+  `rounded` and `back` move the leg; `finish` or `reset` ends the race. A leg stepped
+  back to collects the time spent on it either side of the mistake. A race with no
+  `finish` ends where the recording does, its last leg marked unfinished.
+- **Leg lengths and bearings** are measured as enchantee_racing's `leg_table` measures
+  them, from the middle of the start line, mark to mark and back to the line. The
+  `courses` and `lines` documents are fetched and cached with the chart. An unknown
+  course still gets its table, without lengths or points of sail.
+- **Point of sail** is the leg's straight-line bearing against the mean true wind
+  direction over the leg (averaged as an angle): Close-hauled under 50°, Close reach to
+  75°, Beam reach to 105°, Broad reach to 150°, Run beyond. "Close-hauled", never
+  "beat" (owner, 17 Nov 2026); the race screen's own three-word scale is unchanged.
+- **AWA by tack** is the mean angle off the bow with the wind on that side, port
+  negative as the race app signs it. Samples below 1 kn SOG are left out: drifting says
+  nothing about the tack. A leg sailed on one tack has the other blank.
+- **Distance sailed** counts each step between fixes to the leg its later fix is in,
+  open at the start, so the step arriving at the gun is not part of the race.
+- **Where it shows:** the analysis rides in `statistics_summary.json` under `race`, so
+  the post, the preview and the Event Recorder page all get the table through the
+  statistics they already read. The `statistics` block draws it above the statistics,
+  under its own heading.
+- **On recording 113** (Opening Day, 1 Nov 2026, an anchor recording that held the
+  race): nine legs summing to 9.40 nm against a course of 9.4, westerly, close-hauled
+  legs at 32-37° AWA, the run at 155-165°, and 73 m behind the line at the gun.
+
 ---
 
 ## Technical Requirements
@@ -1825,6 +1899,12 @@ Anything it opens has to run there
 ---
 
 ## Change Log
+
+### 2026-11-17: Race Recording
+
+FR-32 added and implemented: a recording per race, from the countdown to five minutes
+after the finish, with a leg table, the boat at the gun on the route map, and the race's
+marks on every chart. enchantee_racing's `timer` event gained `start_at`.
 
 ### 2026-10-09: Phase 6, Post Editor, Specified
 

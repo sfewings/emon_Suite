@@ -65,6 +65,13 @@ class GPSTriggerMonitor:
         self.on_start_callback = None
         self.on_stop_callback = None
 
+        # (recording_id, topic, payload, timestamp): the message that started a
+        # recording, for the caller to write into it. race/event is not retained and
+        # the recorder only subscribes once the recording exists, so without this the
+        # countdown or the late step forward that began a race is not in its own
+        # recording (FR-32).
+        self.on_trigger_message = None
+
         # Connection status
         self.connected = False
 
@@ -128,6 +135,10 @@ class GPSTriggerMonitor:
         timestamp = datetime.utcnow()
         lowered = topic.lower()
 
+        if lowered.startswith('race/'):
+            self._on_race_event(topic, msg.payload, timestamp)
+            return
+
         if 'position' in lowered:
             if not self._update_position(msg.payload, timestamp, topic):
                 return
@@ -144,6 +155,80 @@ class GPSTriggerMonitor:
 
         # Check all monitor conditions
         self._check_triggers()
+
+    def _on_race_event(self, topic: str, payload, timestamp: datetime):
+        """
+        A race/event from enchantee_racing (its DESIGN 11.9), for the race
+        recording's start and stop conditions (FR-32).
+
+        Starts a monitor whose start condition is `race_event`, and notes the
+        finish for one whose stop conditions include `race_finish`. The stop itself
+        is decided on the next GPS fix, with the rest of the stop conditions, once
+        the grace period has run.
+        """
+        try:
+            if isinstance(payload, (bytes, bytearray)):
+                payload = payload.decode('utf-8')
+            event = json.loads(payload)
+            kind = event['type']
+        except (ValueError, TypeError, KeyError, UnicodeDecodeError):
+            logger.warning(f"Invalid race event from {topic}: {payload}")
+            return
+        if not isinstance(event, dict):
+            return
+
+        with self.monitors_lock:
+            for monitor_id, monitor in self.monitors.items():
+                if not monitor['enabled']:
+                    continue
+                config = monitor['config']
+                state = self.monitor_states[monitor_id]
+
+                if state['state'] == TriggerState.MONITORING:
+                    start_condition = config.get('start_condition', {})
+                    if start_condition.get('type') != 'race_event':
+                        continue
+                    if not self._race_event_starts(start_condition, event):
+                        continue
+                    logger.info(f"Monitor '{monitor_id}': START trigger (race event '{kind}')")
+                    self._trigger_start(monitor_id, monitor, state)
+                    recording_id = state.get('recording_id')
+                    if recording_id is not None and self.on_trigger_message:
+                        try:
+                            self.on_trigger_message(recording_id, topic, payload, timestamp)
+                        except Exception as e:
+                            logger.warning(f"Monitor '{monitor_id}': could not record the "
+                                           f"triggering race event: {e}")
+
+                elif state['state'] == TriggerState.TRIGGERED:
+                    for condition in self._stop_conditions(config):
+                        if (condition.get('type') == 'race_finish'
+                                and kind in condition.get('events', ['finish'])
+                                and state.get('race_finished_at') is None):
+                            state['race_finished_at'] = timestamp
+                            logger.info(f"Monitor '{monitor_id}': race event '{kind}', "
+                                        f"stopping in {condition.get('grace', 300)}s")
+
+    @staticmethod
+    def _race_event_starts(start_condition: Dict, event: Dict) -> bool:
+        """Does this race event start a race recording?
+
+        The countdown (timer), the gun (start, in case the countdown was missed) or a
+        leg stepped forward by hand when the race app was not started until after the
+        gun (rounded). Not a timer being cleared, which carries start_at: null.
+        """
+        kind = event.get('type')
+        if kind not in start_condition.get('events', ['timer', 'start', 'rounded']):
+            return False
+        if kind == 'timer' and 'start_at' in event and event['start_at'] is None:
+            return False
+        return True
+
+    @staticmethod
+    def _stop_conditions(config: Dict) -> list:
+        """stop_condition as a list: one condition, or several of which any stops it."""
+        stop = config.get('stop_condition', {})
+        return [c for c in (stop if isinstance(stop, list) else [stop]) if isinstance(c, dict)]
 
     def _update_position(self, payload, timestamp: datetime, topic: str) -> bool:
         """
@@ -262,6 +347,7 @@ class GPSTriggerMonitor:
                 'last_position': None,
                 'condition_start_time': None,
                 'stationary_start_time': None,
+                'race_finished_at': None,
             })
         logger.info(f"Monitor '{monitor_id}': resumed with recording {recording_id}")
         return True
@@ -437,6 +523,10 @@ class GPSTriggerMonitor:
                         self._trigger_start(monitor_id, monitor, state)
                         state['condition_start_time'] = None
 
+        elif condition_type == 'race_event':
+            # Started by a race/event message, not by a fix (_on_race_event)
+            pass
+
         else:
             logger.warning(f"Monitor '{monitor_id}': unknown start condition type '{condition_type}'")
 
@@ -450,12 +540,29 @@ class GPSTriggerMonitor:
         first appears stationary, then checks subsequent positions
         stay within threshold of that anchor for the required duration.
         """
-        config = monitor['config']
-        stop_condition = config.get('stop_condition', {})
+        # Several conditions, any one of which stops the recording: the race
+        # recording ends at the finish or back at the mooring, whichever is first.
+        for stop_condition in self._stop_conditions(monitor['config']):
+            if state['state'] != TriggerState.TRIGGERED:
+                return
+            self._check_one_stop_condition(monitor_id, monitor, state, stop_condition,
+                                           lat, lon, timestamp)
 
+    def _check_one_stop_condition(self, monitor_id: str, monitor: Dict, state: Dict,
+                                  stop_condition: Dict, lat: float, lon: float,
+                                  timestamp: datetime):
         condition_type = stop_condition.get('type', 'gps_stopped')
 
-        if condition_type == 'gps_stopped':
+        if condition_type == 'race_finish':
+            # The finish was noted by _on_race_event; stop once the grace has run,
+            # so the post-race minutes are in the recording too
+            finished_at = state.get('race_finished_at')
+            grace = stop_condition.get('grace', 300)
+            if finished_at is not None and (timestamp - finished_at).total_seconds() >= grace:
+                logger.info(f"Monitor '{monitor_id}': STOP trigger ({grace}s after the finish)")
+                self._trigger_stop(monitor_id, monitor, state)
+
+        elif condition_type == 'gps_stopped':
             distance_threshold = stop_condition.get('distance_threshold', 5)  # meters
             duration = stop_condition.get('duration', 60)  # seconds
 
@@ -563,6 +670,7 @@ class GPSTriggerMonitor:
             state: State dict
         """
         state['state'] = TriggerState.TRIGGERED
+        state['race_finished_at'] = None
 
         # Call callback if provided
         if monitor['on_start']:
@@ -585,6 +693,7 @@ class GPSTriggerMonitor:
         recording_id = state['recording_id']
         state['state'] = TriggerState.MONITORING
         state['recording_id'] = None
+        state['race_finished_at'] = None
 
         # Call callback if provided
         if monitor['on_stop']:
@@ -690,7 +799,8 @@ def main():
             for event_name, event_config in event_configs.items():
                 monitor.add_monitor(event_name, event_config, on_start, on_stop)
                 start_type = event_config.get('start_condition', {}).get('type', '?')
-                stop_type = event_config.get('stop_condition', {}).get('type', '?')
+                stop_type = ' or '.join(c.get('type', '?')
+                                        for c in GPSTriggerMonitor._stop_conditions(event_config))
                 logger.info(f"Monitor '{event_name}': start={start_type}, stop={stop_type}")
 
             logger.info("Monitoring active. Press Ctrl+C to stop.")
