@@ -1371,6 +1371,13 @@ crew publishes whichever suits the day. Specified by the owner on 17 Nov 2026.
       total row: lengths, distances and durations summed, speeds and wind over the whole
       race. Lengths and distances in nautical miles and km
 - [x] Every time chart marks the start, each rounding and the finish
+- [x] Named as the race app heads the course, series, course number and wind note
+      ("Opening Day Regatta · Course 1 · Westerly breeze"): the name the Log page lists
+      and the post's default title (owner, 17 Nov 2026)
+- [x] The course's division flag and numeral pendant, as small icons at the top of the
+      post
+- [x] While it is recording, the event page opens it ahead of the anchor recording, so
+      notes and photos taken during a race go to the race
 
 **Implementation Notes:**
 
@@ -1407,6 +1414,21 @@ crew publishes whichever suits the day. Specified by the owner on 17 Nov 2026.
   the post, the preview and the Event Recorder page all get the table through the
   statistics they already read. The `statistics` block draws it above the statistics,
   under its own heading.
+- **The name** is set the moment the recording starts, from the course in the
+  triggering race event and the `courses` document (fetched then, else the cached
+  copy). It is the recording's name, so it is the post title until the crew edit it. A
+  course changed after the countdown has started keeps the first course's name.
+- **The flags** are the race app's own `static/flags/*.svg`, fetched and cached beside
+  the chart, the same two the race app shows on a course card (`flags.division` and
+  `flags.numeral`; most courses have only the pendant). They travel inside the
+  statistics JSON and are drawn by a `race_flags` block, first in both layouts, as
+  28 px `data:` images: WordPress refuses SVG uploads, and inlining two SVGs would put
+  both documents' `id="p"` in one page. Any other recording draws nothing there.
+- **The event page** sorts active recordings by `editor_first_while_recording`, then
+  `editor_default`. Once the race recording stops, the anchor recording is the default
+  again, while recording and after the sail alike.
+- **The race screen keeps "beat"**, which is the word that fits its readout; the post
+  table says "Close-hauled" (owner, 17 Nov 2026).
 - **On recording 113** (Opening Day, 1 Nov 2026, an anchor recording that held the
   race): nine legs summing to 9.40 nm against a course of 9.4, westerly, close-hauled
   legs at 32-37° AWA, the run at 155-165°, and 73 m behind the line at the gun.

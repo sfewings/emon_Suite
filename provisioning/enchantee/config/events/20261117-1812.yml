@@ -11,6 +11,8 @@
 #     countdown to five minutes after the finish, started and stopped by
 #     enchantee_racing's race events. Its post adds the leg table and the boat's
 #     position at the gun, and its charts mark the start, each rounding and the finish.
+#     It is named after the race and opened first on the event page while it records
+#     (editor_first_while_recording).
 #   - anchor_track_recording's charts and skipped feeds are named (&boat_plots,
 #     &boat_skip_feeds) so race_recording draws the same ones. Nothing else in it moved.
 #
@@ -458,6 +460,10 @@ events:
     enabled: true
     name: "Race Recording"
     description: "One race, from the countdown to five minutes after the finish"
+    # While it is recording, the event page (/race/log/) opens it ahead of the anchor
+    # recording, so notes and photos taken during a race go to the race's post. Once it
+    # stops, editor_default above decides again (event_recorder FR-28, FR-32).
+    editor_first_while_recording: true
 
     # race/event is enchantee_racing's (its DESIGN 11.9): it starts this recording and
     # notes the finish. The position fixes are what the stop conditions are checked on.

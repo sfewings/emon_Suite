@@ -25,6 +25,7 @@ core table block would not keep, and around the folium maps, whose scripts
 wpautop would otherwise mangle.
 """
 
+import base64
 import html
 import logging
 import re
@@ -52,6 +53,7 @@ MAP_STYLESHEETS = (
 # The post as it was, block for block (FR-16 as it stood before FR-24). Kept
 # so the post_layout setting can choose it.
 LAYOUT_TRACK_LOG = [
+    {'type': 'race_flags'},
     {'type': 'track_summary'},
     {'type': 'crew_photos'},
     {'type': 'statistics', 'heading': True},
@@ -65,6 +67,9 @@ LAYOUT_TRACK_LOG = [
 # FR-25: the shape of the hand-written posts on enchantee.org, with the
 # recorder's data below the break instead of in front of the story
 LAYOUT_SHIP_LOG = [
+    # A race recording's course flags, small, above everything (FR-32). Nothing for
+    # any other recording, so it costs the other layouts nothing to carry it.
+    {'type': 'race_flags'},
     {'type': 'log_lines'},
     {'type': 'story'},
     {'type': 'photos'},
@@ -285,6 +290,11 @@ def _statistics(block, ctx, state):
     return out
 
 
+def _race_flags(block, ctx, state):
+    flags = race_flags_html((ctx.statistics or {}).get('race'))
+    return _html_block(flags) if flags else ''
+
+
 def _route_map(block, ctx, state):
     """The drawn track, above the fold: the one picture that says what the day was."""
     route_map = state['route_map']
@@ -340,6 +350,7 @@ _RENDERERS = {
     'paragraph': _paragraph_block,
     'photo': _photo_block,
     'statistics': _statistics,
+    'race_flags': _race_flags,
     'route_map': _route_map,
     'more': _more,
     'interactive_map': _interactive_map,
@@ -571,6 +582,32 @@ def _num(value, decimals=1, unit='') -> str:
     return f"{value:.{decimals}f}{unit}"
 
 
+def race_flags_html(race: Optional[Dict], height: int = 28) -> str:
+    """The course's division flag and numeral pendant, as small inline images.
+
+    Data URIs rather than uploaded media: WordPress refuses SVG uploads, and inlining the
+    SVG itself would put two documents' ids (both flags use id="p") in one page. The
+    title is in the alt text and the tooltip.
+    """
+    if not isinstance(race, dict) or not race.get('flags'):
+        return ''
+    title = html.escape(str(race.get('title') or ''))
+    images = []
+    for flag in race['flags']:
+        svg = flag.get('svg') if isinstance(flag, dict) else None
+        if not svg:
+            continue
+        data = base64.b64encode(svg.encode('utf-8')).decode('ascii')
+        name = html.escape(str(flag.get('name', '')))
+        images.append(f'<img src="data:image/svg+xml;base64,{data}" alt="{name}" '
+                      f'title="{title}" height="{height}" '
+                      f'style="height:{height}px;width:auto;margin-right:6px;'
+                      f'vertical-align:middle;">')
+    if not images:
+        return ''
+    return '<p class="race-flags">' + ''.join(images) + '</p>'
+
+
 def race_table_html(race: Optional[Dict]) -> str:
     """A race recording's legs as an HTML table, one row per leg and totals (FR-32).
 
@@ -582,9 +619,9 @@ def race_table_html(race: Optional[Dict]) -> str:
         return ''
 
     lines = []
-    course = race.get('course_name') or race.get('course')
+    course = race.get('title') or race.get('course')
     if course:
-        lines.append(f"Course: {html.escape(str(course))}")
+        lines.append(html.escape(str(course)))
     if race.get('gun_local'):
         lines.append(f"Start: {html.escape(race['gun_local'])}")
     if race.get('finish_local'):

@@ -17,6 +17,7 @@ import json
 import logging
 import math
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -124,6 +125,63 @@ class ChartCache:
 
     def _path(self, name: str) -> Path:
         return self.cache_dir / f"{name}.json"
+
+    def document(self, name: str) -> Optional[Dict]:
+        """
+        One document, fetched now if enchantee_racing answers, else the cached copy.
+
+        For the race recording's title, read the moment the recording starts
+        (FR-32), when fetching every chart document would be a waste. Never raises.
+        """
+        schema = CHART_DOCUMENTS.get(name)
+        if not self.enabled or schema is None:
+            return None
+        path = self._path(name)
+        try:
+            import requests
+            response = requests.get(f"{self.base_url}/api/config/{name}", timeout=self.timeout)
+            response.raise_for_status()
+            document = response.json()
+            if _schema_ok(str(document.get('schema', '')), schema):
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(document), encoding='utf-8')
+                return document
+            logger.warning(f"Chart '{name}' has an unexpected schema; using any cached copy")
+        except Exception as e:
+            logger.info(f"Chart '{name}' not fetched ({e}); using cache if present")
+        try:
+            document = json.loads(path.read_text(encoding='utf-8'))
+            return document if _schema_ok(str(document.get('schema', '')), schema) else None
+        except Exception:
+            return None
+
+    def flag_svg(self, name: str) -> Optional[str]:
+        """
+        A signal flag the racing app draws (its static/flags/<name>.svg), as SVG text.
+
+        The race post shows the course's numeral pendant and division flag (FR-32), and
+        these are the same hand-checked drawings the crew match against the start box.
+        Cached beside the chart; None if it was never reachable. Never raises.
+        """
+        if not self.enabled or not re.fullmatch(r'[a-z]+-\d+', name or ''):
+            return None
+        path = self.cache_dir / 'flags' / f"{name}.svg"
+        try:
+            import requests
+            response = requests.get(f"{self.base_url}/static/flags/{name}.svg",
+                                    timeout=self.timeout)
+            response.raise_for_status()
+            text = response.text
+            if '<svg' in text[:200]:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding='utf-8')
+                return text
+        except Exception as e:
+            logger.info(f"Flag '{name}' not fetched ({e}); using cache if present")
+        try:
+            return path.read_text(encoding='utf-8')
+        except Exception:
+            return None
 
     def refresh(self) -> Dict[str, str]:
         """

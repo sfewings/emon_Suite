@@ -34,8 +34,11 @@ def _docs():
     inner = {'lat': LAT0, 'lon': LON0 - 0.001}
     outer = {'lat': LAT0, 'lon': LON0 + 0.001}
     return (
-        {'schema': 'pfsyc-courses/1', 'courses': [{
-            'id': 'test-1', 'name': 'Test Course 1',
+        {'schema': 'pfsyc-courses/1',
+         'series': {'test': {'name': 'Test Regatta'}},
+         'courses': [{
+            'id': 'test-1', 'series': 'test', 'course_no': 1, 'wind_note': 'Northerly breeze',
+            'flags': {'division': None, 'numeral': 'pendant-1'},
             'legs': [{'mark': 'north', 'rounding': 'port'},
                      {'finish': True, 'line': 'pfsyc-start-finish'}]}]},
         {'schema': 'pfsyc-marks/2', 'marks': [
@@ -263,6 +266,26 @@ def test_the_analysis_is_json_ready():
     json.dumps(_analyse())
 
 
+def test_a_race_is_called_what_the_race_app_calls_it():
+    courses = _docs()[0]
+    identity = ra.course_identity('test-1', courses)
+    assert identity['title'] == 'Test Regatta · Course 1 · Northerly breeze'
+    assert identity['flags'] == ['pendant-1']
+    courses['courses'][0]['flags'] = {'division': 'naval-2', 'numeral': 'pendant-1'}
+    assert ra.course_identity('test-1', courses)['flags'] == ['naval-2', 'pendant-1']
+    courses['courses'][0]['wind_note'] = None
+    assert ra.course_identity('test-1', courses)['title'] == 'Test Regatta · Course 1'
+    assert ra.course_identity('nowhere', courses) is None
+
+
+def test_the_real_opening_day_course_is_titled_as_the_race_app_heads_it():
+    path = ROOT / 'enchantee_racing' / 'config' / 'courses.json'
+    if not path.exists():
+        return
+    identity = ra.course_identity('opening-day-1', json.loads(path.read_text()))
+    assert identity['title'].startswith('Opening Day Regatta · Course 1')
+
+
 # === The post ===
 
 def test_the_post_table_has_a_row_per_leg_and_a_total_in_both_units():
@@ -287,6 +310,28 @@ def test_the_statistics_block_draws_the_race_above_the_statistics():
                                     statistics={'duration': '0:20:00', 'race': _analyse()})
     out = post_renderer.render([{'type': 'statistics', 'heading': True}], ctx)
     assert out.index('Race') < out.index('Statistics')
+
+
+def test_the_flags_are_small_inline_images_at_the_top_of_the_post():
+    race = _analyse()
+    race['title'] = 'Test Regatta · Course 1'
+    race['flags'] = [{'name': 'naval-2', 'svg': '<svg id="p"></svg>'},
+                     {'name': 'pendant-1', 'svg': '<svg id="p"></svg>'}]
+    flags = post_renderer.race_flags_html(race)
+    assert flags.count('<img src="data:image/svg+xml;base64,') == 2
+    assert 'height="28"' in flags and 'Test Regatta' in flags
+    for layout in post_renderer.LAYOUTS.values():
+        assert layout[0] == {'type': 'race_flags'}
+    ctx = post_renderer.PostContext({'name': 'r'}, statistics={'race': race})
+    out = post_renderer.render(post_renderer.LAYOUTS['ship_log'], ctx)
+    assert out.index('data:image/svg+xml') < out.index('Race')
+
+
+def test_a_recording_with_no_race_has_no_flags():
+    assert post_renderer.race_flags_html(None) == ''
+    assert post_renderer.race_flags_html({'flags': []}) == ''
+    ctx = post_renderer.PostContext({'name': 'r'}, statistics={'duration': '1:00:00'})
+    assert post_renderer.render([{'type': 'race_flags'}], ctx) == ''
 
 
 def test_a_recording_with_no_race_draws_no_race_table():
@@ -350,6 +395,8 @@ def _processor(tmp_path):
     for name, doc in (('coast', coast), ('courses', courses), ('marks', marks),
                       ('lines', lines)):
         (cache / f'{name}.json').write_text(json.dumps(doc))
+    (cache / 'flags').mkdir()
+    (cache / 'flags' / 'pendant-1.svg').write_text('<svg>1</svg>')
     recording = {'id': 1, 'start_time': _iso(T0 - 60), 'end_time': _iso(T0 + 1300)}
     return DataProcessor(_FakeDB(_recording_rows(), recording), str(tmp_path / 'plots'),
                          {'enabled': True, 'base_url': 'http://127.0.0.1:1',
@@ -362,6 +409,42 @@ def test_a_recording_is_analysed_from_its_feeds_and_the_cached_course(tmp_path):
     assert race['legs'][0]['tws_mean'] == 10.0
     assert race['legs'][0]['awa_port'] == 35.0
     assert race['gun_local'] and race['finish_local']
+    assert race['title'] == 'Test Regatta · Course 1 · Northerly breeze'
+    assert race['flags'] == [{'name': 'pendant-1', 'svg': '<svg>1</svg>'}]
+
+
+def test_a_flag_with_an_odd_name_is_never_fetched(tmp_path):
+    processor = _processor(tmp_path)
+    assert processor.chart_cache.flag_svg('../../etc/passwd') is None
+    assert processor.chart_cache.flag_svg('pendant-1') == '<svg>1</svg>'
+
+
+def test_the_race_recording_is_named_from_its_course_when_it_starts(tmp_path):
+    from event_recorder import main as main_module
+    (tmp_path / 'charts').mkdir()
+    (tmp_path / 'charts' / 'courses.json').write_text(json.dumps(_docs()[0]))
+    added, updated = [], []
+
+    class _Config:
+        def get(self, key, default=None):
+            return {'enabled': True, 'base_url': 'http://127.0.0.1:1',
+                    'cache_dir': str(tmp_path / 'charts'), 'timeout': 1}
+
+        def get_plots_dir(self):
+            return str(tmp_path / 'plots')
+
+    class _Fake:
+        config = _Config()
+        data_recorder = type('R', (), {'buffer': type('B', (), {
+            'add_message': staticmethod(lambda *a: added.append(a))})()})()
+        database = type('D', (), {
+            'update_recording': staticmethod(lambda rid, **kw: updated.append((rid, kw)))})()
+
+    payload = json.dumps(_event('timer', T0, 0, 'North', start_at=T0 + 300))
+    main_module.EventRecorderService._on_trigger_message(
+        _Fake(), 7, 'race/event', payload, datetime.utcnow())
+    assert len(added) == 1
+    assert updated == [(7, {'name': 'Test Regatta · Course 1 · Northerly breeze'})]
 
 
 def test_every_time_chart_and_the_route_map_carry_the_race(tmp_path):

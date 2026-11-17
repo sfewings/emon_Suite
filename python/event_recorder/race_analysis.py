@@ -125,13 +125,9 @@ def course_geometry(course_id: Optional[str], courses_doc: Optional[Dict],
     or None when the course or any of its marks cannot be found: the table is then
     drawn without lengths or points of sail rather than not at all.
     """
-    if not (course_id and courses_doc and marks_doc and lines_doc):
+    if not (marks_doc and lines_doc):
         return None
-    courses = courses_doc.get('courses') or []
-    if isinstance(courses, dict):
-        course = courses.get(course_id)
-    else:
-        course = next((c for c in courses if c.get('id') == course_id), None)
+    course = _find_course(course_id, courses_doc)
     if not course:
         return None
     marks = marks_doc.get('marks') or []
@@ -165,7 +161,48 @@ def course_geometry(course_id: Optional[str], courses_doc: Optional[Dict],
             'bearing': bearing_deg(here[0], here[1], target[0], target[1]),
         })
         here = target
-    return {'legs': legs, 'line': (inner, outer), 'course_name': course.get('name')}
+    return {'legs': legs, 'line': (inner, outer)}
+
+
+def _find_course(course_id: Optional[str], courses_doc: Optional[Dict]) -> Optional[Dict]:
+    if not (course_id and courses_doc):
+        return None
+    courses = courses_doc.get('courses') or []
+    if isinstance(courses, dict):
+        return courses.get(course_id)
+    return next((c for c in courses if c.get('id') == course_id), None)
+
+
+def course_identity(course_id: Optional[str], courses_doc: Optional[Dict]) -> Optional[Dict]:
+    """
+    What the race is called, and the flags the start box flies for it.
+
+    The title is the race app's own course heading (static/app.js, the course detail):
+    the series name, then "Course N" and the wind note, as
+    "Opening Day Regatta · Course 1 · Westerly breeze". It names the race recording
+    and so titles its post (FR-32). Flags are the course's division flag and numeral
+    pendant, by the names of the race app's static/flags/*.svg, either of which may be
+    absent.
+
+    Returns {'title', 'series', 'course_no', 'wind_note', 'flags'}, or None when the
+    course is not in the document.
+    """
+    course = _find_course(course_id, courses_doc)
+    if not course:
+        return None
+    series = (courses_doc.get('series') or {}).get(course.get('series')) or {}
+    series_name = series.get('name') or course.get('series')
+    parts = [p for p in (series_name,
+                         f"Course {course['course_no']}" if course.get('course_no') else None,
+                         course.get('wind_note')) if p]
+    flags = course.get('flags') or {}
+    return {
+        'title': ' · '.join(parts) or course_id,
+        'series': series_name,
+        'course_no': course.get('course_no'),
+        'wind_note': course.get('wind_note'),
+        'flags': [f for f in (flags.get('division'), flags.get('numeral')) if f],
+    }
 
 
 # === The race, from its events ===
@@ -445,7 +482,6 @@ def analyse(events: Sequence[Dict], end: float,
 
     return {
         'course': timeline['course'],
-        'course_name': geometry.get('course_name') if geometry else None,
         'gun': timeline['gun'],
         'finish': timeline['end'] if timeline['finished'] else None,
         'finished': timeline['finished'],

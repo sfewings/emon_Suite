@@ -17,6 +17,7 @@ from event_recorder.recording_service import RecordingService
 EVENTS = {
     "track_recording": {"enabled": True},
     "anchor_track_recording": {"enabled": True, "editor_default": True},
+    "race_recording": {"enabled": True, "editor_first_while_recording": True},
 }
 
 
@@ -50,6 +51,27 @@ def test_of_two_recordings_running_the_anchor_one_is_opened(db, service):
 
     assert chosen == anchor
     assert candidates == [anchor, track]
+
+
+def test_while_a_race_is_recording_it_is_opened_first(db, service):
+    # FR-32: notes and photos taken during a race belong to the race
+    anchor = _recording(db, "anchor_track_recording", hours_ago=2)
+    track = _recording(db, "track_recording", hours_ago=2)
+    race = _recording(db, "race_recording", hours_ago=1)
+
+    assert _chosen(service) == (race, [race, anchor, track])
+
+
+def test_once_the_race_stops_the_anchor_recording_is_opened_again(db, service):
+    anchor = _recording(db, "anchor_track_recording", hours_ago=2)
+    _recording(db, "race_recording", hours_ago=1, status=RecordingStatus.STOPPED)
+    assert _chosen(service)[0] == anchor
+
+
+def test_after_the_sail_the_anchor_recording_is_opened_not_the_race(db, service):
+    anchor = _recording(db, "anchor_track_recording", hours_ago=3, status=RecordingStatus.STOPPED)
+    _recording(db, "race_recording", hours_ago=2, status=RecordingStatus.STOPPED)
+    assert _chosen(service)[0] == anchor
 
 
 def test_without_an_anchor_recording_the_most_recent_active_one_is_opened(db, service):

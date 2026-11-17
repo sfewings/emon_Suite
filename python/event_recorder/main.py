@@ -26,6 +26,7 @@ from .models import Database, RecordingStatus
 from .config_manager import ConfigManager
 from .data_recorder import DataRecorder
 from .trigger_monitor import GPSTriggerMonitor
+from . import chart_map, race_analysis
 from .recording_service import RecordingError, RecordingService
 from .recovery_manager import RecoveryManager
 from .web_interface import WebInterface
@@ -104,10 +105,8 @@ class EventRecorderService:
             self.mqtt_broker,
             self.mqtt_port
         )
-        # The race event that starts a race recording belongs in it (FR-32)
-        self.trigger_monitor.on_trigger_message = (
-            lambda recording_id, topic, payload, timestamp:
-            self.data_recorder.buffer.add_message(recording_id, topic, payload, timestamp))
+        # The race event that starts a race recording belongs in it, and names it (FR-32)
+        self.trigger_monitor.on_trigger_message = self._on_trigger_message
 
         self.recovery_manager = RecoveryManager(self.database)
 
@@ -381,6 +380,32 @@ class EventRecorderService:
 
         self.active_recordings[monitor_id] = recording_id
         return recording_id
+
+    def _on_trigger_message(self, recording_id: int, topic: str, payload: str,
+                            timestamp: datetime):
+        """
+        The message that started a recording: written into it, and for a race, used
+        to name it (FR-32).
+
+        The name is the race as the race app heads it, "Opening Day Regatta · Course 1 ·
+        Westerly breeze", which is what the Log page lists and what the post is titled
+        until the crew change it. If the course cannot be read the trigger's own name
+        stands.
+        """
+        self.data_recorder.buffer.add_message(recording_id, topic, payload, timestamp)
+        if not topic.startswith('race/'):
+            return
+        try:
+            course = json.loads(payload).get('course')
+            cache = chart_map.ChartCache.from_config(self.config.get('charts', {}),
+                                                     Path(self.config.get_plots_dir()))
+            identity = race_analysis.course_identity(course, cache.document('courses'))
+        except Exception as e:
+            logger.warning(f"Recording {recording_id}: could not name the race: {e}")
+            return
+        if identity:
+            self.database.update_recording(recording_id, name=identity['title'])
+            logger.info(f"Recording {recording_id}: named '{identity['title']}'")
 
     def _on_trigger_stop(self, monitor_id: str, recording_id: int):
         """

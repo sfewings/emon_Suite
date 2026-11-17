@@ -672,15 +672,15 @@ class RecordingService:
     # triggers both fire for every sail, a few seconds apart
     SAME_OUTING = timedelta(hours=12)
 
-    def editor_default_keys(self) -> set:
-        """Event keys marked `editor_default: true` in the event config."""
+    def editor_default_keys(self, flag: str = 'editor_default') -> set:
+        """Event keys marked `editor_default: true` (or another flag) in the event config."""
         if not self.event_configs:
             return set()
         try:
             return {key for key, config in self.event_configs().items()
-                    if config.get('editor_default')}
+                    if config.get(flag)}
         except Exception as e:
-            logger.warning(f"Could not read the event config for editor_default: {e}")
+            logger.warning(f"Could not read the event config for {flag}: {e}")
             return set()
 
     def editor_choice(self) -> Dict:
@@ -688,9 +688,11 @@ class RecordingService:
         The recording the event page opens with no id, and the others it
         could have opened, for the switcher.
 
-        1. An active recording of an editor_default event
-        2. Otherwise the most recent active recording
-        3. Otherwise the newest unpublished recording, preferring an
+        1. An active recording of an editor_first_while_recording event: the race
+           recording, so notes and photos taken during a race go to the race (FR-32)
+        2. An active recording of an editor_default event
+        3. Otherwise the most recent active recording
+        4. Otherwise the newest unpublished recording, preferring an
            editor_default one from the same outing. Only the same outing: a
            week-old unpublished anchor recording is not what today's crew want.
 
@@ -700,9 +702,12 @@ class RecordingService:
             from the chosen recording's outing
         """
         defaults = self.editor_default_keys()
+        first = set()
         recordings = self.database.get_all_recordings(limit=200)
 
         active = [r for r in recordings if r['status'] == RecordingStatus.ACTIVE]
+        if active:
+            first = self.editor_default_keys('editor_first_while_recording')
         if active:
             pool = active
         else:
@@ -717,7 +722,8 @@ class RecordingService:
 
         # get_all_recordings is newest first, and sorted() keeps that order
         # among equals, so this is: default event first, then most recent
-        pool = sorted(pool, key=lambda r: r.get('event_key') not in defaults)
+        pool = sorted(pool, key=lambda r: (r.get('event_key') not in first,
+                                           r.get('event_key') not in defaults))
         return {'recording': pool[0], 'candidates': pool}
 
     @staticmethod

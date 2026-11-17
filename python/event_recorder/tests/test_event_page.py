@@ -142,7 +142,7 @@ def test_the_first_save_keeps_the_rest_of_the_new_draft(client, db):
 
     assert draft["stored"] is True
     assert draft["excerpt"] == "Course 3" and draft["crew"] == ["Henry", "Steve"]
-    assert draft["blocks"][0] == {"type": "log_lines"}
+    assert draft["blocks"][:2] == [{"type": "race_flags"}, {"type": "log_lines"}]
 
 
 def test_saves_at_the_same_moment_all_land(client, db):
@@ -201,7 +201,7 @@ def test_publishing_from_the_page_draws_the_charts_first_when_needed(
 
     assert job["state"] == "done", job
     assert drawn == [rid]
-    assert wp.calls[0]["blocks"][0] == {"type": "log_lines"}
+    assert wp.calls[0]["blocks"][:2] == [{"type": "race_flags"}, {"type": "log_lines"}]
 
 
 def test_send_as_a_wordpress_draft(client, db, wp, tmp_path):

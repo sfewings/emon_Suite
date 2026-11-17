@@ -1310,6 +1310,13 @@ class DataProcessor:
             for key in ('gun', 'finish'):
                 if race.get(key) is not None:
                     race[f'{key}_local'] = self._race_time(race[key]).strftime('%H:%M:%S')
+            # What the race is called, and its flags drawn small at the top of the post.
+            # The SVG travels with the statistics so the post needs nothing else.
+            identity = race_analysis.course_identity(race['course'], charts.get('courses'))
+            if identity:
+                race['title'] = identity['title']
+                race['flags'] = [{'name': name, 'svg': svg} for name in identity['flags']
+                                 for svg in [self.chart_cache.flag_svg(name)] if svg]
         return race
 
     def _race_time(self, epoch: float) -> datetime:
