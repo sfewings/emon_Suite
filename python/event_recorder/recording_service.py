@@ -994,7 +994,12 @@ class RecordingService:
 
     def suggested_categories(self, recording: Dict) -> List[str]:
         """The categories the config's rules tick for this recording (FR-30)."""
-        rules = (self.post_config() or {}).get('categories') if self.post_config else None
+        # An event that names its categories gets exactly those: a race is a Club
+        # event, not also a Track Log or a Twilight sail because of when it ran (FR-32)
+        own = (self._event_config_for(recording['id']).get('wordpress') or {}).get('categories')
+        if own:
+            return list(own)
+        rules =(self.post_config() or {}).get('categories') if self.post_config else None
         if not rules:
             return ['Track Logs']
         return list(self._cached(

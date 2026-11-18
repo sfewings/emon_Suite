@@ -501,7 +501,7 @@ events:
 
     wordpress:
       site: "default_site"
-      category: "Race Logs"
+      categories: ["Club event"]        # only this: not also Track Logs or Twilight
 
   # Example: Solar high production event (disabled by default)
   solar_high_production:

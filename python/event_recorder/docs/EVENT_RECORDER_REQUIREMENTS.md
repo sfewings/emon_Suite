@@ -1344,7 +1344,7 @@ ticked; crew names are offered from those used before
 ### FR-32: Race Recording
 
 **Priority:** Should Have
-**Status:** ✅ Implemented (2026-11-17), not yet sailed.
+**Status:** ✅ Implemented (2026-11-17). Tested live on 18 Nov 2026 with a 1x replay of the 1 Nov Opening Day log; not yet sailed.
 `race_analysis.py`; triggers in `trigger_monitor.py`; tests `tests/test_race.py`
 
 **Description:** A recording of one race, started and stopped by enchantee_racing's
@@ -1378,6 +1378,10 @@ crew publishes whichever suits the day. Specified by the owner on 17 Nov 2026.
       post
 - [x] While it is recording, the event page opens it ahead of the anchor recording, so
       notes and photos taken during a race go to the race
+- [x] Posted as a Club event and nothing else: an event may name its own
+      `wordpress.categories`, which replace the rule-based suggestions (FR-30) for
+      its recordings. A race on a weekday evening is not also a Twilight sail
+- [x] The race events are read for the table and the marks, never charted as a series
 
 **Implementation Notes:**
 
@@ -1921,6 +1925,16 @@ Anything it opens has to run there
 ---
 
 ## Change Log
+
+### 2026-11-18: Race Recording Tested Live
+
+A 1x replay of the Opening Day log through the live stack produced a race recording
+that agrees with the offline test. It found three things, now fixed: the `race/event`
+messages were auto-charted as an empty "RACE Event" chart; the race post took the
+Track Logs and Twilight categories from the rules, and an event can now name its own
+(`wordpress.categories`; the race recording's is Club event); and an export over
+`max_upload_mb` (the race's 44 MB GPX) is left off the post on purpose rather than
+reported as a failed upload.
 
 ### 2026-11-17: Race Recording
 

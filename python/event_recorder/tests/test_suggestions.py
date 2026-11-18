@@ -168,6 +168,17 @@ def test_a_new_draft_starts_with_the_suggested_categories(db):
     assert service.get_draft(rec["id"])["categories"] == ["Track Logs", "Ship's Log", "Twilight"]
 
 
+def test_an_event_that_names_its_categories_gets_only_those(db):
+    # A race on a weekday evening, away from the mooring: the rules would add Track
+    # Logs, Ship's Log and Twilight. The race recording says Club event, and that is all.
+    events = {"anchor_track_recording": {"wordpress": {"categories": ["Club event"]}}}
+    service = RecordingService(db, post_config=lambda: {"categories": RULES},
+                               event_configs=lambda: events)
+    rec = _recording(db)
+    _fixes(db, rec["id"], (-32.0014, 115.8094), (-32.0100, 115.7800))
+    assert service.get_draft(rec["id"])["categories"] == ["Club event"]
+
+
 def test_without_rules_a_new_draft_is_a_track_log(db):
     assert RecordingService(db).get_draft(_recording(db)["id"])["categories"] == ["Track Logs"]
 

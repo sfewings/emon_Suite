@@ -900,6 +900,15 @@ class WordPressPublisher:
             download_links = []
             for exp in (exports or []):
                 report(f"Uploading {sent + 1} of {total_files}")
+                # An export over the limit is left off on purpose, not a failure: a
+                # long race's GPX runs to 40 MB and the post is complete without it
+                size = Path(exp['path']).stat().st_size if Path(exp['path']).exists() else 0
+                if self.max_upload_bytes and size > self.max_upload_bytes:
+                    logger.info(f"Leaving {Path(exp['path']).name} off the post: "
+                                f"{size / 1048576:.0f} MB is over the "
+                                f"{self.max_upload_bytes / 1048576:.0f} MB limit")
+                    sent += 1
+                    continue
                 result = self.upload_export_file(
                     exp['path'], label=exp.get('label', ''),
                     upload_name=f"{prefix}{Path(exp['path']).name}"

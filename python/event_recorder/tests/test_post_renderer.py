@@ -303,3 +303,27 @@ def test_publishing_sends_the_drafts_title_excerpt_categories_and_blocks(
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+def test_an_export_over_the_upload_limit_is_left_off_not_failed(db, service, rid, monkeypatch,
+                                                               tmp_path):
+    """The Opening Day replay's GPX was 44 MB: not sent, and the post is not short of it."""
+    big = tmp_path / "track.gpx"
+    big.write_bytes(b"x" * (2 * 1048576))
+    db.add_export(rid, "gpx", str(big))
+    db.add_image(rid, __file__, ImageType.USER_UPLOAD, "a photo")
+    wp = WordPressPublisher("http://wp.invalid", "u", "p", max_upload_mb=1)
+    sent = {}
+    monkeypatch.setattr(wp, "test_connection", lambda: (True, "ok"))
+    monkeypatch.setattr(wp, "upload_media", lambda path, caption=None, upload_name=None:
+                        {"id": 7, "url": "https://wp/a.jpg"})
+    monkeypatch.setattr(wp, "upload_export_file", lambda *a, **kw: sent.update(gpx=True))
+    monkeypatch.setattr(wp, "create_post", lambda **kw: sent.update(kw) or
+                        {"id": 1, "link": "https://wp/?p=1", "status": "publish",
+                         "modified_gmt": "t"})
+    service.wordpress_publisher = wp
+
+    post = service.publish(rid, auto_publish=True)
+
+    assert "gpx" not in sent
+    assert post["failed_uploads"] == []
