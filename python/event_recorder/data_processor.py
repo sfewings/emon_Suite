@@ -420,7 +420,9 @@ class DataProcessor:
             skip_topics.update(self._stream_coordinate_topics(recording_id, stream))
 
         # ── 2. Group remaining topics by structural prefix ─────────────────
-        remaining = [t for t in topics if t not in skip_topics]
+        # race/ carries enchantee_racing's events, JSON with no value to chart: a race
+        # recording reads them for its leg table and its marks (FR-32), not as a series
+        remaining = [t for t in topics if t not in skip_topics and not t.startswith('race/')]
         feeds = self._feed_index(recording_id)
         groups: Dict[str, List[str]] = defaultdict(list)
         for topic in remaining:

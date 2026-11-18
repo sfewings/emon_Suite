@@ -573,6 +573,13 @@ def test_marks_too_close_to_label_apart_share_a_label(tmp_path):
     assert labels == ['Start', 'Smith, Lucky Bay', 'Finish']
 
 
+def test_the_race_events_are_not_charted_as_a_series(tmp_path):
+    # Live on 18 Nov 2026 they drew a "RACE Event" chart of nothing into the post
+    specs = _processor(tmp_path)._auto_generate_plot_config(1)
+    assert not [t for spec in specs for t in spec['topics'] if t.startswith('race/')]
+    assert any('anemometer/windSpeed/2' in spec['topics'] for spec in specs)
+
+
 def test_the_charts_of_an_ordinary_recording_are_unmarked(tmp_path):
     processor = _processor(tmp_path)
     out = tmp_path / 'out'
