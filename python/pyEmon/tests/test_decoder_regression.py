@@ -195,9 +195,30 @@ def test_mqtt_legacy_topics_are_unchanged(fakes, tmp_path, config, capsys):
     capsys.readouterr()
 
 
+def _tasmota_pulse_subnodes(config):
+    """Pulse subnodes that are Tasmota plugs (a 'tasmota' key), as strings."""
+    import yaml
+    with open(config) as f:
+        pulse = (yaml.safe_load(f) or {}).get("pulse") or {}
+    return {str(sub) for sub, node in pulse.items() if isinstance(node, dict) and node.get("tasmota")}
+
+
+def _without_tasmota_unused(points, line, tasmota):
+    """The one intended difference: a Tasmota plug's Unused pulse channels are not written
+    to Influx (emon_decoder._pulse, owner 20 Nov 2026). Every other point must match."""
+    fields = line.split(",")
+    if fields[0] != "pulse3" or len(fields) < 2 or fields[1] not in tasmota:
+        return points
+    sub = fields[1]
+    return [p for p in points
+            if not (p[1].startswith((f"power,sensor=power/{sub}/", f"pulse,sensor=pulse/{sub}/"))
+                    and ",sensorName=Unused " in p[1])]
+
+
 @pytest.mark.parametrize("config", CONFIGS, ids=[_config_id(c) for c in CONFIGS])
 def test_influx_points_are_unchanged(fakes, tmp_path, config, capsys):
     path = _settings_dir(tmp_path, config)
+    tasmota = _tasmota_pulse_subnodes(config)
     old = emon_influx_legacy.emon_influx(settingsPath=path, batchProcess=False)
     new = emon_influx.emon_influx(settingsPath=path, batchProcess=False)
     for line in _lines():
@@ -205,7 +226,7 @@ def test_influx_points_are_unchanged(fakes, tmp_path, config, capsys):
         new.write_api.lines.clear()
         assert _run(new, lambda: new.process_line(WHEN, line)) == \
             _run(old, lambda: old.process_line(WHEN, line)), line
-        assert new.write_api.lines == old.write_api.lines, line
+        assert new.write_api.lines == _without_tasmota_unused(old.write_api.lines, line, tasmota), line
     capsys.readouterr()
 
 

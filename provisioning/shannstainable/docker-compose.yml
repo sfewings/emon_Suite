@@ -102,6 +102,23 @@ services:
   #     - mosquitto
   #   restart: always
       
+  # Tasmota power plugs (Athom Plug V2) as pulse subnodes: emon_config's pulse entries
+  # with a 'tasmota:' key name each plug's Topic. The plugs publish to this broker
+  # (tele/<topic>/SENSOR every TelePeriod); this turns each message into a pulse3 line
+  # for the raw log, Influx and emon_live. Setup: docs/tasmota_plugs.md
+  emon_tasmota_to_mqtt:
+    image: sfewings32/emon_tasmota_to_mqtt:latest
+    container_name: emon_tasmota
+    volumes:
+      - ./emon_config:/data:ro
+    environment:
+      - SETTINGS_PATH=/data/emon_config.yml
+      - MQTT_IP=mqtt
+      - TZ=${TIMEZONE}
+    depends_on:
+      - mosquitto
+    restart: always
+
   emon_mqtt_to_influx:
     image: sfewings32/emon_mqtt_to_influx:latest
     container_name: emon_influx

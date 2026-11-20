@@ -239,21 +239,28 @@ def _pulse(line: str, ns: Mapping, t: float) -> Optional[List[Emission]]:
         return None
     s = p.subnode
     o = _Out("pulse", s, ns, t, line)
+    # A Tasmota plug (emonTasmotaToMQTT.py) is a pulse subnode with a 'tasmota' key and
+    # uses only p0. Its Unused channels are not written to Influx either: at a 10 s
+    # update they would be ten zero series per plug that nothing reads (owner, 20 Nov
+    # 2026). Every other pulse subnode keeps the legacy Influx output unchanged.
+    tasmota = o.setting(s, "tasmota") is not None
     for sensor in range(emonSuite.PULSE_MAX_SENSORS):
         name = o.setting(s, f"p{sensor}")
+        unused = o.unused(s, f"p{sensor}")
+        drop_influx = tasmota and unused
         power, pulse = p.power[sensor] / 1, p.pulse[sensor] / 1
         o.emit(o.reading("power", power, "W", "power", sensor, name),
                lambda sensor=sensor, power=power: (f"power/{s}/{sensor}", power),
-               lambda sensor=sensor, power=power: (
+               None if drop_influx else lambda sensor=sensor, power=power: (
                    "power", _tags(f"power/{s}/{sensor}", ns[s]["name"], ns[s][f"p{sensor}"]), power),
-               o.unused(s, f"p{sensor}"))
+               unused)
         # Same channel name for both kinds; the counter takes the bracketed one (DESIGN 5).
         o.emit(o.reading("pulse", pulse, "pulse", "count", sensor,
                          f"{name} (pulse)" if name and name != UNUSED else name),
                lambda sensor=sensor, pulse=pulse: (f"pulse/{s}/{sensor}", pulse),
-               lambda sensor=sensor, pulse=pulse: (
+               None if drop_influx else lambda sensor=sensor, pulse=pulse: (
                    "pulse", _tags(f"pulse/{s}/{sensor}", ns[s]["name"], ns[s][f"p{sensor}"]), pulse),
-               o.unused(s, f"p{sensor}"))
+               unused)
     _rssi(o, lambda: ns[s]["name"])
     return o.items
 

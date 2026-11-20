@@ -24,6 +24,8 @@ influx:
   Power board / Consumed (pulse):                     pulse pulse/0/2
   Power board / Imported (pulse):                     pulse pulse/0/3
   Power board / Car (pulse):                          pulse pulse/0/4
+  Dishwasher plug / Dishwasher (pulse):               pulse pulse/1/0
+  Washing machine plug / Washing machine (pulse):     pulse pulse/2/0
   Power board / Imported:                             power power/0/3
   Power board / Car:                                  power power/0/4
   Inverter One / pvInputPower:                        power inverter/pvInputPower/0
@@ -338,6 +340,9 @@ derived:
   - {id: consumed/today, op: daily_delta, feed: Power board / Consumed (pulse), unit: Wh}
   - {id: import/today,   op: daily_delta, feed: Power board / Imported (pulse), unit: Wh}
   - {id: car/today,      op: daily_delta, feed: Power board / Car (pulse),      unit: Wh}
+  # Tasmota plugs (pulse subnodes 1 and 2; docs/tasmota_plugs.md)
+  - {id: dishwasher/today,     op: daily_delta, feed: Dishwasher plug / Dishwasher (pulse),           unit: Wh}
+  - {id: washingmachine/today, op: daily_delta, feed: Washing machine plug / Washing machine (pulse), unit: Wh}
 
   # Node-RED integrated each inverter's PV as a backward rectangle per message; this is
   # the trapezoid rule, with gaps over 5 min not bridged (DESIGN 6.3).
@@ -376,6 +381,8 @@ derived:
   - {id: import/cost/today,    op: expr, expr: "{derived/import/today} / 1000 * 0.262",    unit: "$", kind: money, decimals: 2}
   - {id: hws/cost/today,       op: expr, expr: "{derived/hws/today} / 1000 * 0.262",       unit: "$", kind: money, decimals: 2}
   - {id: car/cost/today,       op: expr, expr: "{derived/car/today} / 1000 * 0.262",       unit: "$", kind: money, decimals: 2}
+  - {id: dishwasher/cost/today,     op: expr, expr: "{derived/dishwasher/today} / 1000 * 0.262",     unit: "$", kind: money, decimals: 2}
+  - {id: washingmachine/cost/today, op: expr, expr: "{derived/washingmachine/today} / 1000 * 0.262", unit: "$", kind: money, decimals: 2}
   - {id: export/value/today,   op: expr, expr: "{derived/export/today} / 1000 * 0.07135",  unit: "$", kind: money, decimals: 2}
   - {id: foregone/value/today, op: expr, expr: "{derived/foregone/today} / 1000 * 0.07135", unit: "$", kind: money, decimals: 2}
 

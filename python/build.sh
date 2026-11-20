@@ -22,6 +22,7 @@ ALL_CONTAINERS=(
     mqtt_to_influx
     mqtt_to_log
     gpsd_to_mqtt
+    tasmota_to_mqtt
     query_bom
     emon_live
 )
@@ -53,6 +54,10 @@ VERSION_mqtt_to_log="latest"
 DOCKERFILE_gpsd_to_mqtt="GPSDToMQTT.Dockerfile"
 IMAGE_gpsd_to_mqtt="sfewings32/emon_gpsd_to_mqtt"
 VERSION_gpsd_to_mqtt="latest"
+
+DOCKERFILE_tasmota_to_mqtt="TasmotaToMQTT.Dockerfile"
+IMAGE_tasmota_to_mqtt="sfewings32/emon_tasmota_to_mqtt"
+VERSION_tasmota_to_mqtt="latest"
 
 DOCKERFILE_query_bom="queryBOM.Dockerfile"
 IMAGE_query_bom="sfewings32/emon_query_bom"

@@ -18,7 +18,8 @@
       "leds": [{"feed": "derived/car/charging", "on": "car charging", "off": ""}],
       "lines": [
         "Foregone {derived/foregone/now|0} W · {derived/foregone/today|0} Wh · ${derived/foregone/value/today|2}",
-        "Car {Power board / Car|0} W · {derived/car/today|0} Wh · ${derived/car/cost/today|2} · HWS {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}"
+        "Car {Power board / Car|0} W · {derived/car/today|0} Wh · ${derived/car/cost/today|2} · HWS {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}",
+        "Dishwasher {Dishwasher plug / Dishwasher|0} W · {derived/dishwasher/today|0} Wh · ${derived/dishwasher/cost/today|2} · Washing machine {Washing machine plug / Washing machine|0} W · {derived/washingmachine/today|0} Wh · ${derived/washingmachine/cost/today|2}"
       ]
     },
     {
