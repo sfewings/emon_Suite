@@ -18,6 +18,14 @@ external:
   - derived/tank/daysRemaining      # at the rolling 7-day average use
   - derived/tank/averageUse         # mm a day, that average
 
+# Derived feeds computed here that something other than the pages reads, so the linter
+# does not report them as unused. today is also for the All feeds page.
+exported:
+  - derived/dishwasher/runs/today
+  - derived/dishwasher/runs/yesterday          # Node-RED daily email, "Appliance runs"
+  - derived/washingmachine/runs/today
+  - derived/washingmachine/runs/yesterday      # Node-RED daily email, "Appliance runs"
+
 # Where each input lives in Influx (measurement, sensor tag), so a restart replays today.
 influx:
   Power board / HWS (pulse):                          pulse pulse/0/0
@@ -26,6 +34,8 @@ influx:
   Power board / Car (pulse):                          pulse pulse/0/4
   Dishwasher plug / Dishwasher (pulse):               pulse pulse/1/0
   Washing machine plug / Washing machine (pulse):     pulse pulse/2/0
+  Dishwasher plug / Dishwasher:                       power power/1/0
+  Washing machine plug / Washing machine:             power power/2/0
   Power board / Imported:                             power power/0/3
   Power board / Car:                                  power power/0/4
   Inverter One / pvInputPower:                        power inverter/pvInputPower/0
@@ -343,6 +353,21 @@ derived:
   # Tasmota plugs (pulse subnodes 1 and 2; docs/tasmota_plugs.md)
   - {id: dishwasher/today,     op: daily_delta, feed: Dishwasher plug / Dishwasher (pulse),           unit: Wh}
   - {id: washingmachine/today, op: daily_delta, feed: Washing machine plug / Washing machine (pulse), unit: Wh}
+
+  # --- Appliance runs (op runs, emon_feed.Runs): cycles found in each plug's power -------
+  # running drives the Power tile's pill; yesterday is read by Node-RED's daily email
+  # ("Appliance runs" on Instant data). A run starts at start_w, ends after hold_s below
+  # end_w (a dishwasher drying, a washer soaking, are not ends), and is counted only if
+  # it lasted min_s and used min_wh. PROVISIONAL (20 Nov 2026, before any real cycle was
+  # recorded): standby is 1-2 W. Tune from Influx after a week of cycles.
+  - &dishwasher_runs {id: dishwasher/running, op: runs, output: running, feed: Dishwasher plug / Dishwasher,
+                      start_w: 10, end_w: 5, hold_s: 900, min_s: 600, min_wh: 20, price: 0.262}
+  - {<<: *dishwasher_runs, id: dishwasher/runs/today,     output: today}
+  - {<<: *dishwasher_runs, id: dishwasher/runs/yesterday, output: yesterday}
+  - &washingmachine_runs {id: washingmachine/running, op: runs, output: running, feed: Washing machine plug / Washing machine,
+                          start_w: 10, end_w: 5, hold_s: 600, min_s: 600, min_wh: 20, price: 0.262}
+  - {<<: *washingmachine_runs, id: washingmachine/runs/today,     output: today}
+  - {<<: *washingmachine_runs, id: washingmachine/runs/yesterday, output: yesterday}
 
   # Node-RED integrated each inverter's PV as a backward rectangle per message; this is
   # the trapezoid rule, with gaps over 5 min not bridged (DESIGN 6.3).

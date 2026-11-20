@@ -763,6 +763,158 @@ class WindowDelta(PeriodOperator):
         return self.held
 
 
+RUN_OUTPUTS = ("running", "count", "today", "yesterday")
+
+
+class Runs(PeriodOperator):
+    """Runs of an appliance, found in its power (op runs): a dishwasher's or a washing
+    machine's cycles, from a Tasmota plug.
+
+    A run starts at the first reading at or above `start_w`. It ends once the power has
+    stayed below `end_w` for `hold_s`, or the readings stop for `stale_s`, and then its
+    end is the last reading at or above `end_w`: an appliance pauses mid-cycle (a
+    dishwasher drying, a washing machine soaking), so a short dip is not an end. A run
+    shorter than `min_s`, or of less than `min_wh`, is not counted. Energy is the
+    trapezoid integral of the power from the start to that last reading, gaps over
+    MAX_GAP_S not bridged; `price` ($/kWh), if given, adds the cost.
+
+    A run belongs to the day it ends, so a period's list holds only finished runs: a
+    cycle across midnight is in the next day's. Each entry reads one `output`:
+
+        running     1 while a run is on (including the hold at its end), else 0
+        count       finished runs since the boundary
+        today       the period's summary (below)
+        yesterday   the previous period's, rolled over at the boundary, for the daily email
+
+    A summary is {"date", "count", "wh", ["cost"], "complete", "runs": [{"start", "end",
+    "from", "to", "minutes", "wh", ["cost"]}]}: start and end in epoch seconds, from and
+    to as local "HH:MM". "complete" is False when readings began well after the period
+    started (emon_live's replay was cut short), so the list may be missing runs.
+    """
+
+    def __init__(self, output: str = "running", reset: str = "00:00", start_w: float = 10.0,
+                 end_w: Optional[float] = None, hold_s: float = 600.0, min_s: float = 300.0,
+                 min_wh: float = 10.0, stale_s: float = 1800.0,
+                 price: Optional[float] = None) -> None:
+        if output not in RUN_OUTPUTS:
+            raise ValueError(f"runs output must be one of {', '.join(RUN_OUTPUTS)}, not {output!r}")
+        super().__init__(reset)
+        self.output = output
+        self.start_w = float(start_w)
+        self.end_w = float(end_w) if end_w is not None else self.start_w / 2.0
+        self.hold_s, self.min_s, self.min_wh = float(hold_s), float(min_s), float(min_wh)
+        self.stale_s = float(stale_s)
+        self.price = None if price is None else float(price)
+        self.current: Optional[Dict[str, Any]] = None
+        self.last_t: Optional[float] = None
+        self.yesterday: Optional[Tuple[float, List[Dict[str, Any]], bool]] = None
+        self.clear()
+
+    def clear(self) -> None:
+        """Only the period's list; a run in progress carries on across the boundary."""
+        self.runs: List[Dict[str, Any]] = []
+        self.complete = True
+
+    def roll(self, t: float) -> bool:
+        """The boundary, and a run whose readings have stopped. True when either changed
+        something, so the tick republishes."""
+        closed = self._close_if_stale(t)
+        start = period_start(t, self.reset)
+        if start == self.start:
+            return closed
+        previous_start, runs, complete = self.start, self.runs, self.complete
+        rolled = previous_start is not None
+        if rolled:
+            # The period just ended, unless days passed with no readings at all.
+            last_start = period_start(start - 1.0, self.reset)
+            self.yesterday = ((last_start, runs, complete) if previous_start == last_start
+                              else (last_start, [], False))
+        self.start = start
+        self.clear()
+        # Readings began well after this period's start: the list may be missing runs.
+        self.complete = rolled or (t - start) <= self.stale_s
+        return rolled or closed
+
+    def _close_if_stale(self, t: float) -> bool:
+        if self.current is not None and self.last_t is not None and t - self.last_t > self.stale_s:
+            self._finish()
+            return True
+        return False
+
+    def _finish(self) -> None:
+        run, self.current = self.current, None
+        if run is None:
+            return
+        duration = run["last_high"] - run["start"]
+        if duration < self.min_s or run["wh_high"] < self.min_wh:
+            return
+        done = {"start": run["start"], "end": run["last_high"], "wh": run["wh_high"]}
+        if self.start is None or done["end"] >= self.start:
+            self.runs.append(done)
+        elif self.yesterday is not None and done["end"] >= self.yesterday[0]:
+            self.yesterday[1].append(done)     # ended before a boundary already rolled
+
+    def update(self, value: float, t: float) -> Any:
+        value = float(value)
+        self._close_if_stale(t)
+        self.roll(t)
+        run = self.current
+        if run is None:
+            if value >= self.start_w:
+                self.current = {"start": t, "last_high": t, "wh": 0.0, "wh_high": 0.0,
+                                "prev": (t, value)}
+        else:
+            prev_t, prev_w = run["prev"]
+            if 0 < t - prev_t <= MAX_GAP_S:
+                run["wh"] += (value + prev_w) / 2.0 * (t - prev_t) / 3600.0
+            if t >= prev_t:
+                run["prev"] = (t, value)
+            if value >= self.end_w:
+                run["last_high"], run["wh_high"] = t, run["wh"]
+            elif t - run["last_high"] >= self.hold_s:
+                self._finish()
+        self.last_t = t if self.last_t is None else max(self.last_t, t)
+        return self.value
+
+    def _cost(self, wh: float) -> Optional[float]:
+        return None if self.price is None else round(wh / 1000.0 * self.price, 2)
+
+    def summary(self, start: Optional[float], runs: List[Dict[str, Any]],
+                complete: bool) -> Optional[Dict[str, Any]]:
+        if start is None:
+            return None
+        items = []
+        for r in sorted(runs, key=lambda r: r["start"]):
+            item = {"start": int(round(r["start"])), "end": int(round(r["end"])),
+                    "from": _time.strftime("%H:%M", _time.localtime(r["start"])),
+                    "to": _time.strftime("%H:%M", _time.localtime(r["end"])),
+                    "minutes": int(round((r["end"] - r["start"]) / 60.0)),
+                    "wh": round(r["wh"], 1)}
+            if self.price is not None:
+                item["cost"] = self._cost(r["wh"])
+            items.append(item)
+        total = sum(r["wh"] for r in runs)
+        out = {"date": _time.strftime("%Y-%m-%d", _time.localtime(start)),
+               "count": len(items), "wh": round(total, 1)}
+        if self.price is not None:
+            out["cost"] = self._cost(total)
+        out["complete"] = bool(complete)
+        out["runs"] = items
+        return out
+
+    @property
+    def value(self) -> Any:
+        if self.output == "running":
+            return None if self.start is None else (1.0 if self.current is not None else 0.0)
+        if self.output == "count":
+            return None if self.start is None else float(len(self.runs))
+        if self.output == "today":
+            return self.summary(self.start, self.runs, self.complete)
+        if self.yesterday is None:
+            return None
+        return self.summary(*self.yesterday)
+
+
 # --------------------------------------------------------------------------------------
 # Expressions (op expr)
 #

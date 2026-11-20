@@ -21,6 +21,9 @@ by pages. The operators themselves are emon_feed's; this module wires them to fe
     integrate     feed (W)              reset, max_gap (s); gives Wh
     daily_max     feed                  reset, abs, ignore_zero
     daily_min     feed                  reset
+    runs          feed (W)              output (running, count, today, yesterday), start_w,
+                                        end_w, hold_s, min_s, min_wh, stale_s, price, reset;
+                                        an appliance's cycles (emon_feed.Runs)
     mean          feed                  reset, positive_only
     sum           of: [feeds]           a missing input is left out; none at all gives none
     expr          expr: "{a} - {b}"     defaults: {feed: value}
@@ -65,6 +68,11 @@ STATEFUL = {
     "daily_min": lambda s: emon_feed.Extreme(s.get("reset", "00:00"), "min", bool(s.get("abs")),
                                              bool(s.get("ignore_zero"))),
     "mean": lambda s: emon_feed.Mean(s.get("reset", "00:00"), bool(s.get("positive_only"))),
+    "runs": lambda s: emon_feed.Runs(
+        s.get("output", "running"), s.get("reset", "00:00"), float(s.get("start_w", 10.0)),
+        None if s.get("end_w") is None else float(s["end_w"]), float(s.get("hold_s", 600.0)),
+        float(s.get("min_s", 300.0)), float(s.get("min_wh", 10.0)), float(s.get("stale_s", 1800.0)),
+        None if s.get("price") is None else float(s["price"])),
 }
 STATELESS = ("sum", "expr")
 
@@ -90,6 +98,8 @@ leaving yesterday's total up until the first reading of the day."""
 
 DEFAULT_UNITS = {"integrate": "Wh", "twa": "deg", "awa": "deg", "leeway": "deg",
                  "heel": "deg", "pitch": "deg"}
+
+RUN_KINDS = {"running": "state", "count": "count", "today": "runs", "yesterday": "runs"}
 
 LIVE_S = 900.0
 """Replay depth for an input that only feeds live expressions."""
@@ -150,7 +160,9 @@ class Derived:
         op, ident = spec["op"], str(spec["id"]).strip("/")
         entry = Entry(id=ident, op=op, inputs=[], spec=spec,
                       unit=spec.get("unit", DEFAULT_UNITS.get(op, "")),
-                      kind=spec.get("kind", "energy" if op in TOTALS else "angle" if op in NAV else ""),
+                      kind=spec.get("kind", "energy" if op in TOTALS else "angle" if op in NAV
+                                    else RUN_KINDS.get(spec.get("output", "running"), "")
+                                    if op == "runs" else ""),
                       decimals=spec.get("decimals"))
         if op in STATEFUL:
             if not spec.get("feed"):
@@ -310,6 +322,10 @@ class Derived:
                 start = emon_feed.period_start(now, op.reset)
                 if entry.op == "window_delta" and now < emon_feed.window_end(start, op.end):
                     start = emon_feed.period_start(start - 1.0, op.reset)  # today's still open
+                if entry.op == "runs":
+                    # Yesterday's list too, for the daily email after a restart, and a run
+                    # that began before today's boundary. Capped at MAX_REPLAY_S by seeding.
+                    start = emon_feed.period_start(start - 1.0, op.reset)
                 since = min(since, start)
         return since
 

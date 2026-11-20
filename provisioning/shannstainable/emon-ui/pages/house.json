@@ -15,7 +15,9 @@
          "sub": "{derived/export/today|0} Wh · ${derived/export/value/today|2}"}
       ],
       "trail": {"feed": "Power board / Consumed", "minutes": 30},
-      "leds": [{"feed": "derived/car/charging", "on": "car charging", "off": ""}],
+      "leds": [{"feed": "derived/car/charging", "on": "car charging", "off": ""},
+               {"feed": "derived/dishwasher/running", "on": "dishwasher running", "off": ""},
+               {"feed": "derived/washingmachine/running", "on": "washing machine running", "off": ""}],
       "lines": [
         "Foregone {derived/foregone/now|0} W · {derived/foregone/today|0} Wh · ${derived/foregone/value/today|2}",
         "Car {Power board / Car|0} W · {derived/car/today|0} Wh · ${derived/car/cost/today|2} · HWS {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}",

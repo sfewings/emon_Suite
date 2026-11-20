@@ -16,9 +16,10 @@ Errors (exit 1):
   - an input of derived.yml has no Influx series, so a restart cannot replay it;
   - two topics publish the same name (DESIGN 5);
   - a page file is not valid JSON, or a placeholder is not closed.
-Warnings: a derived feed that nothing reads, on a page or in derived.yml; a feed listed
-under derived.yml's `external:` (published by Node-RED, DESIGN D5) that is not on the
-broker yet.
+Warnings: a derived feed that nothing reads, on a page or in derived.yml, unless it is
+listed under derived.yml's `exported:` (read by something else: Node-RED's daily email);
+a name under `exported:` that derived.yml does not compute; a feed listed under
+derived.yml's `external:` (published by Node-RED, DESIGN D5) that is not on the broker yet.
 """
 
 from __future__ import annotations
@@ -99,11 +100,14 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
     computed: Set[str] = set()
     derived_reads: Set[str] = set()
     external: Set[str] = set()
+    exported: Set[str] = set()
     derived_file = os.path.join(site_dir, "derived.yml")
     if os.path.isfile(derived_file):
         import yaml
         with open(derived_file, encoding="utf-8") as f:
-            external = set((yaml.safe_load(f) or {}).get("external") or [])
+            doc = yaml.safe_load(f) or {}
+        external = set(doc.get("external") or [])
+        exported = set(doc.get("exported") or [])
         for name in sorted(external - known):
             warnings.append(f"{name} is published by Node-RED (external) but not on the broker yet")
         computed |= external
@@ -200,7 +204,9 @@ def lint(site_dir: str, known: Set[str], duplicates: Dict[str, set]) -> Tuple[Li
             if name not in known and name not in computed:
                 errors.append(f"pages/{fname}: no feed {name!r}")
 
-    for key in sorted(computed - used - derived_reads - external):
+    for key in sorted(exported - computed):
+        warnings.append(f"{key} is listed under exported: but derived.yml does not compute it")
+    for key in sorted(computed - used - derived_reads - external - exported):
         warnings.append(f"{key} is computed but no page or derived entry reads it")
     return errors, warnings
 
