@@ -240,7 +240,7 @@ def _pulse(line: str, ns: Mapping, t: float) -> Optional[List[Emission]]:
     s = p.subnode
     o = _Out("pulse", s, ns, t, line)
     # A Tasmota plug (emonTasmotaToMQTT.py) is a pulse subnode with a 'tasmota' key and
-    # uses only p0. Its Unused channels are not written to Influx either: at a 10 s
+    # uses only p0. Its Unused channels are not written to Influx either: at a 30 s
     # update they would be ten zero series per plug that nothing reads (owner, 20 Nov
     # 2026). Every other pulse subnode keeps the legacy Influx output unchanged.
     tasmota = o.setting(s, "tasmota") is not None

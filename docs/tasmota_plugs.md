@@ -34,9 +34,10 @@ step back as a reset.
      shannstainable broker allows anonymous clients).
    - Topic = a short unique name, e.g. `plug_fridge`. Leave Full Topic at its default
      `%prefix%/%topic%/`; the bridge listens on `tele/+/SENSOR`.
-   - Console: `TelePeriod 10` (seconds; Tasmota's minimum).
+   - Console: `TelePeriod 30` (seconds; shannstainable's choice, 20 Nov 2026. Tasmota
+     allows 10 to 3600; the bridge and emon_live work with any of them).
    - Check it is publishing: the Console shows `MQT: tele/plug_fridge/SENSOR = {...ENERGY...}`
-     every 10 s.
+     every 30 s.
 
 2. **In emon_config** (`provisioning/shannstainable/emon_config/`, a new dated
    `YYYYMMDD-hhmm.yml` copied from the current one, or through the settings page on :5000),
@@ -61,7 +62,7 @@ step back as a reset.
    exists, `docker logs emon_tasmota` shows the plug's Topic once as ignored.
 
 3. **Check it.** `docker logs --tail 5 emon_tasmota` shows a `pulse3,<sub>,...` line every
-   10 s; `grep "pulse3,<sub>," /share/Input/$(date +%Y%m%d).TXT` shows them in the raw log.
+   30 s; `grep "pulse3,<sub>," /share/Input/$(date +%Y%m%d).TXT` shows them in the raw log.
 
 4. **emon_live and Grafana.** The feeds are `<name> / <p0>` (W) and `<name> / <p0> (pulse)`
    (Wh), e.g. `Fridge plug / Fridge`. They appear on the All feeds page at once. For a
@@ -83,6 +84,10 @@ message (power, energy, RSSI), not thirteen. Every other pulse subnode is unchan
   (`tele/<topic>/LWT`, Online/Offline) is logged by the bridge when it changes.
 - `... is not a 'tasmota' pulse subnode in emon_config; ignored`: the Topic on the plug
   and the `tasmota:` value differ, or the settings file in use is not the one edited.
+- Settings file names (`YYYYMMDD-hhmm.yml`) are read in each container's own time zone.
+  At shannstainable `emon_influx` has no `TZ` and runs on UTC, eight hours behind the
+  others, so a file dated later today local time reaches it hours late, and until then
+  Influx gets no points for a new plug. Date a new file a few hours in the past.
 - `... SENSOR has no ENERGY Power and Total; ignored`: the plug's template is not a power
   monitoring one (Athom's Tasmota build is; check Configuration, Module).
 
