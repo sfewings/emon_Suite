@@ -102,3 +102,41 @@ At shannstainable, from the production checkout:
 cd /share/emon_Suite/provisioning/shannstainable
 docker compose up -d --no-deps emon_tasmota_to_mqtt
 ```
+
+## Appliance runs (dishwasher, washing machine)
+
+emon_live finds each appliance's runs in its plug's power (`op: runs`, `emon_feed.Runs`;
+the entries are in `provisioning/shannstainable/emon-ui/derived.yml`) and publishes, per
+appliance (`dishwasher`, `washingmachine`):
+
+| feed | what | read by |
+|---|---|---|
+| `derived/<id>/running` | 1 while a run is on, including the hold at its end | the Power tile's pill |
+| `derived/<id>/runs/today` | today's finished runs: count, Wh, $, and each run's from, to, minutes, Wh, $ | All feeds page |
+| `derived/<id>/runs/yesterday` | the same for yesterday, rolled at midnight | Node-RED's daily email |
+
+A run starts at `start_w`, ends once the power has been below `end_w` for `hold_s` (or
+the plug has been silent for `stale_s`, 30 min), and counts only if it lasted `min_s`
+and used `min_wh`. Its end is the last reading at power, and it belongs to the day it
+ends, so a cycle across midnight is in the next day's email. A restart rebuilds today and
+yesterday from Influx (replay from yesterday's midnight, cut at 36 h; a summary with
+`"complete": false` may be missing runs).
+
+**Node-RED** (Instant data tab, "Appliance runs"): `emon/derived/+/runs/yesterday` is kept
+in flow context, and 40 s after midnight a table is appended to the daily email file, sent
+at 00:01. There is no WhatsApp message yet; when there is, it should hang off the change
+of `derived/<id>/running` from 1 to 0, after the thresholds are tuned.
+
+**Tuning.** The thresholds were set on 20 Nov 2026 before any cycle was recorded
+(standby 1-2 W): start 10 W, end 5 W, hold 15 min (dishwasher; drying) and 10 min
+(washing machine), at least 10 min and 20 Wh. After a week, look at real cycles, always
+time-bounded:
+
+```bash
+docker exec influx influx -database sensors -precision rfc3339 -execute \
+  "SELECT mean(value), max(value) FROM power WHERE sensor = 'power/1/0' AND time > now() - 7d GROUP BY time(1m) fill(none)"
+```
+
+The longest pause within a cycle sets `hold_s`; the standby level sets `end_w`. Edit
+derived.yml, then `docker restart emon_live`, which replays and recounts today and
+yesterday with the new values.
