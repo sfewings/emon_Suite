@@ -59,7 +59,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -83,43 +83,41 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "short"
         },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "Outlander - Battery WH"
-            },
-            "properties": [
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Outlander - Battery WH"
+              "options": "Leaf - Battery WH"
             },
             "properties": [
               {
                 "id": "unit",
                 "value": "watth"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 16,
+        "w": 17,
         "x": 0,
         "y": 0
       },
-      "id": 9,
+      "id": 4,
       "options": {
+        "alertThreshold": true,
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -128,7 +126,7 @@
         },
         "tooltip": {
           "hideZeros": false,
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
         }
       },
@@ -136,6 +134,10 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
           "groupBy": [
             {
               "params": [
@@ -145,7 +147,7 @@
             },
             {
               "params": [
-                "sensorName::tag"
+                "sensorName"
               ],
               "type": "tag"
             },
@@ -177,31 +179,62 @@
           ],
           "tags": [
             {
-              "key": "sensorGroup::tag",
+              "key": "sensorGroup",
               "operator": "=",
-              "value": "Outlander"
+              "value": "Leaf"
             },
             {
               "condition": "AND",
-              "key": "sensorName::tag",
+              "key": "sensorName",
               "operator": "!=",
-              "value": "Outlander - Odometer"
+              "value": "Leaf - Odometer"
             }
           ]
         },
         {
-          "alias": "Outlander distance travelled",
+          "alias": "Distance travelled",
           "datasource": {
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"leaf\" WHERE (\"sensorName\" = 'Outlander - Odometer') AND $timeFilter GROUP BY time($__interval))),\"sensorName\" fill(null)",
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"leaf\" WHERE (\"sensorName\" = 'Leaf - Odometer') AND $timeFilter GROUP BY time($__interval))),\"sensorName\" fill(null)",
           "rawQuery": true,
-          "refId": "B",
-          "resultFormat": "time_series"
+          "refId": "C",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": []
         }
       ],
-      "title": "Outlander",
+      "title": "Nissan Leaf",
       "type": "timeseries"
     },
     {
@@ -232,8 +265,8 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 13,
-        "w": 6,
+        "h": 21,
+        "w": 7,
         "x": 17,
         "y": 0
       },
@@ -384,7 +417,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "never",
+            "showPoints": "auto",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -408,41 +441,43 @@
                 "value": 80
               }
             ]
-          },
-          "unit": "short"
+          }
         },
         "overrides": [
           {
             "matcher": {
               "id": "byName",
-              "options": "Leaf - Battery WH"
+              "options": "Outlander - Battery WH"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outlander - Battery WH"
             },
             "properties": [
               {
                 "id": "unit",
                 "value": "watth"
-              },
-              {
-                "id": "min",
-                "value": 0
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 16,
+        "h": 12,
         "w": 17,
         "x": 0,
-        "y": 8
+        "y": 16
       },
-      "id": 4,
+      "id": 9,
       "options": {
-        "alertThreshold": true,
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -451,7 +486,7 @@
         },
         "tooltip": {
           "hideZeros": false,
-          "mode": "multi",
+          "mode": "single",
           "sort": "none"
         }
       },
@@ -459,10 +494,6 @@
       "targets": [
         {
           "alias": "$tag_sensorName",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "P951FEA4DE68E13C5"
-          },
           "groupBy": [
             {
               "params": [
@@ -472,7 +503,7 @@
             },
             {
               "params": [
-                "sensorName"
+                "sensorName::tag"
               ],
               "type": "tag"
             },
@@ -504,62 +535,31 @@
           ],
           "tags": [
             {
-              "key": "sensorGroup",
+              "key": "sensorGroup::tag",
               "operator": "=",
-              "value": "Leaf"
+              "value": "Outlander"
             },
             {
               "condition": "AND",
-              "key": "sensorName",
+              "key": "sensorName::tag",
               "operator": "!=",
-              "value": "Leaf - Odometer"
+              "value": "Outlander - Odometer"
             }
           ]
         },
         {
-          "alias": "Distance travelled",
+          "alias": "Outlander distance travelled",
           "datasource": {
             "type": "influxdb",
             "uid": "P951FEA4DE68E13C5"
           },
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "null"
-              ],
-              "type": "fill"
-            }
-          ],
-          "orderByTime": "ASC",
-          "policy": "default",
-          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"leaf\" WHERE (\"sensorName\" = 'Leaf - Odometer') AND $timeFilter GROUP BY time($__interval))),\"sensorName\" fill(null)",
+          "query": "SELECT CUMULATIVE_SUM(\"difference\") FROM (SELECT DIFFERENCE(\"mean\") FROM (SELECT MEAN(\"value\") FROM \"leaf\" WHERE (\"sensorName\" = 'Outlander - Odometer') AND $timeFilter GROUP BY time($__interval))),\"sensorName\" fill(null)",
           "rawQuery": true,
-          "refId": "C",
-          "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "value"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              }
-            ]
-          ],
-          "tags": []
+          "refId": "B",
+          "resultFormat": "time_series"
         }
       ],
-      "title": "Nissan Leaf",
+      "title": "Outlander",
       "type": "timeseries"
     },
     {
@@ -644,7 +644,7 @@
         "h": 5,
         "w": 17,
         "x": 0,
-        "y": 24
+        "y": 28
       },
       "id": 8,
       "options": {

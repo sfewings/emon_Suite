@@ -214,6 +214,65 @@
               "value": "Car"
             }
           ]
+        },
+        {
+          "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "sensorName::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "pulse",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "B",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "sensorName::tag",
+              "operator": "=",
+              "value": "Dishwasher"
+            },
+            {
+              "condition": "OR",
+              "key": "sensorName::tag",
+              "operator": "=",
+              "value": "Washing machine"
+            }
+          ]
         }
       ],
       "title": "Power usage",
@@ -430,12 +489,6 @@
               "key": "sensorName::tag",
               "operator": "=",
               "value": "Inverter One - PV"
-            },
-            {
-              "condition": "OR",
-              "key": "sensor",
-              "operator": "=",
-              "value": "power/0/1"
             },
             {
               "condition": "OR",
@@ -750,6 +803,59 @@
               "key": "sensorName",
               "operator": "=",
               "value": "Battery-510Ah"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_sensorName",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "P951FEA4DE68E13C5"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "sensorName::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "null"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "power",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "sensorGroup::tag",
+              "operator": "=",
+              "value": "BMS - Leaf Bank"
             }
           ]
         }
