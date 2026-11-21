@@ -464,6 +464,14 @@ sans-serif`, readings at weight 500 with tabular figures and -0.02em tracking, a
 `static/app.css` does; nothing is downloaded (the Pi resolves it to Nimbus Sans, iOS has
 Helvetica Neue). enchantee uses it; shannstainable keeps the proposal's faces.
 
+**A table part** (21 Nov 2026, owner): `"table": {"columns": [...], "rows": [{"label",
+"leds", "cells"}]}` (tiles/table.js), a row a thing, each with its pills beside its name
+and its figures as template cells. shannstainable's Appliances tile is one: car, hot
+water, dishwasher and washing machine, now, today and cost, moved out of the Power tile.
+Hot water's pills are the system's own Solar pump and Heat pump booster states: its
+power-board circuit is pumps and control (52 W at most in a week), so a power threshold
+would say nothing. The pills' logic is `ui.pillsInto`, shared with `leds`.
+
 **Numbers in lines read as readings** (30 Oct 2026, owner): in a reading's sub line and a
 tile's lines, each `{feed}` number is set medium (22 px, 18 on a phone) in ink, or in its
 reading's colour, and the words and units around it stay small and grey, as the Rain

@@ -15,14 +15,30 @@
          "sub": "{derived/export/today|0} Wh · ${derived/export/value/today|2}"}
       ],
       "trail": {"feed": "Power board / Consumed", "minutes": 30},
-      "leds": [{"feed": "derived/car/charging", "on": "car charging", "off": ""},
-               {"feed": "derived/dishwasher/running", "on": "dishwasher running", "off": ""},
-               {"feed": "derived/washingmachine/running", "on": "washing machine running", "off": ""}],
       "lines": [
-        "Foregone {derived/foregone/now|0} W · {derived/foregone/today|0} Wh · ${derived/foregone/value/today|2}",
-        "Car {Power board / Car|0} W · {derived/car/today|0} Wh · ${derived/car/cost/today|2} · HWS {derived/hws/today|0} Wh · ${derived/hws/cost/today|2}",
-        "Dishwasher {Dishwasher plug / Dishwasher|0} W · {derived/dishwasher/today|0} Wh · ${derived/dishwasher/cost/today|2} · Washing machine {Washing machine plug / Washing machine|0} W · {derived/washingmachine/today|0} Wh · ${derived/washingmachine/cost/today|2}"
+        "Foregone {derived/foregone/now|0} W · {derived/foregone/today|0} Wh · ${derived/foregone/value/today|2}"
       ]
+    },
+    {
+      "title": "Appliances", "domain": "power", "span": 2,
+      "table": {
+        "columns": ["Now", "Today", "Cost"],
+        "rows": [
+          {"label": "Car",
+           "leds": [{"feed": "derived/car/charging", "on": "charging", "off": "idle"}],
+           "cells": ["{Power board / Car|0} W", "{derived/car/today|0} Wh", "${derived/car/cost/today|2}"]},
+          {"label": "Hot water",
+           "leds": [{"feed": "Hot water system / Solar pump", "on": "solar", "off": "idle"},
+                    {"feed": "Hot water system / Heat pump booster", "on": "booster", "off": ""}],
+           "cells": ["{Power board / HWS|0} W", "{derived/hws/today|0} Wh", "${derived/hws/cost/today|2}"]},
+          {"label": "Dishwasher",
+           "leds": [{"feed": "derived/dishwasher/running", "on": "running", "off": "idle"}],
+           "cells": ["{Dishwasher plug / Dishwasher|0} W", "{derived/dishwasher/today|0} Wh", "${derived/dishwasher/cost/today|2}"]},
+          {"label": "Washing machine",
+           "leds": [{"feed": "derived/washingmachine/running", "on": "running", "off": "idle"}],
+           "cells": ["{Washing machine plug / Washing machine|0} W", "{derived/washingmachine/today|0} Wh", "${derived/washingmachine/cost/today|2}"]}
+        ]
+      }
     },
     {
       "title": "Batteries", "domain": "batt", "span": 2,
