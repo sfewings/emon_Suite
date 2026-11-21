@@ -9,6 +9,7 @@
 // in this order, each one optional:
 //
 //   values   a grid of readings, each with an optional "sub" line under it
+//   table    rows of a name, its pills and its figures, under column headings
 //   dial     round gauges, side by side
 //   compass  bearings on a rose, or angles off the bow
 //   cell-bar one bar per battery cell
@@ -35,7 +36,7 @@
   var MINUS = "−";
   var DASH = "—";
   var NNBSP = " ";   // narrow no-break space, between thousands
-  var PARTS = ["values", "dial", "compass", "cell-bar", "gauge", "sankey", "banks", "trail",
+  var PARTS = ["values", "table", "dial", "compass", "cell-bar", "gauge", "sankey", "banks", "trail",
                "grafana", "leds", "lines"];
 
   var parts = {};          // name -> factory(spec, el, tile) returning update(view)
@@ -160,6 +161,33 @@
     return function (view) {
       pieces.forEach(function (x) {
         if (x.p.feed) x.node.textContent = fmtAs(view.value(x.p.feed), x.p.decimals);
+      });
+    };
+  }
+
+  // Pills built into `parent`, on or off (tiles/leds.js has the spec). Returns
+  // update(view). test "value" (the default): on at 1 or more; "fresh": on while the feed
+  // reports within the tile's fresh age. An empty label hides that pill.
+  function pillsInto(parent, list, tile) {
+    var pills = list.map(function (item) {
+      var p = el("span", "pill");
+      parent.appendChild(p);
+      return { item: item, el: p };
+    });
+    return function (view) {
+      pills.forEach(function (p) {
+        var on;
+        if (p.item.test === "fresh") {
+          var a = view.age(p.item.feed);
+          on = a !== null && a <= tile.fresh;
+        } else {
+          var v = view.value(p.item.feed);
+          on = typeof v === "number" && v >= 1;
+        }
+        var label = on ? p.item.on : p.item.off;
+        p.el.textContent = label || "";
+        p.el.style.display = label ? "" : "none";
+        p.el.className = "pill " + (on ? (p.item.bad ? "bad" : "on") : "off") + (p.item.big ? " big" : "");
       });
     };
   }
@@ -457,6 +485,7 @@
   var api = {
     el: el, fmt: fmt, fmtAs: fmtAs, fmtTime: fmtTime, fmtAge: fmtAge, unit: unit,
     parseTemplate: parseTemplate, templateFeeds: templateFeeds, templateInto: templateInto,
+    pillsInto: pillsInto,
     // Where this page is served from, so a part with an endpoint of its own (sankey)
     // reaches it by the same relative path the engine uses.
     base: base, getJSON: function (url) { return getJSON(url); }

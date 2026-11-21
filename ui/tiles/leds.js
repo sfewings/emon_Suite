@@ -17,30 +17,9 @@
     var row = ui.el("span", "leds");
     var head = tile.el.querySelector(".h");
     head.insertBefore(row, head.lastChild);
-    var pills = list.map(function (item) {
-      var p = ui.el("span", "pill");
-      row.appendChild(p);
-      return { item: item, el: p };
-    });
-
     return {
       feeds: list.map(function (i) { return i.feed; }).filter(Boolean),
-      update: function (view) {
-        pills.forEach(function (p) {
-          var on;
-          if (p.item.test === "fresh") {
-            var a = view.age(p.item.feed);
-            on = a !== null && a <= tile.fresh;
-          } else {
-            var v = view.value(p.item.feed);
-            on = typeof v === "number" && v >= 1;
-          }
-          var label = on ? p.item.on : p.item.off;
-          p.el.textContent = label || "";
-          p.el.style.display = label ? "" : "none";
-          p.el.className = "pill " + (on ? (p.item.bad ? "bad" : "on") : "off") + (p.item.big ? " big" : "");
-        });
-      }
+      update: ui.pillsInto(row, list, tile)    // shared with tiles/table.js
     };
   });
 }());

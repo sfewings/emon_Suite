@@ -853,3 +853,9 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   passphrase), every code decoded with zbarimg. hotspot-check and the README checks
   follow redirects. iPads or phones with emon_live saved to the Home Screen from `/`
   now open GAR, and need saving again from `/live/`.
+- **2026-11-21, shannstainable Pi.** Owner: the Power tile's car, hot water, dishwasher and
+  washing machine figures into a tile of their own, a table with each one's pill. New
+  `table` part (tiles/table.js, DESIGN 6.2), `ui.pillsInto` shared with `leds`; House
+  page's Appliances tile after Power (span 2), the Power tile keeps Foregone. Branch
+  `appliance_tile` from master (the worktree had been on `appliance_runs`, merged).
+  Checked in a development instance on 5004, desktop and phone.
