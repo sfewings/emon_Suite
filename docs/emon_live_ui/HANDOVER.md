@@ -859,3 +859,7 @@ Decided by the owner on 21 Oct 2026, for PLAN 2b:
   page's Appliances tile after Power (span 2), the Power tile keeps Foregone. Branch
   `appliance_tile` from master (the worktree had been on `appliance_runs`, merged).
   Checked in a development instance on 5004, desktop and phone.
+- **2026-11-21, 09:02.** Owner approved the Appliances tile. Merged to master (`1d4e8c8`),
+  production's emon_live restarted: healthy, 75 derived feeds, MQTT connected, the House
+  page checked through nginx. The development instance on 5004 is stopped. Note:
+  `docker logs --since` returned nothing on this Pi that morning; read with `--tail`.
