@@ -156,6 +156,21 @@ sankey:
       now: Power board / HWS
       window: {method: counter, of: [Power board / HWS (pulse)]}
 
+    # The Tasmota plugs (docs/tasmota_plugs.md), both on Main.
+    - id: dishwasher
+      label: Dishwasher
+      side: load
+      domain: power
+      now: Dishwasher plug / Dishwasher
+      window: {method: counter, of: [Dishwasher plug / Dishwasher (pulse)]}
+
+    - id: washingmachine
+      label: Washing machine
+      side: load
+      domain: power
+      now: Washing machine plug / Washing machine
+      window: {method: counter, of: [Washing machine plug / Washing machine (pulse)]}
+
     # The export estimate (derived/export/now, below) has no single Influx series, so a
     # past window takes the split view's figure, rebuilt a bucket at a time: close to
     # derived/export/today, not equal to it, and marked "≈" on the diagram.
@@ -171,7 +186,7 @@ sankey:
   # The other view: which source fed which load, no house in the middle (supply.py,
   # DESIGN 6.7). The wiring, from the owner (30 Oct 2026): two circuits that never meet.
   # Main is Inverters One and Three with Banks 1 to 3, and carries the car and the hot
-  # water. Office is Inverter Two with the Leaf bank (the old Nissan Leaf pack; the car
+  # water (and the dishwasher and washing machine, on Tasmota plugs since 20 Nov 2026). Office is Inverter Two with the Leaf bank (the old Nissan Leaf pack; the car
   # called Leaf is a load on Main) and is the only one that exports, and only solar.
   # Everything the house uses is on the two circuits; an import is an occasional load
   # straight off the grid, and a manual battery charge from the grid perhaps once a year,
@@ -196,6 +211,10 @@ sankey:
         loads:
           - {id: car, label: Car, domain: car, power: Power board / Car, counter: Power board / Car (pulse)}
           - {id: hws, label: Hot water, domain: heat, power: Power board / HWS, counter: Power board / HWS (pulse)}
+          - {id: dishwasher, label: Dishwasher, domain: power, power: Dishwasher plug / Dishwasher,
+             counter: Dishwasher plug / Dishwasher (pulse)}
+          - {id: washingmachine, label: Washing machine, domain: power, power: Washing machine plug / Washing machine,
+             counter: Washing machine plug / Washing machine (pulse)}
         house: {id: house_main, label: House Main}
       - id: office
         label: Office
